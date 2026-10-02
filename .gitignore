@@ -18,6 +18,8 @@ dist/
 /artifacts/
 /notes/
 /provider-lab/
+/config/local/
+/tls/
 data/
 logs/
 tmp/
