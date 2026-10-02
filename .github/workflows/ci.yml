@@ -26,6 +26,8 @@ jobs:
         run: uv python install
       - name: Sync committed dependency lock
         run: uv sync --locked --group dev
+      - name: Build package
+        run: uv build
       - name: Check repository hygiene
         run: uv run --locked python scripts/check_repository_hygiene.py
       - name: Lint

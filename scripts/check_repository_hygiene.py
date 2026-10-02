@@ -74,6 +74,8 @@ def main() -> None:
         file = root / path
         if (
             FORBIDDEN_DIRECTORIES.intersection(path.parts)
+            or path.parts[:2] == ("config", "local")
+            or path.parts[0] == "tls"
             or any(
                 fnmatch(part.lower(), pattern)
                 for part in path.parts

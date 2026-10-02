@@ -1,0 +1,76 @@
+schema_version = 1
+
+[[fixtures]]
+id = "cn-equity-universe"
+capability = "security.universe"
+symbols = []
+page_size = 2
+semantics = { universe = "CN cash equities", symbol = "code.MIC" }
+
+[[fixtures]]
+id = "cn-mainboard-metadata"
+capability = "security.metadata"
+symbols = ["600000.XSHG", "000001.XSHE"]
+page_size = 2
+semantics = { symbol = "code.MIC", timezone = "Asia/Shanghai" }
+
+[[fixtures]]
+id = "cn-mainboard-snapshot"
+capability = "quote.snapshot"
+symbols = ["600000.XSHG", "000001.XSHE"]
+page_size = 2
+semantics = { currency = "CNY", price_unit = "CNY", volume_unit = "shares", timezone = "Asia/Shanghai" }
+
+[[fixtures]]
+id = "sh-mainboard-daily-pagination"
+capability = "bars.daily"
+symbols = ["600000.XSHG"]
+start = 2024-01-02
+end = 2024-01-10
+page_size = 2
+semantics = { period = "1d", adjustment = "none", currency = "CNY", price_unit = "CNY", volume_unit = "shares", timezone = "Asia/Shanghai" }
+
+[[fixtures]]
+id = "sz-mainboard-intraday"
+capability = "bars.intraday"
+symbols = ["000001.XSHE"]
+start = 2024-01-02
+end = 2024-01-02
+page_size = 2
+semantics = { period = "1m", adjustment = "none", currency = "CNY", volume_unit = "shares", timezone = "Asia/Shanghai" }
+
+[[fixtures]]
+id = "sz-mainboard-transactions"
+capability = "trades.intraday"
+symbols = ["000001.XSHE"]
+start = 2024-01-02
+end = 2024-01-02
+page_size = 2
+semantics = { currency = "CNY", volume_unit = "shares", timezone = "Asia/Shanghai" }
+
+[[fixtures]]
+id = "sh-mainboard-corporate-actions"
+capability = "corporate_actions"
+symbols = ["600000.XSHG"]
+start = 2023-01-01
+end = 2024-01-10
+page_size = 2
+semantics = { date = "effective date", units = "adapter must declare per-field units" }
+
+[[fixtures]]
+id = "sh-mainboard-financial-statements"
+capability = "financial.statements"
+symbols = ["600000.XSHG"]
+start = 2023-01-01
+end = 2024-01-10
+page_size = 2
+semantics = { date = "report period and publication date must remain distinct", units = "adapter must declare per-field units" }
+
+[[fixtures]]
+id = "cn-holiday-calendar"
+capability = "calendar.trading_days"
+symbols = []
+start = 2023-12-29
+end = 2024-01-03
+page_size = 2
+semantics = { date = "local exchange trading day", timezone = "Asia/Shanghai" }

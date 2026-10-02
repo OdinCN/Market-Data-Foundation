@@ -5,14 +5,16 @@ build-backend = "hatchling.build"
 [project]
 name = "market-data-foundation"
 version = "0.1.0"
-description = "Market-data foundation repository and CI bootstrap"
+description = "Market-data foundation qualification harness"
 readme = "README.md"
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.14,<3.15"
 dependencies = []
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.25,<5",
     "pytest>=8.3,<9",
+    "rfc3339-validator>=0.1.4,<0.2",
     "ruff>=0.11,<1",
 ]
 
@@ -28,7 +30,7 @@ addopts = "--strict-markers -m 'not live_provider'"
 markers = ["live_provider: opt-in tests that contact real providers or external services"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py314"
 line-length = 88
 
 [tool.ruff.lint]

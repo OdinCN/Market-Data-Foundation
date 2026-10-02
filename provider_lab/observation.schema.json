@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MDF qualification observation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "provider",
+    "implementation",
+    "implementation_version",
+    "python",
+    "mode",
+    "capability",
+    "fixture_id",
+    "observed_at",
+    "success",
+    "latency_ms",
+    "endpoint",
+    "coverage",
+    "date_range",
+    "pagination",
+    "units",
+    "semantics",
+    "exception"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "provider": {
+      "type": "string",
+      "minLength": 1
+    },
+    "implementation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "implementation_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "python": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "mode": {
+      "enum": [
+        "offline",
+        "live"
+      ]
+    },
+    "capability": {
+      "enum": [
+        "security.universe",
+        "security.metadata",
+        "quote.snapshot",
+        "bars.daily",
+        "bars.intraday",
+        "trades.intraday",
+        "corporate_actions",
+        "financial.statements",
+        "calendar.trading_days"
+      ]
+    },
+    "fixture_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "success": {
+      "type": "boolean"
+    },
+    "latency_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host",
+        "port",
+        "server_identity",
+        "unobservable_reason"
+      ],
+      "properties": {
+        "host": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-zA-Z0-9_.:-]+$"
+        },
+        "port": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "server_identity": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unobservable_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested_symbols",
+        "returned_symbols",
+        "row_count",
+        "complete",
+        "missing_fields"
+      ],
+      "properties": {
+        "requested_symbols": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "returned_symbols": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "row_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "complete": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "missing_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "date_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested_start",
+        "requested_end",
+        "observed_start",
+        "observed_end"
+      ],
+      "properties": {
+        "requested_start": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "requested_end": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "observed_start": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "observed_end": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        }
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pages",
+        "page_size",
+        "exhausted"
+      ],
+      "properties": {
+        "pages": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "page_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "exhausted": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "units": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "semantics": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "exception": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "category",
+            "module",
+            "type"
+          ],
+          "properties": {
+            "category": {
+              "enum": [
+                "timeout",
+                "authentication",
+                "dependency",
+                "network",
+                "validation",
+                "other"
+              ]
+            },
+            "module": {
+              "type": "string",
+              "minLength": 1
+            },
+            "type": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "success": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "exception": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}
