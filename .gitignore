@@ -1,0 +1,57 @@
+# Python environments, build output and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.coverage*
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Local runtime material and the original host environment note
+/README.txt
+/artifacts/
+/notes/
+/provider-lab/
+data/
+logs/
+tmp/
+*.log
+*.sqlite*
+*.db
+*.csv
+*.parquet
+*.arrow
+*.feather
+*.pkl
+*.pickle
+
+# Credentials, environment files and SSH identities
+.env*
+*.env
+.ssh/
+.aws/
+.credentials/
+secrets/
+credentials/
+*secret*
+*credential*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+*_deploy
+*_deploy.pub
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+*.swp
