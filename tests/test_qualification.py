@@ -98,7 +98,8 @@ def test_failure_has_one_attempt_and_no_exception_message(error_type, category) 
     assert not record["success"]
     assert record["exception"]["type"] == error_type.__qualname__
     assert record["exception"]["category"] == category
-    assert record["endpoint"]["host"] == "example.invalid"
+    assert record["attempted_endpoint"]["host"] == "example.invalid"
+    assert record["endpoint"]["host"] is None
     assert "sensitive-message" not in json.dumps(record)
 
 

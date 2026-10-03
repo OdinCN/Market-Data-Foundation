@@ -15,6 +15,13 @@ class Capability(StrEnum):
     BARS_INTRADAY = "bars.intraday"
     TRADES_INTRADAY = "trades.intraday"
     CORPORATE_ACTIONS = "corporate_actions"
+    SECTOR_INDUSTRY = "sector.industry"
+    SECTOR_CONCEPT = "sector.concept"
+    SECTOR_MEMBERSHIP = "sector.membership"
+    ADJUSTMENT_FACTORS = "adjustment.factors"
+    BARS_ADJUSTED = "bars.adjusted"
+    FINANCE_SNAPSHOT = "finance.snapshot"
+    FINANCE_F10 = "finance.f10"
     FINANCIAL_STATEMENTS = "financial.statements"
     TRADING_CALENDAR = "calendar.trading_days"
 

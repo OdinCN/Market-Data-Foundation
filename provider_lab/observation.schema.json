@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "MDF qualification observation v1",
+  "title": "MDF qualification observation v2",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -21,11 +21,12 @@
     "pagination",
     "units",
     "semantics",
-    "exception"
+    "exception",
+    "attempted_endpoint"
   ],
   "properties": {
     "schema_version": {
-      "const": 1
+      "const": 2
     },
     "provider": {
       "type": "string",
@@ -58,6 +59,13 @@
         "bars.intraday",
         "trades.intraday",
         "corporate_actions",
+        "sector.industry",
+        "sector.concept",
+        "sector.membership",
+        "adjustment.factors",
+        "bars.adjusted",
+        "finance.snapshot",
+        "finance.f10",
         "financial.statements",
         "calendar.trading_days"
       ]
@@ -275,6 +283,45 @@
           }
         }
       ]
+    },
+    "attempted_endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host",
+        "port",
+        "server_identity",
+        "unobservable_reason"
+      ],
+      "properties": {
+        "host": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-zA-Z0-9_.:-]+$"
+        },
+        "port": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "server_identity": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unobservable_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
     }
   },
   "allOf": [

@@ -147,7 +147,12 @@ def observe(
         if not isinstance(evidence, Evidence):
             raise TypeError("executor must return normalized Evidence")
     except Exception as error:
-        evidence = Evidence(success=False, endpoint=binding.endpoint)
+        evidence = Evidence(
+            success=False,
+            endpoint=Endpoint(
+                unobservable_reason="execution failed; connection not observed"
+            ),
+        )
         exception = classify_exception(error)
     latency = (timer() - started) * 1000
     if not math.isfinite(latency) or latency < 0:
@@ -157,7 +162,7 @@ def observe(
         return value.isoformat() if value is not None else None
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "provider": binding.provider,
         "implementation": binding.implementation,
         "implementation_version": binding.version,
@@ -169,6 +174,7 @@ def observe(
         "success": evidence.success,
         "latency_ms": latency,
         "endpoint": asdict(evidence.endpoint),
+        "attempted_endpoint": asdict(binding.endpoint),
         "coverage": {
             "requested_symbols": list(fixture.symbols),
             "returned_symbols": list(evidence.returned_symbols),

@@ -1,8 +1,11 @@
 # Market-Data-Foundation
 
 Market-Data-Foundation is the market-data foundation product. Its current state is
-runtime baseline qualification and a reusable Provider Qualification harness.
-Full Provider Qualification has **not started**; no provider adapters are bound.
+runtime baseline qualification, a reusable Provider Qualification harness and the
+[TDX R1 implementation bake-off](docs/qualification/tdx-r1.md). R1 identifies
+tdx-python 0.1.6 as an implementation candidate with explicit endpoint pinning,
+redial disabled and capability/source limitations.
+MDF Primary Provider binding is not yet authorized; no production adapter is bound.
 
 ## Development
 

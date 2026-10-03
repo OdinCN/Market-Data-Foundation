@@ -1,0 +1,355 @@
+{
+  "baseline": "5a52dc44b597553dbb551aa424c1450dfcb9fcac",
+  "python": "3.14.8",
+  "versions": {
+    "tdx-python": "0.1.6",
+    "pytdxdata": "0.6.1",
+    "mootdx-plus": "0.12.0"
+  },
+  "recommended_implementation": "tdx-python",
+  "recommended_configuration": {
+    "explicit_endpoint": true,
+    "redial": false,
+    "exclude_bj_aggregate": true
+  },
+  "binding_authorized": false,
+  "evidence_manifest": "artifacts/tdx-r1/single-writer-20261003/evidence-manifest.json",
+  "implementations": {
+    "tdx-python": {
+      "security.universe": {
+        "disposition": "UNRESOLVED",
+        "basis": "BJ server count 386; standard list failed/empty; aggregate TDX-only source unestablished. Cash classification/status completeness unqualified.",
+        "evidence": [
+          "artifacts/tdx-r1/single-writer-20261003/retest-summary.json"
+        ]
+      },
+      "security.metadata": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Bounded SH/SZ reference fields (exclude old Go aggregate-derived BJ metadata); fresh BJ identity is strongest in pytdxdata snapshot, Go quote confirms exchange/code. No listing/status gate.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/tdx-python/controlled-supplement/representative-metadata.raw.json",
+          "artifacts/tdx-r1/single-writer-20261003/retest-summary.json"
+        ]
+      },
+      "quote.snapshot": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Secondary snapshot sanity only; date/freshness/depth not a realtime selection gate.",
+        "evidence": [
+          "artifacts/tdx-r1/single-writer-20261003/final-retests/bj-go/bj-quote-identity.raw.json"
+        ]
+      },
+      "bars.daily": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Seven representative 2024 windows agree on dates/OHLC. Raw full arrays concatenate newest pages first, not globally ascending. Lot quantization and index-volume interpretation remain limits.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/tdx-python/controlled/daily-SH-main-history.raw.json",
+          "artifacts/tdx-r1/controlled-tdx-python-139.9.52.158-isolated/sh-stock-daily-0-raw.json"
+        ]
+      },
+      "bars.intraday": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Two-row secondary protocol characterization only; no exhaustive intraday/realtime qualification.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-tdx-python-139.9.52.158-isolated/intraday-secondary-raw.json"
+        ]
+      },
+      "trades.intraday": {
+        "disposition": "UNRESOLVED",
+        "basis": "Not established by this bounded round; no implicit provider-wide support or absence claim.",
+        "evidence": []
+      },
+      "corporate_actions": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Category-coded raw events; category 1 dividend/rights units distinguished; other categories, nulls and timestamps require preservation.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-tdx-python-139.9.52.158-isolated/sh-xdxr-raw.json"
+        ]
+      },
+      "sector.industry": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "tdxhy.cfg mapping, TDX/SW separated; no complete named taxonomy/status. mootdx raw fragment alone does not qualify a parsed industry capability.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-tdx-python-139.9.52.158-isolated/tdx-industry-map-raw.json"
+        ]
+      },
+      "sector.concept": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "269 groups/41312 matching memberships for Go/pytdxdata; mootdx native output has malformed codes and duplicates. block_zs.dat is not industry evidence.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/tdx-python/controlled/concept.raw.json",
+          "artifacts/tdx-r1/successor/verified-evidence.json"
+        ]
+      },
+      "sector.membership": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "269 groups/41312 matching memberships for Go/pytdxdata; mootdx native output has malformed codes and duplicates. block_zs.dat is not industry evidence.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/tdx-python/controlled/concept.raw.json",
+          "artifacts/tdx-r1/successor/verified-evidence.json"
+        ]
+      },
+      "adjustment.factors": {
+        "disposition": "NOT_SUPPORTED",
+        "basis": "mootdx derived adj only, explicit same-client TDX actions and latest-bar anchor. No native exported factor API in inspected pinned Go/pytdxdata interfaces.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-tdx-python-139.9.52.158-isolated/sh-factors-trace.json"
+        ]
+      },
+      "bars.adjusted": {
+        "disposition": "NOT_SUPPORTED",
+        "basis": "Go API not exposed; pytdxdata native MAC QFQ; mootdx derives from explicitly supplied TDX actions. Anchor/algorithm and adjusted volume limits recorded.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-tdx-python-139.9.52.158-isolated/sh-adjusted-raw.json"
+        ]
+      },
+      "finance.snapshot": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Latest parser snapshot; unit decoding is not independently audited statements or publication chronology.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-tdx-python-139.9.52.158-isolated/sh-finance-raw.json"
+        ]
+      },
+      "finance.f10": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "16 descriptors and nonempty bounded text; repaired descriptor serialization and string normalization. Not structured historical statements.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-tdx-python-139.9.52.158-supplemental/f10-bounded-content-raw.json"
+        ]
+      },
+      "financial.statements": {
+        "disposition": "UNRESOLVED",
+        "basis": "Not established by this bounded round; no implicit provider-wide support or absence claim.",
+        "evidence": []
+      },
+      "calendar.trading_days": {
+        "disposition": "UNRESOLVED",
+        "basis": "Not established by this bounded round; no implicit provider-wide support or absence claim.",
+        "evidence": []
+      }
+    },
+    "pytdxdata": {
+      "security.universe": {
+        "disposition": "UNRESOLVED",
+        "basis": "BJ server count 386; standard list failed/empty; aggregate TDX-only source unestablished. Cash classification/status completeness unqualified.",
+        "evidence": [
+          "artifacts/tdx-r1/single-writer-20261003/retest-summary.json"
+        ]
+      },
+      "security.metadata": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Bounded SH/SZ reference fields (exclude old Go aggregate-derived BJ metadata); fresh BJ identity is strongest in pytdxdata snapshot, Go quote confirms exchange/code. No listing/status gate.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/pytdxdata/controlled-supplement/representative-metadata.raw.json",
+          "artifacts/tdx-r1/single-writer-20261003/retest-summary.json"
+        ]
+      },
+      "quote.snapshot": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Secondary snapshot sanity only; date/freshness/depth not a realtime selection gate.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/pytdxdata/controlled/quote.raw.json"
+        ]
+      },
+      "bars.daily": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Seven representative 2024 windows agree on dates/OHLC. Raw full arrays concatenate newest pages first, not globally ascending. Lot quantization and index-volume interpretation remain limits.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/pytdxdata/controlled/daily-SH-main-history.raw.json",
+          "artifacts/tdx-r1/controlled-pytdxdata-139.9.52.158/sh-stock-daily-0-raw.json"
+        ]
+      },
+      "bars.intraday": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Two-row secondary protocol characterization only; no exhaustive intraday/realtime qualification.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-pytdxdata-139.9.52.158/intraday-secondary-raw.json"
+        ]
+      },
+      "trades.intraday": {
+        "disposition": "UNRESOLVED",
+        "basis": "Not established by this bounded round; no implicit provider-wide support or absence claim.",
+        "evidence": []
+      },
+      "corporate_actions": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Category-coded raw events; category 1 dividend/rights units distinguished; other categories, nulls and timestamps require preservation.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-pytdxdata-139.9.52.158/sh-xdxr-raw.json"
+        ]
+      },
+      "sector.industry": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "tdxhy.cfg mapping, TDX/SW separated; no complete named taxonomy/status. mootdx raw fragment alone does not qualify a parsed industry capability.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-pytdxdata-139.9.52.158/tdx-industry-map-raw.json"
+        ]
+      },
+      "sector.concept": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "269 groups/41312 matching memberships for Go/pytdxdata; mootdx native output has malformed codes and duplicates. block_zs.dat is not industry evidence.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/pytdxdata/controlled/concept.raw.json",
+          "artifacts/tdx-r1/successor/verified-evidence.json"
+        ]
+      },
+      "sector.membership": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "269 groups/41312 matching memberships for Go/pytdxdata; mootdx native output has malformed codes and duplicates. block_zs.dat is not industry evidence.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/pytdxdata/controlled/concept.raw.json",
+          "artifacts/tdx-r1/successor/verified-evidence.json"
+        ]
+      },
+      "adjustment.factors": {
+        "disposition": "NOT_SUPPORTED",
+        "basis": "mootdx derived adj only, explicit same-client TDX actions and latest-bar anchor. No native exported factor API in inspected pinned Go/pytdxdata interfaces.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-pytdxdata-139.9.52.158/sh-factors-trace.json"
+        ]
+      },
+      "bars.adjusted": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Go API not exposed; pytdxdata native MAC QFQ; mootdx derives from explicitly supplied TDX actions. Anchor/algorithm and adjusted volume limits recorded.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-pytdxdata-139.9.52.158/sh-adjusted-raw.json"
+        ]
+      },
+      "finance.snapshot": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Latest parser snapshot; unit decoding is not independently audited statements or publication chronology.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-pytdxdata-139.9.52.158/sh-finance-raw.json"
+        ]
+      },
+      "finance.f10": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "16 descriptors and nonempty bounded text; repaired descriptor serialization and string normalization. Not structured historical statements.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-pytdxdata-139.9.52.158-supplemental/f10-bounded-content-raw.json"
+        ]
+      },
+      "financial.statements": {
+        "disposition": "UNRESOLVED",
+        "basis": "Not established by this bounded round; no implicit provider-wide support or absence claim.",
+        "evidence": []
+      },
+      "calendar.trading_days": {
+        "disposition": "UNRESOLVED",
+        "basis": "Not established by this bounded round; no implicit provider-wide support or absence claim.",
+        "evidence": []
+      }
+    },
+    "mootdx-plus": {
+      "security.universe": {
+        "disposition": "UNRESOLVED",
+        "basis": "BJ server count 386; standard list failed/empty; aggregate TDX-only source unestablished. Cash classification/status completeness unqualified.",
+        "evidence": [
+          "artifacts/tdx-r1/single-writer-20261003/retest-summary.json"
+        ]
+      },
+      "security.metadata": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Bounded SH/SZ reference fields (exclude old Go aggregate-derived BJ metadata); fresh BJ identity is strongest in pytdxdata snapshot, Go quote confirms exchange/code. No listing/status gate.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/mootdx-plus/controlled-supplement/representative-metadata.raw.json",
+          "artifacts/tdx-r1/single-writer-20261003/retest-summary.json"
+        ]
+      },
+      "quote.snapshot": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Secondary snapshot sanity only; date/freshness/depth not a realtime selection gate.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/mootdx-plus/controlled/quote.raw.json"
+        ]
+      },
+      "bars.daily": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Seven representative 2024 windows agree on dates/OHLC. Raw full arrays concatenate newest pages first, not globally ascending. Lot quantization and index-volume interpretation remain limits.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/mootdx-plus/controlled/daily-SH-main-history.raw.json",
+          "artifacts/tdx-r1/controlled-mootdx-plus-139.9.52.158/sh-stock-daily-0-raw.json"
+        ]
+      },
+      "bars.intraday": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Two-row secondary protocol characterization only; no exhaustive intraday/realtime qualification.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-mootdx-plus-139.9.52.158/intraday-secondary-raw.json"
+        ]
+      },
+      "trades.intraday": {
+        "disposition": "UNRESOLVED",
+        "basis": "Not established by this bounded round; no implicit provider-wide support or absence claim.",
+        "evidence": []
+      },
+      "corporate_actions": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Category-coded raw events; category 1 dividend/rights units distinguished; other categories, nulls and timestamps require preservation.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-mootdx-plus-139.9.52.158/sh-xdxr-raw.json"
+        ]
+      },
+      "sector.industry": {
+        "disposition": "UNRESOLVED",
+        "basis": "tdxhy.cfg mapping, TDX/SW separated; no complete named taxonomy/status. mootdx raw fragment alone does not qualify a parsed industry capability.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-mootdx-plus-139.9.52.158-supplemental/tdx-industry-native-file-fragment-raw.json"
+        ]
+      },
+      "sector.concept": {
+        "disposition": "REJECTED",
+        "basis": "269 groups/41312 matching memberships for Go/pytdxdata; mootdx native output has malformed codes and duplicates. block_zs.dat is not industry evidence.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/mootdx-plus/controlled/concept.raw.json",
+          "artifacts/tdx-r1/successor/verified-evidence.json"
+        ]
+      },
+      "sector.membership": {
+        "disposition": "REJECTED",
+        "basis": "269 groups/41312 matching memberships for Go/pytdxdata; mootdx native output has malformed codes and duplicates. block_zs.dat is not industry evidence.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/mootdx-plus/controlled/concept.raw.json",
+          "artifacts/tdx-r1/successor/verified-evidence.json"
+        ]
+      },
+      "adjustment.factors": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "mootdx derived adj only, explicit same-client TDX actions and latest-bar anchor. No native exported factor API in inspected pinned Go/pytdxdata interfaces.",
+        "evidence": [
+          "artifacts/tdx-r1/successor/mootdx-plus/controlled-supplement/derived-factors.raw.json"
+        ]
+      },
+      "bars.adjusted": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Go API not exposed; pytdxdata native MAC QFQ; mootdx derives from explicitly supplied TDX actions. Anchor/algorithm and adjusted volume limits recorded.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-mootdx-plus-139.9.52.158/sh-adjusted-raw.json"
+        ]
+      },
+      "finance.snapshot": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "Latest parser snapshot; unit decoding is not independently audited statements or publication chronology.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-mootdx-plus-139.9.52.158/sh-finance-raw.json"
+        ]
+      },
+      "finance.f10": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "16 descriptors and nonempty bounded text; repaired descriptor serialization and string normalization. Not structured historical statements.",
+        "evidence": [
+          "artifacts/tdx-r1/controlled-mootdx-plus-139.9.52.158-supplemental/f10-bounded-content-raw.json"
+        ]
+      },
+      "financial.statements": {
+        "disposition": "UNRESOLVED",
+        "basis": "Not established by this bounded round; no implicit provider-wide support or absence claim.",
+        "evidence": []
+      },
+      "calendar.trading_days": {
+        "disposition": "UNRESOLVED",
+        "basis": "Not established by this bounded round; no implicit provider-wide support or absence claim.",
+        "evidence": []
+      }
+    }
+  }
+}

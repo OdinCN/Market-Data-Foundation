@@ -74,3 +74,65 @@ start = 2023-12-29
 end = 2024-01-03
 page_size = 2
 semantics = { date = "local exchange trading day", timezone = "Asia/Shanghai" }
+
+[[fixtures]]
+id = "tdx-industry-taxonomy"
+capability = "sector.industry"
+symbols = []
+page_size = 2
+semantics = { taxonomy_source = "TDX", taxonomy_kind = "industry", taxonomy_identity = "must be observed; do not merge with THS" }
+
+[[fixtures]]
+id = "tdx-concept-taxonomy"
+capability = "sector.concept"
+symbols = []
+page_size = 2
+semantics = { taxonomy_source = "TDX", taxonomy_kind = "concept", taxonomy_identity = "must be observed; do not merge with THS" }
+
+[[fixtures]]
+id = "tdx-taxonomy-membership"
+capability = "sector.membership"
+symbols = ["600000.XSHG"]
+page_size = 2
+semantics = { taxonomy_source = "TDX", taxonomy_identity = "selected group identifier must be recorded", selection = "first nonempty observed TDX group" }
+
+[[fixtures]]
+id = "sh-adjustment-factors"
+capability = "adjustment.factors"
+symbols = ["600000.XSHG"]
+start = 2024-01-02
+end = 2024-01-10
+page_size = 2
+semantics = { adjustment = "qfq", origin = "must distinguish native from derived", units = "dimensionless factor with explicit anchor date" }
+
+[[fixtures]]
+id = "sh-adjusted-bars"
+capability = "bars.adjusted"
+symbols = ["600000.XSHG"]
+start = 2024-01-02
+end = 2024-01-10
+page_size = 2
+semantics = { adjustment = "qfq", origin = "must distinguish native from derived", currency = "CNY", volume_unit = "shares" }
+
+[[fixtures]]
+id = "tdx-r1-representative-daily"
+capability = "bars.daily"
+symbols = ["600000.XSHG", "688001.XSHG", "000001.XSHE", "300001.XSHE", "920000.XBSE", "510010.XSHG", "000001.XSHG"]
+start = 2024-01-02
+end = 2024-01-10
+page_size = 2
+semantics = { period = "1d", adjustment = "none", selection = "frozen R1 sample; BJ920000 identity revalidated by controlled TDX snapshot; trading status remains unknown", price_units = "stock/ETF CNY; index points", volume_units = "instrument-specific; do not assume index shares", timezone = "Asia/Shanghai", history = "up to six 800-row pages; completeness is not assumed" }
+
+[[fixtures]]
+id = "tdx-finance-snapshot-boundary"
+capability = "finance.snapshot"
+symbols = ["600000.XSHG"]
+page_size = 1
+semantics = { origin = "latest TDX snapshot", history = "not financial statements; publication date must not be inferred" }
+
+[[fixtures]]
+id = "tdx-f10-boundary"
+capability = "finance.f10"
+symbols = ["600000.XSHG"]
+page_size = 1024
+semantics = { origin = "native F10 descriptors and bounded text", history = "unstructured current text; not standardized financial statements" }

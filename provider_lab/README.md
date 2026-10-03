@@ -1,7 +1,10 @@
 # Provider qualification harness
 
-Full Provider Qualification has not started. This directory contains provider-neutral
-requests and the observation contract; it selects no provider or implementation.
+This directory contains provider-neutral requests and the observation contract.
+[TDX R1](../docs/qualification/tdx-r1.md) completes an opt-in lab bake-off and
+recommends tdx-python 0.1.6 with explicit endpoint pinning, redial disabled and
+capability/source limitations; BJ aggregate is excluded from TDX-only proof.
+No MDF Primary Provider or production implementation is bound.
 
 - `fixtures.toml`: versioned fixtures with canonical capability IDs, `code.MIC`
   symbols, inclusive local date ranges, small pagination requests and requested
@@ -11,7 +14,8 @@ requests and the observation contract; it selects no provider or implementation.
   binding and a single-executor observation runner. Runtime code uses the stdlib.
 
 Capabilities cover security universe/metadata, quote snapshot, daily/intraday bars,
-intraday trades, corporate actions, financial statements and trading calendar.
+intraday trades, corporate actions, industry/concept/membership, adjustment factors,
+adjusted bars, financial statements and trading calendar.
 Each future adapter must explicitly map symbols, interval enums and units. The
 fixture's requested semantics must not be mistaken for measured provider semantics.
 
@@ -59,7 +63,15 @@ route internally. Do not assert an actual server identity when it is not visible
 
 ## Live execution boundary
 
-Live adapters are future work. A live binding requires `mode="live"` and
+`tdx_r1.py` launches only the four bounded reconciliation retest groups;
+`tdx_bounds.py` supervises native connect syscalls, including Go, with attempt
+and wall-clock limits. `tdx_r1_worker.py` checks exact SDK/runtime versions
+and isolates ignored vendor homes. `tdx_r1_probe.py` retains the tiny daily probe;
+its live test also runs under the process guard. `tdx_checks.py` validates daily windows,
+taxonomy memberships and response-backed sample selection without SDKs or network.
+Observation v2 separates `attempted_endpoint` from actual `endpoint`; v1
+observations are historical evidence. Production adapters remain future work.
+A live binding requires `mode="live"` and
 `observe(..., allow_live=True)`. Future live tests must have
 `@pytest.mark.live_provider` and need both explicit CLI opt-in and marker selection:
 
@@ -81,5 +93,10 @@ authentication or entitlement PASS. Q0 inspected only names/presence of
 `fuyao.api_key`, `tickflow.api_key`, `baostock.api_key` and `RQDATA.license_key`.
 It used only the PostgreSQL runtime credential for read-only authentication checks.
 
-Runtime/candidate evidence is in `docs/qualification/q0-runtime.md`. Candidate SDKs
+Runtime/candidate evidence is in `docs/qualification/q0-runtime.md` and capability
+dispositions in `docs/qualification/tdx-r1.md` and `tdx_r1.matrix.json`. Candidate SDKs
 remain in isolated ignored lab environments and are not project dependencies.
+
+The isolated SDK environment and all R1 evidence stay under ignored
+`artifacts/tdx-r1/`. SDKs are not project dependencies. See the R1 report for
+measured units, matrix, endpoint/probe controls and native retry limitations.
