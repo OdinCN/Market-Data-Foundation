@@ -1,0 +1,84 @@
+schema_version = 1
+
+[[fixtures]]
+id = "fuyao-calendar"
+capability = "calendar.trading_days"
+symbols = []
+page_size = 2
+semantics = { date = "仅测当前一年覆盖；历史窗口不假定支持", timezone = "Asia/Shanghai" }
+
+[[fixtures]]
+id = "fuyao-universe"
+capability = "security.universe"
+symbols = []
+page_size = 2
+semantics = { universe = "SH/SZ/BJ 小页样本，不声称全量", symbol = "THS code 与 code.MIC 显式映射" }
+
+[[fixtures]]
+id = "fuyao-metadata"
+capability = "security.metadata"
+symbols = ["600000.XSHG", "000001.XSHE"]
+page_size = 2
+semantics = { identity = "由 symbol.search 响应确认，不从字符串猜市场" }
+
+[[fixtures]]
+id = "fuyao-snapshot"
+capability = "quote.snapshot"
+symbols = ["600000.XSHG", "000001.XSHE"]
+page_size = 2
+semantics = { units = "价格/成交量/成交额逐字段待验证" }
+
+[[fixtures]]
+id = "fuyao-daily"
+capability = "bars.daily"
+symbols = ["600000.XSHG", "000001.XSHE"]
+page_size = 2
+start = 2024-01-02
+end = 2024-01-10
+semantics = { period = "1d", adjustment = "none 仅为 CLI 参数；语义待验证", units = "价格/成交量/成交额逐字段待验证" }
+
+[[fixtures]]
+id = "fuyao-adjusted"
+capability = "bars.adjusted"
+symbols = ["600000.XSHG", "000001.XSHE"]
+page_size = 2
+start = 2024-01-02
+end = 2024-01-10
+semantics = { adjustment = "forward/backward 待验证，不按名称映射 qfq/hfq", origin = "remote 声明须以响应证据验证；锚点与成交量处理待验证" }
+
+[[fixtures]]
+id = "fuyao-actions"
+capability = "corporate_actions"
+symbols = ["600000.XSHG"]
+page_size = 2
+start = 2024-01-02
+end = 2024-01-10
+semantics = { origin = "raw corporate actions，非 dimensionless factors", units = "逐字段待验证；公告日/除权日保持独立" }
+
+[[fixtures]]
+id = "fuyao-financials"
+capability = "financial.statements"
+symbols = ["600000.XSHG"]
+page_size = 2
+semantics = { date = "报告期与公告日期保持独立", units = "三表逐字段验证；不替代 finance.snapshot/F10" }
+
+[[fixtures]]
+id = "fuyao-ths-industry"
+capability = "sector.industry"
+symbols = []
+page_size = 2
+semantics = { taxonomy_source = "THS", taxonomy_kind = "industry", taxonomy_identity = "必须从响应记录，独立于 TDX", tag = "industry" }
+
+[[fixtures]]
+id = "fuyao-ths-concept"
+capability = "sector.concept"
+symbols = []
+page_size = 2
+semantics = { taxonomy_source = "THS", taxonomy_kind = "concept", taxonomy_identity = "必须从响应记录，独立于 TDX", tag = "cn_concept" }
+
+[[fixtures]]
+id = "fuyao-ths-membership"
+capability = "sector.membership"
+symbols = []
+page_size = 2
+semantics = { taxonomy_source = "THS", taxonomy_identity = "保存响应中的 group identifier", selection = "每类按 thscode 字符序选首个非空标识；不从 TDX 或硬编码猜测" }

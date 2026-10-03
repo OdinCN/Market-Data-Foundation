@@ -1,0 +1,612 @@
+{
+  "schema_version": 1,
+  "transaction": "MDF-P2-FUYAO-R1",
+  "status": "EXTERNAL SINGLE-ATTEMPT EXECUTOR CANDIDATE / LIVE NOT STARTED / EXTERNAL REVIEW REQUIRED",
+  "baseline": "175d1a0037312ebe734b73763f601d2469b0bb01",
+  "runtime": {
+    "package": "@hithink-tech/hithink-finance-cli",
+    "version": "0.1.13",
+    "node": "v24.21.0",
+    "integrity": "sha512-xtk0JUgMfmQs4rj4RXVkI9zIK3EY4QOBPRx6k74DmMMjWYPgMLa9wstTUEmdwHpf8qZWzmnaCI6YDwiV5vdxUg==",
+    "source_sha256": {
+      "dist/infrastructure/fuyao/retry.js": "6acc12b3be9c623a03f3d1be02efe51d55ce9a04ee034e51f065cfc1cdae9c35",
+      "dist/infrastructure/fuyao/client.js": "9a17bda88ab827be5485797d9330991c98aa1f7368983e8be8c666024efb9d4e",
+      "dist/infrastructure/fuyao/pagination.js": "be26bc4dfe91d47358ba499072f7cfc3c7e2a05aae86180cda44006cf1d2e4fe",
+      "dist/infrastructure/fuyao/windowing.js": "29330698f8be7c5fa478945999dbec6280fdd330565fc113d9f4041e698582c9",
+      "dist/commands/remote.js": "eb8aa89984be1dec413dc5cf1ac3b32981954c583eea573e8a9f549a99cbfe4b",
+      "dist/application/config.js": "1e947dac615123c449a9f7aef00c1e2253188238c2d7f0db7e8314792f1e664a",
+      "dist/application/use-cases/remote-query.js": "c18484f0607a481061911ec2d87e06c6b68f37bc115e79366f8e48d95cf4aa23",
+      "dist/contracts/remote-capabilities.js": "2b1fde80fa4130c680aeb2323d136359d66e8d567cfa7c799d71d651c0648f76",
+      "dist/infrastructure/fuyao/envelope.js": "3fdba38940e71257ed2c521fe7cfe6b0eda9322bcaf60c6be926e8869d82b294"
+    },
+    "role": "pinned capability/schema discovery evidence only; disqualified as live transport"
+  },
+  "evidence_sha256": {
+    "capabilities.json": "cbf6dc8a68be1edda8a893ddff3177242cfd33f7a23ee84c1d593ff9eeeb2d00",
+    "schemas/financials.balance-sheet.json": "eafd17ff7e8e92c392eb6a54089864254479717b58a30f31d1ddf962e94a1bc3",
+    "schemas/financials.cash-flow.json": "bc32e7ec30885b5e024f33b8d83dffab46cd3022938943056bdd63d34efd9d70",
+    "schemas/financials.income.json": "53382f2f83ca31722709f0fc958dd618a1d7cc14387a1aaf43de3c178b9de30d",
+    "schemas/index.catalog.json": "349c792c50dbd484d97d893915f17d86cca34f85b8155fc161505cfd5ab70ff2",
+    "schemas/index.constituents.json": "5f5de25d006f26ee8dc41ef64ea6185349c9b40eb046c891ae981db181fe7f00",
+    "schemas/index.history.json": "e2372cf3fc0bca549c3cc04e5129c11e6a4e00c125dc66e02810d6b68918cbfe",
+    "schemas/index.snapshot.json": "f5f220ddf90bbac81c1b32dad6bed60ec2bad3ab7fbff4f299556879306892b7",
+    "schemas/market.adjustment-factors.json": "a96c6dcc64171a4c4b3e6a9d4c3de8ba7eee8203edcd66d5a042ac338f4e6cc3",
+    "schemas/market.calendar.json": "c96c7d9f123d2478f2168394002b8bd4770b0de468577aa923f96d43306ae8ad",
+    "schemas/market.corporate-actions.json": "0b5d26f61ddc8c9455c080edcdb8776719405bb563a6c104e0a9f1284d315cc9",
+    "schemas/market.history.json": "bbb2cc54595b657b1470923d604a86e9d34284ad87d28d274b0fd74a7f750fc5",
+    "schemas/market.snapshot.json": "da273b9d31175bcb6cd9da452256369fa22cf6368d6c33b73a87a5333fd8bef3",
+    "schemas/symbol.list.json": "027665c8da3c2a5d0f1cfba9981104e417e3ec181ccb5401a27acdaf203d6319",
+    "schemas/symbol.search.json": "0b6043b30ce278f11e6956b22f0cf2ae69b0c6f1ebc621ccf14f49e0c8510272"
+  },
+  "fixture_sha256": "386b0de19432ddf82d5fe2bbc107ce8023253642b3a15a5f70599c2ca6d0cf3a",
+  "limits": {
+    "total_http_attempts": 24,
+    "hard_ceiling": 35,
+    "serial": true,
+    "process_seconds": 30,
+    "live_seconds": 1200,
+    "automatic_retry": false,
+    "reallocate_unused_budget": false,
+    "automatic_pagination": false,
+    "automatic_window_split": false
+  },
+  "global_argv": [
+    "--source",
+    "remote",
+    "--format",
+    "json"
+  ],
+  "environment_requirements": {
+    "executor": "no vendor process, update check, default home/config/db or credential discovery",
+    "external_scheduler": "after review only; serial frozen order, fail/STOP or semantic failure stops phase; unused slots expire"
+  },
+  "gate": {
+    "state": "EXTERNAL_REVIEW_REQUIRED",
+    "required": "AO accepted external proof of this single-attempt executor and reviewed integration; no flag/env/self-attestation override",
+    "first_request": "market.calendar",
+    "credential_presence_is_auth_pass": false,
+    "calendar_pass_is_global_entitlement_pass": false
+  },
+  "stop_policy": {
+    "http": [
+      401,
+      403,
+      429
+    ],
+    "business_auth_range": [
+      2000,
+      2999
+    ],
+    "any_nonzero_business_code": "STOP including unknown codes; no exact interpretation of 2001/2003",
+    "other": "STOP on non-2xx, network/timeout, invalid JSON/envelope/data, nonzero process exit, unknown source, budget or semantic validation failure"
+  },
+  "command_max_calls": {
+    "market.calendar": 1,
+    "symbol.list": 6,
+    "symbol.search": 2,
+    "market.snapshot": 1,
+    "market.history": 6,
+    "market.corporate-actions": 1,
+    "financials.balance-sheet": 1,
+    "financials.income": 1,
+    "financials.cash-flow": 1,
+    "index.catalog": 2,
+    "index.constituents": 2
+  },
+  "capability_max_calls": {
+    "security.universe": 6,
+    "security.metadata": 2,
+    "quote.snapshot": 1,
+    "bars.daily": 2,
+    "bars.adjusted": 4,
+    "corporate_actions": 1,
+    "financial.statements": 3,
+    "calendar.trading_days": 1,
+    "sector.industry": 1,
+    "sector.concept": 1,
+    "sector.membership": 2,
+    "bars.intraday": 0,
+    "trades.intraday": 0,
+    "adjustment.factors": 0,
+    "finance.snapshot": 0,
+    "finance.f10": 0
+  },
+  "excluded": {
+    "bars.intraday": "无本次相关远端 schema evidence",
+    "trades.intraday": "无本次相关远端 schema evidence",
+    "adjustment.factors": "market.adjustment-factors 是 local；raw actions 不证明 factor",
+    "finance.snapshot": "不将三表归为此能力",
+    "finance.f10": "无本次相关远端 schema evidence"
+  },
+  "requests": [
+    {
+      "id": "r01",
+      "command": "market.calendar",
+      "fixture_id": "fuyao-calendar",
+      "argv": [],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "one-year"
+    },
+    {
+      "id": "r02",
+      "command": "symbol.list",
+      "fixture_id": "fuyao-universe",
+      "argv": [
+        "--exchange",
+        "SH",
+        "--asset-type",
+        "a-share",
+        "--limit",
+        "2",
+        "--offset",
+        "0"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "offset",
+      "window": "none"
+    },
+    {
+      "id": "r03",
+      "command": "symbol.list",
+      "fixture_id": "fuyao-universe",
+      "argv": [
+        "--exchange",
+        "SH",
+        "--asset-type",
+        "a-share",
+        "--limit",
+        "2",
+        "--offset",
+        "2"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "offset",
+      "window": "none"
+    },
+    {
+      "id": "r04",
+      "command": "symbol.list",
+      "fixture_id": "fuyao-universe",
+      "argv": [
+        "--exchange",
+        "SZ",
+        "--asset-type",
+        "a-share",
+        "--limit",
+        "2",
+        "--offset",
+        "0"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "offset",
+      "window": "none"
+    },
+    {
+      "id": "r05",
+      "command": "symbol.list",
+      "fixture_id": "fuyao-universe",
+      "argv": [
+        "--exchange",
+        "SZ",
+        "--asset-type",
+        "a-share",
+        "--limit",
+        "2",
+        "--offset",
+        "2"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "offset",
+      "window": "none"
+    },
+    {
+      "id": "r06",
+      "command": "symbol.list",
+      "fixture_id": "fuyao-universe",
+      "argv": [
+        "--exchange",
+        "BJ",
+        "--asset-type",
+        "a-share",
+        "--limit",
+        "2",
+        "--offset",
+        "0"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "offset",
+      "window": "none"
+    },
+    {
+      "id": "r07",
+      "command": "symbol.list",
+      "fixture_id": "fuyao-universe",
+      "argv": [
+        "--exchange",
+        "BJ",
+        "--asset-type",
+        "a-share",
+        "--limit",
+        "2",
+        "--offset",
+        "2"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "offset",
+      "window": "none"
+    },
+    {
+      "id": "r08",
+      "command": "symbol.search",
+      "fixture_id": "fuyao-metadata",
+      "argv": [
+        "--q",
+        "600000.SH",
+        "--asset-type",
+        "a-share",
+        "--limit",
+        "2"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "none"
+    },
+    {
+      "id": "r09",
+      "command": "symbol.search",
+      "fixture_id": "fuyao-metadata",
+      "argv": [
+        "--q",
+        "000001.SZ",
+        "--asset-type",
+        "a-share",
+        "--limit",
+        "2"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "none"
+    },
+    {
+      "id": "r10",
+      "command": "market.snapshot",
+      "fixture_id": "fuyao-snapshot",
+      "argv": [
+        "--thscodes",
+        "600000.SH,000001.SZ",
+        "--limit",
+        "2",
+        "--offset",
+        "0"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "offset",
+      "window": "none"
+    },
+    {
+      "id": "r11",
+      "command": "market.history",
+      "fixture_id": "fuyao-daily",
+      "argv": [
+        "--thscode",
+        "600000.SH",
+        "--start-ms",
+        "1704124800000",
+        "--end-ms",
+        "1704902399999",
+        "--adjust",
+        "none"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "ten-years"
+    },
+    {
+      "id": "r12",
+      "command": "market.history",
+      "fixture_id": "fuyao-daily",
+      "argv": [
+        "--thscode",
+        "000001.SZ",
+        "--start-ms",
+        "1704124800000",
+        "--end-ms",
+        "1704902399999",
+        "--adjust",
+        "none"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "ten-years"
+    },
+    {
+      "id": "r13",
+      "command": "market.history",
+      "fixture_id": "fuyao-adjusted",
+      "argv": [
+        "--thscode",
+        "600000.SH",
+        "--start-ms",
+        "1704124800000",
+        "--end-ms",
+        "1704902399999",
+        "--adjust",
+        "forward"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "ten-years"
+    },
+    {
+      "id": "r14",
+      "command": "market.history",
+      "fixture_id": "fuyao-adjusted",
+      "argv": [
+        "--thscode",
+        "000001.SZ",
+        "--start-ms",
+        "1704124800000",
+        "--end-ms",
+        "1704902399999",
+        "--adjust",
+        "forward"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "ten-years"
+    },
+    {
+      "id": "r15",
+      "command": "market.history",
+      "fixture_id": "fuyao-adjusted",
+      "argv": [
+        "--thscode",
+        "600000.SH",
+        "--start-ms",
+        "1704124800000",
+        "--end-ms",
+        "1704902399999",
+        "--adjust",
+        "backward"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "ten-years"
+    },
+    {
+      "id": "r16",
+      "command": "market.history",
+      "fixture_id": "fuyao-adjusted",
+      "argv": [
+        "--thscode",
+        "000001.SZ",
+        "--start-ms",
+        "1704124800000",
+        "--end-ms",
+        "1704902399999",
+        "--adjust",
+        "backward"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "ten-years"
+    },
+    {
+      "id": "r17",
+      "command": "market.corporate-actions",
+      "fixture_id": "fuyao-actions",
+      "argv": [
+        "--thscode",
+        "600000.SH",
+        "--from-date",
+        "2024-01-02",
+        "--to-date",
+        "2024-01-10"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "none"
+    },
+    {
+      "id": "r18",
+      "command": "financials.balance-sheet",
+      "fixture_id": "fuyao-financials",
+      "argv": [
+        "--thscode",
+        "600000.SH",
+        "--period",
+        "annual",
+        "--limit",
+        "2"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "ten-years"
+    },
+    {
+      "id": "r19",
+      "command": "financials.income",
+      "fixture_id": "fuyao-financials",
+      "argv": [
+        "--thscode",
+        "600000.SH",
+        "--period",
+        "annual",
+        "--limit",
+        "2"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "ten-years"
+    },
+    {
+      "id": "r20",
+      "command": "financials.cash-flow",
+      "fixture_id": "fuyao-financials",
+      "argv": [
+        "--thscode",
+        "600000.SH",
+        "--period",
+        "annual",
+        "--limit",
+        "2"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "ten-years"
+    },
+    {
+      "id": "r21",
+      "command": "index.catalog",
+      "fixture_id": "fuyao-ths-industry",
+      "argv": [
+        "--tag",
+        "industry"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "none"
+    },
+    {
+      "id": "r22",
+      "command": "index.constituents",
+      "fixture_id": "fuyao-ths-membership",
+      "argv": [
+        "--thscode",
+        "${THS_INDUSTRY}"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "none",
+      "selection": {
+        "from_command": "index.catalog",
+        "tag": "industry",
+        "field": "thscode",
+        "order": "ascending lexical",
+        "take": 1,
+        "empty": "SKIP reserved slot; no reallocation"
+      }
+    },
+    {
+      "id": "r23",
+      "command": "index.catalog",
+      "fixture_id": "fuyao-ths-concept",
+      "argv": [
+        "--tag",
+        "cn_concept"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "none"
+    },
+    {
+      "id": "r24",
+      "command": "index.constituents",
+      "fixture_id": "fuyao-ths-membership",
+      "argv": [
+        "--thscode",
+        "${THS_CONCEPT}"
+      ],
+      "max_calls": 1,
+      "max_http_attempts": 1,
+      "process_timeout_seconds": 30,
+      "source": "remote",
+      "paging": "none",
+      "window": "none",
+      "selection": {
+        "from_command": "index.catalog",
+        "tag": "cn_concept",
+        "field": "thscode",
+        "order": "ascending lexical",
+        "take": 1,
+        "empty": "SKIP reserved slot; no reallocation"
+      }
+    }
+  ],
+  "transport": {
+    "executor": "provider_lab/fuyao_single_attempt.py",
+    "entrypoint": "python -m provider_lab.fuyao_single_attempt",
+    "version": "1",
+    "python": "3.14.8",
+    "stdlib_only": true,
+    "scheme": "https",
+    "host": "fuyao.aicubes.cn",
+    "port": 443,
+    "method": "GET",
+    "body_cap_bytes": 2097152,
+    "timeout_seconds": 30,
+    "credential_input": "stdin or inherited private pipe FD; never argv/env/config",
+    "request_input": "frozen request id only; no arbitrary command/URL/method/path/query",
+    "review_binding": "external review must bind plan/executor hashes and entrypoint; no self-attestation override"
+  }
+}

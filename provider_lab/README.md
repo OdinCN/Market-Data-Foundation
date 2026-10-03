@@ -100,3 +100,13 @@ remain in isolated ignored lab environments and are not project dependencies.
 The isolated SDK environment and all R1 evidence stay under ignored
 `artifacts/tdx-r1/`. SDKs are not project dependencies. See the R1 report for
 measured units, matrix, endpoint/probe controls and native retry limitations.
+
+## Fuyao R1 最终离线资格候选
+
+[Fuyao R1](../docs/qualification/fuyao-r1.md) 与 `fuyao_r1.matrix.json` 记录唯一
+`fuyao-single-attempt-https-r1` 资格访问路径及全部 16 能力。Evidence collection COMPLETE，累计 24 次 HTTP attempts；r17 的 3002 为数据尚未准备，
+最终 UNRESOLVED_DATA_NOT_READY，无重试；r18–r24 已 tested and collected。
+24 次 live attempts 已关闭，不授权进一步 provider 请求。CLI 0.1.13 仅保留为公开 capability/schema 发现证据。
+`fuyao_r1_adjudication.py` 提供离线字段检查；安全规范化证据及哈希 manifest
+保留在 ignored `artifacts/fuyao-r1/final-adjudication-002/`。冻结 plan 中的 pre-live
+状态是历史记录，不是当前阶段状态。没有 Primary binding、生产 adapter、部署或 DB effect。

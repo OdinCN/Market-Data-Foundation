@@ -26,6 +26,7 @@ packages = ["src/market_data_foundation"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = [".", "src"]
 addopts = "--strict-markers -m 'not live_provider'"
 markers = ["live_provider: opt-in tests that contact real providers or external services"]
 

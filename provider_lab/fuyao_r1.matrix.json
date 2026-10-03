@@ -1,0 +1,202 @@
+{
+  "baseline": "175d1a0037312ebe734b73763f601d2469b0bb01",
+  "python": "3.14.8",
+  "qualification_implementation": "fuyao-single-attempt-https-r1",
+  "access_path": "固定 Fuyao HTTPS GET → stdlib 外部单次执行器；CLI 0.1.13 仅用于公开能力/schema 发现",
+  "binding_authorized": false,
+  "production_adapter_created": false,
+  "deployment_started": false,
+  "db_effect": false,
+  "live_stage": {
+    "status": "COMPLETE",
+    "total_http_attempts": 24,
+    "r17_disposition": "UNRESOLVED_DATA_NOT_READY",
+    "r17_http_status": 200,
+    "r17_business_code": 3002,
+    "retry_authorized": false,
+    "retry_performed": false,
+    "tested_and_collected_request_ids": [
+      "r18",
+      "r19",
+      "r20",
+      "r21",
+      "r22",
+      "r23",
+      "r24"
+    ],
+    "not_tested_request_ids": [],
+    "further_provider_requests_authorized": false
+  },
+  "evidence_manifest": "artifacts/fuyao-r1/final-adjudication-002/evidence-manifest.json",
+  "implementations": {
+    "fuyao-single-attempt-https-r1": {
+      "security.universe": {
+        "disposition": "UNRESOLVED",
+        "basis": "r02–r07 共 12 行、仅 4 个不同 SH 标识；SZ/BJ 条件仍返回 SH。offset 0/2 可见不同小页，但过滤语义与三市场覆盖未通过；无全市场完整性或分页耗尽证明。",
+        "observed_request_ids": [
+          "r02",
+          "r03",
+          "r04",
+          "r05",
+          "r06",
+          "r07"
+        ],
+        "evidence": [
+          "artifacts/fuyao-r1/final-adjudication-002/normalized-evidence.json"
+        ]
+      },
+      "security.metadata": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "r08/r09 精确匹配 600000.SH/000001.SZ，ticker/name/exchange/a-share/CNY 可用，可显式映射 XSHG/XSHE；r08 list_date=null，r09 为 1991-04-03。缺上市/退市/停牌状态完整性，限两样本身份参考。",
+        "observed_request_ids": [
+          "r08",
+          "r09"
+        ],
+        "evidence": [
+          "artifacts/fuyao-r1/final-adjudication-002/normalized-evidence.json"
+        ]
+      },
+      "quote.snapshot": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "r10 两标识、total=2；OHLC 边界、涨跌差及百分比算术通过。仅静态字段合理性，成交量/额单位未独立证明，无逐证券交易日期、盘口深度或实时新鲜度门禁。",
+        "observed_request_ids": [
+          "r10"
+        ],
+        "evidence": [
+          "artifacts/fuyao-r1/final-adjudication-002/normalized-evidence.json"
+        ]
+      },
+      "bars.daily": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "r11/r12 各 7 行、2024-01-02..2024-01-10；身份、1d/none 标签、日期升序唯一、请求窗、有限非负值及 OHLC 通过。时间戳为上海午夜；单位、独立价格真值、长历史及停牌完整性未建立。",
+        "observed_request_ids": [
+          "r11",
+          "r12"
+        ],
+        "evidence": [
+          "artifacts/fuyao-r1/final-adjudication-002/normalized-evidence.json"
+        ]
+      },
+      "bars.intraday": {
+        "disposition": "NOT_SUPPORTED",
+        "basis": "仅当前固定 0.1.13 公开 A 股远端访问路径未暴露分钟线；本轮 0-call/NOT TESTED。期货/期权 intraday 属不同资产范围，不推断 Fuyao 全局不支持。",
+        "observed_request_ids": [],
+        "evidence": []
+      },
+      "trades.intraday": {
+        "disposition": "NOT_SUPPORTED",
+        "basis": "仅当前固定 0.1.13 公开 A 股远端访问路径未暴露逐笔成交；本轮 0-call/NOT TESTED，不推断其他接口或供应商全局不支持。",
+        "observed_request_ids": [],
+        "evidence": []
+      },
+      "corporate_actions": {
+        "disposition": "UNRESOLVED",
+        "basis": "r17 单次 HTTP 200/business 3002=数据尚未准备，child_stop_reason=business_failure；仅失败账本，无 metadata/data 或事件行。scope 已保留，本事务不重试、不补零、不模拟。",
+        "observed_request_ids": [
+          "r17"
+        ],
+        "evidence": [
+          "artifacts/fuyao-r1/final-adjudication-002/normalized-evidence.json"
+        ]
+      },
+      "sector.industry": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "r21 industry tag 实测 320 个唯一 thscode/name；r22 选中 catalog 中 881101.TI（种植业与林业）。仅 THS taxonomy bounded sample；无层级、全量完整性、历史版本或 TDX 映射证明。",
+        "observed_request_ids": [
+          "r21",
+          "r22"
+        ],
+        "evidence": [
+          "artifacts/fuyao-r1/final-adjudication-002/normalized-evidence.json",
+          "artifacts/fuyao-r1/final-adjudication-002/evidence-references.json"
+        ]
+      },
+      "sector.concept": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "r23 cn_concept tag 实测 390 个唯一 thscode/name；r24 选中 catalog 中 885311.TI（智能电网）。仅 THS taxonomy bounded sample；无全量完整性、历史版本或 TDX 映射证明。",
+        "observed_request_ids": [
+          "r23",
+          "r24"
+        ],
+        "evidence": [
+          "artifacts/fuyao-r1/final-adjudication-002/normalized-evidence.json",
+          "artifacts/fuyao-r1/final-adjudication-002/evidence-references.json"
+        ]
+      },
+      "sector.membership": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "r22/r24 分别返回 881101.TI 的 29 行和 885311.TI 的 278 行；thscode/ticker/name 完整且身份唯一。仅 THS taxonomy bounded sample；响应无组身份回显、权重、有效日期或历史成员证明，不证明全市场覆盖。",
+        "observed_request_ids": [
+          "r21",
+          "r22",
+          "r23",
+          "r24"
+        ],
+        "evidence": [
+          "artifacts/fuyao-r1/final-adjudication-002/normalized-evidence.json",
+          "artifacts/fuyao-r1/final-adjudication-002/evidence-references.json"
+        ]
+      },
+      "adjustment.factors": {
+        "disposition": "UNRESOLVED",
+        "basis": "无远端无量纲因子证据；corporate-actions path 含 adjustment-factors 不证明因子能力，且 r17 无数据。market.adjustment-factors 仅 local，不能作为 remote 资格。",
+        "observed_request_ids": [
+          "r17"
+        ],
+        "evidence": [
+          "artifacts/fuyao-r1/final-adjudication-002/normalized-evidence.json"
+        ]
+      },
+      "bars.adjusted": {
+        "disposition": "UNRESOLVED",
+        "basis": "r13–r16 与 r11/r12 日期一致、OHLC 均变化、volume/turnover 逐行相同。仅证实模式差异；事件、锚点、算法及跨事件连续性未证明，forward/backward 不等同已资格 qfq/hfq。",
+        "observed_request_ids": [
+          "r11",
+          "r12",
+          "r13",
+          "r14",
+          "r15",
+          "r16"
+        ],
+        "evidence": [
+          "artifacts/fuyao-r1/final-adjudication-002/normalized-evidence.json"
+        ]
+      },
+      "finance.snapshot": {
+        "disposition": "UNRESOLVED",
+        "basis": "0-call/NOT TESTED；market.snapshot 是行情快照，不是财务快照；r18–r20 三表实测不能推导 indicators/valuation 或财务快照能力。",
+        "observed_request_ids": [],
+        "evidence": []
+      },
+      "finance.f10": {
+        "disposition": "UNRESOLVED",
+        "basis": "0-call/NOT TESTED；无 F10 实测接口/文本证据，symbol metadata 或三表均不能替代。",
+        "observed_request_ids": [],
+        "evidence": []
+      },
+      "financial.statements": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "r18/r19/r20 三表分别各 2 行，600000.SH、annual/FY、2025/2024、CNY 及有限数值/显式 null 结构通过。仅返回三表结构样本；report_date_ms 不认证为公告日，publication/update/unit 字段未返回，单位、修订、时点可用性和独立真值未证明。",
+        "observed_request_ids": [
+          "r18",
+          "r19",
+          "r20"
+        ],
+        "evidence": [
+          "artifacts/fuyao-r1/final-adjudication-002/normalized-evidence.json",
+          "artifacts/fuyao-r1/final-adjudication-002/evidence-references.json"
+        ]
+      },
+      "calendar.trading_days": {
+        "disposition": "QUALIFIED_WITH_LIMITATIONS",
+        "basis": "r01 241 个升序唯一日期，2025-10-09..2026-09-30，仅约一年实测范围。date_ms 对应上海午夜，UTC 日期为前一天；不可当作开收盘时间，不证明历史节假日、多市场日历或官方完整性。",
+        "observed_request_ids": [
+          "r01"
+        ],
+        "evidence": [
+          "artifacts/fuyao-r1/final-adjudication-002/normalized-evidence.json"
+        ]
+      }
+    }
+  }
+}
