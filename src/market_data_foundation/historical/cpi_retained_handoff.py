@@ -55,6 +55,152 @@ MEASURES = {
 }
 
 
+def project_provider_calculations(
+    calculations: dict[str, tuple[str, bool, list[dict[str, str]]]],
+) -> dict:
+    """Build the shared CPI projection only from provider pct_changes values."""
+    require(set(calculations) == set(MEASURES), "cpi_calculations_not_exact_four")
+    measurements = []
+    for name, (series, meaning, months) in MEASURES.items():
+        value, preliminary, footnotes = calculations[name]
+        require(
+            type(value) is str and re.fullmatch(r"-?\d+(\.\d+)?", value) is not None,
+            "cpi_provider_calculation_invalid",
+        )
+        require(type(preliminary) is bool, "cpi_preliminary_invalid")
+        require(
+            type(footnotes) is list
+            and all(
+                type(item) is dict
+                and set(item) == {"code", "text"}
+                and type(item["code"]) is str
+                and type(item["text"]) is str
+                for item in footnotes
+            ),
+            "cpi_footnotes_invalid",
+        )
+        measurements.append(
+            {
+                "name": name,
+                "measure_identity": "bls:cpi:" + name,
+                "series_id": series,
+                "meaning": meaning,
+                "change_months": months,
+                "comparison_period": "2026-07" if months == 1 else "2025-08",
+                "seasonal_adjustment": (
+                    "Seasonally Adjusted" if months == 1 else "Not Seasonally Adjusted"
+                ),
+                "reference_period": "2026-08",
+                "unit": "percent",
+                "classification": "provider_returned_calculation",
+                "value": value,
+                "availability": "available",
+                "unavailable_reason": None,
+                "preliminary": preliminary,
+                "finality": "not_asserted",
+                "footnotes": footnotes,
+            }
+        )
+    data = {
+        "product": "CPI",
+        "reference_period": "2026-08",
+        "measurements": measurements,
+        "availability": {
+            "state": "available",
+            "basis": "retained_measure_completeness_not_historical_cutoff_eligibility",
+        },
+    }
+    validate_cpi_projection(data)
+    return data
+
+
+def validate_cpi_projection(data: object) -> dict:
+    """Validate the semantic projection shared by retained and direct paths."""
+    require(
+        type(data) is dict
+        and set(data)
+        == {"product", "reference_period", "measurements", "availability"},
+        "cpi_data_fields_not_admitted",
+    )
+    require(
+        data["product"] == "CPI" and data["reference_period"] == "2026-08",
+        "cpi_data_identity_mismatch",
+    )
+    require(
+        data["availability"]
+        == {
+            "state": "available",
+            "basis": "retained_measure_completeness_not_historical_cutoff_eligibility",
+        },
+        "cpi_semantic_availability_not_admitted",
+    )
+    measurements = data["measurements"]
+    require(
+        type(measurements) is list and len(measurements) == 4,
+        "cpi_measurements_not_exact_four",
+    )
+    names = []
+    for m in measurements:
+        require(
+            type(m) is dict
+            and set(m)
+            == {
+                "name",
+                "measure_identity",
+                "series_id",
+                "meaning",
+                "change_months",
+                "comparison_period",
+                "seasonal_adjustment",
+                "reference_period",
+                "unit",
+                "classification",
+                "value",
+                "availability",
+                "unavailable_reason",
+                "preliminary",
+                "finality",
+                "footnotes",
+            },
+            "cpi_measurement_fields_not_admitted",
+        )
+        name = m["name"]
+        require(
+            type(name) is str and name in MEASURES, "cpi_measurement_name_not_admitted"
+        )
+        series, meaning, months = MEASURES[name]
+        names.append(name)
+        require(
+            m["measure_identity"] == "bls:cpi:" + name
+            and m["series_id"] == series
+            and m["meaning"] == meaning
+            and type(m["change_months"]) is int
+            and m["change_months"] == months
+            and m["seasonal_adjustment"]
+            == ("Seasonally Adjusted" if months == 1 else "Not Seasonally Adjusted")
+            and m["comparison_period"] == ("2026-07" if months == 1 else "2025-08")
+            and m["reference_period"] == "2026-08",
+            "cpi_measurement_identity_mismatch",
+        )
+        require(
+            m["unit"] == "percent"
+            and m["classification"] == "provider_returned_calculation",
+            "cpi_measurement_unit_classification_not_admitted",
+        )
+        require(
+            type(m["value"]) is str
+            and re.fullmatch(r"-?\d+(\.\d+)?", m["value"]) is not None
+            and m["availability"] == "available"
+            and m["unavailable_reason"] is None
+            and type(m["preliminary"]) is bool
+            and m["finality"] == "not_asserted"
+            and type(m["footnotes"]) is list,
+            "cpi_measurement_value_not_admitted",
+        )
+    require(set(names) == set(MEASURES), "cpi_measurements_not_exact_four")
+    return data
+
+
 def _encode(value: object) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), allow_nan=False
@@ -219,93 +365,7 @@ def admit(receipt: CpiHandoffReceipt) -> tuple[dict, dict]:
     require(len(receipt.raw_bytes) == RAW_SIZE, "cpi_raw_size_mismatch")
     require(digest(receipt.raw_bytes) == RAW_SHA256, "cpi_raw_sha_mismatch")
     data = record["data"]
-    require(
-        type(data) is dict
-        and set(data)
-        == {
-            "product",
-            "reference_period",
-            "measurements",
-            "availability",
-        },
-        "cpi_data_fields_not_admitted",
-    )
-    require(
-        data["product"] == "CPI" and data["reference_period"] == "2026-08",
-        "cpi_data_identity_mismatch",
-    )
-    require(
-        data["availability"]
-        == {
-            "state": "available",
-            "basis": "retained_measure_completeness_not_historical_cutoff_eligibility",
-        },
-        "cpi_semantic_availability_not_admitted",
-    )
-    measurements = data["measurements"]
-    require(
-        type(measurements) is list and len(measurements) == 4,
-        "cpi_measurements_not_exact_four",
-    )
-    names = []
-    for m in measurements:
-        require(
-            type(m) is dict
-            and set(m)
-            == {
-                "name",
-                "measure_identity",
-                "series_id",
-                "meaning",
-                "change_months",
-                "comparison_period",
-                "seasonal_adjustment",
-                "reference_period",
-                "unit",
-                "classification",
-                "value",
-                "availability",
-                "unavailable_reason",
-                "preliminary",
-                "finality",
-                "footnotes",
-            },
-            "cpi_measurement_fields_not_admitted",
-        )
-        name = m["name"]
-        require(
-            type(name) is str and name in MEASURES, "cpi_measurement_name_not_admitted"
-        )
-        series, meaning, months = MEASURES[name]
-        names.append(name)
-        require(
-            m["measure_identity"] == "bls:cpi:" + name
-            and m["series_id"] == series
-            and m["meaning"] == meaning
-            and type(m["change_months"]) is int
-            and m["change_months"] == months
-            and m["seasonal_adjustment"]
-            == ("Seasonally Adjusted" if months == 1 else "Not Seasonally Adjusted")
-            and m["comparison_period"] == ("2026-07" if months == 1 else "2025-08")
-            and m["reference_period"] == "2026-08",
-            "cpi_measurement_identity_mismatch",
-        )
-        require(
-            m["unit"] == "percent"
-            and m["classification"] == "provider_returned_calculation",
-            "cpi_measurement_unit_classification_not_admitted",
-        )
-        require(
-            type(m["value"]) is str
-            and re.fullmatch(r"-?\d+(\.\d+)?", m["value"]) is not None
-            and m["availability"] == "available"
-            and m["unavailable_reason"] is None
-            and type(m["preliminary"]) is bool
-            and m["finality"] == "not_asserted"
-            and type(m["footnotes"]) is list,
-            "cpi_measurement_value_not_admitted",
-        )
-    require(set(names) == set(MEASURES), "cpi_measurements_not_exact_four")
+    validate_cpi_projection(data)
     require(
         digest(_encode(record)) == SEMANTIC_RECORD_SHA256,
         "cpi_semantic_record_identity_mismatch",

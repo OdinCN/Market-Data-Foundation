@@ -27,6 +27,7 @@ _SCHEMA = re.compile(
     r"mdf_p4_raw_daily_bars_replay_r1|"
     r"mdf_p4_tdx_daily_bars_live_admission_r1|"
     r"mdf_p4_tdx_daily_bars_paged_backfill_r1|"
+    r"mdf_p4_macro_bls_cpi_direct_admission_r1|"
     r"mdf_p4_macro_bls_cpi_retained_handoff_r1)$"
 )
 
