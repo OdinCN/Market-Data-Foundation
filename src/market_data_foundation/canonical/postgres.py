@@ -22,7 +22,9 @@ from .model import (
 )
 from .repository import prepare_publication
 
-_SCHEMA = re.compile(r"^mdf_p3_canonical_kernel_r1_[a-z0-9_]+$")
+_SCHEMA = re.compile(
+    r"^(?:mdf_p3_canonical_kernel_r1_[a-z0-9_]+|mdf_p4_raw_daily_bars_replay_r1)$"
+)
 
 
 def validate_schema(schema: str) -> str:
