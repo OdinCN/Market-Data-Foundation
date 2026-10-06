@@ -282,3 +282,23 @@ class PostgresLedger:
             "stored_publication_invalid",
         )
         return values
+
+    def versions_for_definition(self, definition: Key) -> tuple[DatasetVersion, ...]:
+        require(definition.kind == Kind.DEFINITION, "version_definition_kind")
+        rows = self.connection.execute(
+            sql.SQL(
+                """
+                SELECT payload
+                FROM {}.records
+                WHERE kind = %s
+                ORDER BY identity, revision
+                """
+            ).format(sql.Identifier(self.schema)),
+            (Kind.VERSION.value,),
+        ).fetchall()
+        candidates = tuple(loads(row[0]) for row in rows)
+        require(
+            all(isinstance(value, DatasetVersion) for value in candidates),
+            "stored_version_invalid",
+        )
+        return tuple(value for value in candidates if value.definition == definition)

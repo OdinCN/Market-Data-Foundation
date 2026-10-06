@@ -37,6 +37,10 @@ class Ledger(Protocol):
 
     def publications_for_version(self, version: Key) -> tuple[Publication, ...]: ...
 
+    def versions_for_definition(self, definition: Key) -> tuple[DatasetVersion, ...]:
+        """Return exact-definition versions in ascending identity order."""
+        ...
+
 
 def _key_tuple(key: Key) -> tuple[str, str, str]:
     return key.kind.value, key.identity, key.revision
@@ -188,7 +192,24 @@ class InMemoryLedger:
             require(isinstance(value, Publication), "stored_publication_invalid")
             if value.request.version == version:
                 publications.append(value)
-        return tuple(sorted(publications, key=lambda item: item.decision_at))
+        return tuple(
+            sorted(
+                publications,
+                key=lambda item: (item.decision_at, item.request.identity),
+            )
+        )
+
+    def versions_for_definition(self, definition: Key) -> tuple[DatasetVersion, ...]:
+        require(definition.kind == Kind.DEFINITION, "version_definition_kind")
+        versions: list[DatasetVersion] = []
+        for (kind, _identity, _revision), payload in self._records.items():
+            if kind != Kind.VERSION.value:
+                continue
+            value = loads(payload)
+            require(isinstance(value, DatasetVersion), "stored_version_invalid")
+            if value.definition == definition:
+                versions.append(value)
+        return tuple(sorted(versions, key=lambda item: item.identity))
 
     def snapshot(self) -> str:
         import json
