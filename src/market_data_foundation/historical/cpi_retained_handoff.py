@@ -55,10 +55,49 @@ MEASURES = {
 }
 
 
+@dataclass(frozen=True)
+class CpiReferenceSemantics:
+    """An explicitly admitted CPI reference and its provider comparisons."""
+
+    reference_period: str
+    mom_comparison_period: str
+    yoy_comparison_period: str
+    availability_basis: str
+
+
+AUGUST_REFERENCE_SEMANTICS = CpiReferenceSemantics(
+    "2026-08",
+    "2026-07",
+    "2025-08",
+    "retained_measure_completeness_not_historical_cutoff_eligibility",
+)
+SEPTEMBER_REFERENCE_SEMANTICS = CpiReferenceSemantics(
+    "2026-09",
+    "2026-08",
+    "2025-09",
+    "exact_provider_calculation_completeness",
+)
+_ADMITTED_REFERENCE_SEMANTICS = (
+    AUGUST_REFERENCE_SEMANTICS,
+    SEPTEMBER_REFERENCE_SEMANTICS,
+)
+
+
+def _reference_semantics(value: object) -> CpiReferenceSemantics:
+    require(
+        type(value) is CpiReferenceSemantics and value in _ADMITTED_REFERENCE_SEMANTICS,
+        "cpi_reference_semantics_not_admitted",
+    )
+    return value
+
+
 def project_provider_calculations(
     calculations: dict[str, tuple[str, bool, list[dict[str, str]]]],
+    *,
+    reference: CpiReferenceSemantics = AUGUST_REFERENCE_SEMANTICS,
 ) -> dict:
     """Build the shared CPI projection only from provider pct_changes values."""
+    reference = _reference_semantics(reference)
     require(set(calculations) == set(MEASURES), "cpi_calculations_not_exact_four")
     measurements = []
     for name, (series, meaning, months) in MEASURES.items():
@@ -86,11 +125,15 @@ def project_provider_calculations(
                 "series_id": series,
                 "meaning": meaning,
                 "change_months": months,
-                "comparison_period": "2026-07" if months == 1 else "2025-08",
+                "comparison_period": (
+                    reference.mom_comparison_period
+                    if months == 1
+                    else reference.yoy_comparison_period
+                ),
                 "seasonal_adjustment": (
                     "Seasonally Adjusted" if months == 1 else "Not Seasonally Adjusted"
                 ),
-                "reference_period": "2026-08",
+                "reference_period": reference.reference_period,
                 "unit": "percent",
                 "classification": "provider_returned_calculation",
                 "value": value,
@@ -103,19 +146,24 @@ def project_provider_calculations(
         )
     data = {
         "product": "CPI",
-        "reference_period": "2026-08",
+        "reference_period": reference.reference_period,
         "measurements": measurements,
         "availability": {
             "state": "available",
-            "basis": "retained_measure_completeness_not_historical_cutoff_eligibility",
+            "basis": reference.availability_basis,
         },
     }
-    validate_cpi_projection(data)
+    validate_cpi_projection(data, reference=reference)
     return data
 
 
-def validate_cpi_projection(data: object) -> dict:
+def validate_cpi_projection(
+    data: object,
+    *,
+    reference: CpiReferenceSemantics = AUGUST_REFERENCE_SEMANTICS,
+) -> dict:
     """Validate the semantic projection shared by retained and direct paths."""
+    reference = _reference_semantics(reference)
     require(
         type(data) is dict
         and set(data)
@@ -123,14 +171,15 @@ def validate_cpi_projection(data: object) -> dict:
         "cpi_data_fields_not_admitted",
     )
     require(
-        data["product"] == "CPI" and data["reference_period"] == "2026-08",
+        data["product"] == "CPI"
+        and data["reference_period"] == reference.reference_period,
         "cpi_data_identity_mismatch",
     )
     require(
         data["availability"]
         == {
             "state": "available",
-            "basis": "retained_measure_completeness_not_historical_cutoff_eligibility",
+            "basis": reference.availability_basis,
         },
         "cpi_semantic_availability_not_admitted",
     )
@@ -178,8 +227,13 @@ def validate_cpi_projection(data: object) -> dict:
             and m["change_months"] == months
             and m["seasonal_adjustment"]
             == ("Seasonally Adjusted" if months == 1 else "Not Seasonally Adjusted")
-            and m["comparison_period"] == ("2026-07" if months == 1 else "2025-08")
-            and m["reference_period"] == "2026-08",
+            and m["comparison_period"]
+            == (
+                reference.mom_comparison_period
+                if months == 1
+                else reference.yoy_comparison_period
+            )
+            and m["reference_period"] == reference.reference_period,
             "cpi_measurement_identity_mismatch",
         )
         require(

@@ -117,6 +117,54 @@ def response():
     }
 
 
+def september_response():
+    values = {
+        "CUSR0000SA0": {"1": "0.271828", "12": "9.999"},
+        "CUUR0000SA0": {"1": "8.888", "12": "2.71828"},
+        "CUSR0000SA0L1E": {"1": "0.314159", "12": "7.777"},
+        "CUUR0000SA0L1E": {"1": "6.666", "12": "3.14159"},
+    }
+    series = []
+    for series_id in direct.SERIES_IDS:
+        rows = [
+            {
+                "year": "2026",
+                "period": "M09",
+                "periodName": "September",
+                "latest": "true",
+                "value": "999999.999",
+                "footnotes": [{}],
+                "calculations": {
+                    "net_changes": {},
+                    "pct_changes": values[series_id],
+                },
+            },
+            {
+                "year": "2026",
+                "period": "M08",
+                "periodName": "August",
+                "value": "334.131",
+                "footnotes": [{}],
+            },
+            {
+                "year": "2025",
+                "period": "M09",
+                "periodName": "September",
+                "value": "324.800",
+                "footnotes": [{}],
+            },
+        ]
+        series.append(
+            {"seriesID": series_id, "catalog": catalog(series_id), "data": rows}
+        )
+    return {
+        "status": "REQUEST_SUCCEEDED",
+        "responseTime": 34,
+        "message": ["synthetic September release response"],
+        "Results": {"series": series},
+    }
+
+
 def replay_plan(raw=None):
     return direct.build_offline_replay_plan(
         raw or encode(response()),
@@ -192,6 +240,69 @@ def test_parser_uses_provider_pct_changes_and_accepts_historical_unavailable_row
     for item in payload["Results"]["series"]:
         item["data"][0]["value"] = "999999.999"
     assert direct.parse_response(encode(payload)).data == projected.data
+
+
+def test_september_parser_projects_exact_reference_and_provider_values():
+    projection = direct.parse_response(
+        encode(september_response()),
+        reference=retained.SEPTEMBER_REFERENCE_SEMANTICS,
+    )
+    assert projection.data["reference_period"] == "2026-09"
+    assert projection.data["availability"] == {
+        "state": "available",
+        "basis": "exact_provider_calculation_completeness",
+    }
+    measurements = {item["name"]: item for item in projection.data["measurements"]}
+    assert {name: item["value"] for name, item in measurements.items()} == {
+        "core_mom": "0.314159",
+        "core_yoy": "3.14159",
+        "headline_mom": "0.271828",
+        "headline_yoy": "2.71828",
+    }
+    assert {
+        item["comparison_period"]
+        for item in measurements.values()
+        if item["change_months"] == 1
+    } == {"2026-08"}
+    assert {
+        item["comparison_period"]
+        for item in measurements.values()
+        if item["change_months"] == 12
+    } == {"2025-09"}
+    assert {item["reference_period"] for item in measurements.values()} == {"2026-09"}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_target",
+        "wrong_target",
+        "missing_mom_comparison",
+        "missing_yoy_comparison",
+        "wrong_mom_comparison",
+        "wrong_yoy_comparison",
+    ],
+)
+def test_september_parser_fails_closed_on_target_or_comparison_drift(mutation):
+    payload = september_response()
+    rows = payload["Results"]["series"][0]["data"]
+    if mutation == "missing_target":
+        rows.pop(0)
+    elif mutation == "wrong_target":
+        rows[0]["periodName"] = "August"
+    elif mutation == "missing_mom_comparison":
+        rows.pop(1)
+    elif mutation == "missing_yoy_comparison":
+        rows.pop(2)
+    elif mutation == "wrong_mom_comparison":
+        rows[1]["periodName"] = "July"
+    else:
+        rows[2]["periodName"] = "August"
+    with pytest.raises(ContractError):
+        direct.parse_response(
+            encode(payload),
+            reference=retained.SEPTEMBER_REFERENCE_SEMANTICS,
+        )
 
 
 def test_provider_credential_echo_fails_closed():
@@ -305,6 +416,102 @@ def test_future_live_plan_requires_fresh_direct_identity_and_actual_times():
     content = json.loads(candidate.content)
     assert content["mode"] == "direct_live_provider_response"
     assert content["obtained_at"] == evidence.obtained_at.isoformat()
+
+
+def test_august_default_contract_preserves_accepted_parser_and_plan_identity():
+    raw = encode(response())
+    assert direct.parse_response(raw) == direct.parse_response(
+        raw,
+        reference=retained.AUGUST_REFERENCE_SEMANTICS,
+    )
+    default = replay_plan(raw)
+    explicit = direct.build_offline_replay_plan(
+        raw,
+        identity="direct-cpi-offline",
+        started_at=BASE,
+        finished_at=BASE + timedelta(seconds=1),
+        frozen_at=BASE + timedelta(seconds=2),
+        reference_contract=direct.AUGUST_REFERENCE_CONTRACT,
+    )
+    assert default == explicit
+    assert direct.REFERENCE_PERIOD == "2026-08"
+    assert direct.PARSER_REVISION == "mdf-bls-cpi-direct-v1"
+    assert direct.RULE == "p4-macro-bls-cpi-direct-admission-r1"
+    assert direct.COMPLETENESS == ("exact_four_cpi_provider_calculations_for_2026_08")
+    assert direct.BLS_CPI_DIRECT_SOURCE.identity == (
+        "mdf.source-candidate.bls-v2.cpi.direct"
+    )
+    assert direct.BLS_CPI_DIRECT_BINDING_CANDIDATE.identity == (
+        "mdf.binding-candidate.bls-v2.cpi.direct"
+    )
+    assert default.version.finite_scope.members == tuple(
+        f"2026-08:bls:cpi:{name}" for name in sorted(retained.MEASURES)
+    )
+
+
+def test_september_live_plan_metadata_agrees_and_candidate_is_inactive():
+    evidence = live_evidence(
+        encode(september_response()),
+        acquisition_identity="mdf-september-release-candidate",
+        controlled_external_receipt="controlled-september-release-receipt",
+        reference_contract=direct.SEPTEMBER_REFERENCE_CONTRACT,
+    )
+    candidate = direct.build_future_live_plan(
+        evidence,
+        identity="bls-cpi-release-reference-2026-09",
+        finished_at=BASE + timedelta(seconds=2),
+        frozen_at=BASE + timedelta(seconds=3),
+    )
+    content = json.loads(candidate.content)
+    assert candidate.source == direct.BLS_CPI_SEPTEMBER_RELEASE_SOURCE_CANDIDATE
+    assert candidate.binding_candidate == (
+        direct.BLS_CPI_SEPTEMBER_RELEASE_BINDING_CANDIDATE
+    )
+    assert candidate.source.acquisition_mode == "release_capture"
+    assert candidate.source.completeness_contract == direct.SEPTEMBER_COMPLETENESS
+    assert candidate.acquisition.result_mode == "release_capture"
+    assert candidate.acquisition.completeness == direct.SEPTEMBER_COMPLETENESS
+    assert candidate.version.completeness == direct.SEPTEMBER_COMPLETENESS
+    assert candidate.publication_request.required_completeness == (
+        direct.SEPTEMBER_COMPLETENESS
+    )
+    assert candidate.version.finite_scope.members == tuple(
+        f"2026-09:bls:cpi:{name}" for name in sorted(retained.MEASURES)
+    )
+    assert content["schema"] == direct.SEPTEMBER_RULE
+    assert content["parser_revision"] == direct.SEPTEMBER_PARSER_REVISION
+    assert content["data"]["reference_period"] == "2026-09"
+    assert {
+        pointer["reference_period"] for pointer in content["source_pointers"].values()
+    } == {"2026-09"}
+    assert {
+        pointer["comparison_period"]
+        for name, pointer in content["source_pointers"].items()
+        if name.endswith("_mom")
+    } == {"2026-08"}
+    assert {
+        pointer["comparison_period"]
+        for name, pointer in content["source_pointers"].items()
+        if name.endswith("_yoy")
+    } == {"2025-09"}
+    assert content["provider_revision"] == {"state": "not_declared", "value": None}
+    assert content["provider_released_at"] is None
+    assert content["provider_vintage"] is None
+    assert "candidate_only_not_active" in candidate.binding_candidate.limitations
+    assert candidate.binding_candidate.silent_fallback is False
+
+
+def test_september_contract_cannot_reuse_august_plan_metadata():
+    mismatched = replace(
+        direct.SEPTEMBER_REFERENCE_CONTRACT,
+        completeness=direct.COMPLETENESS,
+        source_identity=direct.BLS_CPI_DIRECT_SOURCE.identity,
+    )
+    with pytest.raises(ContractError, match="reference_contract_not_admitted"):
+        live_evidence(
+            encode(september_response()),
+            reference_contract=mismatched,
+        )
 
 
 def test_live_evidence_fails_closed_for_each_execution_fact():

@@ -36,7 +36,10 @@ from market_data_foundation.historical.cpi_retained_handoff import (
     ACQUISITION as PRIOR_MDD_ACQUISITION,
 )
 from market_data_foundation.historical.cpi_retained_handoff import (
+    AUGUST_REFERENCE_SEMANTICS,
     MEASURES,
+    SEPTEMBER_REFERENCE_SEMANTICS,
+    CpiReferenceSemantics,
     project_provider_calculations,
 )
 
@@ -51,6 +54,10 @@ REFERENCE_PERIOD = "2026-08"
 PARSER_REVISION = "mdf-bls-cpi-direct-v1"
 RULE = "p4-macro-bls-cpi-direct-admission-r1"
 COMPLETENESS = "exact_four_cpi_provider_calculations_for_2026_08"
+SEPTEMBER_REFERENCE_PERIOD = "2026-09"
+SEPTEMBER_PARSER_REVISION = "mdf-bls-cpi-release-reference-2026-09-v1"
+SEPTEMBER_RULE = "p4-macro-bls-cpi-release-reference-2026-09-r1"
+SEPTEMBER_COMPLETENESS = "exact_four_cpi_provider_calculations_for_2026_09"
 MAX_RESPONSE_BYTES = 100_000
 
 _DECIMAL = re.compile(r"-?\d+(?:\.\d+)?")
@@ -83,6 +90,15 @@ _CATALOG = {
         "All items less food and energy",
     ),
 }
+
+
+def _admit_reference_semantics(value: object) -> CpiReferenceSemantics:
+    require(
+        type(value) is CpiReferenceSemantics
+        and value in (AUGUST_REFERENCE_SEMANTICS, SEPTEMBER_REFERENCE_SEMANTICS),
+        "bls_cpi_reference_semantics_not_admitted",
+    )
+    return value
 
 
 def _encode(value: object) -> bytes:
@@ -205,7 +221,11 @@ def _footnotes(value: object) -> list[dict[str, str]]:
     return result
 
 
-def _rows(series_id: str, value: object) -> dict[str, dict]:
+def _rows(
+    series_id: str,
+    value: object,
+    reference: CpiReferenceSemantics,
+) -> dict[str, dict]:
     require(type(value) is list and bool(value), "bls_cpi_series_data_invalid")
     rows: dict[str, dict] = {}
     latest: list[str] = []
@@ -255,7 +275,11 @@ def _rows(series_id: str, value: object) -> dict[str, dict]:
     require(len(latest) <= 1, "bls_cpi_latest_invalid")
     if latest:
         require(latest[0] == max(rows), "bls_cpi_latest_not_latest_period")
-    for pointer in (REFERENCE_PERIOD, "2026-07", "2025-08"):
+    for pointer in (
+        reference.reference_period,
+        reference.mom_comparison_period,
+        reference.yoy_comparison_period,
+    ):
         require(pointer in rows, "bls_cpi_source_pointer_missing")
     return rows
 
@@ -269,8 +293,13 @@ class DirectCpiProjection:
     raw_size: int
 
 
-def parse_response(raw: bytes) -> DirectCpiProjection:
+def parse_response(
+    raw: bytes,
+    *,
+    reference: CpiReferenceSemantics = AUGUST_REFERENCE_SEMANTICS,
+) -> DirectCpiProjection:
     """Parse the bounded response, taking percentage text only from pct_changes."""
+    reference = _admit_reference_semantics(reference)
     payload = _decode(raw)
     require(
         set(payload) == {"status", "responseTime", "message", "Results"},
@@ -306,14 +335,18 @@ def parse_response(raw: bytes) -> DirectCpiProjection:
         )
         series_id = item["seriesID"]
         _catalog(series_id, item["catalog"])
-        by_series[series_id] = _rows(series_id, item["data"])
+        by_series[series_id] = _rows(series_id, item["data"], reference)
 
     calculations = {}
     for name, (series_id, _meaning, months) in MEASURES.items():
         rows = by_series[series_id]
-        comparison = "2026-07" if months == 1 else "2025-08"
+        comparison = (
+            reference.mom_comparison_period
+            if months == 1
+            else reference.yoy_comparison_period
+        )
         require(comparison in rows, "bls_cpi_comparison_period_missing")
-        target = rows[REFERENCE_PERIOD]
+        target = rows[reference.reference_period]
         target_calculations = target.get("calculations")
         require(
             type(target_calculations) is dict
@@ -327,7 +360,7 @@ def parse_response(raw: bytes) -> DirectCpiProjection:
             notes,
         )
     return DirectCpiProjection(
-        data=project_provider_calculations(calculations),
+        data=project_provider_calculations(calculations, reference=reference),
         provider_messages=tuple(messages),
         response_time_ms=payload["responseTime"],
         raw_sha256=digest(raw),
@@ -335,53 +368,124 @@ def parse_response(raw: bytes) -> DirectCpiProjection:
     )
 
 
-BLS_CPI_DIRECT_SOURCE = SourceOperationRef(
-    identity="mdf.source-candidate.bls-v2.cpi.direct",
-    contract_revision="p4-direct-r1",
-    owner="market-data-foundation",
-    product="BLS public data API v2",
-    operation="timeseries.data:CPI",
-    projection_revision=PARSER_REVISION,
-    variant="exact-four-series-2025-2026-catalog-calculations",
-    build_revision=None,
-    registry_revision=None,
-    provider_app_revision=None,
-    access_effect="read",
-    acquisition_mode="historical_query",
-    scope=Scope(),
-    temporal_contract="reference 2026-08; actual MDF obtained_at retained",
-    completeness_contract=COMPLETENESS,
-    pagination_contract="single bounded BLS v2 response; no pagination",
-    freshness_contract="provider release time and vintage not declared",
-    evidence_capability=frozenset({Grade.ORIGINAL, Grade.PROJECTED}),
+@dataclass(frozen=True)
+class DirectCpiReferenceContract:
+    semantics: CpiReferenceSemantics
+    parser_revision: str
+    rule: str
+    completeness: str
+    source_identity: str
+    binding_identity: str
+    contract_revision: str
+    acquisition_mode: str
+    temporal_contract: str
+    compatibility_policy: str
+
+
+AUGUST_REFERENCE_CONTRACT = DirectCpiReferenceContract(
+    AUGUST_REFERENCE_SEMANTICS,
+    PARSER_REVISION,
+    RULE,
+    COMPLETENESS,
+    "mdf.source-candidate.bls-v2.cpi.direct",
+    "mdf.binding-candidate.bls-v2.cpi.direct",
+    "p4-direct-r1",
+    "historical_query",
+    "reference 2026-08; actual MDF obtained_at retained",
+    "exact_bls_v2_cpi_direct_request_and_parser",
+)
+SEPTEMBER_REFERENCE_CONTRACT = DirectCpiReferenceContract(
+    SEPTEMBER_REFERENCE_SEMANTICS,
+    SEPTEMBER_PARSER_REVISION,
+    SEPTEMBER_RULE,
+    SEPTEMBER_COMPLETENESS,
+    "mdf.source-candidate.bls-v2.cpi.release-2026-09",
+    "mdf.binding-candidate.bls-v2.cpi.release-2026-09",
+    "p4-release-reference-2026-09-r1",
+    "release_capture",
+    "exact reference 2026-09; actual MDF obtained_at retained",
+    "exact_bls_v2_cpi_release_2026_09_request_and_parser",
+)
+_ADMITTED_REFERENCE_CONTRACTS = (
+    AUGUST_REFERENCE_CONTRACT,
+    SEPTEMBER_REFERENCE_CONTRACT,
 )
 
-BLS_CPI_DIRECT_BINDING_CANDIDATE = SourceBindingRevision(
-    identity="mdf.binding-candidate.bls-v2.cpi.direct",
-    revision="p4-direct-r1",
-    source=BLS_CPI_DIRECT_SOURCE.key,
-    mappings=(
-        OutputMapping(
-            identity="bls-cpi-headlines",
-            definition=BLS_CPI_HEADLINES.key,
-            semantic_revision="p3-r1",
-            temporal_revision="reference-period-provider-calculation-v1",
-            scope=Scope(),
-            evidence=EvidenceRequirement(
-                allowed=frozenset({Grade.ORIGINAL, Grade.PROJECTED}),
-                durable=True,
-                replayable=True,
+
+def _reference_contract(value: object) -> DirectCpiReferenceContract:
+    require(
+        type(value) is DirectCpiReferenceContract
+        and value in _ADMITTED_REFERENCE_CONTRACTS,
+        "bls_cpi_reference_contract_not_admitted",
+    )
+    return value
+
+
+def _source(contract: DirectCpiReferenceContract) -> SourceOperationRef:
+    return SourceOperationRef(
+        identity=contract.source_identity,
+        contract_revision=contract.contract_revision,
+        owner="market-data-foundation",
+        product="BLS public data API v2",
+        operation="timeseries.data:CPI",
+        projection_revision=contract.parser_revision,
+        variant="exact-four-series-2025-2026-catalog-calculations",
+        build_revision=None,
+        registry_revision=None,
+        provider_app_revision=None,
+        access_effect="read",
+        acquisition_mode=contract.acquisition_mode,
+        scope=Scope(),
+        temporal_contract=contract.temporal_contract,
+        completeness_contract=contract.completeness,
+        pagination_contract="single bounded BLS v2 response; no pagination",
+        freshness_contract="provider release time and vintage not declared",
+        evidence_capability=frozenset({Grade.ORIGINAL, Grade.PROJECTED}),
+    )
+
+
+def _binding(
+    contract: DirectCpiReferenceContract,
+    source: SourceOperationRef,
+) -> SourceBindingRevision:
+    return SourceBindingRevision(
+        identity=contract.binding_identity,
+        revision=contract.contract_revision,
+        source=source.key,
+        mappings=(
+            OutputMapping(
+                identity="bls-cpi-headlines",
+                definition=BLS_CPI_HEADLINES.key,
+                semantic_revision="p3-r1",
+                temporal_revision="reference-period-provider-calculation-v1",
+                scope=Scope(),
+                evidence=EvidenceRequirement(
+                    allowed=frozenset({Grade.ORIGINAL, Grade.PROJECTED}),
+                    durable=True,
+                    replayable=True,
+                ),
             ),
         ),
-    ),
-    compatibility_policy="exact_bls_v2_cpi_direct_request_and_parser",
-    limitations=(
-        "candidate_only_not_active",
-        "provider_release_time_not_declared",
-        "provider_vintage_not_declared",
-        "no_provider_fallback",
-    ),
-    silent_fallback=False,
+        compatibility_policy=contract.compatibility_policy,
+        limitations=(
+            "candidate_only_not_active",
+            "provider_release_time_not_declared",
+            "provider_vintage_not_declared",
+            "no_provider_fallback",
+        ),
+        silent_fallback=False,
+    )
+
+
+BLS_CPI_DIRECT_SOURCE = _source(AUGUST_REFERENCE_CONTRACT)
+BLS_CPI_DIRECT_BINDING_CANDIDATE = _binding(
+    AUGUST_REFERENCE_CONTRACT,
+    BLS_CPI_DIRECT_SOURCE,
+)
+BLS_CPI_SEPTEMBER_RELEASE_SOURCE_CANDIDATE = _source(SEPTEMBER_REFERENCE_CONTRACT)
+BLS_CPI_SEPTEMBER_RELEASE_BINDING_CANDIDATE = _binding(
+    SEPTEMBER_REFERENCE_CONTRACT,
+    BLS_CPI_SEPTEMBER_RELEASE_SOURCE_CANDIDATE,
 )
 
 
@@ -399,21 +503,27 @@ def _content(
     raw: bytes,
     projection: DirectCpiProjection,
     request: BlsCpiRequest,
+    contract: DirectCpiReferenceContract,
     mode: str,
     obtained_at: datetime | None,
 ) -> bytes:
+    reference = contract.semantics
     source_pointers = {
         name: {
             "series_id": series_id,
-            "reference_period": REFERENCE_PERIOD,
-            "comparison_period": "2026-07" if months == 1 else "2025-08",
+            "reference_period": reference.reference_period,
+            "comparison_period": (
+                reference.mom_comparison_period
+                if months == 1
+                else reference.yoy_comparison_period
+            ),
             "calculation": f"pct_changes/{months}",
         }
         for name, (series_id, _meaning, months) in MEASURES.items()
     }
     return _encode(
         {
-            "schema": RULE,
+            "schema": contract.rule,
             "mode": mode,
             "request": request.persisted(),
             "request_identity": request.identity,
@@ -424,7 +534,7 @@ def _content(
             "provider_released_at": None,
             "provider_vintage": None,
             "obtained_at": obtained_at.isoformat() if obtained_at else None,
-            "parser_revision": PARSER_REVISION,
+            "parser_revision": contract.parser_revision,
             "source_pointers": source_pointers,
             "data": projection.data,
             "raw": {
@@ -444,17 +554,22 @@ def build_offline_replay_plan(
     finished_at: datetime,
     frozen_at: datetime,
     request: BlsCpiRequest = BlsCpiRequest(),
+    reference_contract: DirectCpiReferenceContract = AUGUST_REFERENCE_CONTRACT,
 ) -> DirectCpiReplayPlan:
     """Reprocess retained bytes with no binding and no acquisition occurrence."""
     for value in (started_at, finished_at, frozen_at):
         instant(value)
     require(started_at <= finished_at <= frozen_at, "bls_cpi_replay_time_reversal")
     require(bool(identity), "bls_cpi_identity_required")
-    projection = parse_response(raw)
+    contract = _reference_contract(reference_contract)
+    projection = parse_response(raw, reference=contract.semantics)
     transform = Transform(
         "mdf.p4.macro.bls.cpi.direct.offline-replay",
         "r1",
-        (("parser_revision", PARSER_REVISION), ("request_identity", request.identity)),
+        (
+            ("parser_revision", contract.parser_revision),
+            ("request_identity", request.identity),
+        ),
     )
     run = DataRun(
         identity + ":run",
@@ -466,7 +581,14 @@ def build_offline_replay_plan(
         transform=transform,
         trigger="offline_exact_retained_bls_raw_equivalence",
     )
-    content = _content(raw, projection, request, "offline_retained_replay", None)
+    content = _content(
+        raw,
+        projection,
+        request,
+        contract,
+        "offline_retained_replay",
+        None,
+    )
     raw_material = EvidenceMaterial(
         identity + ":raw",
         Grade.ORIGINAL,
@@ -491,26 +613,31 @@ def build_offline_replay_plan(
     version = DatasetVersion(
         identity + ":version",
         BLS_CPI_HEADLINES.key,
-        FiniteScope(tuple(f"2026-08:bls:cpi:{name}" for name in sorted(MEASURES))),
+        FiniteScope(
+            tuple(
+                f"{contract.semantics.reference_period}:bls:cpi:{name}"
+                for name in sorted(MEASURES)
+            )
+        ),
         Scope(),
         frozen_at,
         run.key,
         digest(content),
         materials=(raw_material.key, semantic_material.key),
         transform=transform,
-        completeness=COMPLETENESS,
+        completeness=contract.completeness,
     )
     publication_request = PublicationRequest(
         identity + ":publication",
         identity + ":occurrence",
         version.key,
-        RULE,
+        contract.rule,
         Decision.PUBLISH,
         Scope(),
         version.materials,
         frozenset({Grade.ORIGINAL, Grade.PROJECTED}),
         "offline-exact-raw-direct-parser-equivalence",
-        required_completeness=COMPLETENESS,
+        required_completeness=contract.completeness,
     )
     return DirectCpiReplayPlan(
         run, raw_material, semantic_material, version, publication_request, content
@@ -529,6 +656,7 @@ class DirectCpiLiveEvidence:
     controlled_external_receipt: str
     evidence_mode: str = "direct_execution"
     direct_execution: bool = True
+    reference_contract: DirectCpiReferenceContract = AUGUST_REFERENCE_CONTRACT
 
     def __post_init__(self) -> None:
         require(
@@ -564,7 +692,8 @@ class DirectCpiLiveEvidence:
             and bool(self.controlled_external_receipt.strip()),
             "bls_cpi_live_receipt_required",
         )
-        parse_response(self.raw_bytes)
+        contract = _reference_contract(self.reference_contract)
+        parse_response(self.raw_bytes, reference=contract.semantics)
 
 
 @dataclass(frozen=True)
@@ -599,12 +728,15 @@ def build_future_live_plan(
         "bls_cpi_live_processing_time_invalid",
     )
     require(bool(identity), "bls_cpi_identity_required")
-    projection = parse_response(evidence.raw_bytes)
+    contract = _reference_contract(evidence.reference_contract)
+    source = _source(contract)
+    binding = _binding(contract, source)
+    projection = parse_response(evidence.raw_bytes, reference=contract.semantics)
     transform = Transform(
         "mdf.p4.macro.bls.cpi.direct.live",
         "r1",
         (
-            ("parser_revision", PARSER_REVISION),
+            ("parser_revision", contract.parser_revision),
             ("request_identity", evidence.request_identity),
         ),
     )
@@ -615,7 +747,7 @@ def build_future_live_plan(
         evidence.requested_at,
         finished_at,
         "success",
-        binding=BLS_CPI_DIRECT_BINDING_CANDIDATE.key,
+        binding=binding.key,
         transform=transform,
         trigger="future_explicitly_authorized_direct_bls_v2_request",
         budget=1,
@@ -624,8 +756,8 @@ def build_future_live_plan(
         evidence.acquisition_identity,
         run.key,
         evidence.request_identity,
-        BLS_CPI_DIRECT_SOURCE.key,
-        BLS_CPI_DIRECT_BINDING_CANDIDATE.key,
+        source.key,
+        binding.key,
         "bls-cpi-headlines",
         Scope(),
         tuple(
@@ -636,8 +768,8 @@ def build_future_live_plan(
         evidence.obtained_at,
         None,
         None,
-        "historical_query",
-        COMPLETENESS,
+        contract.acquisition_mode,
+        contract.completeness,
         "provider_release_time_not_declared",
         "success",
         external_receipt=evidence.controlled_external_receipt,
@@ -649,6 +781,7 @@ def build_future_live_plan(
         evidence.raw_bytes,
         projection,
         evidence.request,
+        contract,
         "direct_live_provider_response",
         evidence.obtained_at,
     )
@@ -677,34 +810,39 @@ def build_future_live_plan(
     version = DatasetVersion(
         identity + ":version",
         BLS_CPI_HEADLINES.key,
-        FiniteScope(tuple(f"2026-08:bls:cpi:{name}" for name in sorted(MEASURES))),
+        FiniteScope(
+            tuple(
+                f"{contract.semantics.reference_period}:bls:cpi:{name}"
+                for name in sorted(MEASURES)
+            )
+        ),
         Scope(),
         frozen_at,
         run.key,
         digest(content),
-        binding=BLS_CPI_DIRECT_BINDING_CANDIDATE.key,
+        binding=binding.key,
         mapping="bls-cpi-headlines",
         acquisitions=(acquisition.key,),
         materials=(raw_material.key, semantic_material.key),
         transform=transform,
-        completeness=COMPLETENESS,
+        completeness=contract.completeness,
     )
     publication_request = PublicationRequest(
         identity + ":publication",
         identity + ":occurrence",
         version.key,
-        RULE,
+        contract.rule,
         Decision.PUBLISH,
         Scope(),
         version.materials,
         frozenset({Grade.ORIGINAL, Grade.PROJECTED}),
         "future-authorized-direct-bls-cpi-admission",
-        required_completeness=COMPLETENESS,
+        required_completeness=contract.completeness,
         claims_replayable=True,
     )
     return DirectCpiLivePlan(
-        BLS_CPI_DIRECT_SOURCE,
-        BLS_CPI_DIRECT_BINDING_CANDIDATE,
+        source,
+        binding,
         run,
         acquisition,
         raw_material,
@@ -751,7 +889,12 @@ def persist_live_plan_before_publication(
     """Persist exact live lineage; the candidate binding remains inactive metadata."""
     require(plan.run.kind == RunKind.COLLECT, "bls_cpi_live_collect_required")
     require(
-        plan.binding_candidate == BLS_CPI_DIRECT_BINDING_CANDIDATE,
+        plan.binding_candidate
+        in (
+            BLS_CPI_DIRECT_BINDING_CANDIDATE,
+            BLS_CPI_SEPTEMBER_RELEASE_BINDING_CANDIDATE,
+        )
+        and plan.source.key == plan.binding_candidate.source,
         "bls_cpi_live_binding_candidate_mismatch",
     )
     require(

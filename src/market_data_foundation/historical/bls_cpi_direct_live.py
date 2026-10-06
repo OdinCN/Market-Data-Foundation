@@ -138,7 +138,10 @@ def _write_artifacts(
     http_status: int,
     registration_key: str,
 ) -> Path:
-    projection = parse_response(evidence.raw_bytes)
+    projection = parse_response(
+        evidence.raw_bytes,
+        reference=evidence.reference_contract.semantics,
+    )
     directory = root / run_name
     files = {
         "raw-response.bin": evidence.raw_bytes,
