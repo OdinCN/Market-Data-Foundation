@@ -15,6 +15,7 @@ from market_data_foundation.canonical.consumer_read import (
 )
 from market_data_foundation.canonical.kernel import CanonicalKernel
 from market_data_foundation.canonical.model import (
+    ContractError,
     Decision,
     Grade,
     Key,
@@ -22,7 +23,7 @@ from market_data_foundation.canonical.model import (
     PublicationRequest,
     Scope,
 )
-from market_data_foundation.canonical.postgres import PostgresLedger
+from market_data_foundation.canonical.postgres import PostgresLedger, validate_schema
 from market_data_foundation.canonical.repository import InMemoryLedger
 from market_data_foundation.domain_contracts.dense_market import RAW_DAILY_BARS
 from market_data_foundation.domain_contracts.macro import BLS_CPI_HEADLINES
@@ -36,6 +37,14 @@ from market_data_foundation.historical.daily_bars import (
 )
 
 BASE = datetime(2026, 10, 6, tzinfo=UTC)
+
+
+def test_postgres_allowlist_adds_only_exact_p6_consumer_read_namespace() -> None:
+    schema = "mdf_p6_consumer_read_r1"
+    assert validate_schema(schema) == schema
+    for unsafe in (schema + "_extra", schema + ";drop"):
+        with pytest.raises(ContractError, match="unsafe_postgres_namespace"):
+            validate_schema(unsafe)
 
 
 def _classification(exc: pytest.ExceptionInfo[ReadContractError]) -> ReadFailure:
