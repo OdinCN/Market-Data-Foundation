@@ -11,6 +11,7 @@ import pytest
 from market_data_foundation.canonical.kernel import CanonicalKernel
 from market_data_foundation.canonical.model import (
     ContractError,
+    Grade,
     Key,
     Kind,
     RunKind,
@@ -19,6 +20,7 @@ from market_data_foundation.canonical.model import (
 from market_data_foundation.canonical.postgres import validate_schema
 from market_data_foundation.canonical.repository import InMemoryLedger
 from market_data_foundation.historical import bls_cpi_direct as direct
+from market_data_foundation.historical import bls_cpi_direct_live as live
 from market_data_foundation.historical import cpi_retained_handoff as retained
 
 BASE = datetime(2026, 10, 6, tzinfo=UTC)
@@ -378,3 +380,197 @@ def test_postgres_allowlist_is_exact_transaction_namespace():
     for unsafe in (schema + "_extra", schema + ";drop"):
         with pytest.raises(ContractError, match="unsafe_postgres_namespace"):
             validate_schema(unsafe)
+
+
+class FakeTransport:
+    def __init__(self, result=None, failure=None):
+        self.result = result
+        self.failure = failure
+        self.calls = []
+
+    def post(self, endpoint, body, headers, *, timeout, max_response_bytes):
+        self.calls.append(
+            {
+                "endpoint": endpoint,
+                "body": body,
+                "headers": headers,
+                "timeout": timeout,
+                "max_response_bytes": max_response_bytes,
+            }
+        )
+        if self.failure is not None:
+            raise self.failure
+        return self.result
+
+
+def _synthetic_secret(tmp_path, value="A" * 32):
+    path = tmp_path / "secret.toml"
+    path.write_text(f'[bls]\napi_key = "{value}"\n')
+    return path
+
+
+def _live_clocks():
+    return iter(BASE + timedelta(seconds=offset) for offset in range(4))
+
+
+def test_live_executor_exact_one_wire_shape_and_secret_safe_artifacts(tmp_path):
+    credential = "A1" * 16
+    transport = FakeTransport(
+        live.HttpResult(200, encode(response()), {"content-encoding": "identity"})
+    )
+    clocks = _live_clocks()
+    candidate = live.execute_live_candidate(
+        secret_path=_synthetic_secret(tmp_path, credential),
+        artifact_root=tmp_path / "artifacts",
+        transport=transport,
+        clock=lambda: next(clocks),
+        identity_factory=lambda: "synthetic-001",
+    )
+    assert len(transport.calls) == 1
+    call = transport.calls[0]
+    assert call["endpoint"] == direct.ENDPOINT
+    assert call["headers"] == {
+        "Accept": "application/json",
+        "Accept-Encoding": "identity",
+        "Content-Type": "application/json",
+    }
+    assert call["timeout"] == live.TIMEOUT_SECONDS
+    assert call["max_response_bytes"] == direct.MAX_RESPONSE_BYTES
+    assert json.loads(call["body"]) == {
+        "seriesid": list(direct.SERIES_IDS),
+        "startyear": "2025",
+        "endyear": "2026",
+        "catalog": True,
+        "calculations": True,
+        "registrationkey": credential,
+    }
+    assert candidate.evidence.requested_at == BASE
+    assert candidate.evidence.obtained_at == BASE + timedelta(seconds=1)
+    assert candidate.evidence.provider_data_attempts == 1
+    assert candidate.plan.run.started_at == BASE
+    assert candidate.plan.run.finished_at == BASE + timedelta(seconds=2)
+    assert candidate.plan.version.frozen_at == BASE + timedelta(seconds=3)
+    assert candidate.plan.acquisition.identity == "mdf-bls-cpi-direct-synthetic-001"
+    assert candidate.plan.raw_material.grade == Grade.ORIGINAL
+    assert candidate.plan.raw_material.durable is False
+    assert candidate.plan.raw_material.replayable is False
+    assert candidate.plan.raw_material.controlled_ref.endswith("/raw-response.bin")
+    assert candidate.plan.semantic_material.grade == Grade.PROJECTED
+    assert candidate.plan.semantic_material.durable is True
+    assert candidate.plan.semantic_material.replayable is True
+    assert (
+        candidate.plan.semantic_material.digest == candidate.plan.version.content_digest
+    )
+    assert candidate.plan.semantic_material.controlled_ref == (
+        "mdf-content://" + candidate.plan.version.identity
+    )
+    assert candidate.artifact_directory.name == "run-synthetic-001"
+    assert (candidate.artifact_directory / "raw-response.bin").read_bytes() == encode(
+        response()
+    )
+    artifact_bytes = b"".join(
+        path.read_bytes() for path in candidate.artifact_directory.iterdir()
+    )
+    assert credential.encode() not in artifact_bytes
+    assert b"registrationkey" not in artifact_bytes.lower()
+    observation = json.loads(
+        (candidate.artifact_directory / "observation.json").read_bytes()
+    )
+    assert observation["provider_data_attempts"] == 1
+    assert observation["raw_sha256"] == digest(encode(response()))
+
+
+@pytest.mark.parametrize(
+    "result,classification",
+    [
+        (
+            live.HttpResult(302, b"redirect", {"location": "https://elsewhere"}),
+            "redirect_rejected",
+        ),
+        (live.HttpResult(503, b"failure", {}), "http_failure"),
+        (
+            live.HttpResult(200, b"x" * (direct.MAX_RESPONSE_BYTES + 1), {}),
+            "response_too_large",
+        ),
+        (live.HttpResult(200, b"not-json", {}), "response_contract_failed"),
+    ],
+)
+def test_live_executor_failures_are_terminal_exact_one(
+    tmp_path, result, classification
+):
+    transport = FakeTransport(result)
+    clocks = _live_clocks()
+    with pytest.raises(live.LiveExecutionError, match=classification) as caught:
+        live.execute_live_candidate(
+            secret_path=_synthetic_secret(tmp_path),
+            artifact_root=tmp_path / "artifacts",
+            transport=transport,
+            clock=lambda: next(clocks),
+            identity_factory=lambda: "failure-001",
+        )
+    assert caught.value.provider_data_attempts == 1
+    assert len(transport.calls) == 1
+    assert not (tmp_path / "artifacts").exists()
+
+
+def test_live_executor_transport_failure_has_no_retry_or_fallback(tmp_path):
+    transport = FakeTransport(failure=OSError("secret-bearing diagnostics omitted"))
+    with pytest.raises(live.LiveExecutionError) as caught:
+        live.execute_live_candidate(
+            secret_path=_synthetic_secret(tmp_path),
+            artifact_root=tmp_path / "artifacts",
+            transport=transport,
+            identity_factory=lambda: "transport-failure",
+        )
+    assert str(caught.value) == "bls_live_transport_failure"
+    assert caught.value.provider_data_attempts == 1
+    assert len(transport.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        "[postgres]\npassword='not-a-bls-key'\n",
+        "[bls]\napi_key='short'\n",
+        "[bls]\napi_key='GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG'\n",
+        "[bls]\napi_key=42\n",
+        "not valid toml =",
+    ],
+)
+def test_invalid_credential_fails_before_provider_execution(tmp_path, document):
+    secret = tmp_path / "secret.toml"
+    secret.write_text(document)
+    transport = FakeTransport()
+    with pytest.raises(live.LiveExecutionError, match="credential_invalid") as caught:
+        live.execute_live_candidate(secret_path=secret, transport=transport)
+    assert caught.value.provider_data_attempts == 0
+    assert transport.calls == []
+
+
+def test_live_plan_persists_and_publishes_through_kernel_without_activation():
+    candidate = direct.build_future_live_plan(
+        live_evidence(),
+        identity="direct-cpi-live-persistence",
+        finished_at=BASE + timedelta(seconds=2),
+        frozen_at=BASE + timedelta(seconds=3),
+    )
+    ledger = InMemoryLedger()
+    kernel = CanonicalKernel(ledger, lambda: BASE + timedelta(seconds=4))
+    assert (
+        direct.persist_live_plan_before_publication(kernel, candidate)
+        == candidate.version
+    )
+    assert ledger.get(candidate.source.key) == candidate.source
+    assert ledger.get(candidate.binding_candidate.key) == candidate.binding_candidate
+    assert ledger.get(candidate.acquisition.key) == candidate.acquisition
+    assert ledger.get_content(candidate.version.key) == candidate.content
+    publication = direct.publish_live_plan(kernel, candidate)
+    assert publication.request == candidate.publication_request
+    assert "candidate_only_not_active" in candidate.binding_candidate.limitations
+
+
+def test_live_postgres_allowlist_is_exact_transaction_namespace():
+    schema = "mdf_p4_macro_bls_cpi_direct_live_r1"
+    assert validate_schema(schema) == schema
+    with pytest.raises(ContractError, match="unsafe_postgres_namespace"):
+        validate_schema(schema + "_extra")

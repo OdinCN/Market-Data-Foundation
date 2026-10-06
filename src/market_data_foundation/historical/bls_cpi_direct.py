@@ -658,21 +658,21 @@ def build_future_live_plan(
         projection.raw_sha256,
         Scope(),
         acquired_from=acquisition.key,
-        controlled_ref=f"mdf-cpi-direct-content://{identity}:version/original.bin",
-        durable=True,
-        replayable=True,
+        controlled_ref=(evidence.controlled_external_receipt + "/raw-response.bin"),
+        durable=False,
+        replayable=False,
         named_class="direct_bls_v2_raw_response",
     )
     semantic_material = EvidenceMaterial(
         identity + ":semantic",
         Grade.PROJECTED,
-        digest(_encode(projection.data)),
+        digest(content),
         Scope(),
         acquired_from=acquisition.key,
-        controlled_ref=f"mdf-cpi-direct-content://{identity}:version/projection.json",
+        controlled_ref=f"mdf-content://{identity}:version",
         durable=True,
         replayable=True,
-        named_class="bls_provider_pct_changes_projection",
+        named_class="canonical_bls_response_and_projection_carrier",
     )
     version = DatasetVersion(
         identity + ":version",
@@ -742,4 +742,35 @@ def publish_offline_replay(
     kernel: CanonicalKernel, plan: DirectCpiReplayPlan
 ) -> Publication:
     require(plan.version.acquisitions == (), "bls_cpi_offline_acquisition_forbidden")
+    return kernel.publish(plan.publication_request)
+
+
+def persist_live_plan_before_publication(
+    kernel: CanonicalKernel, plan: DirectCpiLivePlan
+) -> DatasetVersion:
+    """Persist exact live lineage; the candidate binding remains inactive metadata."""
+    require(plan.run.kind == RunKind.COLLECT, "bls_cpi_live_collect_required")
+    require(
+        plan.binding_candidate == BLS_CPI_DIRECT_BINDING_CANDIDATE,
+        "bls_cpi_live_binding_candidate_mismatch",
+    )
+    require(
+        "candidate_only_not_active" in plan.binding_candidate.limitations,
+        "bls_cpi_live_binding_activation_forbidden",
+    )
+    for record in (
+        plan.source,
+        BLS_CPI_HEADLINES,
+        plan.binding_candidate,
+        plan.run,
+        plan.acquisition,
+        plan.raw_material,
+        plan.semantic_material,
+    ):
+        kernel.add(record)
+    return kernel.persist_version(plan.version, plan.content)
+
+
+def publish_live_plan(kernel: CanonicalKernel, plan: DirectCpiLivePlan) -> Publication:
+    """Publish only through the canonical kernel after live-plan persistence."""
     return kernel.publish(plan.publication_request)
