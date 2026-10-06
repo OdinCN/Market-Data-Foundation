@@ -19,11 +19,15 @@ from market_data_foundation.canonical.model import (
     require,
 )
 from market_data_foundation.historical.bls_cpi_direct import (
+    AUGUST_REFERENCE_CONTRACT,
     ENDPOINT,
     MAX_RESPONSE_BYTES,
     BlsCpiRequest,
     DirectCpiLiveEvidence,
     DirectCpiLivePlan,
+    DirectCpiReferenceContract,
+    ReferenceNotAvailable,
+    ReleaseCausation,
     build_future_live_plan,
     parse_response,
 )
@@ -37,10 +41,17 @@ _KEY_SHAPE = re.compile(r"[0-9A-Fa-f]{32}")
 class LiveExecutionError(RuntimeError):
     """Secret-safe terminal classification with an exact attempt count."""
 
-    def __init__(self, classification: str, provider_data_attempts: int) -> None:
+    def __init__(
+        self,
+        classification: str,
+        provider_data_attempts: int,
+        *,
+        http_status: int | None = None,
+    ) -> None:
         super().__init__(classification)
         self.classification = classification
         self.provider_data_attempts = provider_data_attempts
+        self.http_status = http_status
 
 
 @dataclass(frozen=True)
@@ -192,6 +203,8 @@ def execute_live_candidate(
     transport: Transport | None = None,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     identity_factory: Callable[[], object] = uuid4,
+    reference_contract: DirectCpiReferenceContract = AUGUST_REFERENCE_CONTRACT,
+    release_causation: ReleaseCausation | None = None,
 ) -> LiveExecutionCandidate:
     """Execute once and construct live evidence/plan from observed facts.
 
@@ -229,7 +242,7 @@ def execute_live_candidate(
     if 300 <= result.status < 400:
         raise LiveExecutionError("bls_live_redirect_rejected", 1)
     if result.status != 200:
-        raise LiveExecutionError("bls_live_http_failure", 1)
+        raise LiveExecutionError("bls_live_http_failure", 1, http_status=result.status)
     if len(result.body) > MAX_RESPONSE_BYTES:
         raise LiveExecutionError("bls_live_response_too_large", 1)
     if result.headers.get("content-encoding", "identity").lower() != "identity":
@@ -244,6 +257,7 @@ def execute_live_candidate(
             acquisition_identity=acquisition_identity,
             provider_data_attempts=1,
             controlled_external_receipt=receipt,
+            reference_contract=reference_contract,
         )
         finished_at = clock()
         frozen_at = clock()
@@ -252,7 +266,12 @@ def execute_live_candidate(
             identity="p4-bls-cpi-direct-live-" + token,
             finished_at=finished_at,
             frozen_at=frozen_at,
+            release_causation=release_causation,
         )
+    except ReferenceNotAvailable:
+        raise LiveExecutionError(
+            "bls_live_reference_not_available", 1, http_status=200
+        ) from None
     except ContractError:
         raise LiveExecutionError("bls_live_response_contract_failed", 1) from None
     directory = _write_artifacts(

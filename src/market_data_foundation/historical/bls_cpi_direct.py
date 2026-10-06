@@ -92,6 +92,10 @@ _CATALOG = {
 }
 
 
+class ReferenceNotAvailable(ContractError):
+    """An otherwise valid response does not contain the September target yet."""
+
+
 def _admit_reference_semantics(value: object) -> CpiReferenceSemantics:
     require(
         type(value) is CpiReferenceSemantics
@@ -275,12 +279,6 @@ def _rows(
     require(len(latest) <= 1, "bls_cpi_latest_invalid")
     if latest:
         require(latest[0] == max(rows), "bls_cpi_latest_not_latest_period")
-    for pointer in (
-        reference.reference_period,
-        reference.mom_comparison_period,
-        reference.yoy_comparison_period,
-    ):
-        require(pointer in rows, "bls_cpi_source_pointer_missing")
     return rows
 
 
@@ -336,6 +334,26 @@ def parse_response(
         series_id = item["seriesID"]
         _catalog(series_id, item["catalog"])
         by_series[series_id] = _rows(series_id, item["data"], reference)
+
+    target_presence = tuple(
+        reference.reference_period in rows for rows in by_series.values()
+    )
+    if reference == SEPTEMBER_REFERENCE_SEMANTICS:
+        if not any(target_presence):
+            raise ReferenceNotAvailable("bls_cpi_reference_not_available")
+        require(all(target_presence), "bls_cpi_reference_partial")
+    else:
+        require(all(target_presence), "bls_cpi_source_pointer_missing")
+    for rows in by_series.values():
+        require(
+            reference.mom_comparison_period in rows
+            and reference.yoy_comparison_period in rows,
+            (
+                "bls_cpi_comparison_period_missing"
+                if reference == SEPTEMBER_REFERENCE_SEMANTICS
+                else "bls_cpi_source_pointer_missing"
+            ),
+        )
 
     calculations = {}
     for name, (series_id, _meaning, months) in MEASURES.items():
@@ -709,12 +727,45 @@ class DirectCpiLivePlan:
     content: bytes
 
 
+@dataclass(frozen=True)
+class ReleaseCausation:
+    slot_identity: str
+    execution_identity: str
+    attempt: int
+    reference: str
+    release: datetime
+
+    def __post_init__(self) -> None:
+        require(bool(self.slot_identity), "bls_cpi_release_slot_identity_required")
+        require(
+            bool(self.execution_identity),
+            "bls_cpi_release_execution_identity_required",
+        )
+        require(
+            type(self.attempt) is int and self.attempt > 0,
+            "bls_cpi_release_attempt_invalid",
+        )
+        require(bool(self.reference), "bls_cpi_release_reference_required")
+        instant(self.release)
+
+    @property
+    def parameters(self) -> tuple[tuple[str, str], ...]:
+        return (
+            ("release_attempt", str(self.attempt)),
+            ("release_execution_identity", self.execution_identity),
+            ("release_instant", self.release.isoformat()),
+            ("release_reference", self.reference),
+            ("release_slot_identity", self.slot_identity),
+        )
+
+
 def build_future_live_plan(
     evidence: DirectCpiLiveEvidence,
     *,
     identity: str,
     finished_at: datetime,
     frozen_at: datetime,
+    release_causation: ReleaseCausation | None = None,
 ) -> DirectCpiLivePlan:
     """Model a future direct response; callers must supply actual live evidence."""
     require(
@@ -729,6 +780,23 @@ def build_future_live_plan(
     )
     require(bool(identity), "bls_cpi_identity_required")
     contract = _reference_contract(evidence.reference_contract)
+    if contract == SEPTEMBER_REFERENCE_CONTRACT:
+        require(
+            type(release_causation) is ReleaseCausation,
+            "bls_cpi_release_causation_required",
+        )
+        require(
+            release_causation.reference == contract.semantics.reference_period,
+            "bls_cpi_release_causation_reference_mismatch",
+        )
+    else:
+        require(
+            release_causation is None,
+            "bls_cpi_release_causation_not_admitted",
+        )
+    causation_parameters = (
+        release_causation.parameters if release_causation is not None else ()
+    )
     source = _source(contract)
     binding = _binding(contract, source)
     projection = parse_response(evidence.raw_bytes, reference=contract.semantics)
@@ -738,7 +806,8 @@ def build_future_live_plan(
         (
             ("parser_revision", contract.parser_revision),
             ("request_identity", evidence.request_identity),
-        ),
+        )
+        + causation_parameters,
     )
     run = DataRun(
         identity + ":run",
@@ -749,7 +818,11 @@ def build_future_live_plan(
         "success",
         binding=binding.key,
         transform=transform,
-        trigger="future_explicitly_authorized_direct_bls_v2_request",
+        trigger=(
+            "prebound_september_2026_cpi_release_slot"
+            if release_causation is not None
+            else "future_explicitly_authorized_direct_bls_v2_request"
+        ),
         budget=1,
     )
     acquisition = AcquisitionOccurrence(
@@ -763,7 +836,8 @@ def build_future_live_plan(
         tuple(
             (key, _encode(value).decode())
             for key, value in sorted(evidence.request.persisted().items())
-        ),
+        )
+        + causation_parameters,
         evidence.requested_at,
         evidence.obtained_at,
         None,

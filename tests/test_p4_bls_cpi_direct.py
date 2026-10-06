@@ -305,6 +305,16 @@ def test_september_parser_fails_closed_on_target_or_comparison_drift(mutation):
         )
 
 
+def test_september_parser_classifies_partial_target_presence_distinctly():
+    payload = september_response()
+    payload["Results"]["series"][0]["data"].pop(0)
+    with pytest.raises(ContractError, match="bls_cpi_reference_partial"):
+        direct.parse_response(
+            encode(payload),
+            reference=retained.SEPTEMBER_REFERENCE_SEMANTICS,
+        )
+
+
 def test_provider_credential_echo_fails_closed():
     payload = response()
     payload["registrationKey"] = "must-not-persist"
@@ -461,6 +471,13 @@ def test_september_live_plan_metadata_agrees_and_candidate_is_inactive():
         identity="bls-cpi-release-reference-2026-09",
         finished_at=BASE + timedelta(seconds=2),
         frozen_at=BASE + timedelta(seconds=3),
+        release_causation=direct.ReleaseCausation(
+            "CPI/2026-09/2026-10-14T12:30:00Z",
+            "mdf-bls-cpi-release-2026-09",
+            1,
+            "2026-09",
+            datetime(2026, 10, 14, 12, 30, tzinfo=UTC),
+        ),
     )
     content = json.loads(candidate.content)
     assert candidate.source == direct.BLS_CPI_SEPTEMBER_RELEASE_SOURCE_CANDIDATE
