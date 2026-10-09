@@ -21,6 +21,12 @@ from .model import (
     require,
 )
 from .repository import prepare_publication
+from .retained_restore import (
+    RestoreBinding,
+    RetainedExactGraph,
+    check_restore_target,
+    validate_exact_graph,
+)
 
 _SCHEMA = re.compile(
     r"^(?:mdf_p3_canonical_kernel_r1_[a-z0-9_]+|"
@@ -201,6 +207,67 @@ class PostgresLedger:
         # Exiting the outermost transaction confirms COMMIT. Nothing is returned
         # from inside it, and a caller commit/rollback cannot affect this decision.
         return publication
+
+    def restore_exact_graph(
+        self,
+        graph: RetainedExactGraph,
+        binding: RestoreBinding,
+        readback: bytes,
+    ) -> Publication:
+        """Atomically import one approved historical graph on an idle connection.
+
+        Caller must first approve the retained proof window and its digests.
+        There is no new decision clock or durability/availability claim. A
+        commit/transport error returns no Publication; retry the identical
+        bound graph on a fresh connection to reconcile the original occurrence.
+        """
+        require(
+            self.connection.info.transaction_status == TransactionStatus.IDLE,
+            "restore_connection_not_idle",
+        )
+        candidate = validate_exact_graph(graph, binding, readback)
+        with self.connection.transaction():
+            self.connection.execute(
+                sql.SQL(
+                    "LOCK TABLE {}.records, {}.contents, {}.publications "
+                    "IN SHARE ROW EXCLUSIVE MODE"
+                ).format(*[sql.Identifier(self.schema)] * 3)
+            )
+            publication = graph.publication
+            expected = (
+                publication.request.identity,
+                publication.request.occurrence,
+                publication.request.version.identity,
+                publication.decision_at,
+                dumps(publication),
+            )
+            rows = self.connection.execute(
+                sql.SQL("""
+                    SELECT identity, occurrence, version_identity, decision_at, payload
+                    FROM {}.publications
+                    WHERE identity = %s OR occurrence = %s OR version_identity = %s
+                """).format(sql.Identifier(self.schema)),
+                expected[:3],
+            ).fetchall()
+            require(
+                rows == [] or rows == [expected],
+                "restore_publication_index_conflict",
+            )
+            check_restore_target(self, graph)
+            for record in graph.records:
+                self.put(record)
+            self.put_content(candidate.get(graph.version), graph.content)
+            if self.get(graph.publication.key) is None:
+                self.connection.execute(
+                    sql.SQL("""
+                        INSERT INTO {}.publications
+                            (identity, occurrence, version_identity,
+                             decision_at, payload)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """).format(sql.Identifier(self.schema)),
+                    expected,
+                )
+        return graph.publication
 
     def put_content(self, version: DatasetVersion, content: bytes) -> None:
         require(type(content) is bytes, "mutable_content")
