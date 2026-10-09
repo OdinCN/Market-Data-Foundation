@@ -5,13 +5,15 @@ does not establish an authentication boundary or expose a public wire mode.
 """
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from datetime import datetime
+from enum import StrEnum
 
 from market_data_foundation.domain_contracts.dense_market import RAW_DAILY_BARS
 from market_data_foundation.domain_contracts.macro import BLS_CPI_HEADLINES
 
 from .consumer_read import (
+    ReadContractError,
     ReadFailure,
     _classified,
     _definition,
@@ -36,6 +38,106 @@ from .model import (
 )
 from .repository import Ledger
 from .rules import validate_record
+
+# Fixed operator-only limits. Ledger calls materialize before these checks;
+# these are application work units, not backend IO/memory/CPU/time guarantees.
+_MAX_VERSIONS = 128
+_MAX_PUBLICATIONS = 512
+_MAX_LINEAGE_RECORDS = 2048
+_MAX_RESOLUTIONS = 32768
+_MAX_METADATA_NODES = 1048576
+_MAX_TEXT_CHARACTERS = 4194304
+_MAX_STRING_CHARACTERS = 16384
+_MAX_COLLECTION_ITEMS = 4096
+_MAX_METADATA_DEPTH = 32
+
+
+class OperatorFailure(StrEnum):
+    QUERY_BUDGET_EXCEEDED = "operator_query_budget_exceeded"
+
+
+class OperatorQueryBudgetError(ReadContractError):
+    """Operator-only classification; never added to the public wire contract."""
+
+    def __init__(self) -> None:
+        self.classification = OperatorFailure.QUERY_BUDGET_EXCEEDED
+        Exception.__init__(self, self.classification.value)
+
+
+def _bounded(value: int, limit: int) -> None:
+    if value > limit:
+        raise OperatorQueryBudgetError() from None
+
+
+@dataclass
+class _WorkBudget:
+    publications: int = 0
+    lineage_records: int = 0
+    resolutions: int = 0
+    metadata_nodes: int = 0
+    text_characters: int = 0
+
+    def take(self, name: str, count: int, limit: int) -> None:
+        value = getattr(self, name) + count
+        _bounded(value, limit)
+        setattr(self, name, value)
+
+    def metadata(self, value: object, depth: int = 0) -> None:
+        # Check shape before canonical validators, equality, sorting, digest
+        # projection or recursive immutable_shape can traverse large metadata.
+        # Count repeated occurrences too; no identity dedup hides repeated work.
+        _bounded(depth, _MAX_METADATA_DEPTH)
+        self.take("metadata_nodes", 1, _MAX_METADATA_NODES)
+        if isinstance(value, str):
+            # Use the built-in payload length, bypassing subclass __len__.
+            # This also preserves canonical StrEnum metadata without conversion.
+            characters = str.__len__(value)
+            _bounded(characters, _MAX_STRING_CHARACTERS)
+            self.take("text_characters", characters, _MAX_TEXT_CHARACTERS)
+        elif value is None or isinstance(value, (bool, datetime)):
+            return
+        elif type(value) is int:
+            _bounded(value.bit_length(), 64)
+        elif type(value) in (tuple, frozenset):
+            _bounded(len(value), _MAX_COLLECTION_ITEMS)
+            for item in value:
+                self.metadata(item, depth + 1)
+        elif is_dataclass(value) and not isinstance(value, type):
+            for field in fields(value):
+                self.metadata(getattr(value, field.name), depth + 1)
+        else:
+            raise ContractError("invalid_metadata_shape")
+
+
+@dataclass
+class _BudgetedReads:
+    ledger: Ledger
+    budget: _WorkBudget
+
+    def get(self, key: Key) -> Record | None:
+        self.budget.take("resolutions", 1, _MAX_RESOLUTIONS)
+        self.budget.metadata(key)
+        record = self.ledger.get(key)
+        self.budget.metadata(record)
+        return record
+
+    def versions_for_definition(self, definition: Key) -> tuple[DatasetVersion, ...]:
+        versions = self.ledger.versions_for_definition(definition)
+        if type(versions) is not tuple:
+            _fail(ReadFailure.STORAGE_UNAVAILABLE)
+        if versions:
+            _bounded(len(versions), _MAX_VERSIONS)
+            self.budget.metadata(versions)
+        return versions
+
+    def publications_for_version(self, version: Key) -> tuple[Publication, ...]:
+        history = self.ledger.publications_for_version(version)
+        if type(history) is not tuple:
+            _fail(ReadFailure.PUBLICATION_STATE_INVALID)
+        if history:
+            self.budget.take("publications", len(history), _MAX_PUBLICATIONS)
+            self.budget.metadata(history)
+        return history
 
 
 @dataclass(frozen=True)
@@ -104,13 +206,16 @@ def _validated_binding(
     definition: DatasetDefinition,
     version: DatasetVersion,
     history: tuple[Publication, ...],
+    budget: _WorkBudget,
 ) -> SourceBindingRevision | None:
     def validate() -> SourceBindingRevision | None:
         records: dict[Key, Record] = {}
         pending: deque[Record] = deque()
 
         def resolve(key: Key) -> Record:
+            budget.take("resolutions", 1, _MAX_RESOLUTIONS)
             if key not in records:
+                budget.take("lineage_records", 1, _MAX_LINEAGE_RECORDS)
                 record = ledger.get(key)
                 if record is None or record.key != key:
                     raise ContractError("resolver_record_key_mismatch")
@@ -134,7 +239,9 @@ def _validated_binding(
     return _classified(validate, ReadFailure.LINEAGE_MISSING_OR_MISMATCHED)
 
 
-def _inspect(ledger: Ledger, definition_key: Key, as_of: datetime) -> AsOfDiagnostic:
+def _inspect(
+    ledger: _BudgetedReads, definition_key: Key, as_of: datetime
+) -> AsOfDiagnostic:
     definition = _definition(ledger, definition_key)
     if definition.key != definition_key or definition not in (
         BLS_CPI_HEADLINES,
@@ -183,7 +290,9 @@ def _inspect(ledger: Ledger, definition_key: Key, as_of: datetime) -> AsOfDiagno
         for publication in history:
             if _get(ledger, publication.key) != publication:
                 _fail(ReadFailure.PUBLICATION_STATE_INVALID)
-        binding = _validated_binding(ledger, definition, version, history)
+        binding = _validated_binding(
+            ledger, definition, version, history, ledger.budget
+        )
         effective = _effective_publication(history, as_of)
         if not history:
             state = "no_publication"
@@ -217,7 +326,7 @@ def _inspect(ledger: Ledger, definition_key: Key, as_of: datetime) -> AsOfDiagno
         if eligible_count > 1
         else "one_publication_candidate"
     )
-    return AsOfDiagnostic(
+    diagnostic = AsOfDiagnostic(
         definition=definition_key,
         as_of=as_of,
         selection_outcome=outcome,
@@ -225,6 +334,8 @@ def _inspect(ledger: Ledger, definition_key: Key, as_of: datetime) -> AsOfDiagno
         temporal_semantics=definition.temporal_semantics,
         completeness_semantics=definition.completeness_semantics,
     )
+    ledger.budget.metadata(diagnostic)
+    return diagnostic
 
 
 def inspect_as_of(
@@ -238,5 +349,6 @@ def inspect_as_of(
     """
     _classified(lambda: instant(as_of), ReadFailure.INVALID_AS_OF)
     return _classified(
-        lambda: _inspect(ledger, definition, as_of), ReadFailure.STORAGE_UNAVAILABLE
+        lambda: _inspect(_BudgetedReads(ledger, _WorkBudget()), definition, as_of),
+        ReadFailure.STORAGE_UNAVAILABLE,
     )

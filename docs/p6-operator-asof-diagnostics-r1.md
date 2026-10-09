@@ -48,3 +48,54 @@ zero/one/multiple candidates, all three time boundaries, transitions, corrupt
 enumerations and lineage, redaction, read-only behavior, and public-wire isolation.
 Independent professional review and any conditional Git delivery remain separate
 gates owned by MDF Product Control.
+
+The operator helper now admits work within fixed per-call application budgets:
+
+| Work unit | Inclusive maximum |
+| --- | ---: |
+| Enumerated candidate Versions | 128 |
+| Publication entries across all candidate histories | 512 |
+| Newly resolved lineage records across candidate closures | 2,048 |
+| Ledger `get` calls plus pinned resolver invocations, including cache hits | 32,768 |
+| Metadata value visits across readback and final diagnostic projection | 1,048,576 |
+| String characters across those visits | 4,194,304 |
+| Characters in any one string | 16,384 |
+| Entries in any one tuple or frozenset | 4,096 |
+| Nested metadata depth (root is zero) | 32 |
+
+Integer metadata also fits within 64 magnitude bits. Repeated readbacks, closure
+records and metadata occurrences count again, including records shared between
+candidates. String accounting uses the built-in `str.__len__` payload length,
+bypassing custom subclass length and string conversion methods. This preserves
+ordinary strings and canonical StrEnum values while enforcing both per-string and
+aggregate character limits on readbacks, transitive DataRun metadata and the final
+Version diagnostic projection. All counters reset for each inspection.
+The limits are operator policy,
+not DatasetDefinition coverage or consumer read limits. A legitimate larger query
+is rejected rather than truncated; it needs a separately reviewed operator policy.
+There is no caller override or pagination. Reference graphs remain iteratively
+validated with pinned records; legitimate assessment backreferences terminate.
+Deep or cyclic object shapes stop before recursive canonical validation. Exact
+built-in tuple enumeration is required so unaccountable iterators are rejected.
+
+Any exceeded budget raises `OperatorQueryBudgetError`, a `ReadContractError`
+subclass carrying only the operator classification
+`operator_query_budget_exceeded`. It is absent from the public consumer error
+vocabulary and `mdf.consumer.read.v1`. Corruption retains classified fail-closed
+behavior. Earlier candidates and intermediate projections never escape a failed
+call, including failure during the final metadata accounting pass. These limits
+also cover metadata omitted from the result because canonical lineage validation
+must examine it. Existing private-locator redaction and unobservable states remain.
+
+**Capability limitation:** `Ledger.versions_for_definition` first materializes the
+complete tuple. InMemoryLedger scans/decodes/sorts records; PostgreSQL currently
+`fetchall()`s Version records and decodes them before definition filtering.
+Publication histories likewise materialize before application checks, and each
+record read has backend cost. The checks only bound admitted work after each
+readback, before application sorting, validation or projection of that readback.
+They do not bound backend IO, pre-materialization memory, CPU, wall-clock time,
+wire bytes or a production SLA. Shared canonical validators may revisit bounded
+metadata; these counters are explicit application units, not instruction counts.
+A backend limit, paginated capability or service timeout requires independent
+capability evidence and authority; this candidate does not alter Ledger or SQL.
+Operator caller eligibility and snapshot consistency remain external prerequisites.
