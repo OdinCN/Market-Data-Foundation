@@ -36,11 +36,16 @@ from .model import (
     SourceBindingRevision,
     instant,
 )
+from .operator_reads import (
+    OperatorReadAdmissionError,
+    OperatorReads,
+    OperatorReadSource,
+)
 from .repository import Ledger
 from .rules import validate_record
 
-# Fixed operator-only limits. Ledger calls materialize before these checks;
-# these are application work units, not backend IO/memory/CPU/time guarantees.
+# Application limits remain independent of serialized producer admission.
+# Neither policy proves physical backend IO/memory/CPU/time guarantees.
 _MAX_VERSIONS = 128
 _MAX_PUBLICATIONS = 512
 _MAX_LINEAGE_RECORDS = 2048
@@ -111,18 +116,26 @@ class _WorkBudget:
 
 @dataclass
 class _BudgetedReads:
-    ledger: Ledger
+    ledger: OperatorReads
     budget: _WorkBudget
+
+    def _read(self, method, *args):
+        try:
+            return method(*args)
+        except OperatorReadAdmissionError:
+            raise OperatorQueryBudgetError() from None
 
     def get(self, key: Key) -> Record | None:
         self.budget.take("resolutions", 1, _MAX_RESOLUTIONS)
         self.budget.metadata(key)
-        record = self.ledger.get(key)
+        record = self._read(self.ledger.get, key)
         self.budget.metadata(record)
         return record
 
     def versions_for_definition(self, definition: Key) -> tuple[DatasetVersion, ...]:
-        versions = self.ledger.versions_for_definition(definition)
+        versions = self._read(
+            self.ledger.versions_for_definition, definition, _MAX_VERSIONS
+        )
         if type(versions) is not tuple:
             _fail(ReadFailure.STORAGE_UNAVAILABLE)
         if versions:
@@ -131,7 +144,11 @@ class _BudgetedReads:
         return versions
 
     def publications_for_version(self, version: Key) -> tuple[Publication, ...]:
-        history = self.ledger.publications_for_version(version)
+        history = self._read(
+            self.ledger.publications_for_version,
+            version,
+            _MAX_PUBLICATIONS - self.budget.publications,
+        )
         if type(history) is not tuple:
             _fail(ReadFailure.PUBLICATION_STATE_INVALID)
         if history:
@@ -339,7 +356,7 @@ def _inspect(
 
 
 def inspect_as_of(
-    ledger: Ledger, definition: Key, *, as_of: datetime
+    ledger: OperatorReadSource, definition: Key, *, as_of: datetime
 ) -> AsOfDiagnostic:
     """Inspect all exact-definition metadata or fail closed with a classification.
 
@@ -349,6 +366,8 @@ def inspect_as_of(
     """
     _classified(lambda: instant(as_of), ReadFailure.INVALID_AS_OF)
     return _classified(
-        lambda: _inspect(_BudgetedReads(ledger, _WorkBudget()), definition, as_of),
+        lambda: _inspect(
+            _BudgetedReads(ledger.operator_reads(), _WorkBudget()), definition, as_of
+        ),
         ReadFailure.STORAGE_UNAVAILABLE,
     )

@@ -54,6 +54,12 @@ class PostgresLedger:
         self.connection = connection
         self.schema = validate_schema(schema)
 
+    def operator_reads(self):
+        """Create an operator read session; caller supplies snapshot consistency."""
+        from .operator_reads import PostgresOperatorReads
+
+        return PostgresOperatorReads(self.connection, self.schema)
+
     def namespace_exists(self) -> bool:
         row = self.connection.execute(
             "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = %s)",

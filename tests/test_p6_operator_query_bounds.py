@@ -17,10 +17,9 @@ from market_data_foundation.canonical.model import (
     Key,
     Kind,
 )
-from market_data_foundation.canonical.repository import InMemoryLedger
 from market_data_foundation.domain_contracts.dense_market import RAW_DAILY_BARS
 from tests.test_p6_consumer_read import BASE, _seed_daily
-from tests.test_p6_operator_asof import AT, _store
+from tests.test_p6_operator_asof import AT, _OperatorDouble, _store
 
 
 def _inspect(ledger):
@@ -80,11 +79,11 @@ def _history(ledger, plan, initial, size):
 
 
 @pytest.mark.parametrize("size", [128, 129])
-def test_default_candidate_boundary_after_full_materialization(size):
+def test_default_candidate_boundary_with_producer_admission(size):
     ledger, plan = _unpublished()
     for number in range(1, size):
         _store(ledger, replace(plan.version, identity=f"version:{number:04d}"))
-    # The backend has already returned all versions before application admission.
+    # The legacy API is unchanged; the operator uses separate producer admission.
     assert len(ledger.versions_for_definition(RAW_DAILY_BARS.key)) == size
     if size == 129:
         _budget_failure(ledger)
@@ -250,7 +249,7 @@ def test_oversized_malicious_enumeration_is_rejected_before_item_access(kind):
         def __getattribute__(self, name):
             raise AssertionError("private item must never be visited")
 
-    class Malicious(InMemoryLedger):
+    class Malicious(_OperatorDouble):
         def versions_for_definition(self, definition):
             if kind == "versions":
                 return (Explosive(),) * 129
@@ -271,7 +270,7 @@ def test_unaccountable_tuple_subclass_is_rejected_without_iteration(kind):
         def __iter__(self):
             raise AssertionError("untrusted iteration must never execute")
 
-    class Malicious(InMemoryLedger):
+    class Malicious(_OperatorDouble):
         def versions_for_definition(self, definition):
             values = super().versions_for_definition(definition)
             return MaliciousTuple(values) if kind == "versions" else values
@@ -304,7 +303,7 @@ def test_malicious_metadata_shape_never_reaches_recursive_canonical_validation(s
     else:
         malformed = replace(run, trigger=["private"])
 
-    class Corrupt(InMemoryLedger):
+    class Corrupt(_OperatorDouble):
         def get(self, key):
             return malformed if key == run.key else super().get(key)
 
@@ -394,7 +393,7 @@ def test_string_subclass_readback_uses_real_character_boundary(text_type, size, 
     )
     readback_run = replace(run, trigger=text) if field == "run_trigger" else run
 
-    class CustomReadback(InMemoryLedger):
+    class CustomReadback(_OperatorDouble):
         def get(self, key):
             if key == version.key:
                 return version

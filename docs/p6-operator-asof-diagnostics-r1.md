@@ -87,15 +87,77 @@ call, including failure during the final metadata accounting pass. These limits
 also cover metadata omitted from the result because canonical lineage validation
 must examine it. Existing private-locator redaction and unobservable states remain.
 
-**Capability limitation:** `Ledger.versions_for_definition` first materializes the
-complete tuple. InMemoryLedger scans/decodes/sorts records; PostgreSQL currently
-`fetchall()`s Version records and decodes them before definition filtering.
-Publication histories likewise materialize before application checks, and each
-record read has backend cost. The checks only bound admitted work after each
-readback, before application sorting, validation or projection of that readback.
-They do not bound backend IO, pre-materialization memory, CPU, wall-clock time,
-wire bytes or a production SLA. Shared canonical validators may revisit bounded
-metadata; these counters are explicit application units, not instruction counts.
-A backend limit, paginated capability or service timeout requires independent
-capability evidence and authority; this candidate does not alter Ledger or SQL.
-Operator caller eligibility and snapshot consistency remain external prerequisites.
+The producer-read admission candidate adds a required, operator-only
+`operator_reads()` capability to the two concrete ledgers. Each inspection creates
+a fresh read session and uses it for Definition, Version, Publication and every
+lineage `get`. A ledger lacking that capability fails `storage_unavailable`; no
+legacy unbounded read fallback occurs. The public Ledger/consumer APIs, codec,
+wire contract and canonical storage schema remain unchanged. Tests that inject
+already-decoded application faults now explicitly supply a narrow test capability.
+
+| Producer admission unit | Inclusive maximum |
+| --- | ---: |
+| All serialized Version rows, including other definitions | 128 |
+| Publication entries across requested candidate histories | 512 |
+| One serialized payload in UTF-8 bytes | 1,048,576 (1 MiB) |
+| Serialized payload bytes admitted across the session | 67,108,864 (64 MiB) |
+| JSON lexical container nesting before parsing/decoding | 64 |
+| Dictionary slots visited across memory enumeration scans | 65,536 |
+
+These are fixed operator policy, with no caller override. Repeated exact reads
+count their bytes again. Whole bounded batches pass size, cumulative bytes and
+lexical depth checks before any `json.loads` or canonical `decode` in that batch.
+The depth scan ignores quoted and escaped brackets. String character length is
+checked before UTF-8 encoding to bound its temporary allocation; multibyte byte
+length is then checked independently. Invalid encoding retains existing contextual
+classifications. Any producer overflow becomes `operator_query_budget_exceeded`
+and rejects the entire inspection, including earlier candidate projections.
+Original application budgets still apply independently after decode.
+
+InMemoryLedger visits dictionary entries incrementally, counting entries of every
+kind before collecting at most 128 Version payload references. It rejects a 129th
+Version before any batch decode or sorting, even if that row belongs to another
+definition. Its first history read admits a complete global batch of at most 512
+Publication payloads and decodes it once into the session cache; subsequent
+histories filter that admitted cache and enforce the remaining shared application
+allowance. A 513th global Publication stops before any history decode. This is
+conservative: unrelated definitions, Publications and dictionary entries can
+reject an otherwise small requested query. Cache creation is read-only and does
+not create snapshot consistency; exact readbacks still check the enumerated data.
+
+PostgresLedger has no separate definition column. The narrow Version query thus
+limits the whole Version kind to 128 plus one overflow row, then filters admitted
+records by definition in Python. Each Publication query uses the remaining shared
+512 allowance plus one probe, including a one-row probe when no allowance remains.
+Exact `get` predicates preserve kind/identity/revision in records, or Publication
+identity in its existing table; consumer/operator checks still verify payload Keys.
+
+One SQL statement materializes a limited batch, computes count, largest UTF-8
+payload bytes and total UTF-8 payload bytes with `convert_to`, and gates every
+returned payload with `CASE`. If any row-count, single-byte or remaining-byte
+condition fails, the statement projects only NULL payloads and bounded scalar
+markers. No overflow payload is exposed as a partial successful batch. The Python
+side rechecks returned lengths and bytes, runs lexical preflight, and only then
+calls the codec. `fetchall()` now consumes that limited projected result; it is
+not a claim about the database's intermediate materialization. Complete admitted
+Versions/histories are sorted in Python without trimming or selecting only eligible
+candidates. These SQL statements perform reads only and introduce no migrations,
+indexes, paging, service timeouts or transaction snapshot management.
+
+**Capability limitation / B-END-TO-END-READ-CAPABILITY remains STOP:** offline SQL
+doubles assert query structure and modeled return/decoding order. They do not
+execute PostgreSQL and cannot prove real server or driver transfer behavior. The
+SQL expresses bounded returned rows and payload projection; real dependency and
+synthetic PostgreSQL qualification requires separate authority and evidence.
+The statement requires PostgreSQL's `AS MATERIALIZED` CTE support (PostgreSQL 12
+or later); an unsupported server fails classified without a legacy SQL fallback.
+The offline environment uses the existing locked psycopg 3.3.6 and Python 3.14.8;
+no database server version or execution plan was observed in this candidate.
+LIMIT does not bound physical table/index scans, TOAST access/decompression,
+`convert_to`/aggregate CPU, server intermediates, planner work, locks, elapsed time,
+process memory or a production SLA. Serialized payload limits omit wire protocol
+and scalar marker overhead; decoded allocation and validator revisits are not
+instruction or heap bounds. The new admission narrows producer return/decode work;
+it does not establish an end-to-end backend resource guarantee. Operator caller
+eligibility and consistent read context remain external prerequisites. Independent
+revision-bound professional review and any Git delivery remain separate gates.

@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -38,6 +39,33 @@ from tests.test_p6_consumer_read import (
 from tests.test_p6_consumer_wire import _as_of_request
 
 AT = BASE + timedelta(seconds=20)
+
+
+class _OperatorDouble(InMemoryLedger):
+    """Explicit narrow-capability faults for application/semantic tests only.
+
+    Production never falls back to legacy reads. These doubles deliberately
+    inject decoded values or failures after the separate producer boundary.
+    """
+
+    def operator_reads(self):
+        bounded = super().operator_reads()
+        overrides = type(self)
+        return SimpleNamespace(
+            get=self.get if overrides.get != InMemoryLedger.get else bounded.get,
+            versions_for_definition=(
+                lambda key, maximum: self.versions_for_definition(key)
+            )
+            if overrides.versions_for_definition
+            != InMemoryLedger.versions_for_definition
+            else bounded.versions_for_definition,
+            publications_for_version=(
+                lambda key, maximum: self.publications_for_version(key)
+            )
+            if overrides.publications_for_version
+            != InMemoryLedger.publications_for_version
+            else bounded.publications_for_version,
+        )
 
 
 def _store(ledger, record):
@@ -195,7 +223,7 @@ def test_withdraw_restore_supersede_keep_history_and_delayed_effects():
 def test_binding_record_does_not_prove_activation_health_freshness_or_admission():
     ledger, plan, _publication = _seed_bound_cpi()
 
-    class MetadataOnlyLedger(InMemoryLedger):
+    class MetadataOnlyLedger(_OperatorDouble):
         def get_content(self, *_args):
             raise AssertionError("operator must not fetch content")
 
@@ -292,7 +320,7 @@ def test_invalid_candidate_enumeration_returns_no_partial_projection(case):
         "unresolved": (other,),
     }[case]
 
-    class BadEnumeration(InMemoryLedger):
+    class BadEnumeration(_OperatorDouble):
         def versions_for_definition(self, _definition):
             return values
 
@@ -358,7 +386,7 @@ def test_invalid_publication_history_is_not_projected(case):
 def test_storage_and_lineage_exceptions_expose_only_classification(stage):
     ledger, plan, _publication = _seed_bound_cpi()
 
-    class Broken(InMemoryLedger):
+    class Broken(_OperatorDouble):
         def get(self, key):
             if (stage == "definition" and key == BLS_CPI_HEADLINES.key) or (
                 stage == "lineage" and key == plan.source.key
@@ -422,7 +450,7 @@ def test_invalid_history_enumeration_returns_no_partial_projection(case):
         "unresolved": (replace(publication, decision_at=BASE), terminal),
     }[case]
 
-    class BadHistory(InMemoryLedger):
+    class BadHistory(_OperatorDouble):
         def publications_for_version(self, _version):
             return values
 
@@ -439,7 +467,7 @@ def test_corrupt_second_candidate_rejects_entire_inspection():
 
 
 def test_resolver_cannot_substitute_the_other_accepted_definition():
-    class WrongDefinition(InMemoryLedger):
+    class WrongDefinition(_OperatorDouble):
         def get(self, _key):
             return BLS_CPI_HEADLINES
 

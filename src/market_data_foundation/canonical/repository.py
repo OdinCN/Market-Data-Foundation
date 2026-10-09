@@ -117,6 +117,12 @@ class InMemoryLedger:
         self._contents = {}
         self._publication_occurrences = {}
 
+    def operator_reads(self):
+        """Create a fresh operator-only serialized admission session."""
+        from .operator_reads import MemoryOperatorReads
+
+        return MemoryOperatorReads(self._records)
+
     def get(self, key: Key) -> Record | None:
         payload = self._records.get(_key_tuple(key))
         if payload is None:
