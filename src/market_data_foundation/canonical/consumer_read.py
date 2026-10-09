@@ -29,7 +29,7 @@ from .model import (
     instant,
 )
 from .repository import Ledger
-from .rules import validate_record
+from .rules import Resolver, validate_record
 
 _ADMITTED_DEFINITIONS = frozenset({BLS_CPI_HEADLINES.key, RAW_DAILY_BARS.key})
 _T = TypeVar("_T")
@@ -314,7 +314,9 @@ def _lineage(
     ledger: Ledger,
     definition: DatasetDefinition,
     version: DatasetVersion,
-    publication: Publication,
+    publication: Publication | None,
+    *,
+    resolver: Resolver | None = None,
 ) -> tuple[
     SourceBindingRevision | None,
     SourceOperationRef | None,
@@ -327,11 +329,12 @@ def _lineage(
         tuple[AcquisitionOccurrence, ...],
         tuple[EvidenceMaterial, ...],
     ]:
-        resolve = ledger.get
+        resolve = ledger.get if resolver is None else resolver
 
         validate_record(definition, resolve)
         validate_record(version, resolve)
-        validate_record(publication, resolve)
+        if publication is not None:
+            validate_record(publication, resolve)
 
         binding: SourceBindingRevision | None = None
         source: SourceOperationRef | None = None
@@ -364,7 +367,7 @@ def _lineage(
                 (
                     *version.materials,
                     *version.quality_evidence,
-                    *publication.request.evidence,
+                    *(publication.request.evidence if publication is not None else ()),
                 )
             )
         )
