@@ -75,7 +75,7 @@ class SQLDouble:
                 value = self.records.get(filters)
                 candidates = [] if value is None else [value]
             else:
-                assert filters == (Kind.VERSION.value,)
+                assert filters in ((Kind.VERSION.value,), (Kind.BINDING.value,))
                 candidates = [p for k, p in self.records.items() if k[0] == filters[0]]
         candidates = candidates[:probe]
         sizes = [len(p.encode("utf-8")) for p in candidates]

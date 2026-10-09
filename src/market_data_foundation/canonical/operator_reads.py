@@ -6,9 +6,18 @@ from typing import Protocol
 from psycopg import sql
 
 from .codec import loads
-from .model import DatasetVersion, Key, Kind, Publication, Record, require
+from .model import (
+    DatasetVersion,
+    Key,
+    Kind,
+    Publication,
+    Record,
+    SourceBindingRevision,
+    require,
+)
 
 MAX_VERSIONS = 128
+MAX_BINDINGS = 128
 MAX_PUBLICATIONS = 512
 MAX_PAYLOAD_BYTES = 1048576
 MAX_TOTAL_BYTES = 67108864
@@ -27,6 +36,8 @@ def _limit(value: int, maximum: int) -> None:
 
 class OperatorReads(Protocol):
     def get(self, key: Key) -> Record | None: ...
+
+    def binding_candidates(self, maximum: int) -> tuple[SourceBindingRevision, ...]: ...
 
     def versions_for_definition(
         self, definition: Key, maximum: int
@@ -143,6 +154,14 @@ class MemoryOperatorReads:
             )
         )
 
+    def binding_candidates(self, maximum: int) -> tuple[SourceBindingRevision, ...]:
+        values = self._kind(Kind.BINDING, min(maximum, MAX_BINDINGS))
+        require(
+            all(isinstance(v, SourceBindingRevision) for v in values),
+            "stored_binding_invalid",
+        )
+        return values
+
     def publications_for_version(
         self, version: Key, maximum: int
     ) -> tuple[Publication, ...]:
@@ -242,6 +261,22 @@ class PostgresOperatorReads:
                 key=lambda v: v.identity,
             )
         )
+
+    def binding_candidates(self, maximum: int) -> tuple[SourceBindingRevision, ...]:
+        payloads = self._payloads(
+            "records",
+            sql.SQL("kind = %s"),
+            (Kind.BINDING.value,),
+            min(maximum, MAX_BINDINGS),
+        )
+        values = tuple(loads(p) for p in payloads)
+        require(
+            all(isinstance(v, SourceBindingRevision) for v in values),
+            "stored_binding_invalid",
+        )
+        # The inventory checks duplicates and exact-key readbacks for every row,
+        # including unrelated candidates, before filtering any mapping scope.
+        return values
 
     def publications_for_version(
         self, version: Key, maximum: int
