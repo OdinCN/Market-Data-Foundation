@@ -60,6 +60,12 @@ class PostgresLedger:
 
         return PostgresOperatorReads(self.connection, self.schema)
 
+    def operator_snapshot(self):
+        """Own a read-only repeatable-read scope on an exclusively held connection."""
+        from .operator_snapshot import operator_snapshot
+
+        return operator_snapshot(self.connection, self.schema)
+
     def namespace_exists(self) -> bool:
         row = self.connection.execute(
             "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = %s)",

@@ -39,6 +39,9 @@ with a stable `ReadContractError` classification; no partial projection or raw
 exception is returned. Raw content, receipts, controlled locators and Publication
 reasons are omitted. Callers must provide a consistent read context; this helper
 does not create a transactional snapshot or prove a service is available.
+PostgresLedger callers can explicitly use the
+[Operator snapshot candidate](p6-operator-consistent-snapshot-r1.md) to supply
+that context; the default query entry remains unchanged.
 
 The shared helper permits internal lineage validation without a Publication for
 unpublished candidates and an internal resolver override for operator validation.

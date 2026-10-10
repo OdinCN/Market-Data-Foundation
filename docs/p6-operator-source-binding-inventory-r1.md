@@ -4,6 +4,8 @@
 an operator-only, in-process metadata read. The caller supplies authorization
 and a consistent storage snapshot. The exact Definition must be the canonical
 `mdf.macro.bls.cpi.headlines@p3-r1` or `mdf.market.bars.daily.raw@p3-r1`.
+PostgresLedger callers can explicitly supply the transaction context with the
+[Operator snapshot candidate](p6-operator-consistent-snapshot-r1.md).
 
 The result contains the unchanged Definition and stored binding revisions whose
 mappings reference that exact Definition, including bindings with no Version or
