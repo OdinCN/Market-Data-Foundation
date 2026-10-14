@@ -12,6 +12,44 @@ The only product additions are this document,
 `tests/test_p5_go_tdx_watchlist_source_adapter.py`. Snapshot, Ingress and Periodic
 implementations remain unchanged. There are no dependency changes.
 
+
+## Post-delivery scope clarification (Owner, 2026-10-14)
+
+This is a **technical interface/observation-qualification document**, not a
+legal opinion or a finding that private research with TDX is unlawful.
+The Owner has clarified that MDF/MBO are private, personal investment-research
+projects; the Owner is a long-term paying TDX client and is not currently
+offering a commercial market-data or software redistribution service.
+Prior TDX/iFind/Fuyao MCP options had been examined and were not suitable for
+the technical objective; the Go SDK route was chosen after that work.
+These are **Owner-supplied purpose/account facts**, not independent proof that
+any particular protocol, API, commercial service or redistribution right is
+covered by a contract.
+
+The SDK LICENSE, README and public service terms below remain **source facts**.
+Their applicability or enforceability in the Owner's specific paid,
+private-research situation has **not** been adjudicated. In particular,
+`UNKNOWN` does not mean `ILLEGAL`, and MDF's
+`Source/Revision Admission = NONE` is an **engineering/lifecycle state**,
+not a legal ruling. The original task sought Source identity, clock, unit,
+failure and integration evidence; it did not commission a stand-alone legal
+assessment.
+
+**Successor instruction:** do not interpret the rights matrix as a blanket
+legal STOP or automatically require new paid API subscriptions, a new Source
+search, or a separate rights/legal review before bounded personal-research
+MVP engineering. The next product decision is an AO-scoped, reusable real Go
+driver and provenance-preserving adapter/IPC/ACK path, with explicit finite
+Provider/time budgets for any future live test. Concrete evidence of account
+restrictions, credential or permission failure, a change to distribution or
+commercial use, or other material new legal facts can trigger a focused
+review of *that specific scenario*. No new Provider call, SourceBinding,
+P5/P7 phase, deployment or activation authority follows from this note.
+
+This clarification supersedes the earlier **next-step interpretation** only;
+the original `c2696aa63308ae3a69c7da5e294eb5957c543a75` code/review/CI
+results and final evidence identities remain historical facts.
+
 ## Port and composition
 
 `SourceIdentity` is a frozen declaration of exactly:
@@ -181,19 +219,19 @@ completion records, not independently repeated or promoted to current supply.
 | --- | --- | --- |
 | Pinned SDK software license | **EVIDENCED** | Local SDK `LICENSE` is MIT, copyright 2025 injoyai. Applies to software and associated documentation only; **not** a quote-service/data license or market-data authorization. |
 | SDK identity | **EVIDENCED** | Local SDK HEAD is the exact pinned revision; tracked source is clean, with pre-existing untracked `cmd/`. Pin/endpoint are static declarations here, not provider authentication. |
-| SDK project usage statement | **EVIDENCED statement / unresolved legal interaction** | The *same pinned SDK revision* `README.md` (lines 312–323; SHA-256 `e0f6b22d8a519ec25428d437fa3cfcdea02d0085a8074b8f2a74cc625ad955d7`) says the project is for learning, research and technical exchanges and forbids commercial use, while referring third-party server use to applicable service terms. This sits alongside the separate MIT `LICENSE`; it is **not** a right-holder grant for commercial or source-data uses. Reconciliation and applicability require explicit legal/right-holder review, not inference from either file alone. |
-| TDX service terms | **EVIDENCED public terms / applicability needs adjudication** | Official `https://www.tdx.com.cn/about/yhxy/index.html?tabindex=0` (user agreement, published 2025-12-18, effective 2025-12-19) contains restrictions on unauthorized third-party access and client/server interaction data use. This supports a **rights gate**, not a determination that the tested endpoint, owner account or contemplated future path is specifically licensed or prohibited in every context. No signed permission or exception for this MDF Adapter has been verified. |
+| SDK project usage statement | **EVIDENCED statement / unresolved legal interaction** | The *same pinned SDK revision* `README.md` (lines 312–323; SHA-256 `e0f6b22d8a519ec25428d437fa3cfcdea02d0085a8074b8f2a74cc625ad955d7`) says the project is for learning, research and technical exchanges and forbids commercial use, while referring third-party server use to applicable service terms. This sits alongside the separate MIT `LICENSE`; it is **not** a right-holder grant for commercial or source-data uses. Applicability in a specific future use remains unverified; this statement alone is not a mandatory legal gate for bounded private-research MVP engineering. |
+| TDX service terms | **EVIDENCED public terms / applicability needs adjudication** | Official `https://www.tdx.com.cn/about/yhxy/index.html?tabindex=0` (user agreement, published 2025-12-18, effective 2025-12-19) contains restrictions on unauthorized third-party access and client/server interaction data use. This is a scenario-specific contract consideration, not a blanket prerequisite for personal-research engineering or a ruling that this Owner's paid use is prohibited. No signed permission or exception for this MDF Adapter has been verified. |
 | Price/Amount representation | **EVIDENCED** | Pinned `protocol/types_price.go`: `Price int64`, integer li and scaling by 1000; `protocol/model_quote.go`: Amount through `Yuan(...)`, five-level prices also `Price`; `protocol/model_kline.go`: Amount is `Price`. Exact decoded representation, not economic accuracy, wire precision or verified decoder correctness. |
 | Quote Kline.Time | **EVIDENCED** | Pinned `DecodeKline` in `types_price.go` uses client `time.Now()`. Cannot be used as exchange event time. |
 | ServerTime | **EVIDENCED** representation; semantics **UNKNOWN** | `model_quote.go` renders decoded integer as a string. Remains opaque; no exchange time or sequence interpretation. |
 | 2026-10-14 bounded R2 Live | **EVIDENCED**, historical limited technical scope | `MDF-P5-LIMITED-WATCHLIST-LIVE-RECOVERY-R2/LIVE_COMPLETION_RETURN.md` and `LIVE_AO_INDEPENDENT_POSTFLIGHT.json`: exactly one TCP, three GetQuote calls, two fixed symbols per round and three immediate same-instance Ingress/Read rounds with ACK. This is limited intraday evidence, not continuing coverage, independent exchange freshness or a new budget. No R2 raw was read/replayed in this Adapter transaction. |
 | Distinct 2026-10-13 observation | **EVIDENCED / LIMITED**, separate historical trial | `MDF-P5-GO-STOCK-REAL-OBSERVATION-INGRESS-R1/LIVE_COMPLETION.md` recorded three quote calls followed by later file-to-memory reading (~63 s delay). `MDF-P5-LIMITED-WATCHLIST-SOURCE-CONTINUITY-GATE-R1/DECISION_SUPPORT.md` explicitly says this earlier trial did not establish immediate periodic consumption. It must not be presented as the 10-14 R2 result. |
-| Owner lawful use | **LIMITED** | The read completion/adjudication and delivered ingress document record Owner's bounded research lawful-use statement. No broader legal opinion or production grant is inferred. |
-| Real server access and bulk use contract | **UNKNOWN / NOT_AUTHORIZED** for this adapter | No service contract or right-holder grant was established. SDK MIT supplies none. |
-| Production consumption / redistribution | **UNKNOWN / NOT_AUTHORIZED** | No market-data production or redistribution rights evidenced. |
+| Owner purpose / paid account | **OWNER-DECLARED / NOT AN API ENTITLEMENT VERDICT** | Owner reports long-term paid TDX membership, private repos and personal investment research, without current commercial redistribution. This matters to the use-case assessment, but neither proves nor disproves permission for a particular programmatic protocol. No adverse legal finding is made. |
+| Real server access / particular protocol entitlement | **NOT VERIFIED (contract scope)** | This offline adapter makes no provider request. It does not establish whether the Owner's paid subscription covers a future direct protocol or a sustained automated workload. Do not equate this uncertainty with illegality. Actual Provider effects remain subject to separate AO technical scope, rate and budget limits. |
+| Commercial distribution / resale | **OUTSIDE CURRENT PERSONAL-RESEARCH MVP; FUTURE RIGHTS UNVERIFIED** | No product/data resale or public distribution is intended in the current scope. Reassess a concrete distribution/commercial proposal if it emerges; no blanket legal gate is imposed on the current offline engineering work. |
 | Volume and five-level Number trading units | **UNKNOWN** | SDK comments/decoded counts do not establish lots/shares/order-count mappings. Keep `sdk_volume_count_UNKNOWN` and `sdk_level_count_UNKNOWN`. |
 | Exchange event time, source freshness, gap-free continuity, recovery, availability/SLA | **UNKNOWN** | Local requested/received/frozen/known and receipt-age TTL cannot prove exchange timing, missing events, continuity or service guarantees. Snapshot duplicates do not prove no source events. |
-| Source Admission / Revision / Binding | **NOT_AUTHORIZED** | No authority is created by an interface, test, old technical success or software license. |
+| Source Admission / Revision / Binding | **ENGINEERING NOT ADMITTED / NOT AUTHORIZED** | This is a product-control decision about proven technical properties and permitted effects, separate from contract legality or the Owner's paid-user status. |
 
 Exact owner-local materials actually read:
 
@@ -239,9 +277,10 @@ module import and an offline execution. This validates this implementation and
 fixture path; it is not an audit sandbox for arbitrary caller hooks.
 
 The executable Periodic consumer remains **offline_fixture_mode=True**. Its
-real-source input mode is not extended here. A future real Go driver, lawful
-service access, bounded execution authority, real provenance-preserving
-periodic ingress path and any actual ACK protocol require separate AO gates.
+real-source input mode is not extended here. A future real Go driver, bounded Provider execution, provenance-preserving
+periodic ingress and any actual ACK protocol require separate AO technical
+scope/effect gates. General legal speculation does not by itself add a
+mandatory legal-preclearance gate to the private-research MVP.
 The live binding/timely supply gap identified in `DECISION_SUPPORT.md` remains
 open. No database, real TDX/provider execution, R2 raw replay, commit/push,
 Hosted CI or control-root modification is included in this implementation
