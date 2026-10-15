@@ -19,6 +19,7 @@ from market_data_foundation.candidates.stock_snapshot import (
 )
 from market_data_foundation.canonical.model import ContractError, require
 
+SESSION_SCHEMA = "mdf.go-tdx.watchlist.session.r1"
 SCHEMA = "mdf.candidate.go-stock.real-observation.r1"
 REAL_ORIGIN = "real_go_sdk_decoded_quote"
 REAL_CLOCKS = "local_probe_wall_clock_utc"
@@ -77,13 +78,28 @@ def _utc(value: object) -> datetime:
     return result
 
 
-def _duration(value: object) -> None:
-    require(type(value) is int and 0 <= value <= 10_000_000_000, "latency_bound")
+def _duration(value: object, upper: int = 10_000_000_000) -> None:
+    require(type(value) is int and 0 <= value <= upper, "latency_bound")
 
 
-def _decode(wire: bytes, *, offline: bool) -> tuple[dict, tuple[datetime, ...]]:
+def _decode(
+    wire: bytes,
+    *,
+    offline: bool,
+    members: tuple[str, ...] = MEMBERS,
+    endpoint: str = ENDPOINT,
+    maximum: int = MAX_ROUNDS,
+    session_id: str | None = None,
+    connection_attempts: int = 1,
+    sdk_release: str = SDK_RELEASE,
+    connection_elapsed_bound_ns: int = 10_000_000_000,
+    quote_elapsed_bound_ns: int = 10_000_000_000,
+) -> tuple[dict, tuple[datetime, ...]]:
     require(type(wire) is bytes, "wire_bytes_required")
-    require(0 < len(wire) <= MAX_WIRE_BYTES, "wire_size_bound")
+    require(
+        0 < len(wire) <= (131_072 if session_id is not None else MAX_WIRE_BYTES),
+        "wire_size_bound",
+    )
     try:
         body = json.loads(
             wire.decode("utf-8"),
@@ -95,8 +111,12 @@ def _decode(wire: bytes, *, offline: bool) -> tuple[dict, tuple[datetime, ...]]:
         raise
     except UnicodeError, ValueError, RecursionError:
         raise ContractError("malformed_batch_json") from None
-    require(type(body) is dict and body.keys() == _FIELDS, "batch_shape_invalid")
-    require(body["schema"] == SCHEMA, "batch_schema_mismatch")
+    fields = _FIELDS if session_id is None else _FIELDS | {"segment", "session_id"}
+    require(type(body) is dict and body.keys() == fields, "batch_shape_invalid")
+    require(
+        body["schema"] == (SCHEMA if session_id is None else SESSION_SCHEMA),
+        "batch_schema_mismatch",
+    )
     require(
         body["input_origin"] == (OFFLINE_ORIGIN if offline else REAL_ORIGIN),
         "input_origin_mismatch",
@@ -105,9 +125,9 @@ def _decode(wire: bytes, *, offline: bool) -> tuple[dict, tuple[datetime, ...]]:
         body["clock_provenance"] == (OFFLINE_ORIGIN if offline else REAL_CLOCKS),
         "clock_provenance_mismatch",
     )
-    require(body["sdk_release"] == SDK_RELEASE, "sdk_release_mismatch")
-    require(body["endpoint"] == ENDPOINT, "endpoint_mismatch")
-    require(body["securities"] == list(MEMBERS), "security_request_mismatch")
+    require(body["sdk_release"] == sdk_release, "sdk_release_mismatch")
+    require(body["endpoint"] == endpoint, "endpoint_mismatch")
+    require(body["securities"] == list(members), "security_request_mismatch")
     require(body["units"] == list(UNITS), "unit_declaration_mismatch")
     require(
         body["source_event_clock"] == "UNKNOWN"
@@ -115,29 +135,48 @@ def _decode(wire: bytes, *, offline: bool) -> tuple[dict, tuple[datetime, ...]]:
         and body["server_time_semantics"] == "OPAQUE",
         "source_clock_claim_forbidden",
     )
-    n, maximum = body["round"], body["max_rounds"]
+    n, declared_maximum = body["round"], body["max_rounds"]
     require(
-        type(n) is int and type(maximum) is int and 1 <= n <= maximum <= MAX_ROUNDS,
+        type(n) is int
+        and type(declared_maximum) is int
+        and 1 <= n <= declared_maximum <= maximum,
         "round_budget_invalid",
     )
-    require(
-        type(body["batch_id"]) is str
-        and _ID.fullmatch(body["batch_id"]) is not None
-        and body["batch_id"] == f"go-real-r1-{n}",
-        "batch_identity_invalid",
-    )
+    if session_id is None:
+        require(
+            type(body["batch_id"]) is str
+            and _ID.fullmatch(body["batch_id"]) is not None
+            and body["batch_id"] == f"go-real-r1-{n}",
+            "batch_identity_invalid",
+        )
+    else:
+        require(
+            body["session_id"] == session_id
+            and body["batch_id"] == f"{session_id}-{n}"
+            and type(body["segment"]) is int
+            and 0 <= body["segment"] <= 3,
+            "session_identity_invalid",
+        )
     conn = body["connection"]
+    conn_fields = {"requested", "received", "elapsed_ns", "redial", "attempts"}
+    if session_id is not None:
+        conn_fields |= {"peer"}
     require(
         type(conn) is dict
-        and set(conn) == {"requested", "received", "elapsed_ns", "redial", "attempts"}
+        and set(conn) == conn_fields
         and conn["redial"] is False
         and type(conn["attempts"]) is int
-        and conn["attempts"] == 1,
+        and 1 <= conn["attempts"] <= connection_attempts,
         "connection_policy_invalid",
     )
+    if session_id is not None:
+        require(
+            type(conn["peer"]) is str and 1 <= len(conn["peer"]) <= 320,
+            "connection_peer_invalid",
+        )
     connected = (_utc(conn["requested"]), _utc(conn["received"]))
-    _duration(conn["elapsed_ns"])
-    _duration(body["quote_elapsed_ns"])
+    _duration(conn["elapsed_ns"], connection_elapsed_bound_ns)
+    _duration(body["quote_elapsed_ns"], quote_elapsed_bound_ns)
     clock_body = body["clocks"]
     require(
         type(clock_body) is dict

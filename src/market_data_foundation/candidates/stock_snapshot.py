@@ -1,5 +1,6 @@
-"""Inactive, synthetic-only Go quote candidate; no source access or admission."""
+"""Shared bounded decoded-quote state machine; no source access or admission."""
 
+import re
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -98,11 +99,25 @@ def _integer(value: object, *, maximum: int) -> int:
     return value
 
 
-def _parse(row: Mapping) -> Quote:
+def validate_members(members: tuple[str, ...]) -> None:
+    require(
+        type(members) is tuple
+        and 1 <= len(members) <= 32
+        and all(
+            type(member) is str and re.fullmatch(r"(?:sh6|sz[03])[0-9]{5}", member)
+            for member in members
+        )
+        and len(set(members)) == len(members),
+        "watchlist_invalid",
+    )
+
+
+def _parse(row: Mapping, identities: dict | None = None) -> Quote:
+    identities = IDENTITIES if identities is None else identities
     require(isinstance(row, dict), "invalid_quote_shape")
     exchange, code = row["Exchange"], row["Code"]
     require(type(exchange) is int and type(code) is str, "invalid_identity")
-    require((exchange, code) in IDENTITIES, "security_out_of_scope")
+    require((exchange, code) in identities, "security_out_of_scope")
     kline = row["Kline"]
     require(isinstance(kline, dict), "invalid_kline_shape")
     prices = tuple(
@@ -130,7 +145,7 @@ def _parse(row: Mapping) -> Quote:
     require(type(row["ServerTime"]) is str, "invalid_server_time_shape")
     require(len(row["ServerTime"]) <= 64, "server_time_bound")
     return Quote(
-        IDENTITIES[exchange, code],
+        identities[exchange, code],
         prices,
         _integer(kline["Amount"], maximum=SDK_INT64_MAX),
         _integer(kline["Volume"], maximum=SDK_INT64_MAX),
@@ -147,16 +162,28 @@ def _parse(row: Mapping) -> Quote:
 
 def parse_synthetic(rows: object, *, units: tuple[str, str, str]) -> tuple[Quote, ...]:
     """Validate decoded synthetic shape atomically; never infer exchange units."""
+    return parse_decoded(rows, units=units, members=MEMBERS)
+
+
+def parse_decoded(
+    rows: object, *, units: tuple[str, str, str], members: tuple[str, ...]
+) -> tuple[Quote, ...]:
+    """Shared atomic SDK-shape parser; origin belongs to the ingress envelope."""
+    validate_members(members)
     require(units == UNITS, "unit_declaration_mismatch")
-    require(isinstance(rows, list) and len(rows) == 2, "two_members_required")
+    require(
+        isinstance(rows, list) and len(rows) == len(members),
+        "two_members_required" if members == MEMBERS else "member_count_mismatch",
+    )
+    identities = {(1 if m[:2] == "sh" else 0, m[2:]): m for m in members}
     try:
-        result = tuple(_parse(row) for row in rows)
+        result = tuple(_parse(row, identities) for row in rows)
     except (KeyError, TypeError, ValueError, OverflowError) as exc:
         if isinstance(exc, ContractError):
             raise
         raise ContractError("malformed_snapshot") from None
-    require({q.security for q in result} == set(MEMBERS), "member_set_mismatch")
-    return tuple(sorted(result, key=lambda q: MEMBERS.index(q.security)))
+    require({q.security for q in result} == set(members), "member_set_mismatch")
+    return tuple(sorted(result, key=lambda q: members.index(q.security)))
 
 
 @dataclass(frozen=True)
@@ -177,7 +204,7 @@ class Record:
     outcome: str
     classification: str | None
     quotes: tuple[Quote, ...]
-    states: tuple[State, State]
+    states: tuple[State, ...]
     supersedes: str | None = None
 
 
@@ -195,16 +222,25 @@ class View:
 class StockSnapshotCandidate:
     """Bounded memory only. Exact/as-of address retained candidate records."""
 
-    def __init__(self, *, capacity: int = 32, ttl: timedelta = timedelta(seconds=30)):
+    def __init__(
+        self,
+        *,
+        capacity: int = 32,
+        ttl: timedelta = timedelta(seconds=30),
+        members: tuple[str, ...] = MEMBERS,
+    ):
+        validate_members(members)
+        self._members = members
         require(type(capacity) is int and 2 <= capacity <= 256, "history_bound_invalid")
         require(timedelta(0) < ttl <= timedelta(minutes=5), "ttl_bound_invalid")
         self._history: deque[Record] = deque(maxlen=capacity)
-        self._states = (State(), State())
+        self._states = tuple(State() for _ in members)
         self._ttl = ttl
         self._segment = 0
         self._ordinal = 0
         self._watermark: datetime | None = None
         self._segment_start: datetime | None = None
+        self._baseline_needed = False
 
     @property
     def history(self) -> tuple[Record, ...]:
@@ -243,7 +279,7 @@ class StockSnapshotCandidate:
         classification = failure
         if failure is None:
             try:
-                quotes = parse_synthetic(rows, units=units)
+                quotes = parse_decoded(rows, units=units, members=self._members)
             except ContractError as exc:
                 classification = str(exc)
         late = (
@@ -262,7 +298,7 @@ class StockSnapshotCandidate:
             )
             self._watermark = clocks.requested
         else:
-            duplicate = all(
+            duplicate = not self._baseline_needed and all(
                 s.quote is not None and s.quote.content == q.content
                 for s, q in zip(self._states, quotes, strict=True)
             )
@@ -281,6 +317,7 @@ class StockSnapshotCandidate:
                 for index, q in enumerate(quotes)
             )
             self._watermark = clocks.requested
+            self._baseline_needed = False
         record = Record(
             acquisition,
             self._segment,
@@ -295,8 +332,15 @@ class StockSnapshotCandidate:
         self._history.append(record)
         return record
 
-    def reconnect(self, *, clocks: Clocks) -> Record:
-        """Caller-declared offline observation segment, no actual connection."""
+    def reconnect(
+        self,
+        *,
+        clocks: Clocks,
+        failure: str = "disconnected",
+        new_baseline: bool = False,
+    ) -> Record:
+        """Declare a gap; new_baseline opts into a fresh segment sample."""
+        require(type(new_baseline) is bool, "baseline_policy_invalid")
         require(
             (self._watermark is None or clocks.requested > self._watermark)
             and (
@@ -304,10 +348,11 @@ class StockSnapshotCandidate:
             ),
             "reconnect_request_not_forward",
         )
-        record = self.observe(None, clocks=clocks, failure="disconnected")
+        record = self.observe(None, clocks=clocks, failure=failure)
         self._segment += 1
         self._segment_start = clocks.known
         self._watermark = None
+        self._baseline_needed = self._baseline_needed or new_baseline
         return record
 
     def exact(self, acquisition: str) -> Record:
@@ -326,7 +371,7 @@ class StockSnapshotCandidate:
     def read(
         self, security: str, *, at: datetime, acquisition: str | None = None
     ) -> View:
-        require(security in MEMBERS, "security_out_of_scope")
+        require(security in self._members, "security_out_of_scope")
         instant(at)
         if acquisition is None and not self._history:
             return View(State(), "unknown", None, False)
@@ -335,7 +380,7 @@ class StockSnapshotCandidate:
         else:
             record = self.exact(acquisition)
             require(record.clocks.known <= at, "record_not_yet_known")
-        state = record.states[MEMBERS.index(security)]
+        state = record.states[self._members.index(security)]
         age = None if state.observed_at is None else at - state.observed_at
         stale = age is not None and age > self._ttl
         status = (

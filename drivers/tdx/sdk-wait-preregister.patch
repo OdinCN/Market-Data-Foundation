@@ -1,0 +1,103 @@
+--- a/client.go
++++ b/client.go
+@@ -7,6 +7,7 @@
+ 	"fmt"
+ 	"io"
+ 	"runtime/debug"
++	"sync"
+ 	"sync/atomic"
+ 	"time"
+ 
+@@ -80,8 +81,9 @@
+ func DialWith(dial ios.DialFunc, op ...client.Option) (cli *Client, err error) {
+ 
+ 	cli = &Client{
+-		Wait: wait.New(time.Second * 2),
+-		m:    maps.NewSafe(),
++		Wait:       wait.New(time.Second * 2),
++		mdfTimeout: time.Second * 2,
++		m:          maps.NewSafe(),
+ 	}
+ 
+ 	cli.Client, err = client.Dial(dial, func(c *client.Client) {
+@@ -115,10 +117,12 @@
+ }
+ 
+ type Client struct {
+-	*client.Client              //客户端实例
+-	Wait           *wait.Entity //异步回调,设置超时时间,超时则返回错误
+-	m              *maps.Safe   //有部分解析需要用到代码,返回数据获取不到,固请求的时候缓存下
+-	msgID          uint32       //消息id,使用SendFrame自动累加
++	*client.Client               //客户端实例
++	Wait           *wait.Entity  //异步回调,设置超时时间,超时则返回错误
++	m              *maps.Safe    //有部分解析需要用到代码,返回数据获取不到,固请求的时候缓存下
++	mdfTimeout     time.Duration // MDF derived build: response deadline
++	mdfWaitMu      sync.Mutex    // serialize response and wait cleanup
++	msgID          uint32        //消息id,使用SendFrame自动累加
+ }
+ 
+ // handlerDealMessage 处理服务器响应的数据
+@@ -239,25 +243,60 @@
+ 		return
+ 	}
+ 
++	this.mdfWaitMu.Lock()
+ 	this.Wait.Done(conv.String(f.MsgID), resp)
++	this.mdfWaitMu.Unlock()
+ 
+ }
+ 
+ // SetTimeout 设置超时时间
+ func (this *Client) SetTimeout(t time.Duration) {
+ 	this.Wait.SetTimeout(t)
++	this.mdfTimeout = t
+ }
+ 
+ // SendFrame 发送数据,并等待响应
+ func (this *Client) SendFrame(f *protocol.Frame, cache ...any) (any, error) {
+ 	f.MsgID = atomic.AddUint32(&this.msgID, 1)
++	key := conv.String(f.MsgID)
+ 	if len(cache) > 0 {
+-		this.m.Set(conv.String(f.MsgID), cache[0])
+-	}
++		this.m.Set(key, cache[0])
++	}
++	defer this.m.Del(key)
++	type result struct {
++		value any
++		err   error
++	}
++	ready := make(chan result, 1)
++	// Register synchronously BEFORE Write. A one-shot, buffered, nonblocking
++	// callback retains even a response dispatched before Write returns.
++	// Serialize waiter registration with all response and cleanup Done paths.
++	this.mdfWaitMu.Lock()
++	this.Wait.Async(key, func(v any, e error) {
++		select {
++		case ready <- result{v, e}:
++		default:
++		}
++	}, 1, 0)
++	this.mdfWaitMu.Unlock()
++	// Wait.Done's underlying GetAndDel is not atomic. Protect the entire
++	// Done/async callback path with mdfWaitMu on both reader and cleanup.
++	defer func() {
++		this.mdfWaitMu.Lock()
++		this.Wait.Done(key, nil, errors.New("MDF wait closed"))
++		this.mdfWaitMu.Unlock()
++	}()
++	timer := time.NewTimer(this.mdfTimeout)
++	defer timer.Stop()
+ 	if _, err := this.Client.Write(f.Bytes()); err != nil {
+ 		return nil, err
+ 	}
+-	return this.Wait.Wait(conv.String(f.MsgID))
++	select {
++	case r := <-ready:
++		return r.value, r.err
++	case <-timer.C:
++		return nil, errors.New("超时")
++	}
+ }
+ 
+ // GetCount 获取市场内的股票数量

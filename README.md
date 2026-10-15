@@ -6,6 +6,9 @@ runtime baseline qualification, a reusable Provider Qualification harness and th
 tdx-python 0.1.6 as an implementation candidate with explicit endpoint pinning,
 redial disabled and capability/source limitations.
 MDF Primary Provider binding is not yet authorized; no production adapter is bound.
+The [nonproduction Go/TDX watchlist MVP](docs/p5/real-go-tdx-watchlist-mvp-r1.md)
+adds an explicitly launched, bounded real source with local Ingress/Read and IPC ACK.
+Its live verification is scheduled separately by PM/Host.
 
 ## Development
 
