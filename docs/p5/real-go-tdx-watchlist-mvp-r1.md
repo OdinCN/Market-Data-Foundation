@@ -175,6 +175,9 @@ SDK 缓冲区。quote worker 无法及时退出时整次会话停止。ACK timeo
 
 CLI 只在新的 `artifacts/tdx-mvp-<session-id>/`（或显式 artifacts 子目录）保存
 `config.json`、未经重写的 `batch-N.json` 和 `report.json`；目录 0700、文件 0600。
+新的 [latest accepted Read](watchlist-latest-read-r1.md) 还在 Go ACK received 后
+原子维护 `read-ready.json`，供运行中消费者只读使用；状态失败会阻断旧值的健康返回。
+文件 fsync 后再 replace receipt，并 fsync 目录；Reader 不执行这些生产端写操作。
 stdout 仅输出终止原因、读批数、本地快照健康状态与路径。`report.json` 提供每轮来源 endpoint、
 segment、实际 socket peer、四个本地时钟、状态/重复/错误、close_cny、local_received_age、
 local_known_age、真实 quote_elapsed_ns、派生 SDK 身份和 ACK sent/receipt。

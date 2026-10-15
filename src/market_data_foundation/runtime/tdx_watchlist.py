@@ -273,6 +273,15 @@ class WatchlistIngress:
         else:
             require(known_at is None, "real_known_override_forbidden")
             known_at = datetime.now(UTC)
+        return self._ingest_at(wire, known_at=known_at)
+
+    def _ingest_at(self, wire: bytes, *, known_at: datetime) -> Observation:
+        """Shared reconstruction path for the bounded acceptance-receipt reader.
+
+        This stamps no new observation and confers no acceptance authority.
+        Live ingest continues to own its clock; retained callers must validate
+        the receipt, exact bytes and completed Read/Go ACK barrier separately.
+        """
         require(self.connection is not None, "connection_required")
         body, capture = _decode(
             wire,
@@ -465,6 +474,7 @@ class RealPeriodicWatchlistSession:
                 "clock_provenance": observation.clock_provenance,
                 "known_provenance": observation.known_provenance,
                 "sha256": observation.envelope_sha256,
+                "byte_count": len(wire),
                 "outcome": record.outcome,
                 "ack_sent": False,
                 "go_ack_received": False,
@@ -503,7 +513,9 @@ class RealPeriodicWatchlistSession:
             "accepted": True,
         }
 
-    def run(self, adapter, *, archive=None, fixture_clock=None) -> dict:
+    def run(
+        self, adapter, *, archive=None, fixture_clock=None, on_read_ready=None
+    ) -> dict:
         reason = "driver_error"
         candidates = set()
         probes = set()
@@ -515,6 +527,11 @@ class RealPeriodicWatchlistSession:
         write_attempts = {}
         write_results = set()
         failed_quotes = set()
+
+        def notify(state, classification=None):
+            if on_read_ready is not None:
+                on_read_ready(self, state, classification)
+
         try:
             require(not self._used, "session_already_used")
             require(
@@ -522,6 +539,7 @@ class RealPeriodicWatchlistSession:
                 "real_clock_hook_forbidden",
             )
             self._used = True
+            notify("starting")
             start = (
                 _utc(self.config.start_at)
                 if self.config.start_at
@@ -535,6 +553,8 @@ class RealPeriodicWatchlistSession:
                 kind, wire = adapter.receive(deadline=deadline)
                 if kind == "B" and archive:
                     archive(f"batch-{len(self.rounds) + 1}.json", wire)
+                if kind == "B":
+                    notify("pending_ack")
                 body = decode_json(wire)
                 if kind == "E":
                     validate_event(body, self.config)
@@ -672,6 +692,7 @@ class RealPeriodicWatchlistSession:
                             "ack_receipt_mismatch",
                         )
                         self.rounds[-1]["go_ack_received"] = True
+                        notify("accepted")
                     if body["classification"] in {"complete", "stopped"}:
                         require(
                             (
@@ -694,6 +715,8 @@ class RealPeriodicWatchlistSession:
                         self.events.append(body)
                         break
                     self.events.append(body)
+                    if body["classification"] in {"connection_failed", "quote_failed"}:
+                        notify("unavailable", body["reason"] or "source_error")
                 elif kind == "C":
                     require(body.get("endpoint") in candidates, "unprobed_endpoint")
                     require(
@@ -758,11 +781,15 @@ class RealPeriodicWatchlistSession:
         except Exception:
             reason = "runtime_error"
         finally:
-            adapter.close()
+            try:
+                adapter.close()
+            except Exception:
+                reason = "runtime_error"
         child = getattr(adapter, "process", None)
         child_exit = child.returncode if child is not None else None
         if reason == "budget_exhausted" and child_exit not in (None, 0):
             reason = "child_exit_nonzero"
+        notify("ended" if reason == "budget_exhausted" else "unavailable", reason)
         return {
             "child_exit": child_exit,
             "scope": "bounded_nonproduction_research",
@@ -848,11 +875,16 @@ def main() -> int:
         with (output / name).open("xb") as stream:
             os.chmod(stream.fileno(), 0o600)
             stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
 
     archive("config.json", json.dumps(asdict(config)).encode())
     session = RealPeriodicWatchlistSession(config)
+    from market_data_foundation.runtime.watchlist_receipt import AcceptanceReceiptWriter
+
+    receipt_writer = AcceptanceReceiptWriter(output)
     adapter = FramedProcess([str(args.driver.resolve()), "--live"], config)
-    report = session.run(adapter, archive=archive)
+    report = session.run(adapter, archive=archive, on_read_ready=receipt_writer)
     archive("report.json", json.dumps(report, indent=2).encode())
     print(
         json.dumps(

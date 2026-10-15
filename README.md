@@ -9,6 +9,10 @@ MDF Primary Provider binding is not yet authorized; no production adapter is bou
 The [nonproduction Go/TDX watchlist MVP](docs/p5/real-go-tdx-watchlist-mvp-r1.md)
 adds an explicitly launched, bounded real source with local Ingress/Read and IPC ACK.
 Its live verification is scheduled separately by PM/Host.
+The [local latest Watchlist Read](docs/p5/watchlist-latest-read-r1.md) exposes
+fully Go-ACKed snapshots through a Python API and local CLI, including while the
+producer runs. Consumers need a readable private MDF-dev session directory;
+this is not a network-published MBO Runtime/API or canonical Publication.
 
 ## Development
 
