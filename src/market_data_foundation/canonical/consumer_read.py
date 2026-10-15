@@ -142,8 +142,12 @@ def _get(ledger: Ledger, key: Key):
     return _classified(lambda: ledger.get(key), ReadFailure.STORAGE_UNAVAILABLE)
 
 
-def _definition(ledger: Ledger, key: Key) -> DatasetDefinition:
-    if not isinstance(key, Key) or key not in _ADMITTED_DEFINITIONS:
+def _definition(
+    ledger: Ledger,
+    key: Key,
+    admitted: frozenset[Key] = _ADMITTED_DEFINITIONS,
+) -> DatasetDefinition:
+    if not isinstance(key, Key) or key not in admitted:
         _fail(ReadFailure.DEFINITION_NOT_ADMITTED)
     value = _get(ledger, key)
     if not isinstance(value, DatasetDefinition):
@@ -397,8 +401,9 @@ def _exact(
     definition_key: Key,
     version_key: Key,
     as_of: datetime | None,
+    admitted: frozenset[Key] = _ADMITTED_DEFINITIONS,
 ) -> ExactReadView:
-    definition = _definition(ledger, definition_key)
+    definition = _definition(ledger, definition_key, admitted)
     if not isinstance(version_key, Key) or version_key.kind != Kind.VERSION:
         _fail(ReadFailure.VERSION_NOT_FOUND)
     version = _get(ledger, version_key)
@@ -489,3 +494,52 @@ def read_as_of(ledger: Ledger, definition: Key, *, as_of: datetime) -> ExactRead
     if len(eligible) != 1:
         _fail(ReadFailure.AS_OF_AMBIGUOUS)
     return _exact(ledger, definition, eligible[0].key, as_of)
+
+
+def _read_exact_version_admitted(
+    ledger: Ledger,
+    definition: Key,
+    version: Key,
+    *,
+    as_of: datetime,
+    admitted: frozenset[Key],
+) -> ExactReadView:
+    """Internal producer-local read; public wire admission remains unchanged."""
+    _classified(lambda: instant(as_of), ReadFailure.INVALID_AS_OF)
+    return _classified(
+        lambda: _exact(ledger, definition, version, as_of, admitted),
+        ReadFailure.STORAGE_UNAVAILABLE,
+    )
+
+
+def _read_as_of_admitted(
+    ledger: Ledger,
+    definition: Key,
+    *,
+    as_of: datetime,
+    admitted: frozenset[Key],
+) -> ExactReadView:
+    """Internal producer-local as-of selector without public wire expansion."""
+    _classified(lambda: instant(as_of), ReadFailure.INVALID_AS_OF)
+    _definition(ledger, definition, admitted)
+    versions = _classified(
+        lambda: ledger.versions_for_definition(definition),
+        ReadFailure.STORAGE_UNAVAILABLE,
+    )
+    if not isinstance(versions, tuple) or any(
+        not isinstance(version, DatasetVersion) or version.definition != definition
+        for version in versions
+    ):
+        _fail(ReadFailure.STORAGE_UNAVAILABLE)
+    if tuple(sorted(versions, key=lambda item: item.identity)) != versions:
+        _fail(ReadFailure.STORAGE_UNAVAILABLE)
+    eligible = [
+        version
+        for version in versions
+        if _available_publication(_history(ledger, version), as_of) is not None
+    ]
+    if not eligible:
+        _fail(ReadFailure.AS_OF_NO_VERSION)
+    if len(eligible) != 1:
+        _fail(ReadFailure.AS_OF_AMBIGUOUS)
+    return _exact(ledger, definition, eligible[0].key, as_of, admitted)

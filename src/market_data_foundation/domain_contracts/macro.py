@@ -38,6 +38,35 @@ BLS_CPI_HEADLINES = DatasetDefinition(
     scope=Scope(),
 )
 
+BLS_PPI_FINAL_DEMAND = DatasetDefinition(
+    identity="mdf.macro.bls.ppi.final-demand",
+    revision="t01-r1",
+    domain_contract=(
+        "Named BLS Producer Price Index final-demand contract for the exact "
+        "WPSFD4 seasonally adjusted and WPUFD4 not-seasonally-adjusted series."
+    ),
+    purpose=("revisioned final-demand release evidence and point-in-time reading"),
+    source_qualified=True,
+    key_semantics=(
+        "series identity + monthly reference period + retrieval-bound revision state"
+    ),
+    unit_semantics=(
+        "provider index values are index_point; provider calculations are percent"
+    ),
+    temporal_semantics=(
+        "monthly reference, official release slot, obtained, frozen, decision, and "
+        "usable times are distinct"
+    ),
+    revision_semantics=(
+        "initial/interim/final PPI state, acquisition, raw identity, parser revision, "
+        "and MDF semantic revision are independent; retrieval does not infer vintage"
+    ),
+    completeness_semantics=(
+        "exact WPSFD4/WPUFD4 final-demand target and comparison rows for one release"
+    ),
+    scope=Scope(),
+)
+
 
 @dataclass(frozen=True)
 class MacroSourceCandidate:
