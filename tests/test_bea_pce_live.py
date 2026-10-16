@@ -211,12 +211,12 @@ class SyntheticTransport:
 
 
 def acquire(transport=None, **kwargs):
-    return edge.acquire(
+    # Private laboratory tests retain sanitizer/protocol coverage. Public acquire
+    # is closed to all callbacks; supported offline admission is OfflineFixture.
+    return edge._supervise(
         IDENTITY,
-        enabled=True,
-        provider_budget=2,
-        transport=transport or SyntheticTransport(),
-        credential_loader=dummy_loader,
+        transport or SyntheticTransport(),
+        dummy_loader,
         **kwargs,
     )
 
@@ -655,12 +655,10 @@ def test_header_echo_and_invalid_compression_never_leak():
 
 def test_context_echo_rejected_without_any_send():
     identity = replace(IDENTITY, producer_execution_identity=DUMMY)
-    result = edge.acquire(
+    result = edge._supervise(
         identity,
-        enabled=True,
-        provider_budget=2,
-        transport=SyntheticTransport(),
-        credential_loader=dummy_loader,
+        SyntheticTransport(),
+        dummy_loader,
     )
     assert result.classification == "credential_echo_rejected"
     assert not result.observations and result.projection is None

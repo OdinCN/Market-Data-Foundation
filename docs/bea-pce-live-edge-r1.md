@@ -10,28 +10,35 @@ The existing PCE retained-only job and inactive source binding are unchanged.
 `historical/bea_pce_live.py::acquire` returns `disabled_budget_zero` without
 loading credentials or starting a worker by default (`enabled=False`, budget 0).
 There is no CLI, import-time IO, read-side acquisition, storage or publication
-edge. A future caller must obtain a separate exact-code/manifest/plan-bound
-Owner opt-in before enabling one source-only attempt with budget exactly 2.
-Repeated calls are separate attempts; this API supplies no retry/resume path.
-An external execution owner must enforce the single approved attempt and retain
-its nonsecret observation under controlled, append-only execution accounting.
+edge. Public acquisition unconditionally returns
+`source_execution_boundary_blocked` for every paired transport/loader, including
+fake or wrapped transports and real-loader aliases or wrappers. `enabled=True`
+and budget 2 cannot enter a supervisor or invoke any loader. Unpaired callbacks
+remain `context_rejected`. There is no executable real grant capability.
+The offline single-slot controller and remaining B1/B2/B3 conditions are described
+in [bea-pce-execution-boundary-r1.md](bea-pce-execution-boundary-r1.md).
 
 The only real transport is stdlib HTTPS to `https://apps.bea.gov/api/data/`.
 It sends GET `GetData`, dataset `NIPA`, frequency `M`, years `2025,2026`, JSON,
 first table `T20807`, then `T20804`. Both request two years once. No discovery,
 redirect, pagination, concurrency, retry or provider fallback is implemented.
-One process loads `/srv/market-data-foundation/config/local/secret.toml` ->
-`bea.api_key` in memory; it does not read environment or legacy MDD text.
-Transport and credential-loader doubles must be supplied together for offline
-fixtures, and their receipts are labeled synthetic. No tests load that file.
+The dormant loader targets `/srv/market-data-foundation/config/local/secret.toml`
+-> `bea.api_key`; current public admission cannot reach it.
+Supported offline execution uses only the single-slot controller's exact
+`OfflineFixture` and internal fixed synthetic loader. Private supervisor tests
+exercise the sanitizer and cancellation protocol with fabricated responses;
+their receipts are synthetic and do not authorize public execution. The private
+supervisor also rejects the built-in HTTPS transport. No tests load that file.
 
 The parent records intent before permitting each exchange and waits on fixed,
-bounded IPC messages. It kills and reaps the worker on an absolute monotonic
-10-second exchange deadline, at most 20 seconds combined network time, or the
-30-second entire attempt deadline (including startup, credential loading and
-local sanitation). This cancellation boundary covers blocked DNS, TLS, headers,
-body and local processing; it does not rely on a socket idle timeout. As with
-any process timeout, actual return/reaping latency depends on OS scheduling.
+bounded-size IPC messages. Monotonic cancellation thresholds remain 10 seconds
+per exchange, 20 seconds combined network and 30 seconds for the attempt.
+These are laboratory cancellation thresholds, **not a proved full-lifecycle hard
+bound**. `process.start`, pipe operations, clocks, final `join`, persistence and
+reclamation can overrun them. Offline counterexamples demonstrate this gap.
+No socket idle timeout or external `timeout` command closes it; B2 is blocked
+and real execution fails closed. The existing mechanism cancels simulated blocked
+DNS/TLS/headers/body and local processing when the supervising process can run.
 The child never persists a first response. A first failure/unknown prohibits
 request two; a second failure/unknown returns neither projection nor receipt.
 Completed first-response observations remain available for accounting.
@@ -114,7 +121,7 @@ builders. It covers default-off admission, ordered failure/unknown accounting,
 slow drip and blocked-stage cancellation, combined/attempt deadlines, streaming
 size boundaries, encoded credential echoes, replay and forged receipts. Tests
 use short private supervision deadlines with the same cancellation mechanism;
-the public entry retains fixed 10/20/30 second bounds. Fake HTTPS construction
+the constants remain fixed at 10/20/30 seconds. Fake HTTPS construction
 checks never open a socket. This is deterministic offline fixture qualification,
 not independent professional review, a real BEA response or Source acceptance.
 Correction tests additionally capture actual in-memory worker IPC for wide
@@ -123,10 +130,12 @@ exercise the production spawn protocol with fake transport, and retain positive
 two-response replay and ISO metadata examples. Failed captures cannot call the
 retained-bundle builder or digest and leave the result buffer and sizes empty.
 
-Next gate:
-`FRESH_INDEPENDENT_PROFESSIONAL_REVIEW_THEN_EXCLUSIVE_HOST_QA` /
-`EXACT_BOUND_SOURCE_OPT_IN_NOT_GRANTED`. After those gates, a separately approved
-bounded source-only attempt must produce both responses and controlled receipt;
+Next gates: independent professional/security review of this exact new revision,
+exclusive Host full QA, serial Git/CI and independent Source-specific B3 review.
+B1 real grant/reviewer/producer trust and B2 complete hard-bound capability remain
+unproved. Historical Git/CI/Postflight is not Source PASS. Only after B1/B2/B3
+closure and a fresh exact explicit Owner opt-in could a separately reviewed real
+execution implementation produce both responses and controlled receipt;
 an independent new-process source readback must establish the actual identity,
 size/SHA and lineage. Garage/PG counters, storage opt-in and independent
 publication/local-read proof remain separate unfinished work. The historical

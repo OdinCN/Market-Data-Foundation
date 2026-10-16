@@ -1,9 +1,10 @@
 """Default-off, source-only BEA edge. No storage, publication or qualification.
 
 A supervised process holds the credential, HTTP request and unsanitized bodies.
-The parent permits exactly two sequential exchanges, kills the process on a wall
-clock deadline, and receives only fixed classifications and a clean projection.
-Injectable transports are explicitly synthetic; receipts never qualify a source.
+The parent permits two sequential synthetic exchanges with cancellation timers
+and receives only fixed classifications and a clean projection. Full lifecycle
+deadlines remain unproved; current real transport admission is closed.
+Private test transports are synthetic; receipts never qualify a source.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ from urllib.parse import quote, quote_plus, unquote
 
 from market_data_foundation.historical import bea_pce as pce
 
-ADAPTER_REVISION = "t04-bea-pce-live-edge-correction-001"
+ADAPTER_REVISION = "t04-bea-pce-live-edge-execution-boundary-r1"
 PLAN_SHA256 = "c5b7e35d0d6434b2d2d0d80223ea8ea083ac33dc77443bcce744bfab23965726"
 CAPABILITY = "bea.nipa.pce.headline_core.monthly.source_projection"
 FIXTURE = "bea-nipa-pce-2026-07-t20807-t20804-lines-1-25-v1"
@@ -619,7 +620,13 @@ def _supervise(
     request_seconds=REQUEST_SECONDS,
     network_seconds=NETWORK_SECONDS,
     attempt_seconds=ATTEMPT_SECONDS,
+    before_send=None,
+    after_response=None,
 ):
+    # Laboratory cancellation mechanism only. start/send/join, clocks and local
+    # persistence have no qualified enclosing host deadline (B2 is blocked).
+    if transport is None or isinstance(transport, _HttpsTransport):
+        return AcquisitionResult("source_execution_boundary_blocked")
     start = time.monotonic()
     observations = []
     context = multiprocessing.get_context("spawn")
@@ -661,6 +668,9 @@ def _supervise(
             )
             active = (table, requested)
             # Pre-send intent is recorded before the worker is allowed to send.
+            if before_send is not None:
+                before_send(table, requested)
+            _check(time.monotonic() < deadline, "deadline_unknown")
             parent.send_bytes(
                 pce.encode({"deadline": deadline, "requested": requested})
             )
@@ -682,6 +692,8 @@ def _supervise(
                 )
             )
             active = None
+            if after_response is not None:
+                after_response(observations[-1])
             parent.send_bytes(pce.encode({"obtained": obtained}))
         _check(receive(end) == "candidate", "worker_unknown")
         _check(
@@ -723,9 +735,10 @@ def acquire(
 ) -> AcquisitionResult:
     """Source-only candidate; current authorization does not permit enabling.
 
-    Future production use requires an external exact-code/plan opt-in. Supplying
-    either injectable makes the execution synthetic and cannot qualify Source.
-    The budget is admission for one attempt, not permission or a retry counter.
+    Real execution is unconditionally blocked: no qualified owner grant/review
+    or full-lifecycle host deadline exists. Caller-supplied transports and loaders
+    cannot establish offline trust. Use the fixed OfflineFixture boundary for
+    offline execution; this API cannot issue real execution authority.
     """
     if enabled is not True or type(provider_budget) is not int or provider_budget != 2:
         return AcquisitionResult("disabled_budget_zero")
@@ -737,14 +750,7 @@ def acquire(
         return AcquisitionResult("context_rejected")
     if (transport is None) != (credential_loader is None):
         return AcquisitionResult("context_rejected")
-    try:
-        return _supervise(
-            identity,
-            transport if transport is not None else _HttpsTransport(),
-            credential_loader if credential_loader is not None else _load_key,
-        )
-    except Exception:
-        return AcquisitionResult("worker_unknown")
+    return AcquisitionResult("source_execution_boundary_blocked")
 
 
 def inspect_candidate(
