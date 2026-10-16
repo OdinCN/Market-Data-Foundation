@@ -1,10 +1,11 @@
-"""Exact-one BLS v2 execution edge for a separately authorized live run."""
+"""Bounded-retry BLS v2 execution edge for one logical source read."""
 
 from __future__ import annotations
 
 import http.client
 import json
 import re
+import time
 import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -30,6 +31,11 @@ from market_data_foundation.historical.bls_cpi_direct import (
     ReleaseCausation,
     build_future_live_plan,
     parse_response,
+)
+from market_data_foundation.source_request_policy import (
+    SourceRequestFailed,
+    classify_source_exception,
+    request_source,
 )
 
 ARTIFACT_ROOT = Path("artifacts/p4-macro-bls-cpi-direct-live-r1")
@@ -74,7 +80,7 @@ class Transport(Protocol):
 
 
 class ExactOneHttpsTransport:
-    """One stdlib HTTPS exchange; redirects and retries are not implemented."""
+    """One stdlib HTTPS exchange; retry orchestration lives above this transport."""
 
     def post(
         self,
@@ -92,19 +98,59 @@ class ExactOneHttpsTransport:
                 "POST", "/publicAPI/v2/timeseries/data/", body=body, headers=headers
             )
             response = connection.getresponse()
+            response_headers = {
+                key.lower(): value for key, value in response.getheaders()
+            }
+            if response.status != 200:
+                return HttpResult(response.status, b"", response_headers)
             length = response.getheader("Content-Length")
-            if length is not None and int(length) > max_response_bytes:
+            declared_length = int(length) if length is not None else None
+            if declared_length is not None and declared_length > max_response_bytes:
                 raise LiveExecutionError("bls_live_response_too_large", 1)
             raw = response.read(max_response_bytes + 1)
             if len(raw) > max_response_bytes:
                 raise LiveExecutionError("bls_live_response_too_large", 1)
-            return HttpResult(
-                response.status,
-                raw,
-                {key.lower(): value for key, value in response.getheaders()},
-            )
+            if declared_length is not None and len(raw) < declared_length:
+                raise http.client.IncompleteRead(raw, declared_length - len(raw))
+            return HttpResult(response.status, raw, response_headers)
         finally:
             connection.close()
+
+
+def _request_bls(
+    exchange: Callable[[], HttpResult],
+    *,
+    prefix: str,
+    sleep: Callable[[float], None],
+) -> tuple[HttpResult, int]:
+    def classify(error: Exception) -> tuple[str, bool]:
+        if isinstance(error, LiveExecutionError):
+            return error.classification, False
+        return classify_source_exception(error)
+
+    try:
+        return request_source(
+            exchange,
+            status=lambda response: response.status,
+            classify=classify,
+            sleep=sleep,
+        )
+    except SourceRequestFailed as error:
+        classification = error.classification
+        if classification == "http_failure":
+            if error.http_status is not None and 300 <= error.http_status < 400:
+                classification = prefix + "redirect_rejected"
+            else:
+                classification = prefix + "http_failure"
+        elif classification in {"transport_failure", "timeout"}:
+            classification = prefix + "transport_failure"
+        elif not classification.startswith("bls_"):
+            classification = prefix + "request_failed"
+        raise LiveExecutionError(
+            classification,
+            error.attempts,
+            http_status=error.http_status,
+        ) from None
 
 
 @dataclass(frozen=True)
@@ -148,6 +194,7 @@ def _write_artifacts(
     evidence: DirectCpiLiveEvidence,
     http_status: int,
     registration_key: str,
+    provider_data_attempts: int,
 ) -> Path:
     projection = parse_response(
         evidence.raw_bytes,
@@ -186,13 +233,17 @@ def _write_artifacts(
     }
     secret = registration_key.encode()
     if any(secret in content for content in files.values()):
-        raise LiveExecutionError("bls_live_credential_persistence_forbidden", 1)
+        raise LiveExecutionError(
+            "bls_live_credential_persistence_forbidden", provider_data_attempts
+        )
     try:
         directory.mkdir(parents=True, exist_ok=False)
         for name, content in files.items():
             (directory / name).write_bytes(content)
     except OSError:
-        raise LiveExecutionError("bls_live_artifact_write_failed", 1) from None
+        raise LiveExecutionError(
+            "bls_live_artifact_write_failed", provider_data_attempts
+        ) from None
     return directory
 
 
@@ -205,11 +256,13 @@ def execute_live_candidate(
     identity_factory: Callable[[], object] = uuid4,
     reference_contract: DirectCpiReferenceContract = AUGUST_REFERENCE_CONTRACT,
     release_causation: ReleaseCausation | None = None,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> LiveExecutionCandidate:
-    """Execute once and construct live evidence/plan from observed facts.
+    """Execute one logical BLS read with the shared bounded transport policy.
 
-    Calling this function is the provider-effect boundary and requires separate
-    authorization. Credential validation completes before the transport call.
+    Credential validation completes before the first transport attempt. Parsing,
+    plan construction and artifact persistence occur only after a successful
+    HTTP response and never trigger another provider request.
     """
     registration_key = load_registration_key(secret_path)
     request = BlsCpiRequest()
@@ -221,8 +274,8 @@ def execute_live_candidate(
     requested_at = clock()
     instant(requested_at)
     client = transport or ExactOneHttpsTransport()
-    try:
-        result = client.post(
+    result, provider_data_attempts = _request_bls(
+        lambda: client.post(
             ENDPOINT,
             _wire_body(request, registration_key),
             {
@@ -232,21 +285,18 @@ def execute_live_candidate(
             },
             timeout=TIMEOUT_SECONDS,
             max_response_bytes=MAX_RESPONSE_BYTES,
-        )
-    except LiveExecutionError:
-        raise
-    except Exception:
-        raise LiveExecutionError("bls_live_transport_failure", 1) from None
+        ),
+        prefix="bls_live_",
+        sleep=sleep,
+    )
     obtained_at = clock()
     instant(obtained_at)
-    if 300 <= result.status < 400:
-        raise LiveExecutionError("bls_live_redirect_rejected", 1)
-    if result.status != 200:
-        raise LiveExecutionError("bls_live_http_failure", 1, http_status=result.status)
     if len(result.body) > MAX_RESPONSE_BYTES:
         raise LiveExecutionError("bls_live_response_too_large", 1)
     if result.headers.get("content-encoding", "identity").lower() != "identity":
-        raise LiveExecutionError("bls_live_content_encoding_rejected", 1)
+        raise LiveExecutionError(
+            "bls_live_content_encoding_rejected", provider_data_attempts
+        )
     try:
         evidence = DirectCpiLiveEvidence(
             raw_bytes=result.body,
@@ -255,7 +305,7 @@ def execute_live_candidate(
             requested_at=requested_at,
             obtained_at=obtained_at,
             acquisition_identity=acquisition_identity,
-            provider_data_attempts=1,
+            provider_data_attempts=provider_data_attempts,
             controlled_external_receipt=receipt,
             reference_contract=reference_contract,
         )
@@ -270,11 +320,20 @@ def execute_live_candidate(
         )
     except ReferenceNotAvailable:
         raise LiveExecutionError(
-            "bls_live_reference_not_available", 1, http_status=200
+            "bls_live_reference_not_available",
+            provider_data_attempts,
+            http_status=200,
         ) from None
     except ContractError:
-        raise LiveExecutionError("bls_live_response_contract_failed", 1) from None
+        raise LiveExecutionError(
+            "bls_live_response_contract_failed", provider_data_attempts
+        ) from None
     directory = _write_artifacts(
-        artifact_root, run_name, evidence, result.status, registration_key
+        artifact_root,
+        run_name,
+        evidence,
+        result.status,
+        registration_key,
+        provider_data_attempts,
     )
     return LiveExecutionCandidate(evidence, plan, directory)

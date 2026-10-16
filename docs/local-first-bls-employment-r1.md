@@ -1,6 +1,8 @@
 # BLS Employment retained candidate R1
 
-T03 is an unqualified, producer-local CES/CPS candidate. It has no live acquirer,
+T03 is an unqualified, producer-local CES/CPS candidate. Its explicit bounded
+[live acquirer](bls-employment-live-edge-r1.md) uses the existing MDF BLS Source
+capability without an additional grant/verifier or per-attempt approval. It has no
 active SourceBinding or expansion of `mdf.consumer.read.v1`. The qualified Python
 baseline and dependencies remain unchanged. Synthetic tests establish engineering
 behavior; this revision has no original Employment response, real Garage raw,

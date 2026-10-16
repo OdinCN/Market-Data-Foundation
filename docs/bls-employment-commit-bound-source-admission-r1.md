@@ -1,9 +1,19 @@
-# T03 committed Source evidence boundary R1
+# T03 Source entry and historical evidence inspection
 
-This candidate adds `bls_employment_source_control.py`, an isolated, read-only
-commit-bound evidence admission and a closed `execute_source_once` entry.
-The existing `bls_employment_live.py` candidate guard and all its safety tests
-remain in force. There is no execution bridge between the two paths.
+The latest Owner Occam ruling removes additional grant/verifier/per-attempt
+approval requirements for the existing MDF BLS Source capability. The current
+entry is `execute_source_once(enabled=True)`, delegating to the bounded Employment
+runner. It does not call historical commit admission and requires no manifest,
+review receipt, signed grant or verifier. Explicit live opt-in remains required;
+importing the module or ordinary Read does not execute a request.
+
+The previous unconditional `trusted_external_grant_verifier_unavailable` failure
+and the live runner's obsolete uncommitted-candidate manifest gate are removed.
+Historical T03 CONTRACT/STATUS gate descriptions remain historical control
+records, not new execution prerequisites. Fresh independent review of this
+correction can proceed directly to the bounded real Source → Garage → PG → Read
+qualification run using existing capabilities and job/effect accounting. This
+turn makes no real Provider, Garage or PG requests and claims no qualification.
 
 `inspect_committed_source()` verifies the historical independent review,
 manifest, source plan and PLAN_PASS_READ_ONLY review, Host 3711 evidence,
@@ -21,57 +31,33 @@ cannot write back a refreshed index through optional locking. This does not depe
 the launcher's environment or change any provenance check. Offline argv capture
 tests cover every Git command with `GIT_OPTIONAL_LOCKS` absent or set to `1`.
 
-These pins recognize historical evidence only. They do not confer independent
-review of this new implementation. This uncommitted candidate is dirty and thus
-cannot pass its own public historical inspection. A future commit, even on the
-same branch, also fails until a new independently reviewed binding is established.
-No future SHA, reviewer or authorization is predicted here. A result always has
-`source_qualified=False` and `execution_enabled=False`.
+The inspection result is audit-only (`source_qualified=False`,
+`execution_enabled=False`). A different HEAD or changed bytes still fail this
+historical inspection; they do not prevent the separate current Source entry.
+The historical constants and evidence digests are preserved, not rebound to
+pretend that an old review covers new code.
 
-`execute_source_once(owner_opt_in=...)` first checks the committed evidence.
-For a clean matching historical checkout, absent opt-in yields
-`named_source_only_owner_opt_in_required`; any supplied object yields
-`trusted_external_grant_verifier_unavailable`. A bool, credential presence,
-review verdict, signed-looking JSON, manual receipt or fabricated successful
-inspection cannot authorize a POST. Observations contain fixed classifications,
-zero provider requests, no attempt and no retry. A repeated or unknown-state
-request remains rejected. This is a fail-closed entry, not a usable live runner.
-
-The concrete missing capability is an externally authenticated, independently
-issued grant channel whose trust root and issuer/reviewer identity cannot be
-selected by this caller. It must bind the new admitted code/commit/tree/blobs,
-new implementation reviewer and manifest, reviewed plan, request/capability/
-fixture, expiry/revocation, named Owner source-only opt-in and a unique one-use
-grant identity. Historical professional PASS and PLAN_PASS_READ_ONLY are evidence
-inputs only; neither grants a real effect. The current plan has execution off
-and all real effect budgets zero. No such external grant verification mechanism
-was found in the existing child control surface. No READY is claimed.
-
-A later independently reviewed implementation would also need a source-specific,
-owner-local durable one-attempt consumer: fsynced nonsecret intent before send,
-atomic duplicate protection, durable count/observation, and fail-closed restart,
-unknown and retry handling. This candidate creates no attempt, intent, counter,
-HTTP transport, key loader or artifact; it does not claim to have implemented or
-qualified that future runner. Introducing a send callback without that consumer
-would violate this boundary.
-
-The unchanged contract remains one BLS v2 POST for CES0000000001/LNS14000000/
+The Source contract remains one BLS v2 POST for CES0000000001/LNS14000000/
 CES0500000003, 2025–2026, catalog/calculations, 4096 request bytes, 200000 response
 bytes, a hard 20s network deadline within a hard 30s attempt, no redirect/retry/
-fallback. A future successful response must pass original-byte echo screening
-before any hash/report/retention, then retain clean original bytes and receipt
-only under ignored `artifacts/`. A separate independent post-response gate alone
-can establish Source qualification. PG/Garage, SourceBinding and production
-effects retain zero budgets and separate authority.
+fallback. Original-byte echo screening precedes hashes, reporting and retention.
+Safe attempt/pending/release receipts and retained bytes stay under ignored
+`artifacts/`; failures expose classifications, never secrets or raw exceptions.
+Unknown is not automatically retried, reconciled or repaired. Existing journal
+identity, duplicate handling and explicit reconcile/retained repair semantics
+are preserved. No new grant-consumer subsystem is introduced.
 
-Portable tests use explicit synthetic evidence and Git-output fixtures through
-private seams, with key/transport/attempt/socket/PG traps. They are not real source
-proof. The EO also records offline readback using actual existing Git objects and
-historical reviewer hashes in a temporary local checkout, without new commits.
-The existing 201 rejection and 112 legal encoding cases remain required regression
-evidence. No real provider response or credential is used in any test.
+A Source result remains unqualified until independently checked against the
+source-specific capability/fixture/observation contract and original bytes.
+The retained candidate then enters `EmploymentLocalJob` with its exact digest
+and existing bounded storage preflight: Garage raw identity and independent
+verification, PG Version/Publication/lineage, then independent exact-version,
+as-of and reference local Read. Storage job accounting remains separate from the
+one Source request. No production or SourceBinding activation is added.
 
-Next gates are exact frozen candidate independent professional review, exclusive
-Host full QA, coordinator Git/exact-head Hosted CI/Postflight, then separately
-authenticated named Owner source-only opt-in and reviewed one-use execution.
-No self-issued professional PASS, product completion or T05 dispatch follows.
+Offline tests trap sockets/PG/real credentials, exercise Source dispatch with no
+historical gate or grant inputs, preserve historical unknown evidence without rewriting it, and run the
+supervised fake Source response through the existing retained job and local Read
+using in-memory storage/ledger. Existing byte screening, receipt, deadline,
+parser, provenance and failure/reconcile/repair regression tests remain in scope.
+These simulations do not establish real Provider/Garage/PG qualification.

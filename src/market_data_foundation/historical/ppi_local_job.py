@@ -65,7 +65,7 @@ class PpiJobJournal(FileJobJournal):
 
 @dataclass(frozen=True)
 class DirectPpiAcquirer:
-    """Exact live edge with journal callbacks bracketing the one request."""
+    """Exact live edge with journal callbacks bracketing one logical request."""
 
     transport: Transport
     secret_path: Path
@@ -76,7 +76,7 @@ class DirectPpiAcquirer:
         self,
         job_id: str,
         before_request: Callable[[], None],
-        after_request: Callable[[bool], None],
+        after_request: Callable[[bool, int], None],
     ) -> PpiLiveCandidate:
         return execute_live_candidate(
             secret_path=self.secret_path,
@@ -412,12 +412,12 @@ class PpiLocalJob(RetainedRepair):
                         effects={"provider_requests_possible": 1},
                     )
 
-                def after_request(received: bool) -> None:
+                def after_request(received: bool, attempts: int) -> None:
                     self.journal._update(
                         identity,
                         self.clock(),
                         effects={
-                            "provider_attempts_observed": 1,
+                            "provider_attempts_observed": attempts,
                             "provider_response_received": received,
                         },
                     )

@@ -10,16 +10,32 @@ from market_data_foundation.canonical import codec
 from market_data_foundation.canonical.model import digest, require
 
 
+class LogicalRequestMeteringError(RuntimeError):
+    """Local request-intent/observation bookkeeping failed; never retry provider."""
+
+
+def _meter(callback, *args):
+    try:
+        callback(*args)
+    except Exception:
+        raise LogicalRequestMeteringError("logical_request_metering_failed") from None
+
+
 class MeteredTransport:
-    """Commit request intent before one transport call, including lost replies."""
+    """Meter one logical request while observing each transport attempt."""
 
     def __init__(self, delegate, before_request, after_request):
         self.delegate = delegate
         self.before_request = before_request
         self.after_request = after_request
+        self.attempts = 0
+        self.intent_recorded = False
 
     def post(self, endpoint, body, headers, *, timeout, max_response_bytes):
-        self.before_request()
+        if not self.intent_recorded:
+            _meter(self.before_request)
+            self.intent_recorded = True
+        self.attempts += 1
         try:
             response = self.delegate.post(
                 endpoint,
@@ -29,9 +45,9 @@ class MeteredTransport:
                 max_response_bytes=max_response_bytes,
             )
         except Exception:
-            self.after_request(False)
+            _meter(self.after_request, False, self.attempts)
             raise
-        self.after_request(True)
+        _meter(self.after_request, True, self.attempts)
         return response
 
 

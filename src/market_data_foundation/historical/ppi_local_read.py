@@ -39,6 +39,7 @@ from market_data_foundation.historical.bls_ppi_final_demand import (
     durable_plan,
     parse_response,
 )
+from market_data_foundation.source_request_policy import valid_transport_attempts
 
 
 class PpiReadRejected(Exception):
@@ -142,7 +143,7 @@ def _validate_lineage(ledger: Ledger, view: ExactReadView, raw: bytes) -> None:
             or acquisition.obtained_at is None
             or type(acquisition.external_receipt) is not str
             or not acquisition.external_receipt
-            or acquisition.provider_data_attempts != 1
+            or not valid_transport_attempts(acquisition.provider_data_attempts)
         ):
             raise ValueError
         raw_materials = tuple(

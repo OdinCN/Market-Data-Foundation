@@ -13,7 +13,10 @@ from test_cpi_local_job import Rig, spec
 from market_data_foundation.canonical.model import ContractError, digest
 from market_data_foundation.historical.cpi_job_journal import FileJobJournal
 from market_data_foundation.historical.macro_job_journal import MacroJobJournal
-from market_data_foundation.historical.macro_lifecycle import MeteredTransport
+from market_data_foundation.historical.macro_lifecycle import (
+    LogicalRequestMeteringError,
+    MeteredTransport,
+)
 from market_data_foundation.historical.ppi_local_job import PpiJobSpec
 
 
@@ -169,8 +172,58 @@ def test_metered_transport_intent_precedes_effect_and_failure_is_observed():
     transport = MeteredTransport(
         Delegate(),
         lambda: events.append("intent"),
-        lambda received: events.append(received),
+        lambda received, attempts: events.append((received, attempts)),
     )
     with pytest.raises(OSError):
         transport.post("unused", b"", {}, timeout=1, max_response_bytes=1)
-    assert events == ["intent", "effect", False]
+    assert events == ["intent", "effect", (False, 1)]
+
+
+def test_metered_transport_retries_share_one_logical_intent():
+    events = []
+
+    class Delegate:
+        def __init__(self):
+            self.calls = 0
+
+        def post(self, *args, **kwargs):
+            self.calls += 1
+            events.append(("effect", self.calls))
+            if self.calls == 1:
+                raise OSError("transient")
+            return object()
+
+    transport = MeteredTransport(
+        Delegate(),
+        lambda: events.append("intent"),
+        lambda received, attempts: events.append((received, attempts)),
+    )
+    with pytest.raises(OSError):
+        transport.post("unused", b"", {}, timeout=1, max_response_bytes=1)
+    result = transport.post("unused", b"", {}, timeout=1, max_response_bytes=1)
+    assert result is not None
+    assert events == [
+        "intent",
+        ("effect", 1),
+        (False, 1),
+        ("effect", 2),
+        (True, 2),
+    ]
+
+
+def test_metered_transport_local_observation_failure_is_not_transport_retryable():
+    calls = []
+
+    class Delegate:
+        def post(self, *args, **kwargs):
+            calls.append("provider")
+            return object()
+
+    def broken_observation(_received, _attempts):
+        raise OSError("local journal unavailable")
+
+    transport = MeteredTransport(Delegate(), lambda: None, broken_observation)
+    with pytest.raises(LogicalRequestMeteringError):
+        transport.post("unused", b"", {}, timeout=1, max_response_bytes=1)
+    assert calls == ["provider"]
+    assert transport.attempts == 1

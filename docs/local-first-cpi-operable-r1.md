@@ -181,9 +181,10 @@ The journal records pending → running → succeeded/failed/cancelled/outcome_u
 stage, start/end, requested cancellation, effect intent/observations, raw identity,
 recovery plan, classifications, append-only history and a separately retained
 last-success observation. Upper bounds (`*_possible`) are explicitly distinguished
-from returned operations/confirmed readback. The provider budget is one exchange
-of at most 100,000 response bytes with a 20-second transport timeout; no retry or
-redirect. The raw-create API, canonical handoff and Publication are each bounded
+from returned operations/confirmed readback. The provider budget is one logical Source request. Its wire exchange follows
+the canonical MDF Source request policy: at most three transport attempts for
+transient network failures/408/429/5xx with 1s/2s backoff; redirects and semantic
+failures are terminal. The raw-create API, canonical handoff and Publication are each bounded
 to one call per attempt. The existing Garage adapter can issue preliminary GET,
 one ordinary PUT and verification GET; successful job readback adds a GET. This
 is MDF writer protection, not S3 Object Lock/versioning. Reconciliation has no

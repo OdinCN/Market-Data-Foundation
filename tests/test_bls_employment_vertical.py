@@ -182,6 +182,37 @@ def run(engine, identity, item):
     return engine.run(identity, enabled=True, preflight=lambda _: None, retained=item)
 
 
+@pytest.mark.parametrize("attempts", [2, 3])
+def test_retry_attempt_count_materializes_and_reads(attempts):
+    base = candidate(f"employment-retry-{attempts}")
+    retry_evidence = replace(base.evidence, provider_data_attempts=attempts)
+    retry_plan = build_plan(
+        retry_evidence,
+        identity=f"employment-retry-{attempts}",
+        finished_at=retry_evidence.obtained_at,
+        frozen_at=retry_evidence.obtained_at,
+    )
+    ledger = InMemoryLedger()
+    result = materialize_persist_publish(
+        CanonicalKernel(ledger, lambda: BASE + timedelta(seconds=1)),
+        retry_plan,
+        retry_evidence.raw_bytes,
+        InMemoryMaterialStore(),
+        InMemoryWriterProtection(),
+    )
+    for kwargs in (
+        {"version_identity": result.version.identity},
+        {},
+    ):
+        view = read_local_employment(
+            ledger,
+            reference="2026-09",
+            as_of=BASE + timedelta(seconds=2),
+            **kwargs,
+        )
+        assert view.acquisitions[0].provider_data_attempts == attempts
+
+
 def test_source_values_calculations_units_population_and_source_operands():
     data = parse_response(encode(response())).data
     assert list(data["measurements"]) == list(REFERENCES)

@@ -42,6 +42,7 @@ from market_data_foundation.historical.cpi_retained_handoff import (
     CpiReferenceSemantics,
     project_provider_calculations,
 )
+from market_data_foundation.source_request_policy import valid_transport_attempts
 
 ENDPOINT = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 SERIES_IDS = (
@@ -701,8 +702,7 @@ class DirectCpiLiveEvidence:
             "bls_cpi_direct_acquisition_identity_not_fresh",
         )
         require(
-            type(self.provider_data_attempts) is int
-            and self.provider_data_attempts == 1,
+            valid_transport_attempts(self.provider_data_attempts),
             "bls_cpi_provider_data_attempts_invalid",
         )
         require(

@@ -26,18 +26,21 @@ consulted by this runtime path.
 
 The only real transport is stdlib HTTPS to `https://apps.bea.gov/api/data/`.
 It sends GET `GetData`, dataset `NIPA`, frequency `M`, years `2025,2026`, JSON,
-first table `T20807`, then `T20804`. Both request two years once. No discovery,
-redirect, pagination, concurrency, retry or provider fallback is implemented.
+first table `T20807`, then `T20804`. These remain exactly two ordered logical
+requests. Each table independently uses the canonical MDF Source request policy:
+at most three transport attempts with 1s/2s backoff for transient network/timeout
+or HTTP 408/429/500/502/503/504 failures. No discovery, redirect following,
+pagination, concurrency or Provider fallback is implemented.
 The loader reads the standing capability only inside the explicitly enabled
 worker. Tests use fabricated responses and a fake loader, or exercise the real
 loader/HTTPS code with a fabricated TOML file and mocked HTTPS connection inside
 the spawned worker. No deterministic test reads the real file or opens a socket.
 
-The parent records intent before permitting each exchange and waits on fixed,
-bounded-size IPC messages. Monotonic cancellation thresholds remain 10 seconds
-per exchange, 20 seconds combined network and 30 seconds for the attempt.
-These are cancellation thresholds, **not a proved full-lifecycle hard
-bound**. `process.start`, pipe operations, clocks, final `join`, persistence and
+The parent records intent before permitting each logical table request and waits
+on fixed, bounded-size IPC messages. Each wire attempt retains a 10-second
+request cancellation threshold; the outer logical/network bounds are expanded
+only enough to contain the shared three-attempt policy and its 1s/2s backoff.
+These are cancellation thresholds, **not a proved full-lifecycle hard bound**. `process.start`, pipe operations, clocks, final `join`, persistence and
 reclamation can overrun them. Offline counterexamples demonstrate this gap.
 No complete host hard bound is claimed or required for admission. The existing
 mechanism cancels blocked DNS/TLS/headers/body and local processing when the
@@ -132,9 +135,9 @@ verdict or converts a candidate into an accepted Source.
 expected request parameters, mappings, rows and toy operands do not use adapter
 builders. It covers default-off admission, ordered failure/unknown accounting,
 slow drip and blocked-stage cancellation, combined/attempt deadlines, streaming
-size boundaries, encoded credential echoes, replay and forged receipts. Tests
-use short private supervision deadlines with the same cancellation mechanism;
-the constants remain fixed at 10/20/30 seconds. Fake HTTPS construction
+size boundaries, encoded credential echoes, replay and forged receipts. Tests use short private supervision deadlines with the same cancellation
+mechanism; synthetic retry tests replace backoff sleep while preserving attempt
+accounting. Fake HTTPS construction
 checks never open a socket. This is deterministic offline fixture qualification,
 not independent professional review, a real BEA response or Source acceptance.
 Correction tests additionally capture actual in-memory worker IPC for wide
@@ -149,5 +152,6 @@ Garage/PG materialization APIs can be used in the authorized T04 scope, followed
 by independent projection/receipt, publication and exact/as-of local Read
 readback. No replacement approval or authority entity is introduced. The supplied
 sanitized pair establishes the observed Results shape; actual acquisition
-framing and real storage/readback remain unverified by deterministic QA; an incompatible response stops the attempt without retry or silent parser
-relaxation. This patch does not claim Source qualification or product completion.
+framing and real storage/readback remain unverified by deterministic QA; an
+incompatible response is a terminal semantic failure and never triggers retry or
+silent parser relaxation. This patch does not claim Source qualification or product completion.

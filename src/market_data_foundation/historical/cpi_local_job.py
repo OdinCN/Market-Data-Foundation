@@ -189,7 +189,7 @@ def _causation(job_id: str) -> ReleaseCausation:
 
 @dataclass(frozen=True)
 class DirectCpiAcquirer:
-    """Owner seam: all clients/paths explicit; reuse exact-one BLS transport.
+    """Owner seam: all clients/paths explicit; reuse one logical BLS request.
 
     A fake transport and synthetic key use this exact same path in deterministic
     tests. The host may explicitly inject ExactOneHttpsTransport after opt-in.
@@ -204,7 +204,7 @@ class DirectCpiAcquirer:
         self,
         job_id: str,
         before_request: Callable[[], None],
-        after_request: Callable[[bool], None] = lambda _received: None,
+        after_request: Callable[[bool, int], None] = lambda _received, _attempts: None,
     ):
         return execute_live_candidate(
             secret_path=self.secret_path,
@@ -722,11 +722,11 @@ class CpiLocalJob(RetainedRepair):
                         effects={"provider_request_possible": 1},
                     )
 
-                def after_request(received: bool):
+                def after_request(received: bool, attempts: int):
                     self._update(
                         job_id,
                         effects={
-                            "provider_attempts_observed": 1,
+                            "provider_attempts_observed": attempts,
                             "provider_response_received": received,
                         },
                     )

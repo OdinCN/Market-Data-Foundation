@@ -41,6 +41,7 @@ from market_data_foundation.historical.bls_employment import (
     validate_publication_time,
 )
 from market_data_foundation.historical.employment_contract import BLS_EMPLOYMENT
+from market_data_foundation.source_request_policy import valid_transport_attempts
 
 
 class EmploymentReadRejected(Exception):
@@ -143,7 +144,7 @@ def _validate_lineage(ledger: Ledger, view: ExactReadView, raw: bytes) -> None:
             or acquisition.obtained_at is None
             or type(acquisition.external_receipt) is not str
             or not acquisition.external_receipt
-            or acquisition.provider_data_attempts != 1
+            or not valid_transport_attempts(acquisition.provider_data_attempts)
         ):
             raise ValueError
         validate_publication_time(

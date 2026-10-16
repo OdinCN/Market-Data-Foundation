@@ -1,4 +1,4 @@
-"""Offline boundary fixtures. Synthetic evidence cannot authorize effects."""
+"""Offline historical audit and bounded Source dispatch fixtures."""
 
 import hashlib
 import json
@@ -119,7 +119,7 @@ def denied(expected, operation=control.inspect_committed_source):
         "source_qualified": False,
         "provider_requests": 0,
         "attempt_created": False,
-        "retry_allowed": False,
+        "source_effects_enabled": False,
     }
 
 
@@ -181,7 +181,6 @@ def test_committed_clean_evidence_positive_never_qualifies_or_grants(rig):
     assert result.product_blobs == tuple((r.path, r.blob) for r in control._PRODUCT)
     assert result.source_qualified is False
     assert result.execution_enabled is False
-    denied("named_source_only_owner_opt_in_required", control.execute_source_once)
 
 
 @pytest.mark.parametrize(
@@ -280,41 +279,62 @@ def test_git_failure_hides_raw_exception(rig, monkeypatch):
     denied("commit_evidence_unavailable")
 
 
-@pytest.mark.parametrize(
-    "grant",
-    [
-        False,
-        True,
-        1,
-        "named Owner approves one POST",
-        {"owner": "Odin", "provider_requests": 1, "head": control.HEAD},
-        {"review_receipt": "a" * 64, "signature": "forged"},
-        {"state": "unknown", "retry": True},
-        {"state": "success", "attempts": 0},
-    ],
-)
-def test_forged_grant_unknown_and_repeat_cannot_create_attempt(rig, grant):
-    for _ in range(2):
-        denied(
-            "trusted_external_grant_verifier_unavailable",
-            lambda: control.execute_source_once(owner_opt_in=grant),
-        )
-    assert sorted(rig[0].rglob("*"))  # source fixture exists; no runtime tree created
-    assert not (rig[0] / "artifacts").exists()
+@pytest.mark.parametrize("enabled", [False, None, 0, 1, "true"])
+def test_source_requires_explicit_live_opt_in_without_historical_gate(
+    monkeypatch, enabled
+):
+    def forbidden():
+        pytest.fail("historical evidence used as an execution gate")
+
+    monkeypatch.setattr(control, "inspect_committed_source", forbidden)
+    with pytest.raises(live.EmploymentAcquisitionError) as caught:
+        control.execute_source_once(enabled=enabled)
+    assert caught.value.classification == live.Classification.DISABLED
+    assert caught.value.attempts == 0
+
+
+def test_source_dispatch_uses_existing_capability_without_grant_or_verifier(
+    monkeypatch,
+):
+    calls = []
+    result = object()
+    transport = object()
+
+    def execute(**kwargs):
+        calls.append(kwargs)
+        return result
+
+    def forbidden():
+        pytest.fail("historical evidence used as an execution gate")
+
+    monkeypatch.setattr(control, "inspect_committed_source", forbidden)
+    monkeypatch.setattr(live, "execute_live_candidate", execute)
+    assert control.execute_source_once(enabled=True, transport=transport) is result
+    assert calls == [{"enabled": True, "transport": transport}]
+
+
+def test_terminal_live_error_is_propagated_without_outer_retry_loop(monkeypatch):
+    calls = []
+    error = live.EmploymentAcquisitionError(live.Classification.TRANSPORT, 1)
+
+    def lost(**kwargs):
+        calls.append(kwargs)
+        raise error
+
+    monkeypatch.setattr(live, "execute_live_candidate", lost)
+    with pytest.raises(live.EmploymentAcquisitionError) as caught:
+        control.execute_source_once(enabled=True)
+    assert caught.value is error
+    assert len(calls) == 1
+    safe = caught.value.safe_observation()
+    assert safe["max_transport_attempts"] == 3
+    assert safe["retry_exhausted"] is False
+    assert "retry_allowed" not in safe
 
 
 @pytest.mark.parametrize(
-    "key", ["head", "tree", "review_receipt", "enabled", "verifier"]
+    "key", ["owner_opt_in", "head", "tree", "review_receipt", "verifier", "grant"]
 )
-def test_public_entry_has_no_caller_self_authorization_inputs(key):
+def test_source_entry_has_no_extra_grant_protocol(key):
     with pytest.raises(TypeError):
         control.execute_source_once(**{key: "caller assertion"})
-
-
-def test_even_forged_positive_evidence_is_never_an_effect_grant(rig, monkeypatch):
-    result = control.inspect_committed_source()
-    monkeypatch.setattr(control, "inspect_committed_source", lambda: result)
-    denied(
-        "trusted_external_grant_verifier_unavailable",
-        lambda: control.execute_source_once(owner_opt_in=result),
-    )

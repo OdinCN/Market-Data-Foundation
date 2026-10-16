@@ -14,6 +14,7 @@ import pytest
 from test_bls_employment_vertical import encode, response
 
 from market_data_foundation.canonical.model import digest
+from market_data_foundation.historical import bls_employment as employment
 from market_data_foundation.historical import bls_employment_live as live
 from market_data_foundation.historical.bls_employment import (
     ENDPOINT,
@@ -71,19 +72,18 @@ def qualify(fake=None, **kwargs):
     return live.qualify_offline(fake or FakeTransport(), dummy_key=DUMMY, **kwargs)
 
 
-def rejected(fake, code, **kwargs):
+def rejected(fake, code, *, attempts=1, **kwargs):
     with pytest.raises(live.EmploymentAcquisitionError) as failure:
         qualify(fake, **kwargs)
     assert failure.value.classification == code
-    assert failure.value.attempts == 1
+    assert failure.value.attempts == attempts
     assert DUMMY not in str(failure.value)
-    assert fake.calls == 1
+    assert fake.calls == attempts
     return failure.value
 
 
-def authority():
-    # Simulation only: no Owner grant or external professional verdict implied.
-    return live.EmploymentAuthority("a" * 64, "b" * 64, "/tmp/caller-authorized.json")
+def limits():
+    return live.EmploymentSourceLimits()
 
 
 def test_t03_named_offline_pre_request_qualification_fixture():
@@ -107,7 +107,7 @@ def test_default_closed_before_secret_transport_or_writer(enabled, monkeypatch):
 
     monkeypatch.setattr(live, "_supervise", forbidden)
     with pytest.raises(live.EmploymentAcquisitionError) as failure:
-        live.execute_live_candidate(enabled=enabled, authority=authority())
+        live.execute_live_candidate(enabled=enabled, limits=limits())
     assert failure.value.classification == live.Classification.DISABLED
     assert failure.value.attempts == 0
 
@@ -132,36 +132,67 @@ def test_default_closed_before_secret_transport_or_writer(enabled, monkeypatch):
         {"fixture_id": "generic"},
         {"plan_sha256": "c" * 64},
         {"revision": "other"},
-        {"candidate_manifest_sha256": "unbound"},
-        {"review_receipt": "missing"},
+        {"contract_revision": "other"},
     ],
 )
 def test_exact_budget_and_identity_required_before_io(changes, monkeypatch):
     def forbidden(*args, **kwargs):
-        pytest.fail("invalid authority crossed effect gate")
+        pytest.fail("invalid limits crossed effect gate")
 
     monkeypatch.setattr(live, "_supervise", forbidden)
     with pytest.raises(live.EmploymentAcquisitionError) as failure:
-        live.execute_live_candidate(
-            enabled=True, authority=replace(authority(), **changes)
-        )
-    assert failure.value.classification == live.Classification.AUTHORITY
+        live.execute_live_candidate(enabled=True, limits=replace(limits(), **changes))
+    assert failure.value.classification == live.Classification.LIMITS
     assert failure.value.attempts == 0
 
 
 @pytest.mark.parametrize(
-    "status,code",
+    "status,code,attempts",
     [
-        (301, live.Classification.REDIRECT),
-        (307, live.Classification.REDIRECT),
-        (401, live.Classification.HTTP),
-        (429, live.Classification.HTTP),
-        (503, live.Classification.HTTP),
+        (301, live.Classification.REDIRECT, 1),
+        (307, live.Classification.REDIRECT, 1),
+        (401, live.Classification.HTTP, 1),
+        (429, live.Classification.HTTP, 3),
+        (503, live.Classification.HTTP, 3),
     ],
 )
-def test_http_is_terminal_no_redirect_retry_or_fallback(status, code):
-    failure = rejected(FakeTransport(status=status), code)
+def test_http_retry_policy_has_no_redirect_or_fallback(status, code, attempts):
+    failure = rejected(
+        FakeTransport(status=status),
+        code,
+        attempts=attempts,
+        sleep=lambda _seconds: None,
+    )
     assert failure.http_status == status
+
+
+def test_transport_failure_then_success_uses_two_attempts():
+    class Flaky(FakeTransport):
+        def post(self, *args, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise ConnectionError("temporary")
+            return live.HttpResponse(200, self.raw, self.headers)
+
+    waits = []
+    observation = qualify(Flaky(), sleep=waits.append)
+    assert observation.complete
+    assert waits == [1.0]
+
+
+def test_503_503_200_uses_three_attempts_and_stops():
+    class Flaky(FakeTransport):
+        def post(self, *args, **kwargs):
+            self.calls += 1
+            status = 503 if self.calls < 3 else 200
+            return live.HttpResponse(status, self.raw, self.headers)
+
+    transport = Flaky()
+    waits = []
+    observation = qualify(transport, sleep=waits.append)
+    assert observation.complete
+    assert transport.calls == 3
+    assert waits == [1.0, 2.0]
 
 
 @pytest.mark.parametrize(
@@ -312,7 +343,9 @@ def test_injected_monotonic_slow_drip_cannot_extend_network_budget():
     rejected(
         FakeTransport(advance=drip),
         live.Classification.TIMEOUT,
+        attempts=3,
         monotonic=lambda: at[0],
+        sleep=lambda _seconds: None,
     )
 
 
@@ -322,9 +355,14 @@ def test_timeout_and_raw_exception_are_classified_without_messages():
             self.calls += 1
             raise ConnectionError("provider message " + DUMMY)
 
-    failure = rejected(Failure(), live.Classification.TRANSPORT)
+    failure = rejected(
+        Failure(),
+        live.Classification.TRANSPORT,
+        attempts=3,
+        sleep=lambda _seconds: None,
+    )
     assert failure.__cause__ is None
-    assert str(failure) == "transport_failure_outcome_unknown"
+    assert str(failure) == "transport_failure_exhausted"
 
 
 def _drip_until_killed(marker):
@@ -406,7 +444,7 @@ def test_writer_gates_screening_original_bytes_readonly_and_no_overwrite(
         "source-envelope.json": b"{}",
         "observation.json": b"{}",
     }
-    args = dict(authority=authority(), run_token="c" * 32)
+    args = dict(limits=limits(), run_token="c" * 32)
     with pytest.raises(live.EmploymentAcquisitionError):
         live._write_artifacts(files, DUMMY, enabled=False, **args)
     assert not live.ARTIFACT_ROOT.exists()
@@ -437,14 +475,14 @@ def test_future_attempt_fake_pipeline_retains_unqualified_candidate(
     def writer(files, key, **kwargs):
         saved.update(files)
         assert kwargs["enabled"] is True
-        assert kwargs["authority"] == authority()
+        assert kwargs["limits"] == limits()
         assert key == DUMMY
         return tmp_path
 
     monkeypatch.setattr(live, "_write_artifacts", writer)
     instants = iter(BASE + timedelta(milliseconds=i) for i in range(4))
     result = live._attempt(
-        authority(),
+        limits(),
         FakeTransport(),
         tmp_path / "unused",
         lambda: next(instants),
@@ -481,7 +519,12 @@ def test_failure_hides_raw_exception_traceback_context():
             self.calls += 1
             raise TimeoutError("sensitive provider message " + DUMMY)
 
-    failure = rejected(Timeout(), live.Classification.TIMEOUT)
+    failure = rejected(
+        Timeout(),
+        live.Classification.TIMEOUT,
+        attempts=3,
+        sleep=lambda _seconds: None,
+    )
     assert failure.__suppress_context__
 
 
@@ -498,290 +541,6 @@ def test_header_normalization_and_duplicates(headers):
     rejected(FakeTransport(headers=headers), live.Classification.HEADERS)
 
 
-def test_manifest_revision_byte_binding_before_secret(tmp_path, monkeypatch):
-    import subprocess
-
-    repository = tmp_path / "repo"
-    repository.mkdir()
-    subprocess.run(["git", "init", "--quiet", str(repository)], check=True)
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(repository),
-            "-c",
-            "user.name=Simulation",
-            "-c",
-            "user.email=simulation@example.invalid",
-            "commit",
-            "--quiet",
-            "--allow-empty",
-            "-m",
-            "offline test only",
-        ],
-        check=True,
-    )
-    base = subprocess.check_output(
-        ["git", "-C", str(repository), "rev-parse", "HEAD"], text=True
-    ).strip()
-    relative = "src/market_data_foundation/historical/bls_employment_live.py"
-    path = repository / relative
-    path.parent.mkdir(parents=True)
-    path.write_bytes(b"offline simulation adapter bytes\n")
-    subprocess.run(
-        ["git", "-C", str(repository), "branch", "-m", live.BRANCH], check=True
-    )
-    records = []
-    for name in sorted(live.PRODUCT_PATHS):
-        product = repository / name
-        product.parent.mkdir(parents=True, exist_ok=True)
-        if not product.exists():
-            product.write_bytes(b"offline test or docs\n")
-        records.append(
-            {
-                "path": name,
-                "bytes": product.stat().st_size,
-                "sha256": digest(product.read_bytes()),
-            }
-        )
-    manifest = tmp_path / "manifest.json"
-    manifest.write_bytes(
-        encode(
-            {
-                "revision": "independent-review-label-correction",
-                "product_revision": live.REVISION,
-                "base": base,
-                "branch": live.BRANCH,
-                "product_files": records,
-            }
-        )
-    )
-    monkeypatch.setattr(live, "REPOSITORY", repository)
-    monkeypatch.setattr(live, "BASE_REVISION", base)
-    grant = replace(
-        authority(),
-        candidate_manifest_sha256=digest(manifest.read_bytes()),
-        candidate_manifest_path=str(manifest),
-    )
-    live._verify_reviewed_manifest(grant)
-    original_manifest = manifest.read_bytes()
-    for field, bad in [
-        ("base", "0" * 40),
-        ("branch", "wrong-branch"),
-        ("product_revision", "historical-product"),
-    ]:
-        mutated = json.loads(original_manifest)
-        mutated[field] = bad
-        manifest.write_bytes(encode(mutated))
-        rebound = replace(
-            grant, candidate_manifest_sha256=digest(manifest.read_bytes())
-        )
-        with pytest.raises(live.EmploymentAcquisitionError):
-            live._verify_reviewed_manifest(rebound)
-    manifest.write_bytes(original_manifest)
-    with pytest.raises(live.EmploymentAcquisitionError):
-        live._verify_reviewed_manifest(
-            replace(grant, candidate_manifest_sha256="f" * 64)
-        )
-    test_path = repository / "tests/test_bls_employment_live.py"
-    original_test = test_path.read_bytes()
-    test_path.write_bytes(b"changed tests")
-    with pytest.raises(live.EmploymentAcquisitionError):
-        live._verify_reviewed_manifest(grant)
-    test_path.write_bytes(original_test)
-    path.write_bytes(b"drift")
-    with pytest.raises(live.EmploymentAcquisitionError) as failure:
-        live.execute_live_candidate(enabled=True, authority=grant)
-    assert failure.value.classification == live.Classification.AUTHORITY
-    assert failure.value.attempts == 0
-    path.write_bytes(b"offline simulation adapter bytes\n")
-    (repository / "unexpected.py").write_text("extra changed path")
-    with pytest.raises(live.EmploymentAcquisitionError):
-        live._verify_reviewed_manifest(grant)
-
-
-@pytest.fixture
-def current_head_manifest_rig(tmp_path, monkeypatch):
-    # Synthetic Git metadata at the real current baseline; BASE_REVISION is not
-    # patched. The existing real-Git test above separately exercises Git queries.
-    repository = tmp_path / "repo"
-    records = []
-    for name in sorted(live.PRODUCT_PATHS):
-        path = repository / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(("offline candidate: " + name + "\n").encode())
-        records.append(
-            {
-                "path": name,
-                "bytes": path.stat().st_size,
-                "sha256": digest(path.read_bytes()),
-            }
-        )
-    state = {
-        ("rev-parse", "HEAD"): "27437d6b34d43295a32f66a3a786e8e65faae452",
-        ("branch", "--show-current"): live.BRANCH,
-        ("diff", "--name-only", "HEAD"): "",
-        ("ls-files", "--others", "--exclude-standard"): "\n".join(
-            sorted(live.PRODUCT_PATHS)
-        ),
-    }
-
-    def git_output(command, *, cwd, stderr, timeout):
-        assert command[0] == "git" and cwd == repository and timeout == 2
-        return (state[tuple(command[1:])] + "\n").encode()
-
-    monkeypatch.setattr(live, "REPOSITORY", repository)
-    monkeypatch.setattr(live.subprocess, "check_output", git_output)
-    manifest = tmp_path / "reviewed.json"
-    manifest.write_bytes(
-        encode(
-            {
-                "revision": "T03_POST_T04_AUTHORITY_BINDING_CORRECTION_R1",
-                "product_revision": live.REVISION,
-                "base": "27437d6b34d43295a32f66a3a786e8e65faae452",
-                "branch": live.BRANCH,
-                "product_files": records,
-            }
-        )
-    )
-    grant = replace(
-        authority(),
-        candidate_manifest_path=str(manifest),
-        candidate_manifest_sha256=digest(manifest.read_bytes()),
-    )
-    return repository, manifest, grant, state
-
-
-def test_post_t04_current_27437d6_exact_manifest_admitted(current_head_manifest_rig):
-    _, _, grant, _ = current_head_manifest_rig
-    assert live.BASE_REVISION == "27437d6b34d43295a32f66a3a786e8e65faae452"
-    grant.validate()
-    live._verify_reviewed_manifest(grant)
-    # Byte admission does not bypass the separate explicit opt-in gate.
-    with pytest.raises(live.EmploymentAcquisitionError) as failure:
-        live.execute_live_candidate(authority=grant)
-    assert failure.value.classification == live.Classification.DISABLED
-    assert failure.value.attempts == 0
-
-
-@pytest.mark.parametrize(
-    "case",
-    [
-        "wrong-sha",
-        "forged-manifest",
-        "wrong-head",
-        "self-declared-head",
-        "wrong-branch",
-        "manifest-base",
-        "manifest-branch",
-        "product-revision",
-        "doc-byte-drift",
-        "source-byte-drift",
-        "test-byte-drift",
-        "extra-untracked",
-        "extra-dirty",
-        "missing-path",
-        "duplicate-path",
-        "manifest-symlink",
-        "product-symlink",
-        "parent-symlink",
-        "committed-path-set",
-    ],
-)
-def test_post_t04_rejects_before_secret_or_attempt(
-    current_head_manifest_rig, tmp_path, monkeypatch, case
-):
-    repository, manifest, grant, state = current_head_manifest_rig
-    data = json.loads(manifest.read_bytes())
-    rebind = False
-    if case == "wrong-sha":
-        grant = replace(grant, candidate_manifest_sha256="f" * 64)
-    elif case == "forged-manifest":
-        # Self-asserted approval/hash cannot replace the external grant digest.
-        data.update(
-            review="PASS", source_opt_in=True, candidate_manifest_sha256="f" * 64
-        )
-        manifest.write_bytes(encode(data))
-    elif case in {"wrong-head", "self-declared-head"}:
-        state[("rev-parse", "HEAD")] = "f" * 40
-        if case == "self-declared-head":
-            data["base"] = "f" * 40
-            rebind = True
-    elif case == "wrong-branch":
-        state[("branch", "--show-current")] = "mdf/other-branch"
-    elif case in {"manifest-base", "manifest-branch", "product-revision"}:
-        field = {
-            "manifest-base": "base",
-            "manifest-branch": "branch",
-            "product-revision": "product_revision",
-        }[case]
-        data[field] = (
-            "88f34e3ae1f46dc4742add95fb12da3934c2b3e0" if field == "base" else "other"
-        )
-        rebind = True
-    elif case.endswith("-byte-drift"):
-        prefix = {
-            "doc-byte-drift": "docs/",
-            "source-byte-drift": "src/",
-            "test-byte-drift": "tests/",
-        }[case]
-        path = repository / next(p for p in live.PRODUCT_PATHS if p.startswith(prefix))
-        raw = path.read_bytes()
-        path.write_bytes(b"!" + raw[1:])  # Same length: SHA, not just size, must bind.
-    elif case in {"extra-untracked", "extra-dirty"}:
-        query = (
-            ("ls-files", "--others", "--exclude-standard")
-            if case == "extra-untracked"
-            else ("diff", "--name-only", "HEAD")
-        )
-        state[query] += "\nunexpected.py"
-        (repository / "unexpected.py").write_text("offline extra path\n")
-    elif case in {"missing-path", "duplicate-path"}:
-        if case == "missing-path":
-            data["product_files"].pop()
-        else:
-            data["product_files"].append(data["product_files"][0])
-        rebind = True
-    elif case == "manifest-symlink":
-        target = tmp_path / "manifest-target.json"
-        manifest.rename(target)
-        manifest.symlink_to(target)
-    elif case == "product-symlink":
-        path = repository / data["product_files"][0]["path"]
-        target = tmp_path / "product-target"
-        path.rename(target)
-        path.symlink_to(target)  # Identical target bytes still cannot admit a link.
-    elif case == "parent-symlink":
-        parent = repository / "tests"
-        target = tmp_path / "test-target"
-        parent.rename(target)
-        parent.symlink_to(target, target_is_directory=True)
-    elif case == "committed-path-set":
-        state[("ls-files", "--others", "--exclude-standard")] = ""
-    else:
-        pytest.fail("unhandled negative fixture")
-    if rebind:
-        manifest.write_bytes(encode(data))
-        grant = replace(grant, candidate_manifest_sha256=digest(manifest.read_bytes()))
-
-    boundary_calls = []
-
-    def forbidden(*args, **kwargs):
-        boundary_calls.append(True)
-        pytest.fail("authority rejection crossed secret/supervisor boundary")
-
-    monkeypatch.setattr(live, "_load_key", forbidden)
-    monkeypatch.setattr(live, "_supervise", forbidden)
-    fake = FakeTransport()
-    with pytest.raises(live.EmploymentAcquisitionError) as failure:
-        live.execute_live_candidate(enabled=True, authority=grant, transport=fake)
-    assert failure.value.classification == live.Classification.AUTHORITY
-    assert failure.value.attempts == 0
-    assert failure.value.attempt_id is None
-    assert failure.value.safe_observation()["retry_allowed"] is False
-    assert boundary_calls == [] and fake.calls == 0
-
-
 def _artifact_rig(tmp_path, monkeypatch):
     import subprocess
 
@@ -795,7 +554,7 @@ def _artifact_rig(tmp_path, monkeypatch):
         "source-envelope.json": b"{}",
         "observation.json": b"{}",
     }
-    return files, dict(enabled=True, authority=authority(), run_token="d" * 32)
+    return files, dict(enabled=True, limits=limits(), run_token="d" * 32)
 
 
 def test_writer_requires_ignore_and_forbids_symlink(tmp_path, monkeypatch):
@@ -851,7 +610,7 @@ def test_future_fake_pipeline_rejects_inverted_time_before_writer(
     instants = iter(BASE + timedelta(seconds=i) for i in offsets)
     with pytest.raises(live.EmploymentAcquisitionError) as failure:
         live._attempt(
-            authority(),
+            limits(),
             FakeTransport(),
             tmp_path,
             lambda: next(instants),
@@ -867,7 +626,6 @@ def test_full_supervised_future_fake_pipeline_only(tmp_path, monkeypatch):
     _artifact_rig(tmp_path, monkeypatch)
     # Real supervisors and IPC, dummy key, fake transport, local writer capture.
     monkeypatch.setattr(live, "_load_key", lambda _: DUMMY)
-    monkeypatch.setattr(live, "_verify_reviewed_manifest", lambda _: None)
 
     def writer(files, key, **kwargs):
         assert key == DUMMY
@@ -877,7 +635,7 @@ def test_full_supervised_future_fake_pipeline_only(tmp_path, monkeypatch):
 
     monkeypatch.setattr(live, "_write_artifacts", writer)
     result = live.execute_live_candidate(
-        enabled=True, authority=authority(), transport=FakeTransport()
+        enabled=True, limits=limits(), transport=FakeTransport()
     )
     assert (
         result.candidate.evidence.raw_bytes
@@ -934,16 +692,25 @@ def test_real_transport_rejects_headers_before_body_read(
     with pytest.raises(live.EmploymentAcquisitionError) as failure:
         live._exchange(live.EmploymentHttpsTransport(), DUMMY, time.monotonic)
     assert failure.value.classification == code
-    assert closed == [True]
+    expected_closes = 3 if status in {429, 500, 502, 503, 504} else 1
+    assert closed == [True] * expected_closes
 
 
 def test_safe_failure_observation_has_no_response_or_raw_exception():
-    failed = rejected(FakeTransport(status=503), live.Classification.HTTP)
+    failed = rejected(
+        FakeTransport(status=503),
+        live.Classification.HTTP,
+        attempts=3,
+        sleep=lambda _seconds: None,
+    )
     observation = failed.safe_observation()
     assert observation["fixture_id"] == live.FIXTURE_ID
-    assert observation["transport_attempts"] == 1
+    assert observation["transport_attempts"] == 3
     assert observation["source_qualification"] == "NOT_ESTABLISHED"
     assert observation["exception"]["type"] == "EmploymentAcquisitionError"
+    assert observation["max_transport_attempts"] == 3
+    assert observation["retry_exhausted"] is True
+    assert "retry_allowed" not in observation
     assert DUMMY not in json.dumps(observation)
     assert "raw_sha256" not in observation
 
@@ -971,6 +738,90 @@ def test_outer_cancellation_kills_nested_network_worker(tmp_path):
     size = marker.stat().st_size
     time.sleep(0.03)
     assert marker.stat().st_size == size
+
+
+def test_real_transport_empty_early_eof_retries_three_times(monkeypatch):
+    connections = []
+
+    class Response:
+        status = 200
+
+        def getheaders(self):
+            return [("Content-Type", "application/json"), ("Content-Length", "20")]
+
+        def read(self, amount):
+            assert amount == employment.MAX_RESPONSE_BYTES + 1
+            return b""
+
+    class Connection:
+        def __init__(self, host, **kwargs):
+            assert host == "api.bls.gov"
+            connections.append(self)
+
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(live.http.client, "HTTPSConnection", Connection)
+    waits = []
+    with pytest.raises(live.EmploymentAcquisitionError) as caught:
+        live._exchange(
+            live.EmploymentHttpsTransport(),
+            DUMMY,
+            time.monotonic,
+            sleep=waits.append,
+        )
+    assert caught.value.classification == live.Classification.TRANSPORT
+    assert caught.value.attempts == 3
+    assert len(connections) == 3
+    assert waits == [1.0, 2.0]
+
+
+def test_real_transport_short_body_retries_three_times(monkeypatch):
+    connections = []
+
+    class Response:
+        status = 200
+
+        def getheaders(self):
+            return [("Content-Type", "application/json"), ("Content-Length", "20")]
+
+        def read(self, amount):
+            assert amount == employment.MAX_RESPONSE_BYTES + 1
+            return b"{}"
+
+    class Connection:
+        def __init__(self, host, **kwargs):
+            assert host == "api.bls.gov"
+            connections.append(self)
+
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(live.http.client, "HTTPSConnection", Connection)
+    waits = []
+    with pytest.raises(live.EmploymentAcquisitionError) as caught:
+        live._exchange(
+            live.EmploymentHttpsTransport(),
+            DUMMY,
+            time.monotonic,
+            sleep=waits.append,
+        )
+    assert caught.value.classification == live.Classification.TRANSPORT
+    assert caught.value.attempts == 3
+    assert len(connections) == 3
+    assert waits == [1.0, 2.0]
 
 
 def test_partial_ipc_transfer_still_obeys_deadline(monkeypatch):
@@ -1014,6 +865,8 @@ def test_correction_strict_original_encoding_before_parser_digest_artifact(
 
 
 def _reject_before_any_payload(raw, monkeypatch):
+    # The fixed credential-free request identity is not a response payload hash.
+    source_limits = limits()
     saved = []
 
     def forbidden(*args, **kwargs):
@@ -1021,7 +874,7 @@ def _reject_before_any_payload(raw, monkeypatch):
         pytest.fail("rejected original reached parser/digest/artifact")
 
     monkeypatch.setattr(live, "parse_response", forbidden)
-    monkeypatch.setattr(live, "digest", forbidden)
+    monkeypatch.setattr(employment, "digest", forbidden)
     monkeypatch.setattr(live, "EmploymentEvidence", forbidden)
     monkeypatch.setattr(live, "build_plan", forbidden)
     monkeypatch.setattr(live, "EmploymentRetainedCandidate", forbidden)
@@ -1032,7 +885,7 @@ def _reject_before_any_payload(raw, monkeypatch):
     monkeypatch.setattr(live, "_supervise", lambda operation, **_: operation())
     with pytest.raises(live.EmploymentAcquisitionError) as caught:
         live._attempt(
-            authority(),
+            source_limits,
             FakeTransport(raw),
             live.SECRET_PATH,
             lambda: BASE,
@@ -1188,7 +1041,7 @@ def test_correction002_legitimate_encoded_contexts_retain_exact_ces_cps_nfp_ahe(
 
     monkeypatch.setattr(live, "_write_artifacts", writer)
     result = live._attempt(
-        authority(),
+        limits(),
         FakeTransport(raw),
         live.SECRET_PATH,
         lambda: BASE,
@@ -1292,7 +1145,14 @@ def test_correction_callback_error_fields_never_executable_or_secret(
             raise error
 
     operation = (
-        (lambda: live._exchange(Attack(), DUMMY, time.monotonic))
+        (
+            lambda: live._exchange(
+                Attack(),
+                DUMMY,
+                time.monotonic,
+                sleep=lambda _seconds: None,
+            )
+        )
         if route == "transport"
         else (lambda: Attack().post())
     )
@@ -1319,7 +1179,7 @@ def test_correction_callback_error_fields_never_executable_or_secret(
         {"http_status": 99},
         {"http_status": 600},
         {"attempts": True},
-        {"attempts": 2},
+        {"attempts": 4},
         {"code": DUMMY},
         {"code": "x" * 10000},
         {"extra": DUMMY},
@@ -1381,22 +1241,11 @@ def test_correction_invalid_ipc_payloads_fail_closed(payload):
         live._decode_envelope(payload, None, "response")
 
 
-@pytest.mark.parametrize("path", ["", "relative.json", "/tmp/../manifest.json"])
-def test_correction_external_manifest_path_required_before_secret(path):
-    with pytest.raises(live.EmploymentAcquisitionError) as caught:
-        live.execute_live_candidate(
-            enabled=True, authority=replace(authority(), candidate_manifest_path=path)
-        )
-    assert caught.value.classification == live.Classification.AUTHORITY
-    assert caught.value.attempts == 0
-
-
 def test_correction_partial_response_parent_identity_and_pending_receipt(
     tmp_path, monkeypatch
 ):
     _artifact_rig(tmp_path, monkeypatch)
     monkeypatch.setattr(live, "_load_key", lambda _: DUMMY)
-    monkeypatch.setattr(live, "_verify_reviewed_manifest", lambda _: None)
 
     class Lost(FakeTransport):
         def post(self, *args, **kwargs):
@@ -1404,17 +1253,23 @@ def test_correction_partial_response_parent_identity_and_pending_receipt(
 
     with pytest.raises(live.EmploymentAcquisitionError) as caught:
         live.execute_live_candidate(
-            enabled=True, authority=authority(), transport=Lost()
+            enabled=True,
+            limits=limits(),
+            transport=Lost(),
+            sleep=lambda _seconds: None,
         )
     error = caught.value
     safe = error.safe_observation()
-    assert safe["transport_attempts"] == 1 and safe["retry_allowed"] is False
+    assert safe["transport_attempts"] == 3
+    assert safe["max_transport_attempts"] == 3
+    assert safe["retry_exhausted"] is True
+    assert "retry_allowed" not in safe
     assert len(error.attempt_id) == 32
     pending = live.ARTIFACT_ROOT / safe["pending_receipt"]
     assert json.loads(pending.read_bytes())["attempt_id"] == error.attempt_id
     assert pending.stat().st_mode & 0o222 == 0
     release = live.ARTIFACT_ROOT / safe["writer_release_receipt"]
-    assert json.loads(release.read_bytes())["transport_attempts"] == 1
+    assert json.loads(release.read_bytes())["transport_attempts"] == 3
     assert release.stat().st_mode & 0o222 == 0
     original = pending.read_bytes()
     with pytest.raises(live.EmploymentAcquisitionError):
@@ -1429,7 +1284,6 @@ def test_correction_partial_artifact_parent_can_locate_without_success(
 ):
     _artifact_rig(tmp_path, monkeypatch)
     monkeypatch.setattr(live, "_load_key", lambda _: DUMMY)
-    monkeypatch.setattr(live, "_verify_reviewed_manifest", lambda _: None)
     original_open = live.os.open
 
     def interrupted(name, flags, mode=0o777, **kwargs):
@@ -1440,16 +1294,17 @@ def test_correction_partial_artifact_parent_can_locate_without_success(
     monkeypatch.setattr(live.os, "open", interrupted)
     with pytest.raises(live.EmploymentAcquisitionError) as caught:
         live.execute_live_candidate(
-            enabled=True, authority=authority(), transport=FakeTransport()
+            enabled=True, limits=limits(), transport=FakeTransport()
         )
     safe = caught.value.safe_observation()
     assert safe["classification"] == live.Classification.ARTIFACT.value
     assert safe["transport_attempts"] == 1
+    assert safe["retry_exhausted"] is False
+    assert "retry_allowed" not in safe
     directory = live.ARTIFACT_ROOT / safe["artifact_run"]
     assert (directory / "raw-response.bin").read_bytes() == encode(response())
     assert not (directory / "observation.json").exists()
     assert (live.ARTIFACT_ROOT / safe["pending_receipt"]).exists()
-    assert safe["retry_allowed"] is False
 
 
 def test_correction_timeout_preserves_parent_id_and_immutable_intent(
@@ -1457,7 +1312,6 @@ def test_correction_timeout_preserves_parent_id_and_immutable_intent(
 ):
     _artifact_rig(tmp_path, monkeypatch)
     monkeypatch.setattr(live, "_load_key", lambda _: DUMMY)
-    monkeypatch.setattr(live, "_verify_reviewed_manifest", lambda _: None)
     monkeypatch.setattr(live, "ATTEMPT_SECONDS", 0.2)
 
     class Blocked(FakeTransport):
@@ -1465,15 +1319,15 @@ def test_correction_timeout_preserves_parent_id_and_immutable_intent(
             time.sleep(3)
 
     with pytest.raises(live.EmploymentAcquisitionError) as caught:
-        live.execute_live_candidate(
-            enabled=True, authority=authority(), transport=Blocked()
-        )
+        live.execute_live_candidate(enabled=True, limits=limits(), transport=Blocked())
     safe = caught.value.safe_observation()
     assert safe["classification"] == live.Classification.ATTEMPT_TIMEOUT.value
     assert safe["transport_attempts"] == 1 and safe["attempt_id"] is not None
     pending = json.loads((live.ARTIFACT_ROOT / safe["pending_receipt"]).read_bytes())
     assert pending["attempt_id"] == safe["attempt_id"]
-    assert pending["retry_allowed"] is False
+    assert pending["transport_policy"] == "mdf_shared_source_request_policy"
+    assert pending["max_transport_attempts"] == 3
+    assert "retry_allowed" not in pending
     assert not (live.ARTIFACT_ROOT / safe["writer_release_receipt"]).exists()
     assert not (live.ARTIFACT_ROOT / safe["artifact_run"]).exists()
 
@@ -1524,7 +1378,9 @@ def test_correction_supervisor_reports_cancel_with_known_attempt(monkeypatch):
         )
     safe = caught.value.safe_observation()
     assert safe["attempt_id"] == "e" * 32 and safe["transport_attempts"] == 1
-    assert DUMMY not in json.dumps(safe) and safe["retry_allowed"] is False
+    assert safe["max_transport_attempts"] == 3
+    assert "retry_allowed" not in safe
+    assert DUMMY not in json.dumps(safe)
 
 
 def test_correction_complete_fake_retention_uses_same_parent_attempt_everywhere(
@@ -1532,10 +1388,15 @@ def test_correction_complete_fake_retention_uses_same_parent_attempt_everywhere(
 ):
     _artifact_rig(tmp_path, monkeypatch)
     monkeypatch.setattr(live, "_load_key", lambda _: DUMMY)
-    monkeypatch.setattr(live, "_verify_reviewed_manifest", lambda _: None)
-    result = live.execute_live_candidate(
-        enabled=True, authority=authority(), transport=FakeTransport()
+    from market_data_foundation.historical import (
+        bls_employment_source_control as control,
     )
+
+    def no_historical_gate():
+        pytest.fail("historical evidence inspection became a Source execution gate")
+
+    monkeypatch.setattr(control, "inspect_committed_source", no_historical_gate)
+    result = control.execute_source_once(enabled=True, transport=FakeTransport())
     token = result.attempt_id
     directory = live.ARTIFACT_ROOT / ("run-" + token)
     assert result.artifact_directory == directory
@@ -1544,6 +1405,10 @@ def test_correction_complete_fake_retention_uses_same_parent_attempt_everywhere(
     assert result.observation.attempt_id == token
     receipt = json.loads((directory / "observation.json").read_bytes())
     assert receipt["attempt_id"] == token
+    assert receipt["revision"] == "T03_EMPLOYMENT_SOURCE_OCCAM_R1"
+    assert receipt["limits"] == limits().__dict__
+    assert receipt["raw_sha256"] == digest(encode(response()))
+    assert "authority" not in receipt
     assert (
         receipt["receipt_state"] == "RETAINED_UNQUALIFIED_PENDING_INDEPENDENT_READBACK"
     )
@@ -1551,6 +1416,95 @@ def test_correction_complete_fake_retention_uses_same_parent_attempt_everywhere(
     release = json.loads((live.ARTIFACT_ROOT / live._release_name(token)).read_bytes())
     assert pending["attempt_id"] == release["attempt_id"] == token
     assert release["state"] == "ARTIFACT_HANDLES_CLOSED_WORKER_REAP_PENDING"
-    assert release["transport_attempts"] == 1 and release["retry_allowed"] is False
+    assert release["transport_attempts"] == 1
+    assert release["transport_policy"] == "mdf_shared_source_request_policy"
+    assert release["max_transport_attempts"] == 3
+    assert "retry_allowed" not in release
     assert (directory / "raw-response.bin").read_bytes() == encode(response())
     os.chmod(directory, 0o700)
+
+
+def test_source_candidate_enters_existing_retained_job_and_local_read(
+    tmp_path, monkeypatch
+):
+    from test_bls_employment_vertical import rig, run, target
+
+    from market_data_foundation.historical import (
+        bls_employment_source_control as control,
+    )
+    from market_data_foundation.historical.employment_local_read import (
+        read_local_employment,
+    )
+
+    _artifact_rig(tmp_path, monkeypatch)
+    monkeypatch.setattr(live, "_load_key", lambda _: DUMMY)
+    acquisition = control.execute_source_once(enabled=True, transport=FakeTransport())
+    item = acquisition.candidate
+    assert acquisition.observation.source_qualification == "NOT_ESTABLISHED"
+    engine, ledger, store, protection = rig(tmp_path / "journal")
+    engine.clock.value = item.plan.version.frozen_at + timedelta(seconds=1)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("retained job or local Read attempted acquisition")
+
+    monkeypatch.setattr(live, "execute_live_candidate", forbidden)
+    monkeypatch.setattr(live, "_load_key", forbidden)
+    engine.submit("source-retained", target(item))
+    document = run(engine, "source-retained", item)
+    assert document["state"] == "succeeded" and document["attempts"] == 1
+    assert run(engine, "source-retained", None) == document
+    assert document["raw"]["sha256"] == digest(item.evidence.raw_bytes)
+    assert document["effects"]["ledger_commit_confirmed"] is True
+    before = ledger.snapshot()
+    exact = read_local_employment(
+        ledger,
+        reference="2026-09",
+        version_identity=item.plan.version.identity,
+        as_of=engine.clock(),
+    )
+    selected = read_local_employment(
+        ledger,
+        reference="2026-09",
+        as_of=engine.clock(),
+    )
+    assert exact == selected
+    assert exact.acquisitions[0].identity == item.evidence.acquisition_identity
+    assert exact.content == item.plan.content
+    assert ledger.snapshot() == before
+
+
+@pytest.mark.parametrize("value", [False, True, {}, "grant"])
+def test_invalid_limits_type_rejected_before_io(value, monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid limits crossed effect boundary")
+
+    monkeypatch.setattr(live, "_supervise", forbidden)
+    with pytest.raises(live.EmploymentAcquisitionError) as caught:
+        live.execute_live_candidate(enabled=True, limits=value)
+    assert caught.value.classification == live.Classification.LIMITS
+    assert caught.value.attempts == 0
+
+
+def test_explicit_falsey_transport_never_falls_back(tmp_path, monkeypatch):
+    _artifact_rig(tmp_path, monkeypatch)
+    monkeypatch.setattr(live, "_load_key", lambda _: DUMMY)
+
+    class FalseyTransport(FakeTransport):
+        def __bool__(self):
+            return False
+
+    def forbidden():
+        pytest.fail("explicit transport was replaced by default transport")
+
+    monkeypatch.setattr(live, "EmploymentHttpsTransport", forbidden)
+    with pytest.raises(live.EmploymentAcquisitionError) as caught:
+        live.execute_live_candidate(
+            enabled=True,
+            transport=FalseyTransport(status=503),
+            sleep=lambda _seconds: None,
+        )
+    assert caught.value.classification == live.Classification.HTTP
+    assert caught.value.attempts == 3
+    safe = caught.value.safe_observation()
+    assert safe["retry_exhausted"] is True
+    assert "retry_allowed" not in safe

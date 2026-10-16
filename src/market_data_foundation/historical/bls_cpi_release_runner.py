@@ -488,20 +488,12 @@ def _clock_is_trusted(now: datetime, probe: Callable[[], ClockAttestation]) -> b
 
 
 def _retryable(completion: CaptureCompletion) -> bool:
-    if completion.canonical_verified:
-        return False
-    if completion.classification == "no_new_release/reference_not_available":
-        return completion.http_status is None
-    if completion.classification == "transport_failure":
-        return completion.http_status is None
-    return completion.classification == "http_error" and completion.http_status in {
-        408,
-        429,
-        500,
-        502,
-        503,
-        504,
-    }
+    """Only successful-source reference absence participates in release polling."""
+    return (
+        completion.canonical_verified is False
+        and completion.classification == "no_new_release/reference_not_available"
+        and completion.http_status is None
+    )
 
 
 def _existing_slot(

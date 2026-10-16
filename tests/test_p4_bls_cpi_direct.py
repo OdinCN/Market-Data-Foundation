@@ -607,9 +607,10 @@ def test_postgres_allowlist_is_exact_transaction_namespace():
 
 
 class FakeTransport:
-    def __init__(self, result=None, failure=None):
+    def __init__(self, result=None, failure=None, outcomes=None):
         self.result = result
         self.failure = failure
+        self.outcomes = list(outcomes) if outcomes is not None else None
         self.calls = []
 
     def post(self, endpoint, body, headers, *, timeout, max_response_bytes):
@@ -622,6 +623,13 @@ class FakeTransport:
                 "max_response_bytes": max_response_bytes,
             }
         )
+        if self.outcomes is not None:
+            if not self.outcomes:
+                raise AssertionError("unexpected extra transport attempt")
+            outcome = self.outcomes.pop(0)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
         if self.failure is not None:
             raise self.failure
         return self.result
@@ -637,7 +645,7 @@ def _live_clocks():
     return iter(BASE + timedelta(seconds=offset) for offset in range(4))
 
 
-def test_live_executor_exact_one_wire_shape_and_secret_safe_artifacts(tmp_path):
+def test_live_executor_first_attempt_wire_shape_and_secret_safe_artifacts(tmp_path):
     credential = "A1" * 16
     transport = FakeTransport(
         live.HttpResult(200, encode(response()), {"content-encoding": "identity"})
@@ -711,7 +719,8 @@ def test_live_executor_exact_one_wire_shape_and_secret_safe_artifacts(tmp_path):
             live.HttpResult(302, b"redirect", {"location": "https://elsewhere"}),
             "redirect_rejected",
         ),
-        (live.HttpResult(503, b"failure", {}), "http_failure"),
+        (live.HttpResult(401, b"unauthorized", {}), "http_failure"),
+        (live.HttpResult(404, b"missing", {}), "http_failure"),
         (
             live.HttpResult(200, b"x" * (direct.MAX_RESPONSE_BYTES + 1), {}),
             "response_too_large",
@@ -719,11 +728,12 @@ def test_live_executor_exact_one_wire_shape_and_secret_safe_artifacts(tmp_path):
         (live.HttpResult(200, b"not-json", {}), "response_contract_failed"),
     ],
 )
-def test_live_executor_failures_are_terminal_exact_one(
+def test_live_executor_nonretryable_failures_use_one_attempt(
     tmp_path, result, classification
 ):
     transport = FakeTransport(result)
     clocks = _live_clocks()
+    waits = []
     with pytest.raises(live.LiveExecutionError, match=classification) as caught:
         live.execute_live_candidate(
             secret_path=_synthetic_secret(tmp_path),
@@ -731,24 +741,218 @@ def test_live_executor_failures_are_terminal_exact_one(
             transport=transport,
             clock=lambda: next(clocks),
             identity_factory=lambda: "failure-001",
+            sleep=waits.append,
         )
     assert caught.value.provider_data_attempts == 1
     assert len(transport.calls) == 1
+    assert waits == []
     assert not (tmp_path / "artifacts").exists()
 
 
-def test_live_executor_transport_failure_has_no_retry_or_fallback(tmp_path):
+def test_live_executor_transport_failure_exhausts_three_attempts_without_fallback(
+    tmp_path,
+):
     transport = FakeTransport(failure=OSError("secret-bearing diagnostics omitted"))
+    waits = []
     with pytest.raises(live.LiveExecutionError) as caught:
         live.execute_live_candidate(
             secret_path=_synthetic_secret(tmp_path),
             artifact_root=tmp_path / "artifacts",
             transport=transport,
             identity_factory=lambda: "transport-failure",
+            sleep=waits.append,
         )
     assert str(caught.value) == "bls_live_transport_failure"
+    assert caught.value.provider_data_attempts == 3
+    assert len(transport.calls) == 3
+    assert waits == [1.0, 2.0]
+
+
+def test_live_executor_transport_failure_then_success_records_two_attempts(tmp_path):
+    transport = FakeTransport(
+        outcomes=[
+            OSError("temporary network failure"),
+            live.HttpResult(200, encode(response()), {"content-encoding": "identity"}),
+        ]
+    )
+    waits = []
+    clocks = _live_clocks()
+    candidate = live.execute_live_candidate(
+        secret_path=_synthetic_secret(tmp_path),
+        artifact_root=tmp_path / "artifacts",
+        transport=transport,
+        clock=lambda: next(clocks),
+        identity_factory=lambda: "transport-recovered",
+        sleep=waits.append,
+    )
+    assert len(transport.calls) == 2
+    assert waits == [1.0]
+    assert candidate.evidence.provider_data_attempts == 2
+    observation = json.loads(
+        (candidate.artifact_directory / "observation.json").read_text()
+    )
+    assert observation["provider_data_attempts"] == 2
+
+
+def test_live_executor_503_503_200_uses_three_attempts(tmp_path):
+    transport = FakeTransport(
+        outcomes=[
+            live.HttpResult(503, b"temporary", {}),
+            live.HttpResult(503, b"temporary", {}),
+            live.HttpResult(200, encode(response()), {"content-encoding": "identity"}),
+        ]
+    )
+    waits = []
+    clocks = _live_clocks()
+    candidate = live.execute_live_candidate(
+        secret_path=_synthetic_secret(tmp_path),
+        artifact_root=tmp_path / "artifacts",
+        transport=transport,
+        clock=lambda: next(clocks),
+        identity_factory=lambda: "http-recovered",
+        sleep=waits.append,
+    )
+    assert len(transport.calls) == 3
+    assert waits == [1.0, 2.0]
+    assert candidate.evidence.provider_data_attempts == 3
+
+
+def test_live_executor_503_exhausts_three_attempts(tmp_path):
+    transport = FakeTransport(
+        outcomes=[
+            live.HttpResult(503, b"temporary", {}),
+            live.HttpResult(503, b"temporary", {}),
+            live.HttpResult(503, b"temporary", {}),
+        ]
+    )
+    waits = []
+    with pytest.raises(live.LiveExecutionError) as caught:
+        live.execute_live_candidate(
+            secret_path=_synthetic_secret(tmp_path),
+            artifact_root=tmp_path / "artifacts",
+            transport=transport,
+            identity_factory=lambda: "http-exhausted",
+            sleep=waits.append,
+        )
+    assert caught.value.classification == "bls_live_http_failure"
+    assert caught.value.provider_data_attempts == 3
+    assert caught.value.http_status == 503
+    assert len(transport.calls) == 3
+    assert waits == [1.0, 2.0]
+
+
+def test_live_executor_artifact_failure_does_not_requery_provider(tmp_path):
+    transport = FakeTransport(
+        live.HttpResult(200, encode(response()), {"content-encoding": "identity"})
+    )
+    artifact_root = tmp_path / "artifacts"
+    (artifact_root / "run-artifact-failure").mkdir(parents=True)
+    clocks = _live_clocks()
+    with pytest.raises(
+        live.LiveExecutionError, match="artifact_write_failed"
+    ) as caught:
+        live.execute_live_candidate(
+            secret_path=_synthetic_secret(tmp_path),
+            artifact_root=artifact_root,
+            transport=transport,
+            clock=lambda: next(clocks),
+            identity_factory=lambda: "artifact-failure",
+            sleep=lambda _: pytest.fail("successful response must not retry"),
+        )
     assert caught.value.provider_data_attempts == 1
     assert len(transport.calls) == 1
+
+
+def test_real_transport_401_short_body_is_terminal_one_attempt(tmp_path, monkeypatch):
+    connections = []
+
+    class Response:
+        status = 401
+
+        def getheader(self, name):
+            return "20" if name == "Content-Length" else None
+
+        def getheaders(self):
+            return [("Content-Length", "20")]
+
+        def read(self, _amount):
+            pytest.fail("terminal HTTP status body must not enter retry body-read path")
+
+    class Connection:
+        def __init__(self, host, **kwargs):
+            assert host == "api.bls.gov"
+            connections.append(self)
+
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(live.http.client, "HTTPSConnection", Connection)
+    waits = []
+    with pytest.raises(live.LiveExecutionError) as caught:
+        live.execute_live_candidate(
+            secret_path=_synthetic_secret(tmp_path),
+            artifact_root=tmp_path / "terminal-401-artifacts",
+            transport=live.ExactOneHttpsTransport(),
+            identity_factory=lambda: "terminal-401",
+            sleep=waits.append,
+        )
+    assert caught.value.classification == "bls_live_http_failure"
+    assert caught.value.http_status == 401
+    assert caught.value.provider_data_attempts == 1
+    assert len(connections) == 1
+    assert waits == []
+
+
+def test_real_transport_short_body_retries_three_times(tmp_path, monkeypatch):
+    connections = []
+
+    class Response:
+        status = 200
+
+        def getheader(self, name):
+            return "20" if name == "Content-Length" else None
+
+        def read(self, amount):
+            assert amount == direct.MAX_RESPONSE_BYTES + 1
+            return b"{}"
+
+        def getheaders(self):
+            return [("Content-Length", "20")]
+
+    class Connection:
+        def __init__(self, host, **kwargs):
+            assert host == "api.bls.gov"
+            connections.append(self)
+
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(live.http.client, "HTTPSConnection", Connection)
+    waits = []
+    with pytest.raises(live.LiveExecutionError) as caught:
+        live.execute_live_candidate(
+            secret_path=_synthetic_secret(tmp_path),
+            artifact_root=tmp_path / "partial-artifacts",
+            transport=live.ExactOneHttpsTransport(),
+            identity_factory=lambda: "partial-eof",
+            sleep=waits.append,
+        )
+    assert caught.value.classification == "bls_live_transport_failure"
+    assert caught.value.provider_data_attempts == 3
+    assert len(connections) == 3
+    assert waits == [1.0, 2.0]
 
 
 @pytest.mark.parametrize(

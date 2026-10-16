@@ -167,6 +167,36 @@ def job_candidate(job_id, artifact_directory):
     return PpiLiveCandidate(job_evidence, job_plan, artifact_directory)
 
 
+@pytest.mark.parametrize("attempts", [2, 3])
+def test_retry_attempt_count_materializes_and_reads(attempts):
+    retry_evidence = replace(evidence(), provider_data_attempts=attempts)
+    retry_plan = build_live_plan(
+        retry_evidence,
+        identity=f"ppi-retry-read-{attempts}",
+        finished_at=BASE + timedelta(milliseconds=2),
+        frozen_at=BASE + timedelta(milliseconds=3),
+    )
+    ledger = InMemoryLedger()
+    result = materialize_persist_publish(
+        CanonicalKernel(ledger, lambda: BASE + timedelta(seconds=1)),
+        retry_plan,
+        retry_evidence.raw_bytes,
+        InMemoryMaterialStore(),
+        InMemoryWriterProtection(),
+    )
+    for kwargs in (
+        {"version_identity": result.version.identity},
+        {},
+    ):
+        view = read_local_ppi(
+            ledger,
+            reference=REFERENCE,
+            as_of=BASE + timedelta(seconds=2),
+            **kwargs,
+        )
+        assert view.acquisitions[0].provider_data_attempts == attempts
+
+
 def test_source_specific_parser_preserves_reference_measurement_unit_and_revision():
     projection = parse_response(encode(response()))
     assert projection.data["reference_period"] == REFERENCE
@@ -849,16 +879,24 @@ def test_shared_cpi_journal_has_no_unknown_terminal_rewrite(tmp_path):
 
 
 class FakeTransport:
-    def __init__(self, body=None):
+    def __init__(self, body=None, outcomes=None):
         self.calls = []
         self.body = body or encode(response())
+        self.outcomes = list(outcomes) if outcomes is not None else None
 
     def post(self, endpoint, body, headers, *, timeout, max_response_bytes):
         self.calls.append((endpoint, body, headers, timeout, max_response_bytes))
+        if self.outcomes is not None:
+            if not self.outcomes:
+                raise AssertionError("unexpected extra transport attempt")
+            outcome = self.outcomes.pop(0)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
         return HttpResult(200, self.body, {"content-encoding": "identity"})
 
 
-def test_live_edge_is_exact_one_and_persists_no_registration_key(tmp_path):
+def test_live_edge_first_attempt_persists_no_registration_key(tmp_path):
     secret = tmp_path / "secret.toml"
     secret.write_text('[bls]\napi_key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"\n')
     transport = FakeTransport()
@@ -879,6 +917,80 @@ def test_live_edge_is_exact_one_and_persists_no_registration_key(tmp_path):
     assert "registrationkey" not in json.dumps(persisted).lower()
 
 
+def test_live_edge_transport_retry_then_success_records_attempts(tmp_path):
+    secret = tmp_path / "retry-secret.toml"
+    secret.write_text('[bls]\napi_key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"\n')
+    transport = FakeTransport(
+        outcomes=[
+            OSError("temporary transport failure"),
+            HttpResult(200, encode(response()), {"content-encoding": "identity"}),
+        ]
+    )
+    waits = []
+    times = iter(BASE + timedelta(milliseconds=index) for index in range(4))
+    candidate = execute_live_candidate(
+        secret_path=secret,
+        artifact_root=tmp_path / "retry-artifacts",
+        transport=transport,
+        clock=lambda: next(times),
+        identity_factory=lambda: "retry-fixed",
+        sleep=waits.append,
+    )
+    assert len(transport.calls) == 2
+    assert waits == [1.0]
+    assert candidate.evidence.provider_data_attempts == 2
+    assert candidate.plan.acquisition.provider_data_attempts == 2
+    observation = json.loads(
+        (candidate.artifact_directory / "observation.json").read_text()
+    )
+    assert observation["provider_data_attempts"] == 2
+
+
+def test_live_edge_503_503_200_uses_full_shared_budget(tmp_path):
+    secret = tmp_path / "http-retry-secret.toml"
+    secret.write_text('[bls]\napi_key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"\n')
+    transport = FakeTransport(
+        outcomes=[
+            HttpResult(503, b"temporary", {}),
+            HttpResult(503, b"temporary", {}),
+            HttpResult(200, encode(response()), {"content-encoding": "identity"}),
+        ]
+    )
+    waits = []
+    times = iter(BASE + timedelta(milliseconds=index) for index in range(4))
+    candidate = execute_live_candidate(
+        secret_path=secret,
+        artifact_root=tmp_path / "http-retry-artifacts",
+        transport=transport,
+        clock=lambda: next(times),
+        identity_factory=lambda: "http-retry-fixed",
+        sleep=waits.append,
+    )
+    assert len(transport.calls) == 3
+    assert waits == [1.0, 2.0]
+    assert candidate.evidence.provider_data_attempts == 3
+    assert candidate.plan.acquisition.provider_data_attempts == 3
+
+
+@pytest.mark.parametrize("status", [302, 401, 403, 404])
+def test_live_edge_nonretryable_http_stops_after_one(tmp_path, status):
+    secret = tmp_path / f"terminal-{status}.toml"
+    secret.write_text('[bls]\napi_key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"\n')
+    transport = FakeTransport(outcomes=[HttpResult(status, b"terminal", {})])
+    waits = []
+    with pytest.raises(LiveExecutionError) as caught:
+        execute_live_candidate(
+            secret_path=secret,
+            artifact_root=tmp_path / f"terminal-{status}",
+            transport=transport,
+            identity_factory=lambda: f"terminal-{status}",
+            sleep=waits.append,
+        )
+    assert caught.value.provider_data_attempts == 1
+    assert len(transport.calls) == 1
+    assert waits == []
+
+
 def test_shape_type_error_is_stable_contract_and_live_failure(tmp_path):
     malformed = response()
     malformed["Results"]["series"][0]["data"][0]["year"] = {}
@@ -897,6 +1009,7 @@ def test_shape_type_error_is_stable_contract_and_live_failure(tmp_path):
             identity_factory=lambda: "shape",
         )
     assert caught.value.classification == "bls_ppi_live_response_contract_failed"
+    assert caught.value.provider_data_attempts == 1
 
 
 def test_request_is_exact_two_series_and_has_no_persisted_credential():

@@ -92,6 +92,7 @@ def callback(
             transport=transport,
             clock=clock or live_clock(),
             identity_factory=lambda: next(token_values),
+            source_retry_sleep=lambda _seconds: None,
         ),
         ledger,
     )
@@ -170,31 +171,24 @@ def test_runner_to_september_material_publication_readback_success(tmp_path):
     assert publication.request.version == version.key
 
 
-def test_second_attempt_preserves_slot_and_execution_and_records_attempt_two(tmp_path):
+def test_transport_retry_stays_inside_first_release_attempt(tmp_path):
     transport = FakeTransport(
         OSError("synthetic transport failure"),
         live.HttpResult(
             200, encode(september_response()), {"content-encoding": "identity"}
         ),
     )
-    clock_values = [runner.RELEASE]
-    clock_values.extend(
-        runner.RELEASE + timedelta(seconds=30, milliseconds=index) for index in range(4)
-    )
     capture, ledger = callback(
         tmp_path,
         transport,
-        clock=SequenceClock(*clock_values),
-        tokens=("attempt-1", "attempt-2"),
+        clock=live_clock(),
+        tokens=("attempt-1",),
     )
     runner_now = [runner.RELEASE]
 
-    def runner_clock():
-        return runner_now[0]
-
     result = runner.run_cpi_release(
         enabled=True,
-        clock=runner_clock,
+        clock=lambda: runner_now[0],
         probe=lambda: runner.ClockAttestation(
             runner.CLOCK_SOURCE, runner_now[0], 0, True
         ),
@@ -204,12 +198,15 @@ def test_second_attempt_preserves_slot_and_execution_and_records_attempt_two(tmp
             0, runner_now[0] + timedelta(seconds=seconds)
         ),
     )
-    assert result.attempts == 2
-    run = ledger.get(Key(Kind.RUN, "p4-bls-cpi-direct-live-attempt-2:run"))
+    assert result.attempts == 1
+    assert len(transport.calls) == 2
+    run = ledger.get(Key(Kind.RUN, "p4-bls-cpi-direct-live-attempt-1:run"))
+    acquisition = ledger.get(Key(Kind.ACQUISITION, "mdf-bls-cpi-direct-attempt-1"))
     parameters = dict(run.transform.parameters)
-    assert parameters["release_attempt"] == "2"
+    assert parameters["release_attempt"] == "1"
     assert parameters["release_slot_identity"] == runner.SLOT_IDENTITY
     assert parameters["release_execution_identity"] == runner.EXECUTION_IDENTITY
+    assert acquisition.provider_data_attempts == 2
 
 
 def test_valid_http_200_without_september_is_reference_not_available(tmp_path):
@@ -236,18 +233,36 @@ def test_partial_september_presence_is_terminal_and_not_retryable(tmp_path):
 
 
 @pytest.mark.parametrize("status", [408, 429, 500, 502, 503, 504])
-def test_admitted_http_status_is_exact_runner_http_error(tmp_path, status):
-    transport = FakeTransport(live.HttpResult(status, b"synthetic", {}))
-    capture, _ledger = callback(tmp_path, transport)
-    assert capture(exact_request()) == runner.CaptureCompletion(
-        "http_error", http_status=status
+def test_shared_source_http_retry_exhaustion_is_terminal_to_release_runner(
+    tmp_path, status
+):
+    transport = FakeTransport(
+        live.HttpResult(status, b"synthetic", {}),
+        live.HttpResult(status, b"synthetic", {}),
+        live.HttpResult(status, b"synthetic", {}),
     )
-
-
-def test_transport_failure_is_exact_runner_transport_failure(tmp_path):
-    transport = FakeTransport(TimeoutError("synthetic"))
     capture, _ledger = callback(tmp_path, transport)
-    assert capture(exact_request()) == runner.CaptureCompletion("transport_failure")
+    completion = capture(exact_request())
+    assert completion == runner.CaptureCompletion(
+        "source_transport_exhausted", http_status=status
+    )
+    assert len(transport.calls) == 3
+    assert runner._retryable(completion) is False
+
+
+def test_shared_source_transport_retry_exhaustion_is_terminal_to_release_runner(
+    tmp_path,
+):
+    transport = FakeTransport(
+        TimeoutError("synthetic"),
+        TimeoutError("synthetic"),
+        TimeoutError("synthetic"),
+    )
+    capture, _ledger = callback(tmp_path, transport)
+    completion = capture(exact_request())
+    assert completion == runner.CaptureCompletion("source_transport_exhausted")
+    assert len(transport.calls) == 3
+    assert runner._retryable(completion) is False
 
 
 @pytest.mark.parametrize("status", [400, 401, 403, 404, 409, 422, 501])

@@ -99,7 +99,7 @@ def test_clock_invalid_before_first_attempt_stops_without_capture(change):
     assert store.stop_marker["classification"] == "clock_uncertain"
 
 
-def test_clock_invalid_before_retry_stops_after_one_capture():
+def test_clock_invalid_before_release_poll_stops_after_one_capture():
     clock = FakeClock()
     probes = 0
     captures = []
@@ -112,7 +112,7 @@ def test_clock_invalid_before_retry_stops_after_one_capture():
 
     def capture(request):
         captures.append(request)
-        return runner.CaptureCompletion("transport_failure")
+        return runner.CaptureCompletion("no_new_release/reference_not_available")
 
     result, _store = execute(clock, capture=capture, probe=probe)
     assert result.classification == runner.RunnerClassification.CLOCK_UNCERTAIN
@@ -180,21 +180,13 @@ def test_interrupted_running_slot_is_stopped_without_recapture():
     assert store.stop_marker is not None
 
 
-@pytest.mark.parametrize(
-    "first",
-    [
-        runner.CaptureCompletion("no_new_release/reference_not_available"),
-        runner.CaptureCompletion("http_error", http_status=408),
-        runner.CaptureCompletion("http_error", http_status=429),
-        runner.CaptureCompletion("http_error", http_status=500),
-        runner.CaptureCompletion("http_error", http_status=502),
-        runner.CaptureCompletion("http_error", http_status=503),
-        runner.CaptureCompletion("http_error", http_status=504),
-        runner.CaptureCompletion("transport_failure"),
-    ],
-)
-def test_only_admitted_retry_classes_retry_then_succeed(first):
-    completions = iter([first, runner.CaptureCompletion("success", True)])
+def test_only_reference_not_available_polls_then_succeeds():
+    completions = iter(
+        [
+            runner.CaptureCompletion("no_new_release/reference_not_available"),
+            runner.CaptureCompletion("success", True),
+        ]
+    )
     requests = []
 
     def capture(request):
@@ -213,6 +205,14 @@ def test_only_admitted_retry_classes_retry_then_succeed(first):
 @pytest.mark.parametrize(
     "completion",
     [
+        runner.CaptureCompletion("transport_failure"),
+        runner.CaptureCompletion("source_transport_exhausted"),
+        runner.CaptureCompletion("http_error", http_status=408),
+        runner.CaptureCompletion("http_error", http_status=429),
+        runner.CaptureCompletion("http_error", http_status=500),
+        runner.CaptureCompletion("http_error", http_status=502),
+        runner.CaptureCompletion("http_error", http_status=503),
+        runner.CaptureCompletion("http_error", http_status=504),
         runner.CaptureCompletion("http_error", http_status=400),
         runner.CaptureCompletion("http_error", http_status=401),
         runner.CaptureCompletion("semantic_failure"),
@@ -222,7 +222,7 @@ def test_only_admitted_retry_classes_retry_then_succeed(first):
         runner.CaptureCompletion("transport_failure", http_status=500),
     ],
 )
-def test_semantic_integrity_auth_policy_and_other_http_are_terminal(completion):
+def test_transport_http_semantic_integrity_auth_policy_are_terminal(completion):
     captures = []
 
     def capture(request):
@@ -240,7 +240,7 @@ def test_max_attempts_is_terminal():
 
     def capture(request):
         attempts.append(request.attempt)
-        return runner.CaptureCompletion("transport_failure")
+        return runner.CaptureCompletion("no_new_release/reference_not_available")
 
     result, _store = execute(capture=capture)
     assert result.classification == runner.RunnerClassification.MAX_ATTEMPTS_EXHAUSTED
@@ -252,7 +252,9 @@ def test_remaining_window_must_cover_retry_and_attempt_budgets():
 
     result, _store = execute(
         clock,
-        capture=lambda _request: runner.CaptureCompletion("transport_failure"),
+        capture=lambda _request: runner.CaptureCompletion(
+            "no_new_release/reference_not_available"
+        ),
     )
     assert result.classification == runner.RunnerClassification.RETRY_BUDGET_EXHAUSTED
     assert result.attempts == 36
@@ -313,7 +315,7 @@ def test_waiter_cannot_bypass_thirty_second_retry_spacing():
 
     def capture(request):
         captures.append(request)
-        return runner.CaptureCompletion("transport_failure")
+        return runner.CaptureCompletion("no_new_release/reference_not_available")
 
     result = runner.run_cpi_release(
         enabled=True,

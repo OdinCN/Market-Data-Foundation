@@ -35,6 +35,7 @@ from market_data_foundation.canonical.model import (
 from market_data_foundation.canonical.postgres import PostgresLedger
 from market_data_foundation.canonical.repository import Ledger
 from market_data_foundation.historical.employment_contract import BLS_EMPLOYMENT
+from market_data_foundation.source_request_policy import valid_transport_attempts
 
 ENDPOINT = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 SERIES_IDS = ("CES0000000001", "LNS14000000", "CES0500000003")
@@ -546,8 +547,7 @@ class EmploymentEvidence:
             "employment_candidate_identity_required",
         )
         require(
-            type(self.provider_data_attempts) is int
-            and self.provider_data_attempts == 1,
+            valid_transport_attempts(self.provider_data_attempts),
             "bls_employment_provider_attempts_invalid",
         )
         parse_response(self.raw_bytes)
@@ -624,7 +624,7 @@ def build_plan(
         "retrieval-bound snapshot; revision state from row footnotes only",
         "success",
         external_receipt=evidence.controlled_external_receipt,
-        provider_data_attempts=1,
+        provider_data_attempts=evidence.provider_data_attempts,
         pagination="single bounded response",
         recovery_summary="none; no fallback",
     )

@@ -1,8 +1,6 @@
-"""Read-only committed Employment evidence admission; Source effects stay closed.
+"""Historical read-only evidence inspection and explicit bounded Source entry.
 
-The pins identify historical external evidence, never a future Owner grant.
-There is deliberately no transport, key loader, attempt writer or grant callback.
-The uncommitted-candidate guard in bls_employment_live is a separate boundary.
+Historical pins are audit inputs, not runtime grants or execution prerequisites.
 """
 
 from __future__ import annotations
@@ -14,6 +12,8 @@ import stat
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+
+from market_data_foundation.historical import bls_employment_live as live
 
 REPOSITORY = Path(__file__).resolve().parents[3]
 CONTROL = Path(
@@ -104,7 +104,7 @@ class SourceAdmissionError(RuntimeError):
             "source_qualified": False,
             "provider_requests": 0,
             "attempt_created": False,
-            "retry_allowed": False,
+            "source_effects_enabled": False,
         }
 
 
@@ -222,21 +222,19 @@ def _inspect(repository: Path, control: Path) -> CommittedSourceEvidence:
 def inspect_committed_source() -> CommittedSourceEvidence:
     """Admit only the pinned historical commit/evidence for read-only inspection.
 
-    No caller SHA, receipt, path or review verdict is an authority input. A new
-    commit needs new independent binding; these historical pins do not renew it.
+    These immutable historical pins do not describe current code or control
+    whether the existing Source capability may execute.
     """
     return _inspect(REPOSITORY, CONTROL)
 
 
-def execute_source_once(*, owner_opt_in: object = None) -> None:
-    """Fail closed before key access, intent creation, or transport construction.
+def execute_source_once(
+    *, enabled: bool = False, transport: live.EmploymentTransport | None = None
+) -> live.EmploymentAcquisition:
+    """Use the existing capability with fixed scope, limits and explicit live opt-in.
 
-    The existing control plane has no authenticated external grant verifier or
-    reviewed durable single-attempt consumer. A bool, JSON grant, receipt, review
-    result or credential presence cannot supply either. This entry has no send
-    path; integrating those missing capabilities requires independent review.
+    Historical evidence remains independently inspectable; it is not a grant
+    verifier. The live runner owns one logical attempt and applies the shared
+    bounded transport retry policy.
     """
-    inspect_committed_source()
-    if owner_opt_in is None:
-        raise SourceAdmissionError("named_source_only_owner_opt_in_required")
-    raise SourceAdmissionError("trusted_external_grant_verifier_unavailable")
+    return live.execute_live_candidate(enabled=enabled, transport=transport)

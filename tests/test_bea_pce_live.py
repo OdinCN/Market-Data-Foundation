@@ -198,6 +198,7 @@ class SyntheticTransport:
     scenario: str = "success"
     fail_table: str = "T20807"
     delay: float = 0.0
+    transient_attempts: int = 0
 
     def exchange(self, table, key, deadline):
         assert key == DUMMY
@@ -226,9 +227,15 @@ class SyntheticTransport:
         if self.scenario == "bundle_oversize":
             document["BEAAPI"]["Results"]["UTCProductionTime"] = "X" * 1_050_000
         body = serialize(document)
-        status = (
-            503 if self.scenario == "http_status" and table == self.fail_table else 200
-        )
+        if self.scenario == "http_status_then_success" and table == self.fail_table:
+            self.transient_attempts += 1
+            status = 503 if self.transient_attempts <= 2 else 200
+        else:
+            status = (
+                503
+                if self.scenario == "http_status" and table == self.fail_table
+                else 200
+            )
         headers = None
         if self.scenario == "partial" and table == self.fail_table:
             headers = [
@@ -333,9 +340,10 @@ def https_fixture_worker(
 
         def request(self, method, path, *, headers):
             assert method == "GET" and urlsplit(path).path == "/api/data/"
-            # Closing response one must precede the only allowed second send.
-            self.table = ("T20807", "T20804")[len(closed)]
-            assert parse_qs(urlsplit(path).query) == {
+            parsed = parse_qs(urlsplit(path).query)
+            self.table = parsed["TableName"][0]
+            assert self.table in {"T20807", "T20804"}
+            assert parsed == {
                 name: [value]
                 for name, value in {
                     **PARAMS,
@@ -361,6 +369,7 @@ def https_fixture_worker(
         patch.setattr(Path, "open", open_config)
         patch.setattr(edge.http.client, "HTTPSConnection", Connection)
         patch.setattr(edge.ssl, "create_default_context", lambda: None)
+        patch.setattr(edge.time, "sleep", lambda _seconds: None)
         edge._worker(pipe, buffer, sizes, identity, transport, loader)
 
 
@@ -379,6 +388,7 @@ def test_public_default_pair_uses_spawn_loader_and_https_sequentially(
     if fail_table is not None:
         assert result.classification == "http_status_rejected"
         assert result.observations[-1].sent == "unknown"
+        assert result.observations[-1].transport_attempts == 3
         assert not result.observations[-1].response_complete
         assert result.projection is result.receipt is None
     else:
@@ -390,6 +400,16 @@ def test_public_default_pair_uses_spawn_loader_and_https_sequentially(
             result.projection, result.receipt, expected=IDENTITY
         )
         assert not check["source_qualified"]
+
+
+def test_first_table_503_503_200_retries_then_second_table_runs_once():
+    result = acquire(SyntheticTransport("http_status_then_success", "T20807"))
+    assert result.classification == "candidate_pending_independent_readback"
+    assert [o.table for o in result.observations] == ["T20807", "T20804"]
+    assert [o.transport_attempts for o in result.observations] == [3, 1]
+    receipt = pce.decode(result.receipt)
+    assert [row["transport_attempts"] for row in receipt["requests"]] == [3, 1]
+    edge.inspect_candidate(result.projection, result.receipt, expected=IDENTITY)
 
 
 @pytest.fixture(scope="module")
@@ -901,6 +921,106 @@ def test_real_wire_transport_does_not_retry_exception_or_emit_url(monkeypatch):
     assert calls == ["apps.bea.gov", "closed"]
 
 
+def test_real_wire_header_parse_failure_is_terminal_one_attempt(monkeypatch):
+    calls = []
+
+    class Connection:
+        def __init__(self, host, **kwargs):
+            assert host == "apps.bea.gov"
+            calls.append("connect")
+
+        def request(self, *args, **kwargs):
+            calls.append("request")
+
+        def getresponse(self):
+            calls.append("getresponse")
+            raise edge.http.client.LineTooLong("synthetic header line")
+
+        def close(self):
+            calls.append("close")
+
+    monkeypatch.setattr(edge.http.client, "HTTPSConnection", Connection)
+    monkeypatch.setattr(edge.ssl, "create_default_context", lambda: None)
+    pipe = CapturingPipe()
+    with pytest.raises(edge.EdgeRejected, match="^header_rejected$"):
+        edge._request_table(
+            pipe,
+            edge._HttpsTransport(),
+            "T20807",
+            DUMMY,
+            logical_deadline=time.monotonic() + 10,
+            per_attempt_seconds=10,
+        )
+    assert calls == ["connect", "request", "getresponse", "close"]
+    assert pipe.frames == []
+
+
+def test_real_wire_short_body_retries_three_transport_attempts(monkeypatch):
+    connections = []
+
+    class Connection:
+        def __init__(self, host, **kwargs):
+            assert host == "apps.bea.gov"
+            connections.append(self)
+
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            return Stream(
+                b"{}",
+                headers=[
+                    ("Content-Type", "application/json"),
+                    ("Content-Length", "20"),
+                ],
+            )
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(edge.http.client, "HTTPSConnection", Connection)
+    monkeypatch.setattr(edge.ssl, "create_default_context", lambda: None)
+    monkeypatch.setattr(edge.time, "sleep", lambda _seconds: None)
+    pipe = CapturingPipe()
+    with pytest.raises(edge.EdgeRejected, match="^transport_unknown$"):
+        edge._request_table(
+            pipe,
+            edge._HttpsTransport(),
+            "T20807",
+            DUMMY,
+            logical_deadline=time.monotonic() + 10,
+            per_attempt_seconds=10,
+        )
+    assert len(connections) == 3
+    assert pipe.frames == [b"retry", b"retry"]
+
+
+def test_retry_count_not_incremented_until_next_transport_enters(monkeypatch):
+    calls = []
+
+    def exchange(self, table, key, deadline):
+        calls.append(table)
+        raise edge.EdgeRejected("http_status_rejected", 503)
+
+    def cancel_during_backoff(_seconds):
+        raise edge.EdgeRejected("deadline_unknown")
+
+    monkeypatch.setattr(edge._HttpsTransport, "exchange", exchange)
+    monkeypatch.setattr(edge.time, "sleep", cancel_during_backoff)
+    pipe = CapturingPipe()
+    with pytest.raises(edge.EdgeRejected, match="^deadline_unknown$"):
+        edge._request_table(
+            pipe,
+            edge._HttpsTransport(),
+            "T20807",
+            DUMMY,
+            logical_deadline=time.monotonic() + 10,
+            per_attempt_seconds=10,
+        )
+    assert calls == ["T20807"]
+    assert pipe.frames == []
+
+
 class SecretTypedError(edge.EdgeRejected):
     def __str__(self):
         raise AssertionError("untrusted_str_must_not_run")
@@ -1139,7 +1259,7 @@ def capture_failed_worker(transport, monkeypatch, expected_calls):
     assert transport.calls == expected_calls
     assert sizes == [0, 0] and not any(output)
     assert pipe.frames[-1] in edge._FAILURE_FRAMES.values()
-    assert set(pipe.frames) <= {b"ready", b"complete"} | set(
+    assert set(pipe.frames) <= {b"ready", b"complete", b"retry"} | set(
         edge._FAILURE_FRAMES.values()
     )
     assert DUMMY.encode() not in b"".join(pipe.frames)
@@ -1151,7 +1271,10 @@ def capture_failed_worker(transport, monkeypatch, expected_calls):
 def test_partial_unknown_worker_never_hashes_persists_or_emits_orphan(
     failure, table, monkeypatch
 ):
-    expected = ["T20807"] if table == "T20807" else ["T20807", "T20804"]
+    if failure == "partial":
+        expected = ["T20807"] * 3 if table == "T20807" else ["T20807"] + ["T20804"] * 3
+    else:
+        expected = ["T20807"] if table == "T20807" else ["T20807", "T20804"]
     capture_failed_worker(
         CorrectionTransport(failure=failure, fail_table=table, calls=[]),
         monkeypatch,

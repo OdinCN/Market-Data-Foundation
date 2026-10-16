@@ -26,14 +26,26 @@ from pathlib import Path
 from urllib.parse import quote, quote_plus, unquote
 
 from market_data_foundation.historical import bea_pce as pce
+from market_data_foundation.source_request_policy import (
+    SOURCE_REQUEST_POLICY,
+    SourceRequestFailed,
+    request_source,
+    retryable_http_status,
+    valid_transport_attempts,
+)
 
 ADAPTER_REVISION = "t04-bea-pce-live-edge-real-shape-r2"
 PLAN_SHA256 = "c5b7e35d0d6434b2d2d0d80223ea8ea083ac33dc77443bcce744bfab23965726"
 CAPABILITY = "bea.nipa.pce.headline_core.monthly.source_projection"
 FIXTURE = "bea-nipa-pce-2026-07-t20807-t20804-lines-1-25-v1"
 REQUEST_SECONDS = 10.0
-NETWORK_SECONDS = 20.0
-ATTEMPT_SECONDS = 30.0
+LOGICAL_REQUEST_SECONDS = (
+    REQUEST_SECONDS * SOURCE_REQUEST_POLICY.max_transport_attempts
+    + sum(SOURCE_REQUEST_POLICY.backoff_seconds)
+    + 1.0
+)
+NETWORK_SECONDS = LOGICAL_REQUEST_SECONDS * len(pce.TABLES)
+ATTEMPT_SECONDS = NETWORK_SECONDS + 10.0
 CHUNK = 16_384
 OUTPUT_LIMIT = pce.MAX_RESPONSE_BYTES + 32_768
 _FAILURES = frozenset(
@@ -56,13 +68,19 @@ _FAILURE_FRAMES = {name: name.encode("ascii") for name in _FAILURES}
 
 
 class EdgeRejected(Exception):
-    """Only an allowlisted classification may cross the process boundary."""
+    """Only allowlisted, secret-safe failure facts cross process boundaries."""
 
-    def __init__(self, classification: str):
-        super().__init__(
+    def __init__(self, classification: str, http_status: int | None = None):
+        safe = (
             classification
             if type(classification) is str and classification in _FAILURES
             else "worker_unknown"
+        )
+        super().__init__(safe)
+        self.http_status = (
+            http_status
+            if type(http_status) is int and 100 <= http_status <= 599
+            else None
         )
 
 
@@ -124,6 +142,7 @@ class Observation:
     attempted: bool = True
     sent: str = "unknown"  # Never infer server receipt from local send intent.
     response_complete: bool = False
+    transport_attempts: int = 1
 
 
 @dataclass(frozen=True)
@@ -390,7 +409,8 @@ def _read_stream(
     response, *, monotonic=time.monotonic, deadline: float, key: str | None = None
 ) -> bytes:
     """Bound wire and decoded data independently, including gzip expansion."""
-    _check(response.status == 200, "http_status_rejected")
+    if response.status != 200:
+        raise EdgeRejected("http_status_rejected", response.status)
     headers = response.getheaders()
     _check(len(headers) <= 64, "header_rejected")
     if key is not None:
@@ -456,6 +476,8 @@ def _read_stream(
         _check(len(output) <= pce.MAX_RESPONSE_BYTES, "size_rejected")
         if decoder:
             _check(not decoder.unconsumed_tail, "size_rejected")
+    if wire < length:
+        raise EdgeRejected("transport_unknown")
     _check(wire == length, "partial_response_rejected")
     if decoder:
         _check(decoder.eof and not decoder.unused_data, "decode_rejected")
@@ -487,11 +509,65 @@ class _HttpsTransport:
             return _read_stream(connection.getresponse(), deadline=deadline, key=key)
         except EdgeRejected:
             raise
-        except Exception:
+        except http.client.IncompleteRead:
             raise EdgeRejected("transport_unknown") from None
+        except TimeoutError, OSError:
+            raise EdgeRejected("transport_unknown") from None
+        except http.client.HTTPException:
+            raise EdgeRejected("header_rejected") from None
+        except Exception:
+            raise EdgeRejected("worker_unknown") from None
         finally:
             if connection is not None:
                 connection.close()
+
+
+def _request_table(
+    pipe,
+    transport,
+    table,
+    key,
+    *,
+    logical_deadline,
+    per_attempt_seconds,
+):
+    entered_attempts = 0
+
+    def exchange():
+        nonlocal entered_attempts
+        entered_attempts += 1
+        if entered_attempts > 1:
+            pipe.send_bytes(b"retry")
+        deadline = min(
+            logical_deadline,
+            time.monotonic() + per_attempt_seconds,
+        )
+        _check(deadline > time.monotonic(), "deadline_unknown")
+        return transport.exchange(table, key, deadline)
+
+    def classify(error):
+        if type(error) is EdgeRejected:
+            classification = _failure_classification(error)
+            if classification == "http_status_rejected":
+                return classification, retryable_http_status(error.http_status)
+            if classification in {"transport_unknown", "deadline_unknown"}:
+                return classification, True
+            return classification, False
+        return "worker_unknown", False
+
+    def retry_wait(seconds):
+        if type(transport) is _HttpsTransport:
+            time.sleep(seconds)
+
+    try:
+        return request_source(
+            exchange,
+            status=lambda _raw: 200,
+            classify=classify,
+            sleep=retry_wait,
+        )
+    except SourceRequestFailed as error:
+        raise EdgeRejected(error.classification, error.http_status) from None
 
 
 def _worker(pipe, buffer, size, identity, transport, loader):
@@ -503,10 +579,33 @@ def _worker(pipe, buffer, size, identity, transport, loader):
         for value in asdict(identity).values():
             _identity_credential_scan(value, key)
         captures = []
+        capture_attempts = []
         for table in pce.TABLES:
             pipe.send_bytes(b"ready")
             request = pce.decode(pipe.recv_bytes(1024), max_bytes=1024)
-            raw = transport.exchange(table, key, request["deadline"])
+            _check(
+                type(request) is dict
+                and set(request)
+                in (
+                    {"deadline", "requested"},
+                    {"deadline", "attempt_seconds", "requested"},
+                )
+                and type(request["deadline"]) in {int, float},
+                "worker_unknown",
+            )
+            per_attempt_seconds = request.get("attempt_seconds", REQUEST_SECONDS)
+            _check(
+                type(per_attempt_seconds) in {int, float} and per_attempt_seconds > 0,
+                "worker_unknown",
+            )
+            raw, transport_attempts = _request_table(
+                pipe,
+                transport,
+                table,
+                key,
+                logical_deadline=request["deadline"],
+                per_attempt_seconds=per_attempt_seconds,
+            )
             _clean_capture(table, raw, key)
             pipe.send_bytes(b"complete")
             completion = pce.decode(pipe.recv_bytes(1024), max_bytes=1024)
@@ -518,6 +617,7 @@ def _worker(pipe, buffer, size, identity, transport, loader):
                     datetime.fromisoformat(completion["obtained"]),
                 )
             )
+            capture_attempts.append(transport_attempts)
         projection = pce.retain_sanitized_bundle(
             tuple(captures),
             credential=key,
@@ -544,8 +644,9 @@ def _worker(pipe, buffer, size, identity, transport, loader):
                     "requested_at_utc": c.requested_at.isoformat(),
                     "obtained_at_utc": c.obtained_at.isoformat(),
                     "classification": "response_complete",
+                    "transport_attempts": attempts,
                 }
-                for c in captures
+                for c, attempts in zip(captures, capture_attempts, strict=True)
             ],
             "sanitizer_revision": pce.SANITIZER_REVISION,
             "source_projection_schema": pce.BUNDLE_SCHEMA,
@@ -604,12 +705,18 @@ def _supervise(
     )
     network_used = 0.0
     active = None
+    active_attempts = 0
 
     def receive(deadline):
+        nonlocal active_attempts
         remaining = deadline - time.monotonic()
         _check(remaining > 0 and parent.poll(remaining), "deadline_unknown")
         message = parent.recv_bytes(128).decode("ascii")
         _check(time.monotonic() < deadline, "deadline_unknown")
+        if message == "retry":
+            active_attempts += 1
+            _check(valid_transport_attempts(active_attempts), "worker_unknown")
+            return receive(deadline)
         if message in _FAILURES:
             raise EdgeRejected(message)
         return message
@@ -621,8 +728,15 @@ def _supervise(
         for table in pce.TABLES:
             _check(receive(end) == "ready", "worker_unknown")
             began = time.monotonic()
+            logical_request_seconds = (
+                request_seconds * SOURCE_REQUEST_POLICY.max_transport_attempts
+                + sum(SOURCE_REQUEST_POLICY.backoff_seconds)
+                + 0.1
+            )
             deadline = min(
-                end, began + request_seconds, began + network_seconds - network_used
+                end,
+                began + logical_request_seconds,
+                began + network_seconds - network_used,
             )
             _check(deadline > began, "deadline_unknown")
             requested = _utc()
@@ -631,12 +745,19 @@ def _supervise(
                 "source_shape_rejected",
             )
             active = (table, requested)
+            active_attempts = 1
             # Pre-send intent is recorded before the worker is allowed to send.
             if before_send is not None:
                 before_send(table, requested)
             _check(time.monotonic() < deadline, "deadline_unknown")
             parent.send_bytes(
-                pce.encode({"deadline": deadline, "requested": requested})
+                pce.encode(
+                    {
+                        "deadline": deadline,
+                        "attempt_seconds": request_seconds,
+                        "requested": requested,
+                    }
+                )
             )
             _check(receive(deadline) == "complete", "worker_unknown")
             obtained = _utc()
@@ -653,6 +774,7 @@ def _supervise(
                     "response_complete",
                     sent="acknowledged",
                     response_complete=True,
+                    transport_attempts=active_attempts,
                 )
             )
             active = None
@@ -676,7 +798,14 @@ def _supervise(
     except Exception as exc:
         classification = _failure_classification(exc)
         if active:
-            observations.append(Observation(*active, None, classification))
+            observations.append(
+                Observation(
+                    *active,
+                    None,
+                    classification,
+                    transport_attempts=max(1, active_attempts),
+                )
+            )
         return AcquisitionResult(classification, tuple(observations))
     finally:
         if process.pid is not None and process.is_alive():
@@ -775,16 +904,25 @@ def inspect_candidate(
         and document.get("execution_class") in {"synthetic", "owner_local_candidate"},
         "source_shape_rejected",
     )
+    requests = document.get("requests")
+    _check(type(requests) is list and len(requests) == 2, "source_shape_rejected")
+    for request in requests:
+        _check(
+            type(request) is dict
+            and valid_transport_attempts(request.get("transport_attempts")),
+            "source_shape_rejected",
+        )
     _check(
-        document.get("requests")
+        requests
         == [
             {
                 "parameters": r["request"],
                 "requested_at_utc": r["requested_at"],
                 "obtained_at_utc": r["obtained_at"],
                 "classification": "response_complete",
+                "transport_attempts": request["transport_attempts"],
             }
-            for r in responses
+            for r, request in zip(responses, requests, strict=True)
         ],
         "source_shape_rejected",
     )

@@ -2,7 +2,8 @@
 
 Linux process isolation bounds DNS/TLS/headers/body together, including blocked
 and slow-drip transports. The outer supervisor also bounds local processing and
-artifact IO. Neither supervisor retries. A terminated attempt has unknown outcome.
+artifact IO. Transient Source transport failures retry only within the shared
+bounded logical-request policy; parsing and local effects remain outside it.
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ from typing import Protocol
 from urllib.parse import unquote_plus
 from uuid import uuid4
 
-from market_data_foundation.canonical.model import ContractError, digest, instant
+from market_data_foundation.canonical.model import ContractError, instant
 from market_data_foundation.historical.bls_employment import (
     CONTRACT_REVISION,
     ENDPOINT,
@@ -50,16 +51,16 @@ from market_data_foundation.historical.bls_employment import (
 from market_data_foundation.historical.employment_candidate import (
     EmploymentRetainedCandidate,
 )
+from market_data_foundation.source_request_policy import (
+    SOURCE_REQUEST_POLICY,
+    SourceRequestFailed,
+    classify_source_exception,
+    request_source,
+    retryable_http_status,
+    valid_transport_attempts,
+)
 
-REVISION = "T03_EMPLOYMENT_LIVE_EDGE_CORRECTION_002"
-# Exact uncommitted candidate baseline; a commit/rebase requires fresh binding.
-BASE_REVISION = "27437d6b34d43295a32f66a3a786e8e65faae452"
-BRANCH = "mdf/t03-employment-r1-20261016"
-PRODUCT_PATHS = {
-    "docs/bls-employment-live-edge-r1.md",
-    "src/market_data_foundation/historical/bls_employment_live.py",
-    "tests/test_bls_employment_live.py",
-}
+REVISION = "T03_EMPLOYMENT_SOURCE_OCCAM_R1"
 IPC_BYTES = 1_300_000
 SCREEN_WORK_UNITS = 16 * IPC_BYTES
 SCREEN_VARIANTS = 4096
@@ -68,7 +69,12 @@ PLAN_SHA256 = "81bcc3446959e9a18526e53b93d406f01982f18ee9ee3b5dc464f1ec70eefac6"
 FIXTURE_ID = "t03-bls-employment-sa-2026-09-prior-two-months-qualification-r1"
 CAPABILITY = "timeseries.data:CES-CPS-employment"
 NETWORK_SECONDS = 20.0
-ATTEMPT_SECONDS = 30.0
+SOURCE_REQUEST_SECONDS = (
+    NETWORK_SECONDS * SOURCE_REQUEST_POLICY.max_transport_attempts
+    + sum(SOURCE_REQUEST_POLICY.backoff_seconds)
+    + 1.0
+)
+ATTEMPT_SECONDS = SOURCE_REQUEST_SECONDS + 10.0
 REPOSITORY = Path(__file__).resolve().parents[3]
 SECRET_PATH = Path("/srv/market-data-foundation/config/local/secret.toml")
 ARTIFACT_ROOT = REPOSITORY / "artifacts/t03-source-qualification-r1"
@@ -86,11 +92,11 @@ _SENSITIVE = re.compile(
 class Classification(StrEnum):
     RETAINED = "retained_unqualified"
     DISABLED = "opt_in_required"
-    AUTHORITY = "exact_authority_required"
+    LIMITS = "source_limits_rejected"
     CREDENTIAL = "credential_invalid"
-    TRANSPORT = "transport_failure_outcome_unknown"
-    TIMEOUT = "network_deadline_outcome_unknown"
-    ATTEMPT_TIMEOUT = "attempt_deadline_receipt_unknown"
+    TRANSPORT = "transport_failure_exhausted"
+    TIMEOUT = "network_retry_exhausted"
+    ATTEMPT_TIMEOUT = "attempt_deadline_exhausted"
     REDIRECT = "redirect_rejected"
     HTTP = "http_status_rejected"
     SIZE = "response_size_rejected"
@@ -142,7 +148,15 @@ class EmploymentAcquisitionError(RuntimeError):
             "writer_release_receipt": (
                 _release_name(attempt_id) if attempt_id else None
             ),
-            "retry_allowed": False,
+            "transport_policy": "mdf_shared_source_request_policy",
+            "max_transport_attempts": SOURCE_REQUEST_POLICY.max_transport_attempts,
+            "retry_exhausted": (
+                attempts == SOURCE_REQUEST_POLICY.max_transport_attempts
+                and (
+                    code in {Classification.TRANSPORT, Classification.TIMEOUT}
+                    or (code is Classification.HTTP and retryable_http_status(status))
+                )
+            ),
             "exception": {
                 "category": code.value,
                 "module": __name__,
@@ -162,7 +176,7 @@ def _valid_error(code, attempts, status):
         type(code) is Classification
         and code is not Classification.RETAINED
         and type(attempts) is int
-        and attempts in (0, 1)
+        and 0 <= attempts <= SOURCE_REQUEST_POLICY.max_transport_attempts
         and (status is None or (type(status) is int and 100 <= status <= 599))
     )
 
@@ -188,16 +202,9 @@ def _fail(code: Classification, attempts: int = 1, status: int | None = None):
 
 
 @dataclass(frozen=True)
-class EmploymentAuthority:
-    """Future grant must be independently bound to exact reviewed candidate bytes.
+class EmploymentSourceLimits:
+    """Fixed Employment scope and effect limits, without execution grants."""
 
-    Construction is a descriptor, never evidence that Owner granted permission.
-    Numeric storage/activation budgets are explicit and remain zero.
-    """
-
-    candidate_manifest_sha256: str
-    review_receipt: str
-    candidate_manifest_path: str = ""
     revision: str = REVISION
     plan_sha256: str = PLAN_SHA256
     request_identity: str = field(
@@ -210,7 +217,7 @@ class EmploymentAuthority:
     provider_requests: int = 1
     response_bytes: int = MAX_RESPONSE_BYTES
     network_seconds: int = 20
-    attempt_seconds: int = 30
+    attempt_seconds: int = int(ATTEMPT_SECONDS)
     request_bytes: int = 4096
     pg_connections: int = 0
     pg_mutations: int = 0
@@ -218,11 +225,7 @@ class EmploymentAuthority:
     source_binding_activations: int = 0
 
     def validate(self) -> None:
-        expected = EmploymentAuthority(
-            self.candidate_manifest_sha256,
-            self.review_receipt,
-            self.candidate_manifest_path,
-        )
+        expected = EmploymentSourceLimits()
         numbers = (
             self.provider_requests,
             self.response_bytes,
@@ -234,104 +237,8 @@ class EmploymentAuthority:
             self.garage_requests,
             self.source_binding_activations,
         )
-        if (
-            self != expected
-            or not all(type(value) is int for value in numbers)
-            or type(self.candidate_manifest_sha256) is not str
-            or type(self.candidate_manifest_path) is not str
-            or not 0 < len(self.candidate_manifest_path) <= 4096
-            or not Path(self.candidate_manifest_path).is_absolute()
-            or ".." in Path(self.candidate_manifest_path).parts
-            or type(self.review_receipt) is not str
-            or re.fullmatch(r"[a-f0-9]{64}", self.candidate_manifest_sha256) is None
-            or re.fullmatch(r"[a-f0-9]{64}", self.review_receipt) is None
-        ):
-            _fail(Classification.AUTHORITY, 0)
-
-
-def _verify_reviewed_manifest(authority: EmploymentAuthority) -> None:
-    """Compare reviewed file bytes and full dirty path set before any secret IO."""
-    try:
-        manifest_path = Path(authority.candidate_manifest_path)
-        if any(p.is_symlink() for p in (manifest_path, *manifest_path.parents)):
-            _fail(Classification.AUTHORITY, 0)
-        with os.fdopen(os.open(manifest_path, os.O_RDONLY | os.O_NOFOLLOW), "rb") as f:
-            raw = f.read(100_001)
-        if len(raw) > 100_000:
-            _fail(Classification.AUTHORITY, 0)
-        if digest(raw) != authority.candidate_manifest_sha256:
-            _fail(Classification.AUTHORITY, 0)
-        manifest = _strict_json(raw)
-        if (
-            manifest["product_revision"] != REVISION
-            or manifest["base"] != BASE_REVISION
-        ):
-            _fail(Classification.AUTHORITY, 0)
-
-        def git(*args):
-            return (
-                subprocess.check_output(
-                    ["git", *args], cwd=REPOSITORY, stderr=subprocess.DEVNULL, timeout=2
-                )
-                .decode()
-                .strip()
-            )
-
-        if (
-            git("rev-parse", "HEAD") != BASE_REVISION
-            or git("branch", "--show-current") != BRANCH
-            or manifest["branch"] != BRANCH
-        ):
-            _fail(Classification.AUTHORITY, 0)
-        changed = set(filter(None, git("diff", "--name-only", "HEAD").splitlines()))
-        changed.update(
-            filter(None, git("ls-files", "--others", "--exclude-standard").splitlines())
-        )
-        records = manifest["product_files"]
-        paths = [row["path"] for row in records]
-        if (
-            len(set(paths)) != len(paths)
-            or set(paths) != changed
-            or set(paths) != PRODUCT_PATHS
-        ):
-            _fail(Classification.AUTHORITY, 0)
-        if "src/market_data_foundation/historical/bls_employment_live.py" not in paths:
-            _fail(Classification.AUTHORITY, 0)
-        for row in records:
-            if (
-                type(row) is not dict
-                or set(row) != {"path", "bytes", "sha256"}
-                or type(row["path"]) is not str
-                or type(row["bytes"]) is not int
-                or row["bytes"] <= 0
-                or type(row["sha256"]) is not str
-                or re.fullmatch(r"[a-f0-9]{64}", row["sha256"]) is None
-            ):
-                _fail(Classification.AUTHORITY, 0)
-            relative = Path(row["path"])
-            if (
-                relative.is_absolute()
-                or ".." in relative.parts
-                or relative.parts[0] not in {"src", "tests", "docs"}
-            ):
-                _fail(Classification.AUTHORITY, 0)
-            path = REPOSITORY / relative
-            if any(parent.is_symlink() for parent in (path, *path.parents)):
-                _fail(Classification.AUTHORITY, 0)
-            content = path.read_bytes()
-            if len(content) != row["bytes"] or digest(content) != row["sha256"]:
-                _fail(Classification.AUTHORITY, 0)
-    except (
-        OSError,
-        ValueError,
-        KeyError,
-        TypeError,
-        IndexError,
-        subprocess.SubprocessError,
-        RecursionError,
-        OverflowError,
-    ):
-        _fail(Classification.AUTHORITY, 0)
+        if self != expected or not all(type(value) is int for value in numbers):
+            _fail(Classification.LIMITS, 0)
 
 
 @dataclass(frozen=True)
@@ -340,6 +247,7 @@ class HttpResponse:
     body: bytes = field(repr=False)
     headers: Mapping[str, str] = field(default_factory=dict, repr=False)
     obtained_at: datetime | None = None
+    transport_attempts: int = 1
 
 
 class EmploymentTransport(Protocol):
@@ -360,11 +268,11 @@ def _check_deadline(deadline: float, monotonic: Callable[[], float]) -> None:
 
 
 class EmploymentHttpsTransport:
-    """Only called inside the network supervisor; no redirects or retries."""
+    """One HTTPS exchange; shared policy above this class owns retries."""
 
     def post(self, endpoint, body, headers, *, deadline, monotonic):
         if endpoint != ENDPOINT:
-            _fail(Classification.AUTHORITY, 0)
+            _fail(Classification.LIMITS, 0)
         _check_deadline(deadline, monotonic)
         connection = http.client.HTTPSConnection(
             "api.bls.gov", timeout=max(0.001, deadline - monotonic())
@@ -583,6 +491,7 @@ def _result_wire(value, attempt_id):
             "kind": "response",
             "body": value.body.decode("utf-8"),
             "obtained_at": value.obtained_at.isoformat() if value.obtained_at else None,
+            "transport_attempts": value.transport_attempts,
         }
     if type(value) is EmploymentAcquisition and attempt_id is not None:
         evidence, plan = value.candidate.evidence, value.candidate.plan
@@ -593,6 +502,7 @@ def _result_wire(value, attempt_id):
             "obtained_at": evidence.obtained_at.isoformat(),
             "finished_at": plan.run.finished_at.isoformat(),
             "frozen_at": plan.version.frozen_at.isoformat(),
+            "provider_data_attempts": evidence.provider_data_attempts,
         }
     raise ValueError
 
@@ -601,7 +511,9 @@ def _result_read(value, attempt_id, expected_kind):
     if type(value) is not dict or value.get("kind") != expected_kind:
         raise ValueError
     if expected_kind == "response":
-        _keys(value, "kind body obtained_at")
+        _keys(value, "kind body obtained_at transport_attempts")
+        if not valid_transport_attempts(value["transport_attempts"]):
+            raise ValueError
         return HttpResponse(
             200,
             _raw_text(value["body"]),
@@ -609,9 +521,16 @@ def _result_read(value, attempt_id, expected_kind):
             _timestamp(value["obtained_at"])
             if value["obtained_at"] is not None
             else None,
+            value["transport_attempts"],
         )
-    _keys(value, "kind body requested_at obtained_at finished_at frozen_at")
+    _keys(
+        value,
+        "kind body requested_at obtained_at finished_at frozen_at "
+        "provider_data_attempts",
+    )
     if attempt_id is None:
+        raise ValueError
+    if not valid_transport_attempts(value["provider_data_attempts"]):
         raise ValueError
     evidence = EmploymentEvidence(
         _raw_text(value["body"]),
@@ -620,6 +539,7 @@ def _result_read(value, attempt_id, expected_kind):
         _timestamp(value["obtained_at"]),
         "mdf-bls-employment-" + attempt_id,
         "mdf-artifact://t03-source-qualification-r1/run-" + attempt_id,
+        value["provider_data_attempts"],
     )
     plan = build_plan(
         evidence,
@@ -721,12 +641,12 @@ def _supervise(
     Only bounded UTF8 JSON with exact primitive schemas crosses the pipe.
     """
     if threading.active_count() != 1 or not os.sys.platform.startswith("linux"):
-        _fail(Classification.AUTHORITY, 0)
+        _fail(Classification.LIMITS, 0)
     if not _valid_attempt_id(attempt_id) or expected_kind not in {
         "response",
         "acquisition",
     }:
-        _fail(Classification.AUTHORITY, 0)
+        _fail(Classification.LIMITS, 0)
     failure = None
     result = None
     context = multiprocessing.get_context("fork")
@@ -846,52 +766,118 @@ class EmploymentAcquisition:
     attempt_id: str | None = None
 
 
-def _exchange(transport, key, monotonic, attempt_counter=None, clock=None):
+def _exchange(
+    transport,
+    key,
+    monotonic,
+    attempt_counter=None,
+    clock=None,
+    *,
+    sleep=time.sleep,
+):
     body = dict(BlsEmploymentRequest().persisted()["body"])
     body["registrationkey"] = key
     wire = json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
     if len(wire) > 4096:
         _fail(Classification.CREDENTIAL, 0)
-    deadline = monotonic() + NETWORK_SECONDS
-    try:
+
+    def exchange_once():
         if attempt_counter is not None:
-            attempt_counter.value = 1
-        response = transport.post(
-            ENDPOINT, wire, dict(_HEADERS), deadline=deadline, monotonic=monotonic
+            attempt_counter.value += 1
+        deadline = monotonic() + NETWORK_SECONDS
+        try:
+            response = transport.post(
+                ENDPOINT,
+                wire,
+                dict(_HEADERS),
+                deadline=deadline,
+                monotonic=monotonic,
+            )
+            obtained_at = clock() if clock is not None else None
+        except EmploymentAcquisitionError as error:
+            if type(transport) is EmploymentHttpsTransport:
+                code, attempts, status = _safe_error(error)
+                raise EmploymentAcquisitionError(code, attempts, status) from None
+            raise OSError("untrusted_transport_callback_failed") from None
+        _check_deadline(deadline, monotonic)
+        if type(response) is not HttpResponse or not isinstance(
+            response.headers, Mapping
+        ):
+            _fail(Classification.HEADERS)
+        normalized = {}
+        for name, value in response.headers.items():
+            if type(name) is not str or type(value) is not str:
+                _fail(Classification.HEADERS)
+            name = name.lower()
+            if name in normalized:
+                _fail(Classification.HEADERS)
+            normalized[name] = value
+        response = HttpResponse(
+            response.status,
+            response.body,
+            normalized,
+            obtained_at,
         )
-        obtained_at = clock() if clock is not None else None
-    except EmploymentAcquisitionError as error:
-        # Callback exceptions are untrusted, even when they mimic our type.
-        if type(transport) is EmploymentHttpsTransport:
-            _fail(*_safe_error(error))
-        _fail(Classification.TRANSPORT)
-    except TimeoutError:
-        _fail(Classification.TIMEOUT)
-    except Exception:
-        _fail(Classification.TRANSPORT)
-    _check_deadline(deadline, monotonic)
-    if type(response) is not HttpResponse or not isinstance(response.headers, Mapping):
-        _fail(Classification.HEADERS)
-    normalized = {}
-    for name, value in response.headers.items():
-        if type(name) is not str or type(value) is not str:
-            _fail(Classification.HEADERS)
-        name = name.lower()
-        if name in normalized:
-            _fail(Classification.HEADERS)
-        normalized[name] = value
-    response = HttpResponse(response.status, response.body, normalized, obtained_at)
-    _validate_headers(response.status, response.headers)
-    if (
-        type(response.body) is not bytes
-        or not 0 < len(response.body) <= MAX_RESPONSE_BYTES
-    ):
-        _fail(Classification.SIZE)
-    length = response.headers.get("content-length")
-    if length is not None and int(length) != len(response.body):
-        _fail(Classification.SIZE)
-    _screen(response.body, key)
-    return response
+        _validate_headers(response.status, response.headers)
+        if type(response.body) is not bytes:
+            _fail(Classification.SIZE)
+        length = response.headers.get("content-length")
+        if length is not None:
+            declared_length = int(length)
+            if len(response.body) < declared_length:
+                raise http.client.IncompleteRead(
+                    response.body,
+                    declared_length - len(response.body),
+                )
+            if len(response.body) != declared_length:
+                _fail(Classification.SIZE)
+        if not 0 < len(response.body) <= MAX_RESPONSE_BYTES:
+            _fail(Classification.SIZE)
+        _screen(response.body, key)
+        return response
+
+    classified_status = [None]
+
+    def classify(error):
+        if type(error) is EmploymentAcquisitionError:
+            code, _attempts, status = _safe_error(error)
+            classified_status[0] = status
+            if code is Classification.HTTP:
+                return code.value, retryable_http_status(status)
+            if code in {Classification.TRANSPORT, Classification.TIMEOUT}:
+                return code.value, True
+            return code.value, False
+        classification, transient = classify_source_exception(error)
+        if classification == "transport_failure":
+            return Classification.TRANSPORT.value, transient
+        if classification == "timeout":
+            return Classification.TIMEOUT.value, transient
+        return Classification.TRANSPORT.value, False
+
+    try:
+        response, attempts = request_source(
+            exchange_once,
+            status=lambda _response: 200,
+            classify=classify,
+            sleep=sleep,
+        )
+    except SourceRequestFailed as error:
+        status = error.http_status
+        if status is None:
+            status = classified_status[0]
+        if error.classification == Classification.HTTP.value:
+            _fail(Classification.HTTP, error.attempts, status)
+        if error.classification == Classification.TIMEOUT.value:
+            _fail(Classification.TIMEOUT, error.attempts, status)
+        try:
+            code = Classification(error.classification)
+        except ValueError:
+            code = Classification.TRANSPORT
+        _fail(code, error.attempts, status)
+
+    if attempt_counter is not None:
+        attempt_counter.value = attempts
+    return replace(response, transport_attempts=attempts)
 
 
 def qualify_offline(
@@ -899,6 +885,7 @@ def qualify_offline(
     *,
     dummy_key: str,
     monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> EmploymentObservation:
     """Source-named simulated pre-request fixture; never reads secrets or writes.
 
@@ -912,7 +899,7 @@ def qualify_offline(
         or re.fullmatch(r"[0-9a-fA-F]{32}", dummy_key) is None
     ):
         _fail(Classification.CREDENTIAL, 0)
-    response = _exchange(transport, dummy_key, monotonic)
+    response = _exchange(transport, dummy_key, monotonic, sleep=sleep)
     try:
         parse_response(response.body)
     except ContractError, RecursionError:
@@ -946,11 +933,10 @@ def _open_artifact_root(descriptors):
 
 
 def _write_attempt_record(attempt_id, name, fields):
-    """Immutable intent before secret/transport; absence of release blocks retry.
+    """Immutable logical-request intent and release bookkeeping.
 
-    The parent already knows this UUID, run directory and receipt name. A killed
-    worker cannot replace history or claim successful retention. This receipt
-    deliberately grants neither a retry nor a qualified result.
+    Transport retries stay inside this single logical attempt_id. These records
+    prevent history replacement; they are not retry permissions or denials.
     """
     descriptors = []
     try:
@@ -968,7 +954,10 @@ def _write_attempt_record(attempt_id, name, fields):
                         "attempt_id": attempt_id,
                         "request_identity": BlsEmploymentRequest().identity,
                         "artifact_run": "run-" + attempt_id,
-                        "retry_allowed": False,
+                        "transport_policy": "mdf_shared_source_request_policy",
+                        "max_transport_attempts": (
+                            SOURCE_REQUEST_POLICY.max_transport_attempts
+                        ),
                         **fields,
                     }
                 )
@@ -988,7 +977,7 @@ def _write_pending(attempt_id):
         attempt_id,
         _pending_name(attempt_id),
         {
-            "state": "PENDING_OUTCOME_UNKNOWN_UNTIL_INDEPENDENT_READBACK",
+            "state": "LOGICAL_SOURCE_REQUEST_PENDING",
             "writer_release_receipt": _release_name(attempt_id),
         },
     )
@@ -1012,12 +1001,12 @@ def _write_artifacts(
     key: str,
     *,
     enabled: bool,
-    authority: EmploymentAuthority,
+    limits: EmploymentSourceLimits,
     run_token: str,
 ) -> Path:
     if enabled is not True:
         _fail(Classification.DISABLED, 0)
-    authority.validate()
+    limits.validate()
     if re.fullmatch(r"[a-f0-9]{32}", run_token) is None or set(files) != {
         "raw-response.bin",
         "request.json",
@@ -1063,25 +1052,33 @@ def _write_artifacts(
 
 
 def _attempt_work(
-    authority,
+    limits,
     transport,
     secret_path,
     clock,
     monotonic,
     attempt_counter=None,
     attempt_id=None,
+    sleep=time.sleep,
 ):
     token = attempt_id or uuid4().hex
     if not _valid_attempt_id(token):
-        _fail(Classification.AUTHORITY, 0)
+        _fail(Classification.LIMITS, 0)
     key = _load_key(secret_path)
     started = monotonic()
     requested_at = clock()
     try:
         instant(requested_at)
         response = _supervise(
-            lambda: _exchange(transport, key, monotonic, attempt_counter, clock),
-            deadline=started + NETWORK_SECONDS,
+            lambda: _exchange(
+                transport,
+                key,
+                monotonic,
+                attempt_counter,
+                clock,
+                sleep=sleep,
+            ),
+            deadline=started + SOURCE_REQUEST_SECONDS,
             monotonic=monotonic,
             timeout_code=Classification.TIMEOUT,
             attempt_counter=attempt_counter,
@@ -1100,6 +1097,7 @@ def _attempt_work(
             obtained_at,
             "mdf-bls-employment-" + token,
             receipt,
+            response.transport_attempts,
         )
         finished_at, frozen_at = clock(), clock()
         plan = build_plan(
@@ -1128,9 +1126,9 @@ def _attempt_work(
             "observation.json": _json(
                 {
                     **observation.__dict__,
-                    "authority": authority.__dict__,
+                    "limits": limits.__dict__,
                     "http_status": 200,
-                    "provider_data_attempts": 1,
+                    "provider_data_attempts": response.transport_attempts,
                     "requested_at": requested_at.isoformat(),
                     "obtained_at": obtained_at.isoformat(),
                     "finished_at": finished_at.isoformat(),
@@ -1145,7 +1143,10 @@ def _attempt_work(
                     "attempt_id": token,
                     "pending_receipt": _pending_name(token),
                     "writer_release": "PENDING_PARENT_REAP_AND_INDEPENDENT_READBACK",
-                    "retry_allowed": False,
+                    "transport_policy": "mdf_shared_source_request_policy",
+                    "max_transport_attempts": (
+                        SOURCE_REQUEST_POLICY.max_transport_attempts
+                    ),
                     "receipt_state": (
                         "RETAINED_UNQUALIFIED_PENDING_INDEPENDENT_READBACK"
                     ),
@@ -1155,7 +1156,7 @@ def _attempt_work(
         # Also screen the typed candidate carrier before reporting or persisting.
         _screen(plan.content, key)
         directory = _write_artifacts(
-            files, key, enabled=True, authority=authority, run_token=token
+            files, key, enabled=True, limits=limits, run_token=token
         )
         return EmploymentAcquisition(candidate, observation, directory, token)
     except ContractError, ValueError, TypeError, RecursionError:
@@ -1163,7 +1164,7 @@ def _attempt_work(
 
 
 def _attempt(
-    authority,
+    limits,
     transport,
     secret_path,
     clock,
@@ -1171,15 +1172,23 @@ def _attempt(
     attempt_counter=None,
     attempt_id=None,
     record_pending=False,
+    sleep=time.sleep,
 ):
     token = attempt_id or uuid4().hex
     if type(token) is not str or not _valid_attempt_id(token):
-        _fail(Classification.AUTHORITY, 0)
+        _fail(Classification.LIMITS, 0)
     try:
         if record_pending:
             _write_pending(token)
         result = _attempt_work(
-            authority, transport, secret_path, clock, monotonic, attempt_counter, token
+            limits,
+            transport,
+            secret_path,
+            clock,
+            monotonic,
+            attempt_counter,
+            token,
+            sleep,
         )
     except BaseException as error:
         code, attempts, status = _safe_error(error)
@@ -1192,44 +1201,53 @@ def _attempt(
                 code, status = Classification.ARTIFACT, None
         raise EmploymentAcquisitionError(code, attempts, status, token) from None
     if record_pending:
-        _write_release(token, Classification.RETAINED, 1)
+        _write_release(
+            token,
+            Classification.RETAINED,
+            attempt_counter.value if attempt_counter is not None else 1,
+        )
     return result
 
 
 def execute_live_candidate(
     *,
     enabled: bool = False,
-    authority: EmploymentAuthority | None = None,
+    limits: EmploymentSourceLimits | None = None,
     transport: EmploymentTransport | None = None,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> EmploymentAcquisition:
-    """Future exact-one opt-in boundary. Current Owner budget remains ZERO.
+    """Explicit one-request use of the existing MDF BLS Source capability.
 
-    No PG/Garage/Binding operations exist here. A returned candidate is never a
-    qualification verdict, Publication or permission to invoke materialization.
-    Artifact interruption can leave safe partial files; no automatic cleanup,
-    reacquisition, reconciliation or retry is performed.
+    No extra grant, verifier or per-attempt approval is needed. A returned
+    candidate still needs original-byte qualification before the existing
+    retained materialization job can establish a Publication.
+    Transient transport failures retry inside this one logical Source request.
+    Parsing and artifact failures occur after a completed response and never
+    requery BLS; no Provider fallback is implemented.
     """
     if enabled is not True:
         _fail(Classification.DISABLED, 0)
-    if type(authority) is not EmploymentAuthority:
-        _fail(Classification.AUTHORITY, 0)
-    authority.validate()
-    _verify_reviewed_manifest(authority)
+    if limits is None:
+        limits = EmploymentSourceLimits()
+    if type(limits) is not EmploymentSourceLimits:
+        _fail(Classification.LIMITS, 0)
+    limits.validate()
     started = monotonic()
     attempt_id = uuid4().hex
     attempt_counter = multiprocessing.get_context("fork").Value("b", 0, lock=False)
     return _supervise(
         lambda: _attempt(
-            authority,
-            transport or EmploymentHttpsTransport(),
+            limits,
+            transport if transport is not None else EmploymentHttpsTransport(),
             SECRET_PATH,
             clock,
             monotonic,
             attempt_counter,
             attempt_id,
             True,
+            sleep,
         ),
         deadline=started + ATTEMPT_SECONDS,
         monotonic=monotonic,

@@ -32,6 +32,7 @@ from market_data_foundation.canonical.model import (
     require,
 )
 from market_data_foundation.domain_contracts.macro import BLS_PPI_FINAL_DEMAND
+from market_data_foundation.source_request_policy import valid_transport_attempts
 
 ENDPOINT = "https://api.bls.gov/publicAPI/v2/timeseries/data/"
 SERIES_IDS = ("WPSFD4", "WPUFD4")
@@ -411,7 +412,10 @@ class PpiLiveEvidence:
             bool(self.acquisition_identity) and bool(self.controlled_external_receipt),
             "bls_ppi_live_identity_required",
         )
-        require(self.provider_data_attempts == 1, "bls_ppi_provider_attempts_invalid")
+        require(
+            valid_transport_attempts(self.provider_data_attempts),
+            "bls_ppi_provider_attempts_invalid",
+        )
         parse_response(self.raw_bytes)
 
 
@@ -491,7 +495,7 @@ def build_live_plan(
         "retrieval-bound snapshot; revision state from row footnotes only",
         "success",
         external_receipt=evidence.controlled_external_receipt,
-        provider_data_attempts=1,
+        provider_data_attempts=evidence.provider_data_attempts,
         pagination="single bounded response",
         recovery_summary="none; no fallback",
     )

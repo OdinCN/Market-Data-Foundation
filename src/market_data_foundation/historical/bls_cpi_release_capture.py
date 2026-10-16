@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -39,8 +40,7 @@ from market_data_foundation.historical.bls_cpi_release_runner import (
     CaptureCompletion,
     CaptureRequest,
 )
-
-_RETRYABLE_HTTP_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
+from market_data_foundation.source_request_policy import retryable_http_status
 
 
 def _request_is_exact(request: object) -> bool:
@@ -90,6 +90,7 @@ class SeptemberReleaseCapture:
     transport: Transport | None = None
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
     identity_factory: Callable[[], object] = uuid4
+    source_retry_sleep: Callable[[float], None] = time.sleep
     authoritative_commit: Callable[[], None] = lambda: None
 
     def __call__(self, request: CaptureRequest) -> CaptureCompletion:
@@ -113,17 +114,20 @@ class SeptemberReleaseCapture:
                 identity_factory=self.identity_factory,
                 reference_contract=SEPTEMBER_REFERENCE_CONTRACT,
                 release_causation=causation,
+                sleep=self.source_retry_sleep,
             )
         except LiveExecutionError as exc:
-            if exc.classification == "bls_live_transport_failure":
-                return CaptureCompletion("transport_failure")
             if exc.classification == "bls_live_reference_not_available":
                 return CaptureCompletion("no_new_release/reference_not_available")
-            if (
-                exc.classification == "bls_live_http_failure"
-                and exc.http_status in _RETRYABLE_HTTP_STATUSES
+            if exc.classification == "bls_live_transport_failure":
+                return CaptureCompletion("source_transport_exhausted")
+            if exc.classification == "bls_live_http_failure" and retryable_http_status(
+                exc.http_status
             ):
-                return CaptureCompletion("http_error", http_status=exc.http_status)
+                return CaptureCompletion(
+                    "source_transport_exhausted",
+                    http_status=exc.http_status,
+                )
             return CaptureCompletion("terminal")
         except Exception:
             return CaptureCompletion("terminal")
