@@ -10,7 +10,6 @@ from pathlib import Path
 
 from psycopg.pq import TransactionStatus
 
-from market_data_foundation.canonical import codec
 from market_data_foundation.canonical.kernel import CanonicalKernel
 from market_data_foundation.canonical.model import digest, instant, require
 from market_data_foundation.canonical.postgres import PostgresLedger
@@ -42,6 +41,13 @@ from market_data_foundation.historical.bls_ppi_live import (
     execute_live_candidate,
 )
 from market_data_foundation.historical.cpi_job_journal import FileJobJournal
+from market_data_foundation.historical.macro_lifecycle import (
+    MeteredTransport,
+    RetainedRepair,
+    decode_plan,
+    encode_plan,
+    observe_exact_material,
+)
 from market_data_foundation.historical.ppi_local_read import read_local_ppi
 from market_data_foundation.historical.ppi_materialization import (
     PpiMaterializationOutcomeUnknown,
@@ -72,29 +78,10 @@ class DirectPpiAcquirer:
         before_request: Callable[[], None],
         after_request: Callable[[bool], None],
     ) -> PpiLiveCandidate:
-        delegate = self.transport
-
-        class Metered:
-            def post(self, endpoint, body, headers, *, timeout, max_response_bytes):
-                before_request()
-                try:
-                    response = delegate.post(
-                        endpoint,
-                        body,
-                        headers,
-                        timeout=timeout,
-                        max_response_bytes=max_response_bytes,
-                    )
-                except Exception:
-                    after_request(False)
-                    raise
-                after_request(True)
-                return response
-
         return execute_live_candidate(
             secret_path=self.secret_path,
             artifact_root=self.artifact_root,
-            transport=Metered(),
+            transport=MeteredTransport(self.transport, before_request, after_request),
             clock=self.clock,
             identity_factory=lambda: job_id + "-a1",
         )
@@ -119,6 +106,7 @@ class PpiJobSpec:
     max_raw_creates: int = 1
     max_ledger_handoffs: int = 1
     max_publications: int = 1
+    expected_raw_sha256: str | None = None
 
     def __post_init__(self) -> None:
         require(
@@ -133,7 +121,13 @@ class PpiJobSpec:
             and self.quality == QUALITY,
             "ppi_job_target_not_admitted",
         )
-        require(self.mode == "acquire", "ppi_job_mode_not_admitted")
+        require(self.mode in {"acquire", "retained"}, "ppi_job_mode_not_admitted")
+        require(
+            self.mode != "retained" or self.expected_raw_sha256 is not None,
+            "ppi_job_retained_digest_required",
+        )
+        if self.expected_raw_sha256 is not None:
+            MaterialIdentity(self.expected_raw_sha256, 1)
         require(
             self.effect_domain in {"synthetic", "owner_nonproduction"},
             "ppi_job_effect_domain_not_admitted",
@@ -145,7 +139,18 @@ class PpiJobSpec:
                 self.max_ledger_handoffs,
                 self.max_publications,
             )
-            == (1, 1, 1, 1)
+            == (1 if self.mode == "acquire" else 0, 1, 1, 1)
+            and all(
+                type(value) is int
+                for value in (
+                    self.max_provider_requests,
+                    self.max_raw_creates,
+                    self.max_ledger_handoffs,
+                    self.max_publications,
+                )
+            )
+            and type(self.max_response_bytes) is int
+            and type(self.timeout_seconds) in {int, float}
             and self.max_response_bytes == MAX_RESPONSE_BYTES
             and self.timeout_seconds == TIMEOUT_SECONDS,
             "ppi_job_budget_not_admitted",
@@ -181,22 +186,17 @@ class PpiJobSpec:
 
 
 def _encode_plan(plan: PpiLivePlan) -> dict:
-    return {
-        field.name: codec.dumps(getattr(plan, field.name)) for field in fields(plan)
-    }
+    return encode_plan(plan)
 
 
 def _decode_plan(value: dict) -> PpiLivePlan:
-    require(
-        type(value) is dict
-        and set(value) == {field.name for field in fields(PpiLivePlan)},
-        "ppi_job_plan_invalid",
-    )
-    return PpiLivePlan(**{key: codec.loads(item) for key, item in value.items()})
+    return decode_plan(value, PpiLivePlan, "ppi_job_plan_invalid")
 
 
-class PpiLocalJob:
+class PpiLocalJob(RetainedRepair):
     """One attempt; execution owns materialization and fresh local readback."""
+
+    spec_type = PpiJobSpec
 
     def __init__(
         self,
@@ -282,14 +282,21 @@ class PpiLocalJob:
         return self.journal.submit(identity, spec.document(), spec.scope, self.clock())
 
     def _candidate(
-        self, identity: str, candidate: PpiLiveCandidate
+        self, identity: str, candidate: PpiLiveCandidate, spec: PpiJobSpec
     ) -> tuple[PpiLivePlan, bytes]:
         require(type(candidate) is PpiLiveCandidate, "ppi_job_candidate_invalid")
-        expected = "t01-bls-ppi-final-demand-" + identity + "-a1"
+        expected = candidate.plan.run.identity.removesuffix(":run")
+        if spec.mode == "acquire":
+            expected = "t01-bls-ppi-final-demand-" + identity + "-a1"
+            require(
+                candidate.evidence.acquisition_identity
+                == "mdf-bls-ppi-final-demand-" + identity + "-a1",
+                "ppi_job_candidate_identity_mismatch",
+            )
         require(
-            candidate.evidence.acquisition_identity
-            == "mdf-bls-ppi-final-demand-" + identity + "-a1",
-            "ppi_job_candidate_identity_mismatch",
+            spec.expected_raw_sha256 is None
+            or digest(candidate.evidence.raw_bytes) == spec.expected_raw_sha256,
+            "ppi_job_retained_digest_mismatch",
         )
         rebuilt = build_live_plan(
             candidate.evidence,
@@ -299,6 +306,7 @@ class PpiLocalJob:
         )
         require(candidate.plan == rebuilt, "ppi_job_candidate_plan_mismatch")
         validate_live_plan(rebuilt, candidate.evidence.raw_bytes)
+        self._check_repair_candidate(identity, rebuilt)
         return rebuilt, candidate.evidence.raw_bytes
 
     def _readback(
@@ -341,7 +349,8 @@ class PpiLocalJob:
         *,
         enabled: bool,
         preflight: Callable[[PpiJobSpec], None],
-        acquirer: DirectPpiAcquirer,
+        acquirer: DirectPpiAcquirer | None = None,
+        retained: PpiLiveCandidate | None = None,
     ) -> dict:
         require(enabled is True, "ppi_job_explicit_opt_in_required")
         with self.journal.executor(identity):
@@ -367,7 +376,16 @@ class PpiLocalJob:
             try:
                 self._check_bindings(spec)
                 require(
-                    type(acquirer) is DirectPpiAcquirer,
+                    (
+                        spec.mode == "acquire"
+                        and type(acquirer) is DirectPpiAcquirer
+                        and retained is None
+                    )
+                    or (
+                        spec.mode == "retained"
+                        and acquirer is None
+                        and type(retained) is PpiLiveCandidate
+                    ),
                     "ppi_job_direct_acquirer_required",
                 )
                 preflight(spec)
@@ -377,6 +395,10 @@ class PpiLocalJob:
 
                 def before_request() -> None:
                     self._check_bindings(spec)
+                    require(
+                        not self.journal.get(identity)["cancel_requested"],
+                        "ppi_job_cancelled",
+                    )
                     require(
                         not self.journal.get(identity)["effects"].get(
                             "provider_requests_possible"
@@ -400,9 +422,13 @@ class PpiLocalJob:
                         },
                     )
 
-                candidate = acquirer.acquire(identity, before_request, after_request)
+                candidate = (
+                    acquirer.acquire(identity, before_request, after_request)
+                    if acquirer is not None
+                    else retained
+                )
                 self._check_bindings(spec)
-                plan, raw = self._candidate(identity, candidate)
+                plan, raw = self._candidate(identity, candidate, spec)
                 raw_identity = MaterialIdentity(digest(raw), len(raw))
                 self.journal._update(
                     identity,
@@ -415,7 +441,9 @@ class PpiLocalJob:
                         "locator": raw_identity.locator,
                         "observed_at": candidate.evidence.obtained_at.isoformat(),
                     },
-                    effects={"provider_requests_returned": 1},
+                    effects={"provider_requests_returned": 1}
+                    if spec.mode == "acquire"
+                    else {"source_candidate_validated": True},
                 )
                 if self.journal.get(identity)["cancel_requested"]:
                     return self._cancelled(identity, "before_storage")
@@ -525,6 +553,10 @@ class PpiLocalJob:
                         self.journal.get(identity)["stage"],
                         "job_action_outcome_unknown",
                     )
+                if self.journal.get(identity)["cancel_requested"]:
+                    return self._cancelled(
+                        identity, self.journal.get(identity)["stage"]
+                    )
                 return self._failed(
                     identity, self.journal.get(identity)["stage"], "job_action_rejected"
                 )
@@ -578,56 +610,30 @@ class PpiLocalJob:
                         session == {"kind": "synthetic", "lock_release_proven": True},
                         "ppi_job_synthetic_lock_release_unproven",
                     )
-                ticket = self.protection.acquire(raw_identity)
-                try:
-                    ticket.assert_held(raw_identity)
-                    raw = self.store.read_exact(raw_identity)
-                    raw_verified = (
-                        raw is not None
-                        and digest(raw) == raw_identity.sha256
-                        and len(raw) == raw_identity.size
+
+                def verify_local(ledger):
+                    exact = read_local_ppi(
+                        ledger,
+                        reference=REFERENCE,
+                        version_identity=plan.version.identity,
+                        as_of=self.clock(),
                     )
-                    with self.readback() as ledger:
-                        self._check_independent(ledger, spec)
-                        publication = ledger.publication_by_occurrence(
-                            plan.publication_request.occurrence
-                        )
-                        if publication is None:
-                            observation = {
-                                "outcome": "confirmed_not_published",
-                                "raw_state": "verified"
-                                if raw_verified
-                                else "absent"
-                                if raw is None
-                                else "mismatched",
-                                "version_present": ledger.get(plan.version.key)
-                                is not None,
-                            }
-                        else:
-                            require(raw_verified, "ppi_job_raw_readback_failed")
-                            exact = read_local_ppi(
-                                ledger,
-                                reference=REFERENCE,
-                                version_identity=plan.version.identity,
-                                as_of=self.clock(),
-                            )
-                            observation = {
-                                "outcome": "confirmed_published",
-                                "evidence": {
-                                    "version_identity": exact.version.identity,
-                                    "publication_identity": (
-                                        exact.publication.request.identity
-                                    ),
-                                    "raw_sha256": raw_identity.sha256,
-                                    "known_at": (
-                                        exact.publication.decision_at.isoformat()
-                                    ),
-                                },
-                                "raw_state": "verified",
-                            }
-                    ticket.assert_held(raw_identity)
-                finally:
-                    ticket.release(raw_identity)
+                    return {
+                        "version_identity": exact.version.identity,
+                        "publication_identity": exact.publication.request.identity,
+                        "raw_sha256": raw_identity.sha256,
+                        "known_at": exact.publication.decision_at.isoformat(),
+                    }
+
+                observation = observe_exact_material(
+                    store=self.store,
+                    protection=self.protection,
+                    identity=raw_identity,
+                    readback=self.readback,
+                    check_ledger=lambda ledger: self._check_independent(ledger, spec),
+                    plan=plan,
+                    verify_local=verify_local,
+                )
                 classification = (
                     "canonical_verified"
                     if observation["outcome"] == "confirmed_published"

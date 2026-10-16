@@ -59,6 +59,13 @@ from market_data_foundation.historical.bls_cpi_release_runner import (
     SLOT_IDENTITY,
 )
 from market_data_foundation.historical.cpi_job_journal import FileJobJournal
+from market_data_foundation.historical.macro_lifecycle import (
+    MeteredTransport,
+    RetainedRepair,
+    decode_plan,
+    encode_plan,
+    observe_exact_material,
+)
 
 DEV_SCHEMA = "mdf_local_first_cpi_operable_r1"
 CONTRACT = SEPTEMBER_REFERENCE_CONTRACT
@@ -199,29 +206,10 @@ class DirectCpiAcquirer:
         before_request: Callable[[], None],
         after_request: Callable[[bool], None] = lambda _received: None,
     ):
-        delegate = self.transport
-
-        class Metered:
-            def post(self, endpoint, body, headers, *, timeout, max_response_bytes):
-                before_request()  # committed intent before a possible request
-                try:
-                    response = delegate.post(
-                        endpoint,
-                        body,
-                        headers,
-                        timeout=timeout,
-                        max_response_bytes=max_response_bytes,
-                    )
-                except Exception:
-                    after_request(False)
-                    raise
-                after_request(True)
-                return response
-
         return execute_live_candidate(
             secret_path=self.secret_path,
             artifact_root=self.artifact_root,
-            transport=Metered(),
+            transport=MeteredTransport(self.transport, before_request, after_request),
             clock=self.clock,
             identity_factory=lambda: job_id + "-a1",
             reference_contract=CONTRACT,
@@ -275,17 +263,11 @@ def _validate_candidate(
 
 
 def _encode_plan(plan: DirectCpiLivePlan) -> dict:
-    return {
-        field.name: codec.dumps(getattr(plan, field.name)) for field in fields(plan)
-    }
+    return encode_plan(plan)
 
 
 def _decode_plan(value: dict) -> DirectCpiLivePlan:
-    require(
-        set(value) == {field.name for field in fields(DirectCpiLivePlan)},
-        "cpi_job_plan_invalid",
-    )
-    return DirectCpiLivePlan(**{key: codec.loads(item) for key, item in value.items()})
+    return decode_plan(value, DirectCpiLivePlan, "cpi_job_plan_invalid")
 
 
 def _durable_plan(plan: DirectCpiLivePlan, identity: MaterialIdentity):
@@ -517,13 +499,15 @@ class _PgJobTicket:
         _PG_SESSION_OWNERS[self.owner.connection] = (ref(self.owner), False)
 
 
-class CpiLocalJob:
+class CpiLocalJob(RetainedRepair):
     """Explicit job execution and observation-only restart reconciliation.
 
     Host bindings must supply the dedicated DEV_SCHEMA ledger, Garage data role,
     protected writer and a fresh read-only ledger context on another connection.
     No secret/config reads or client construction occur in this class.
     """
+
+    spec_type = CpiJobSpec
 
     def __init__(
         self,
@@ -761,6 +745,7 @@ class CpiLocalJob:
                 )
                 self._update(job_id, stage="validating_candidate")
                 plan, raw = _validate_candidate(spec, candidate, job_id)
+                self._check_repair_candidate(job_id, plan)
                 identity = MaterialIdentity(digest(raw), len(raw))
                 self._update(
                     job_id,
@@ -963,48 +948,17 @@ class CpiLocalJob:
                         protection.unknown = None
                 if protection is None:
                     protection = self._job_protection(job_id, spec)
-                ticket = protection.acquire(identity)
-                try:
-                    ticket.assert_held(identity)
-                    raw = self.store.read_exact(identity)
-                    raw_verified = (
-                        raw is not None
-                        and len(raw) == identity.size
-                        and digest(raw) == identity.sha256
-                    )
-                    # Open a NEW snapshot only after protection is held. An old
-                    # snapshot from the core handle's unlock/reacquire gap must
-                    # never authorize a final presence/absence observation.
-                    with self.readback() as ledger:
-                        self._independent(ledger)
-                        publication = ledger.publication_by_occurrence(
-                            plan.publication_request.occurrence
-                        )
-                        if publication is None:
-                            observation = {
-                                "outcome": "confirmed_not_published",
-                                "raw_state": (
-                                    "absent"
-                                    if raw is None
-                                    else "verified"
-                                    if raw_verified
-                                    else "mismatched"
-                                ),
-                                "version_present": ledger.get(plan.version.key)
-                                is not None,
-                            }
-                        else:
-                            require(raw_verified, "cpi_job_raw_readback_failed")
-                            observation = {
-                                "outcome": "confirmed_published",
-                                "evidence": _verify_local(
-                                    ledger, _durable_plan(plan, identity), self.clock()
-                                ),
-                                "raw_state": "verified",
-                            }
-                    ticket.assert_held(identity)
-                finally:
-                    ticket.release(identity)
+                observation = observe_exact_material(
+                    store=self.store,
+                    protection=protection,
+                    identity=identity,
+                    readback=self.readback,
+                    check_ledger=self._independent,
+                    plan=plan,
+                    verify_local=lambda ledger: _verify_local(
+                        ledger, _durable_plan(plan, identity), self.clock()
+                    ),
+                )
                 return self._update(
                     job_id, stage="reconciled", reconciliation=observation
                 )
