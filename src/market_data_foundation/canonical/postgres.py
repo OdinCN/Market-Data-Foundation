@@ -40,7 +40,8 @@ _SCHEMA = re.compile(
     r"mdf_local_first_cpi_operable_r1|"
     r"mdf_p6_consumer_read_r1|"
     r"mdf_p6_real_cognition_data_readiness_r1|"
-    r"mdf_macro_bls_ppi_vertical_r1)$"
+    r"mdf_macro_bls_ppi_vertical_r1|"
+    r"mdf_macro_bls_employment_vertical_r1)$"
 )
 
 
