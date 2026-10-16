@@ -203,6 +203,18 @@ def _footnotes(value: object) -> list[dict[str, str]]:
     return result
 
 
+def _explicitly_unavailable(row: dict, notes: list[dict[str, str]]) -> bool:
+    return (
+        row.get("value") == "-"
+        and "calculations" not in row
+        and any(
+            note["code"] == "9"
+            and note["text"].casefold().startswith("data unavailable")
+            for note in notes
+        )
+    )
+
+
 def _rows(value: object) -> dict[str, dict]:
     require(type(value) is list and bool(value), "bls_employment_series_data_invalid")
     result: dict[str, dict] = {}
@@ -222,13 +234,16 @@ def _rows(value: object) -> dict[str, dict]:
             "bls_employment_row_period_invalid",
         )
         month = int(row["period"][1:])
+        notes = _footnotes(row["footnotes"])
         require(
             row["periodName"] == _MONTH_NAMES[month - 1]
             and type(row["value"]) is str
-            and _DECIMAL.fullmatch(row["value"]),
+            and (
+                _DECIMAL.fullmatch(row["value"]) is not None
+                or _explicitly_unavailable(row, notes)
+            ),
             "bls_employment_row_value_invalid",
         )
-        _footnotes(row["footnotes"])
         pointer = f"{row['year']}-{month:02d}"
         require(pointer not in result, "bls_employment_duplicate_period")
         result[pointer] = row
@@ -269,6 +284,10 @@ class EmploymentProjection:
 def _measurement(row: dict, pointer: str, unit: str) -> dict:
     if pointer == "value":
         value = row["value"]
+        require(
+            type(value) is str and _DECIMAL.fullmatch(value) is not None,
+            "bls_employment_target_value_unavailable",
+        )
     else:
         calculations = row.get("calculations")
         require(type(calculations) is dict, "bls_employment_target_calculation_missing")

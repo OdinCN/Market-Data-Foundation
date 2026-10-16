@@ -237,6 +237,60 @@ def test_real_bls_cps_catalog_shape_is_admitted():
     assert measurement["unit"] == "percent"
 
 
+def test_explicit_bls_unavailable_nontarget_row_is_retained_but_not_used():
+    value = response()
+    cps = value["Results"]["series"][1]["data"]
+    cps.append(
+        {
+            "year": "2025",
+            "period": "M10",
+            "periodName": "October",
+            "value": "-",
+            "footnotes": [
+                {
+                    "code": "9",
+                    "text": "Data unavailable due to the 2025 lapse in appropriations.",
+                }
+            ],
+        }
+    )
+    projection = parse_response(encode(value))
+    assert (
+        projection.data["measurements"]["2026-09"]["unemployment_rate_sa"]["value"]
+        == "4.0"
+    )
+
+
+def test_unavailable_marker_without_provider_footnote_is_rejected():
+    value = response()
+    value["Results"]["series"][1]["data"].append(
+        {
+            "year": "2025",
+            "period": "M10",
+            "periodName": "October",
+            "value": "-",
+            "footnotes": [],
+        }
+    )
+    with pytest.raises(ContractError, match="bls_employment_row_value_invalid"):
+        parse_response(encode(value))
+
+
+def test_unavailable_target_value_is_rejected():
+    value = response()
+    row = value["Results"]["series"][1]["data"][0]
+    row.pop("calculations", None)
+    row["value"] = "-"
+    row["footnotes"] = [
+        {
+            "code": "9",
+            "text": "Data unavailable due to a provider publication gap.",
+        }
+    ]
+    with pytest.raises(ContractError, match="bls_employment_target_value_unavailable"):
+        parse_response(encode(value))
+
+
 def test_source_values_calculations_units_population_and_source_operands():
     data = parse_response(encode(response())).data
     assert list(data["measurements"]) == list(REFERENCES)
