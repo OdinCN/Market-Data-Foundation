@@ -648,6 +648,54 @@ def test_full_supervised_future_fake_pipeline_only(tmp_path, monkeypatch):
     ].startswith("RETAINED_UNQUALIFIED")
 
 
+def test_real_transport_ignores_duplicate_irrelevant_headers(monkeypatch):
+    raw = encode(response())
+    closed = []
+
+    class Response:
+        status = 200
+
+        def getheaders(self):
+            return [
+                ("Content-Type", "application/json"),
+                ("Content-Length", str(len(raw))),
+                ("Server-Timing", "edge;dur=1"),
+                ("server-timing", "cache;dur=2"),
+                ("Vary", "Accept-Encoding"),
+                ("vary", "Origin"),
+            ]
+
+        def read(self, amount):
+            assert amount == live.MAX_RESPONSE_BYTES + 1
+            return raw
+
+    class Connection:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr(live.http.client, "HTTPSConnection", Connection)
+    result = live._exchange(
+        live.EmploymentHttpsTransport(),
+        DUMMY,
+        time.monotonic,
+        sleep=lambda _seconds: None,
+    )
+    assert result.status == 200
+    assert result.body == raw
+    assert result.transport_attempts == 1
+    assert result.headers == {"content-length": str(len(raw))}
+    assert closed == [True]
+
+
 @pytest.mark.parametrize(
     "headers,status,code",
     [

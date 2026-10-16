@@ -178,3 +178,5 @@ CES/CPS/NFP/AHE descriptions pass with sixteen synthetic attempt identities per
 encoding and retain exact originals and identical measurement projections.
 These are executor self-checks. Historical review results describe their frozen
 bytes; the Occam correction requires fresh independent review.
+
+The live BLS transport validates only framing-relevant response headers (Content-Length, Content-Encoding, Transfer-Encoding) as singletons. Repeated unrelated headers such as Server-Timing or Vary are ignored rather than treated as Source failure; body bytes remain bounded independently.

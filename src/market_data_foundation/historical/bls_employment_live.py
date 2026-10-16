@@ -282,8 +282,13 @@ class EmploymentHttpsTransport:
             response = connection.getresponse()
             pairs = response.getheaders()
             normalized = {}
+            framing = {"content-length", "content-encoding", "transfer-encoding"}
             for name, value in pairs:
+                if type(name) is not str or type(value) is not str:
+                    _fail(Classification.HEADERS)
                 name = name.lower()
+                if name not in framing:
+                    continue
                 if name in normalized:
                     _fail(Classification.HEADERS)
                 normalized[name] = value
