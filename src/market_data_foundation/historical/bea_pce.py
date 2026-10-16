@@ -43,10 +43,10 @@ COMPARISON = "2025-07"
 TABLES = ("T20807", "T20804")
 SERIES_IDS = ("DPCERGM", "DPCCRGM", "DPCERG", "DPCCRG")
 CONTRACT_REVISION = "t04-retained-candidate-r1"
-PARSER_REVISION = "bea-pce-nipa-monthly-v1"
+PARSER_REVISION = "bea-pce-nipa-monthly-v2"
 FORMULA_REVISION = "pce-index-ratio-12m-v1"
-SANITIZER_REVISION = "bea-remove-request-envelope-v1"
-BUNDLE_SCHEMA = "bea-pce-retained-results-v1"
+SANITIZER_REVISION = "bea-pce-bounded-results-v2"
+BUNDLE_SCHEMA = "bea-pce-retained-results-v2"
 RULE = "t04-bea-pce-projected-retained-candidate-r1"
 SOURCE_IDENTITY = "mdf.source-candidate.bea.nipa.pce"
 COMPLETENESS = "exact_headline_core_mom_and_12m_index_inputs_2026_07"
@@ -185,6 +185,176 @@ class ResponseCapture:
     obtained_at: datetime
 
 
+_DIMENSION_NAMES = frozenset(
+    {
+        "TableName",
+        "SeriesCode",
+        "LineNumber",
+        "LineDescription",
+        "TimePeriod",
+        "CL_UNIT",
+        "UNIT_MULT",
+        "METRIC_NAME",
+        "DataValue",
+    }
+)
+_ROW_FIELDS = _DIMENSION_NAMES | {"NoteRef"}
+
+
+def project_provider_results(table: str, results: dict) -> dict:
+    """Validate the bounded NIPA response and retain only the PCE source slice.
+
+    Dimensions and row NoteRef are provider provenance. LastRevised is extracted
+    from the table note, never inferred as a release time. Other lines and notes
+    receive structural checks only and are discarded, not semantically mapped.
+    """
+    require(table in TABLES, "pce_table_not_admitted")
+    require(
+        type(results) is dict
+        and {"Statistic", "UTCProductionTime", "Dimensions", "Data", "Notes"}
+        <= results.keys()
+        and results["Statistic"] == "NIPA Table",
+        "pce_results_shape_unqualified",
+    )
+    production = results["UTCProductionTime"]
+    require(
+        type(production) is str
+        and re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+            r"(?:\.[0-9]{1,6})?Z?",
+            production,
+        )
+        is not None,
+        "pce_production_metadata_missing",
+    )
+    try:
+        datetime.fromisoformat(production)
+    except ValueError:
+        raise ContractError("pce_production_metadata_missing") from None
+    dimensions = results["Dimensions"]
+    require(
+        type(dimensions) is list
+        and len(dimensions) == len(_DIMENSION_NAMES)
+        and all(
+            type(d) is dict
+            and {"Name", "DataType", "IsValue", "Ordinal"} <= d.keys()
+            and all(type(v) is str for v in d.values())
+            for d in dimensions
+        )
+        and {d["Name"] for d in dimensions} == _DIMENSION_NAMES,
+        "pce_dimensions_unqualified",
+    )
+    notes = results["Notes"]
+    require(type(notes) is list and 1 <= len(notes) <= 128, "pce_notes_missing")
+    require(
+        all(
+            type(n) is dict
+            and {"NoteRef", "NoteText"} <= n.keys()
+            and all(type(v) is str and len(v) <= 16384 for v in n.values())
+            for n in notes
+        ),
+        "pce_notes_invalid",
+    )
+    table_notes = [n for n in notes if n["NoteRef"] == table]
+    require(len(table_notes) == 1, "pce_notes_invalid")
+    table_note = {k: table_notes[0][k] for k in ("NoteRef", "NoteText")}
+    text = table_note["NoteText"].casefold()
+    require(
+        ("table 2.8.7." if table == "T20807" else "table 2.8.4.") in text
+        and "monthly" in text
+        and "price" in text
+        and "personal consumption expenditures" in text
+        and "not seasonally adjusted" not in text,
+        "pce_adjustment_or_table_notes_unqualified",
+    )
+    if table == "T20807":
+        # The real monthly percent-change note omits SA; the fixed series codes
+        # carry the mapping, corroborated by the SA level table below.
+        require(
+            "preceding period" in text
+            and "percent" in text
+            and "annual rate" not in text,
+            "pce_mom_basis_unqualified",
+        )
+    else:
+        require(
+            "seasonally adjusted" in text, "pce_adjustment_or_table_notes_unqualified"
+        )
+        require("2017=100" in text.replace(" ", ""), "pce_index_base_unqualified")
+    revision = re.search(
+        r" - LastRevised: ([A-Za-z]+ [0-9]{1,2}, [0-9]{4})$", table_note["NoteText"]
+    )
+    require(revision is not None, "pce_revision_metadata_unqualified")
+    label = revision[1]
+    try:
+        datetime.strptime(label, "%B %d, %Y")
+    except ValueError:
+        raise ContractError("pce_revision_metadata_unqualified") from None
+    rows = results["Data"]
+    require(type(rows) is list and 1 <= len(rows) <= 2000, "pce_rows_missing")
+    retained = []
+    seen = set()
+    for row in rows:
+        require(
+            type(row) is dict
+            and _ROW_FIELDS <= row.keys()
+            and all(type(v) is str for v in row.values()),
+            "pce_row_invalid",
+        )
+        line, period = row["LineNumber"], row["TimePeriod"]
+        if line not in {"1", "25"}:
+            continue
+        require(row["TableName"] == table, "pce_row_table_mismatch")
+        require(
+            re.fullmatch(r"202[56]M(?:0[1-9]|1[0-2])", period) is not None,
+            "pce_row_identity_invalid",
+        )
+        require((line, period) not in seen, "pce_duplicate_row")
+        seen.add((line, period))
+        series = (
+            ("DPCERGM" if line == "1" else "DPCCRGM")
+            if table == "T20807"
+            else ("DPCERG" if line == "1" else "DPCCRG")
+        )
+        descriptions = (
+            {
+                "personal consumption expenditures",
+                "personal consumption expenditures (pce)",
+            }
+            if line == "1"
+            else {
+                "pce excluding food and energy",
+                "personal consumption expenditures excluding food and energy",
+            }
+        )
+        require(
+            row["SeriesCode"] == series
+            and row["LineDescription"].strip().casefold() in descriptions
+            and row["METRIC_NAME"] == "Fisher Price Index"
+            and row["CL_UNIT"] == ("Percent change" if table == "T20807" else "Level")
+            and row["UNIT_MULT"] == "0"
+            and table in row["NoteRef"].split(","),
+            "pce_mapping_or_unit_unqualified",
+        )
+        _value(row, positive=table == "T20804")
+        retained.append({k: row[k] for k in sorted(_ROW_FIELDS)})
+    require(
+        {(line, period) for line in ("1", "25") for period in ("2025M07", "2026M07")}
+        <= seen,
+        "pce_required_rows_missing",
+    )
+    return {
+        "Statistic": results["Statistic"],
+        "UTCProductionTime": production,
+        "Dimensions": [
+            {k: d[k] for k in ("Name", "DataType", "IsValue", "Ordinal")}
+            for d in dimensions
+        ],
+        "Data": retained,
+        "Notes": [table_note, {"NoteRef": "LastRevised", "NoteText": label}],
+    }
+
+
 def retain_sanitized_bundle(
     captures: tuple[ResponseCapture, ...], *, credential: str, provenance: str
 ) -> bytes:
@@ -236,7 +406,7 @@ def retain_sanitized_bundle(
                 "request": request_parameters(capture.table),
                 "requested_at": capture.requested_at.isoformat(),
                 "obtained_at": capture.obtained_at.isoformat(),
-                "results": results,
+                "results": project_provider_results(capture.table, results),
             }
         )
     raw = encode(
@@ -302,103 +472,22 @@ def _parse_bundle(raw: bytes) -> dict:
         starts.append(start)
         times.append(end)
         results = response["results"]
+        # Reapplying the same projection validates retained semantics and rejects
+        # unprojected extras or a forged extracted LastRevised label on replay.
         require(
-            type(results) is dict
-            and set(results) == {"Data", "Notes", "UTCProductionTime"},
-            "pce_results_shape_unqualified",
-        )
-        require(
-            type(results["UTCProductionTime"]) is str and results["UTCProductionTime"],
-            "pce_production_metadata_missing",
+            results == project_provider_results(table, results),
+            "pce_retained_projection_unqualified",
         )
         notes = results["Notes"]
-        require(type(notes) is list and notes, "pce_notes_missing")
-        require(
-            all(
-                type(n) is dict
-                and set(n) == {"NoteRef", "NoteText"}
-                and type(n["NoteRef"]) is str
-                and type(n["NoteText"]) is str
-                for n in notes
-            ),
-            "pce_notes_invalid",
-        )
-        note_text = " ".join(n["NoteText"] for n in notes).casefold()
-        require(
-            "seasonally adjusted" in note_text
-            and "not seasonally adjusted" not in note_text
-            and "monthly" in note_text
-            and ("2.8.7" if table == "T20807" else "2.8.4") in note_text
-            and "price" in note_text,
-            "pce_adjustment_or_table_notes_unqualified",
-        )
-        if table == "T20804":
-            require(
-                "2017=100" in note_text.replace(" ", ""), "pce_index_base_unqualified"
-            )
-        else:
-            require(
-                "preceding month" in note_text and "annual rate" not in note_text,
-                "pce_mom_basis_unqualified",
-            )
-        labels = [n["NoteText"] for n in notes if n["NoteRef"] == "LastRevised"]
-        require(
-            len(labels) == 1 and bool(labels[0]), "pce_revision_metadata_unqualified"
-        )
         metadata[table] = {
             "notes": notes,
-            "last_revised_label": labels[0],
+            "last_revised_label": notes[1]["NoteText"],
             "utc_production_time_metadata": results["UTCProductionTime"],
             "obtained_at": response["obtained_at"],
         }
-        rows = results["Data"]
-        require(type(rows) is list and rows, "pce_rows_missing")
-        seen = set()
-        for j, row in enumerate(rows):
-            require(type(row) is dict, "pce_row_invalid")
-            require(row["TableName"] == table, "pce_row_table_mismatch")
-            line, period = row["LineNumber"], row["TimePeriod"]
-            require(
-                type(line) is str
-                and type(period) is str
-                and re.fullmatch(r"202[56]M(?:0[1-9]|1[0-2])", period),
-                "pce_row_identity_invalid",
-            )
-            require((line, period) not in seen, "pce_duplicate_row")
-            seen.add((line, period))
-            if line not in {"1", "25"}:
-                continue
-            series = (
-                ("DPCERGM" if line == "1" else "DPCCRGM")
-                if table == "T20807"
-                else ("DPCERG" if line == "1" else "DPCCRG")
-            )
-            description = row["LineDescription"].strip().casefold()
-            require(
-                row["TableName"] == table
-                and row["SeriesCode"] == series
-                and row["METRIC_NAME"]
-                == ("Percent Change" if table == "T20807" else "Index")
-                and row["CL_UNIT"]
-                == ("Percent change" if table == "T20807" else "Index Numbers")
-                and row["UNIT_MULT"] == "0"
-                and description
-                in (
-                    {
-                        "personal consumption expenditures",
-                        "personal consumption expenditures (pce)",
-                    }
-                    if line == "1"
-                    else {
-                        "pce excluding food and energy",
-                        "personal consumption expenditures excluding food and energy",
-                    }
-                ),
-                "pce_mapping_or_unit_unqualified",
-            )
-            _value(row, positive=table == "T20804")
-            if period in {"2026M07", "2025M07"}:
-                selected[(table, line, period)] = (
+        for j, row in enumerate(results["Data"]):
+            if row["TimePeriod"] in {"2026M07", "2025M07"}:
+                selected[(table, row["LineNumber"], row["TimePeriod"])] = (
                     row,
                     f"/responses/{i}/results/Data/{j}/DataValue",
                 )

@@ -87,25 +87,30 @@ def bundle():
                         "LineNumber": line,
                         "TimePeriod": period,
                         "LineDescription": description,
-                        "METRIC_NAME": "Percent Change" if i == 0 else "Index",
-                        "CL_UNIT": "Percent change" if i == 0 else "Index Numbers",
+                        "METRIC_NAME": "Fisher Price Index",
+                        "CL_UNIT": "Percent change" if i == 0 else "Level",
                         "UNIT_MULT": "0",
+                        "NoteRef": table if line == "1" else table + "," + table + ".4",
                         "DataValue": "0.3" if i == 0 else number,
                     }
                 )
         notes = [
             {
-                "NoteRef": "1",
+                "NoteRef": table,
                 "NoteText": (
-                    "Synthetic Table 2.8.7. Monthly price changes "
-                    "from preceding month, "
-                    "seasonally adjusted."
-                    if i == 0
-                    else "Synthetic Table 2.8.4. Monthly price indexes, 2017=100, "
-                    "seasonally adjusted."
+                    "Table 2.8.7. Percent Change From Preceding Period in Prices "
+                    "for Personal Consumption Expenditures by Major Type of "
+                    "Product, Monthly [Percent] - LastRevised: September 30, 2026"
+                )
+                if i == 0
+                else (
+                    "Table 2.8.4. Price Indexes for Personal Consumption "
+                    "Expenditures by Major Type of Product, Monthly [Index "
+                    "numbers, 2017=100; seasonally adjusted] - LastRevised: "
+                    "September 30, 2026"
                 ),
             },
-            {"NoteRef": "LastRevised", "NoteText": "SYNTHETIC revision label A"},
+            {"NoteRef": "LastRevised", "NoteText": "September 30, 2026"},
         ]
         responses.append(
             {
@@ -115,7 +120,32 @@ def bundle():
                 "results": {
                     "Data": rows,
                     "Notes": notes,
-                    "UTCProductionTime": "SYNTHETIC production metadata",
+                    "UTCProductionTime": "2026-10-16T13:24:43.613",
+                    "Statistic": "NIPA Table",
+                    "Dimensions": [
+                        {
+                            "Name": name,
+                            "DataType": "numeric"
+                            if name in {"LineNumber", "UNIT_MULT", "DataValue"}
+                            else "string",
+                            "IsValue": "1" if name == "DataValue" else "0",
+                            "Ordinal": str(ordinal),
+                        }
+                        for ordinal, name in enumerate(
+                            (
+                                "TableName",
+                                "SeriesCode",
+                                "LineNumber",
+                                "LineDescription",
+                                "TimePeriod",
+                                "CL_UNIT",
+                                "UNIT_MULT",
+                                "METRIC_NAME",
+                                "DataValue",
+                            ),
+                            1,
+                        )
+                    ],
                 },
             }
         )
@@ -440,7 +470,10 @@ def test_revisions_remain_exact_readable_and_as_of_uses_mdf_known_time():
     document = bundle()
     document["responses"][1]["results"]["Data"][0]["DataValue"] = "111.000"
     for response in document["responses"]:
-        response["results"]["Notes"][1]["NoteText"] = "SYNTHETIC revision label B"
+        response["results"]["Notes"][1]["NoteText"] = "October 01, 2026"
+        response["results"]["Notes"][0]["NoteText"] = response["results"]["Notes"][0][
+            "NoteText"
+        ].replace("September 30, 2026", "October 01, 2026")
     ledger, _, second = publish(ledger, candidate("second", document), Clock(30))
     old = read_local_pce(
         ledger, reference=REFERENCE, as_of=BASE + timedelta(seconds=20)

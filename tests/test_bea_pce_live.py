@@ -13,14 +13,19 @@ import socket
 import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from functools import partial
+from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlsplit
 
 import psycopg
 import pytest
 
 from market_data_foundation.historical import bea_pce as pce
 from market_data_foundation.historical import bea_pce_live as edge
+
+REAL_KEY_LOADER = edge._load_key  # Used only with a mocked file in the child.
 
 # Fabricated authentication marker, unrelated to any actual BEA credential.
 DUMMY = "offline-BEA-23456789-abcd"
@@ -83,9 +88,10 @@ def fabricated_response(table, key=DUMMY):
                     "SeriesCode": series,
                     "LineDescription": description,
                     "TimePeriod": period,
-                    "METRIC_NAME": "Percent Change" if mom else "Index",
-                    "CL_UNIT": "Percent change" if mom else "Index Numbers",
+                    "METRIC_NAME": "Fisher Price Index",
+                    "CL_UNIT": "Percent change" if mom else "Level",
                     "UNIT_MULT": "0",
+                    "NoteRef": table if line == "1" else table + "," + table + ".4",
                     "DataValue": "0.2" if mom else value,
                 }
             )
@@ -103,21 +109,50 @@ def fabricated_response(table, key=DUMMY):
             },
             "Results": {
                 "Data": rows,
-                "UTCProductionTime": "FABRICATED UTC metadata",
+                "Statistic": "NIPA Table",
+                "Dimensions": [
+                    {
+                        "Name": name,
+                        "DataType": "numeric"
+                        if name in {"LineNumber", "UNIT_MULT", "DataValue"}
+                        else "string",
+                        "IsValue": "1" if name == "DataValue" else "0",
+                        "Ordinal": str(ordinal),
+                    }
+                    for ordinal, name in enumerate(
+                        (
+                            "TableName",
+                            "SeriesCode",
+                            "LineNumber",
+                            "LineDescription",
+                            "TimePeriod",
+                            "CL_UNIT",
+                            "UNIT_MULT",
+                            "METRIC_NAME",
+                            "DataValue",
+                        ),
+                        1,
+                    )
+                ],
+                "UTCProductionTime": "2026-10-16T13:24:43.613",
                 "Notes": [
                     {
-                        "NoteRef": "1",
+                        "NoteRef": table,
                         "NoteText": (
-                            "FABRICATED Table 2.8.7. Monthly price changes "
-                            "from preceding "
-                            "month, seasonally adjusted."
-                            if mom
-                            else "FABRICATED Table 2.8.4. Monthly price indexes, "
-                            "2017=100, "
-                            "seasonally adjusted."
+                            "Table 2.8.7. Percent Change From Preceding Period "
+                            "in Prices "
+                            "for Personal Consumption Expenditures by Major Type of "
+                            "Product, Monthly [Percent] - LastRevised: "
+                            "September 30, 2026"
+                        )
+                        if mom
+                        else (
+                            "Table 2.8.4. Price Indexes for Personal Consumption "
+                            "Expenditures by Major Type of Product, Monthly [Index "
+                            "numbers, 2017=100; seasonally adjusted] - LastRevised: "
+                            "September 30, 2026"
                         ),
-                    },
-                    {"NoteRef": "LastRevised", "NoteText": "FABRICATED revision A"},
+                    }
                 ],
             },
         }
@@ -211,12 +246,12 @@ class SyntheticTransport:
 
 
 def acquire(transport=None, **kwargs):
-    # Private laboratory tests retain sanitizer/protocol coverage. Public acquire
-    # is closed to all callbacks; supported offline admission is OfflineFixture.
-    return edge._supervise(
+    return edge.acquire(
         IDENTITY,
-        transport or SyntheticTransport(),
-        dummy_loader,
+        enabled=True,
+        provider_budget=2,
+        transport=transport or SyntheticTransport(),
+        credential_loader=dummy_loader,
         **kwargs,
     )
 
@@ -230,13 +265,17 @@ def test_default_off_and_exact_budget_do_not_load_or_start(monkeypatch):
         (True, 1),
         (True, 3),
         (True, True),
+        (True, 2.0),
+        (True, "2"),
+        (1, 2),
     ):
         result = edge.acquire(IDENTITY, enabled=enabled, provider_budget=budget)
         assert result.classification == "disabled_budget_zero"
         assert result.observations == () and result.projection is None
 
 
-def test_reject_unbound_identity_and_loader_injection():
+def test_reject_unbound_identity_and_unpaired_loader_before_effects(monkeypatch):
+    monkeypatch.setattr(edge, "_supervise", forbid_external)
     result = edge.acquire(
         replace(IDENTITY, exact_plan_sha256="c" * 64), enabled=True, provider_budget=2
     )
@@ -245,11 +284,130 @@ def test_reject_unbound_identity_and_loader_injection():
         IDENTITY, enabled=True, provider_budget=2, credential_loader=dummy_loader
     )
     assert result.classification == "context_rejected"
+    assert (
+        edge.acquire(object(), enabled=True, provider_budget=2).classification
+        == "context_rejected"
+    )
+
+
+def test_explicit_acquire_selects_real_defaults_without_offline_boundary(monkeypatch):
+    from market_data_foundation.historical import bea_pce_boundary as historical
+
+    calls = []
+
+    def supervise(identity, transport, loader):
+        calls.append((identity, type(transport), loader))
+        return edge.AcquisitionResult("credential_unavailable")
+
+    monkeypatch.setattr(historical, "dry_run", forbid_external)
+    monkeypatch.setattr(historical, "binding", forbid_external)
+    monkeypatch.setattr(edge, "_supervise", supervise)
+    # The loader is selected, never called in this dispatch check.
+    result = edge.acquire(IDENTITY, enabled=True, provider_budget=2)
+    assert result.classification == "credential_unavailable"
+    assert calls == [(IDENTITY, edge._HttpsTransport, edge._load_key)]
+
+
+def https_fixture_worker(
+    pipe, buffer, sizes, identity, transport, loader, *, fail_table
+):
+    """Spawn instrumentation: real loader/HTTPS code, fabricated file and wire.
+
+    The real secret file and all external IO are prohibited inside the child.
+    This fixture exercises dispatch and protocol, not actual Source identity.
+    """
+    assert type(transport) is edge._HttpsTransport and loader is edge._load_key
+    dummy_loader()
+    loaded, closed = [], []
+
+    def open_config(path, mode):
+        assert str(path) == "/srv/market-data-foundation/config/local/secret.toml"
+        assert mode == "rb" and not loaded
+        loaded.append(True)
+        return BytesIO(('[bea]\napi_key = "' + DUMMY + '"\n').encode())
+
+    class Connection:
+        def __init__(self, host, **kwargs):
+            assert host == "apps.bea.gov" and loaded == [True]
+            assert 0 < kwargs["timeout"] <= edge.REQUEST_SECONDS
+
+        def request(self, method, path, *, headers):
+            assert method == "GET" and urlsplit(path).path == "/api/data/"
+            # Closing response one must precede the only allowed second send.
+            self.table = ("T20807", "T20804")[len(closed)]
+            assert parse_qs(urlsplit(path).query) == {
+                name: [value]
+                for name, value in {
+                    **PARAMS,
+                    "TableName": self.table,
+                    "UserID": DUMMY,
+                }.items()
+            }
+            assert headers == {
+                "Accept": "application/json",
+                "Accept-Encoding": "identity",
+            }
+
+        def getresponse(self):
+            return Stream(
+                serialize(fabricated_response(self.table)),
+                status=503 if self.table == fail_table else 200,
+            )
+
+        def close(self):
+            closed.append(self.table)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(Path, "open", open_config)
+        patch.setattr(edge.http.client, "HTTPSConnection", Connection)
+        patch.setattr(edge.ssl, "create_default_context", lambda: None)
+        edge._worker(pipe, buffer, sizes, identity, transport, loader)
+
+
+@pytest.mark.parametrize("fail_table,count", [(None, 2), ("T20807", 1), ("T20804", 2)])
+def test_public_default_pair_uses_spawn_loader_and_https_sequentially(
+    monkeypatch, fail_table, count
+):
+    monkeypatch.setattr(edge, "_load_key", REAL_KEY_LOADER)
+    monkeypatch.setattr(
+        edge, "_worker", partial(https_fixture_worker, fail_table=fail_table)
+    )
+    result = edge.acquire(IDENTITY, enabled=True, provider_budget=2)
+    assert [o.table for o in result.observations] == ["T20807", "T20804"][:count]
+    assert DUMMY not in repr(result) and not result.source_qualified
+    assert not multiprocessing.active_children()
+    if fail_table is not None:
+        assert result.classification == "http_status_rejected"
+        assert result.observations[-1].sent == "unknown"
+        assert not result.observations[-1].response_complete
+        assert result.projection is result.receipt is None
+    else:
+        assert result.classification == "candidate_pending_independent_readback"
+        assert all(o.response_complete for o in result.observations)
+        assert DUMMY.encode() not in result.projection + result.receipt
+        assert b"UserID" not in result.projection + result.receipt
+        check = edge.inspect_candidate(
+            result.projection, result.receipt, expected=IDENTITY
+        )
+        assert not check["source_qualified"]
 
 
 @pytest.fixture(scope="module")
 def successful_candidate():
     return acquire()
+
+
+@pytest.mark.parametrize(
+    "field,size", [("exact_code_git_sha", 40), ("code_manifest_sha256", 64)]
+)
+def test_valid_identity_hex_with_nul_byte_is_not_credential_echo(field, size):
+    identity = replace(IDENTITY, **{field: "7800" + "a" * (size - 4)})
+    result = edge._supervise(identity, SyntheticTransport(), dummy_loader)
+    assert result.classification == "candidate_pending_independent_readback"
+    assert len(result.observations) == 2
+    assert all(observation.response_complete for observation in result.observations)
+    assert json.loads(result.receipt)[field] == getattr(identity, field)
+    edge.inspect_candidate(result.projection, result.receipt, expected=identity)
 
 
 def test_independent_replay_and_safe_provenance(successful_candidate, tmp_path):
@@ -442,6 +600,22 @@ def test_invalid_headers_rejected_without_body_read(headers):
     with pytest.raises(edge.EdgeRejected):
         edge._read_stream(stream, deadline=time.monotonic() + 10)
     assert not stream.reads
+
+
+def test_duplicate_irrelevant_headers_are_allowed_but_not_used_for_framing():
+    stream = Stream(
+        b"abc",
+        headers=[
+            ("Content-Type", "application/json"),
+            ("Content-Length", "3"),
+            ("Strict-Transport-Security", "max-age=2592000"),
+            (
+                "Strict-Transport-Security",
+                "max-age=31536000; includeSubDomains; preload",
+            ),
+        ],
+    )
+    assert edge._read_stream(stream, deadline=time.monotonic() + 10) == b"abc"
 
 
 @pytest.mark.parametrize("status", [201, 301, 302, 307, 400, 429, 500, 503])
@@ -809,6 +983,148 @@ class CapturingPipe:
         self.closed = True
 
 
+@pytest.mark.parametrize(
+    "field",
+    ["producer_execution_identity", "attempt_identity", "controlled_observation_id"],
+)
+@pytest.mark.parametrize("encoding", ["literal", "hex", "base64", "urlsafe_base64"])
+def test_identity_encoded_credential_rejected_before_transport(field, encoding):
+    # A 27-byte fabricated key keeps base64 unpadded and valid as identity text.
+    key = DUMMY + "XX"
+    encoded = {
+        "literal": key,
+        "hex": key.encode().hex(),
+        "base64": base64.b64encode(key.encode()).decode(),
+        "urlsafe_base64": base64.urlsafe_b64encode(key.encode()).decode(),
+    }[encoding]
+    identity = replace(IDENTITY, **{field: "prefix-" + encoded + "-suffix"})
+    identity.validate()
+    pipe, output, sizes = CapturingPipe(), bytearray(edge.OUTPUT_LIMIT), [0, 0]
+    transport = CorrectionTransport(calls=[])
+    edge._worker(pipe, output, sizes, identity, transport, lambda: key)
+    assert transport.calls == []
+    assert pipe.closed and pipe.frames == [b"credential_echo_rejected"]
+    assert sizes == [0, 0] and not any(output)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["producer_execution_identity", "attempt_identity", "controlled_observation_id"],
+)
+@pytest.mark.parametrize("encoding", ["base64", "urlsafe_base64"])
+def test_unpadded_identity_credential_rejected_before_transport(field, encoding):
+    key = DUMMY
+    encoded = {
+        "base64": base64.b64encode(key.encode()).decode().rstrip("="),
+        "urlsafe_base64": base64.urlsafe_b64encode(key.encode()).decode().rstrip("="),
+    }[encoding]
+    identity = replace(IDENTITY, **{field: "prefix-" + encoded + "-suffix"})
+    identity.validate()
+    pipe, output, sizes = CapturingPipe(), bytearray(edge.OUTPUT_LIMIT), [0, 0]
+    transport = CorrectionTransport(calls=[])
+    edge._worker(pipe, output, sizes, identity, transport, lambda: key)
+    assert transport.calls == []
+    assert pipe.closed and pipe.frames == [b"credential_echo_rejected"]
+    assert sizes == [0, 0] and not any(output)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["producer_execution_identity", "attempt_identity", "controlled_observation_id"],
+)
+@pytest.mark.parametrize(
+    "codec", ["utf-8", "utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be"]
+)
+@pytest.mark.parametrize("prefix", ["", "x:"])
+def test_identity_wrapped_credential_rejected_before_transport(field, codec, prefix):
+    # Includes the independent x:key and UTF-16LE unpadded urlsafe counterexamples.
+    key = DUMMY
+    encoded = base64.urlsafe_b64encode((prefix + key).encode(codec)).decode()
+    identity = replace(IDENTITY, **{field: encoded.rstrip("=")})
+    identity.validate()
+    pipe, output, sizes = CapturingPipe(), bytearray(edge.OUTPUT_LIMIT), [0, 0]
+    transport = CorrectionTransport(calls=[])
+    edge._worker(pipe, output, sizes, identity, transport, lambda: key)
+    assert transport.calls == []
+    assert pipe.closed and pipe.frames == [b"credential_echo_rejected"]
+    assert sizes == [0, 0] and not any(output)
+
+
+@pytest.mark.parametrize("field", list(IDENTITY.__dataclass_fields__))
+def test_all_six_identity_fields_scanned_before_transport(field):
+    key = getattr(IDENTITY, field)[:16]
+    pipe, output, sizes = CapturingPipe(), bytearray(edge.OUTPUT_LIMIT), [0, 0]
+    transport = CorrectionTransport(calls=[])
+    edge._worker(pipe, output, sizes, IDENTITY, transport, lambda: key)
+    assert transport.calls == []
+    assert pipe.closed and pipe.frames == [b"credential_echo_rejected"]
+    assert sizes == [0, 0] and not any(output)
+
+
+@pytest.mark.parametrize(
+    "codec", ["utf-8", "utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be"]
+)
+@pytest.mark.parametrize("wrapper", ["hex", "base64", "urlsafe_base64", "nested"])
+def test_identity_scanner_decodes_actual_credentials(codec, wrapper):
+    raw = ("x:" + DUMMY.swapcase()).encode(codec)
+    encoded = {
+        "hex": raw.hex(),
+        "base64": base64.b64encode(raw).decode().rstrip("="),
+        "urlsafe_base64": base64.urlsafe_b64encode(raw).decode().rstrip("="),
+        "nested": quote("".join(f"&#{ord(char)};" for char in raw.hex()), safe=""),
+    }[wrapper]
+    with pytest.raises(edge.EdgeRejected, match="credential_echo_rejected"):
+        edge._identity_credential_scan(encoded, DUMMY)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "token-credential-secret",
+        "https://example.invalid/?api_key=unrelated",
+        "7800" + "a" * 60,
+        base64.urlsafe_b64encode(b"\xff\x00unrelated\xfe").decode().rstrip("="),
+        base64.urlsafe_b64encode("unrelated".encode("utf-32-le")).decode(),
+    ],
+)
+def test_identity_scanner_allows_noncredential_text_and_binary(value):
+    edge._identity_credential_scan(value, DUMMY)
+
+
+def test_identity_scanner_encoding_budget_exhaustion_fails_closed():
+    nested = "unrelated"
+    for _ in range(12):
+        nested = base64.urlsafe_b64encode(nested.encode()).decode()
+    with pytest.raises(edge.EdgeRejected, match="credential_echo_rejected"):
+        edge._identity_credential_scan(nested, DUMMY)
+
+
+@pytest.mark.parametrize(
+    "field,size", [("exact_code_git_sha", 40), ("code_manifest_sha256", 64)]
+)
+@pytest.mark.parametrize("encoding", ["hex", "base64"])
+def test_digest_equal_to_encoded_credential_rejected_before_transport(
+    field, size, encoding
+):
+    if encoding == "hex":
+        key = "offline-" + "x" * (size // 2 - len("offline-"))
+        encoded = key.encode().hex()
+    else:
+        # This base64 fragment is also valid lowercase hex; its decoded dummy
+        # key is printable ASCII, so digest shape validation alone cannot help.
+        encoded = "a0dd" * (size // 4)
+        key = base64.b64decode(encoded).decode()
+    assert len(encoded) == size
+    identity = replace(IDENTITY, **{field: encoded})
+    identity.validate()
+    pipe, output, sizes = CapturingPipe(), bytearray(edge.OUTPUT_LIMIT), [0, 0]
+    transport = CorrectionTransport(calls=[])
+    edge._worker(pipe, output, sizes, identity, transport, lambda: key)
+    assert transport.calls == []
+    assert pipe.closed and pipe.frames == [b"credential_echo_rejected"]
+    assert sizes == [0, 0] and not any(output)
+
+
 def capture_failed_worker(transport, monkeypatch, expected_calls):
     pipe, output, sizes = CapturingPipe(), bytearray(edge.OUTPUT_LIMIT), [0, 0]
     # A rejected response must never reach a digest, retained bundle or file IO.
@@ -904,9 +1220,7 @@ def test_typed_exception_spawn_protocol_has_no_orphan(failure, table, count):
 
 
 @pytest.mark.parametrize("codec", ENCODINGS)
-@pytest.mark.parametrize(
-    "field", ["production", "note", "extra_row", "description", "value"]
-)
+@pytest.mark.parametrize("field", ["production", "note", "description", "value"])
 def test_projection_schema_rejects_opaque_source_fields(field, codec):
     document = fabricated_response("T20807")
     results = document["BEAAPI"]["Results"]
@@ -920,7 +1234,6 @@ def test_projection_schema_rejects_opaque_source_fields(field, codec):
         row = results["Data"][0]
         row[
             {
-                "extra_row": "Unexpected",
                 "description": "LineDescription",
                 "value": "DataValue",
             }[field]
@@ -944,10 +1257,9 @@ def test_admitted_iso_metadata_and_values_keep_two_response_replay():
             document = fabricated_response(table, key)
             results = document["BEAAPI"]["Results"]
             results["UTCProductionTime"] = "2026-08-28T12:30:00Z"
-            results["Notes"][1]["NoteText"] = "2026-08-28"
-            results["Notes"][0]["NoteText"] = results["Notes"][0][
-                "NoteText"
-            ].removeprefix("FABRICATED ")
+            results["Notes"][0]["NoteText"] = results["Notes"][0]["NoteText"].replace(
+                "September 30, 2026", "August 28, 2026"
+            )
             return serialize(document)
 
     # Use the real worker in memory; local class does not cross a spawn boundary.
@@ -987,3 +1299,284 @@ def test_replay_applies_projection_schema_before_digest(
             edge.inspect_candidate(
                 serialize(document), successful_candidate.receipt, expected=IDENTITY
             )
+
+
+@pytest.mark.parametrize(
+    "field,size", [("exact_code_git_sha", 40), ("code_manifest_sha256", 64)]
+)
+def test_digest_equal_to_unpadded_base64_credential_rejected(field, size):
+    encoded = "a0dd" * (size // 4 - 1) + "a0c"
+    key = base64.b64decode(encoded + "=").decode()
+    assert base64.b64encode(key.encode()).decode().rstrip("=") == encoded
+    identity = replace(IDENTITY, **{field: "a" + encoded})
+    identity.validate()
+    pipe, output, sizes = CapturingPipe(), bytearray(edge.OUTPUT_LIMIT), [0, 0]
+    transport = CorrectionTransport(calls=[])
+    edge._worker(pipe, output, sizes, identity, transport, lambda: key)
+    assert transport.calls == []
+    assert pipe.closed and pipe.frames == [b"credential_echo_rejected"]
+    assert sizes == [0, 0] and not any(output)
+
+
+def test_bea_request_echo_canonicalized_value_case_is_accepted():
+    document = fabricated_response("T20807")
+    for row in document["BEAAPI"]["Request"]["RequestParam"]:
+        if row["ParameterName"].casefold() != "userid":
+            row["ParameterValue"] = row["ParameterValue"].upper()
+    raw = serialize(document)
+    assert edge._clean_capture("T20807", raw, DUMMY) == raw
+
+
+def test_bea_request_echo_wrong_value_or_userid_is_rejected():
+    for name, value in (("Year", "2024"), ("UserID", DUMMY + "x")):
+        document = fabricated_response("T20807")
+        for row in document["BEAAPI"]["Request"]["RequestParam"]:
+            if row["ParameterName"].casefold() == name.casefold():
+                row["ParameterValue"] = value
+        with pytest.raises(edge.EdgeRejected, match="source_shape_rejected"):
+            edge._clean_capture("T20807", serialize(document), DUMMY)
+
+
+def test_provider_metadata_prefixed_base64_credential_never_emits_candidate():
+    encoded = "a" + base64.urlsafe_b64encode(("x:" + DUMMY).encode()).decode().rstrip(
+        "="
+    )
+
+    class CredentialEchoTransport:
+        def exchange(self, table, key, deadline):
+            document = fabricated_response(table, key)
+            if table == "T20807":
+                note = document["BEAAPI"]["Results"]["Notes"][0]
+                note["NoteText"] = note["NoteText"].replace(
+                    " - LastRevised:", " " + encoded + " - LastRevised:"
+                )
+            return serialize(document)
+
+    pipe, output, sizes = CapturingPipe(), bytearray(edge.OUTPUT_LIMIT), [0, 0]
+    transport = CredentialEchoTransport()
+    edge._worker(pipe, output, sizes, IDENTITY, transport, dummy_loader)
+    assert pipe.frames == [b"ready", b"credential_echo_rejected"]
+    assert sizes == [0, 0] and not any(output)
+
+
+def representative_provider_response(table, key=DUMMY):
+    """620-row real shape with the Owner-supplied July samples encoded here.
+
+    Other months/lines are fabricated; this is deterministic shape evidence,
+    never a claim to be a captured original or an independently qualified Source.
+    """
+    document = fabricated_response(table, key)
+    results = document["BEAAPI"]["Results"]
+    templates = {r["LineNumber"]: r for r in results["Data"]}
+    samples = {
+        "T20807": {"1": ("0.1", "0.1"), "25": ("0.2", "0.1")},
+        "T20804": {"1": ("126.906", "131.172"), "25": ("126.363", "130.133")},
+    }
+    rows = []
+    for number in range(1, 32):
+        line = str(number)
+        for year, months in ((2025, 12), (2026, 8)):
+            for month in range(1, months + 1):
+                row = dict(templates.get(line, templates["1"]))
+                row.update(LineNumber=line, TimePeriod=f"{year}M{month:02d}")
+                if line in samples[table]:
+                    if line == "1":
+                        row["LineDescription"] = (
+                            "Personal consumption expenditures (PCE)"
+                        )
+                    if month == 7:
+                        row["DataValue"] = samples[table][line][year - 2025]
+                else:
+                    row.update(
+                        SeriesCode="OTHER",
+                        LineDescription="Other product",
+                        DataValue="(NA)",
+                    )
+                rows.append(row)
+    results["Data"] = rows
+    results["Notes"].extend(
+        {"NoteRef": table + "." + str(i), "NoteText": "Other provider footnote."}
+        for i in range(1, 7)
+    )
+    return document
+
+
+class RepresentativeProviderTransport:
+    def exchange(self, table, key, deadline):
+        return serialize(representative_provider_response(table, key))
+
+
+def test_real_shape_pair_projects_small_bundle_and_replays_exact_samples():
+    result = acquire(RepresentativeProviderTransport())
+    assert result.classification == "candidate_pending_independent_readback"
+    assert len(result.observations) == 2
+    assert all(o.response_complete for o in result.observations)
+    document = json.loads(result.projection)
+    assert len(result.projection) < 30_000
+    assert document["exact_original_retained"] is False
+    assert DUMMY.encode() not in result.projection + result.receipt
+    assert (
+        b"RequestParam" not in result.projection and b"OTHER" not in result.projection
+    )
+    for table, response in zip(pce.TABLES, document["responses"], strict=True):
+        original = representative_provider_response(table)["BEAAPI"]["Results"]
+        projected = response["results"]
+        assert len(original["Data"]) == 620 and len(projected["Data"]) == 40
+        assert projected["Statistic"] == "NIPA Table"
+        assert projected["Dimensions"] == original["Dimensions"]
+        assert projected["UTCProductionTime"] == original["UTCProductionTime"]
+        assert projected["Notes"] == [
+            original["Notes"][0],
+            {"NoteRef": "LastRevised", "NoteText": "September 30, 2026"},
+        ]
+        assert projected["Data"] == [
+            r for r in original["Data"] if r["LineNumber"] in {"1", "25"}
+        ]
+    parsed = edge.inspect_candidate(
+        result.projection, result.receipt, expected=IDENTITY
+    )
+    measurements = parsed["replay"]["measurements"]
+    assert {k: v["value"] for k, v in measurements.items()} == {
+        "headline_mom_sa": "0.1",
+        "core_mom_sa": "0.1",
+        "headline_yoy_sa": "3.361543",
+        "core_yoy_sa": "2.983468",
+    }
+    for family in ("headline", "core"):
+        for operand in measurements[family + "_yoy_sa"]["inputs"]:
+            row_index = int(operand["value_pointer"].split("/")[-2])
+            row = document["responses"][1]["results"]["Data"][row_index]
+            assert operand["value"] == row["DataValue"]
+            assert operand["series"] == row["SeriesCode"]
+            assert (
+                operand["retained_sha256"]
+                == hashlib.sha256(result.projection).hexdigest()
+            )
+    assert not parsed["source_qualified"]
+
+
+@pytest.mark.parametrize("table", pce.TABLES)
+def test_provider_projection_discards_unrelated_fields_rows_and_notes(table):
+    document = representative_provider_response(table)
+    results = document["BEAAPI"]["Results"]
+    expected = pce.project_provider_results(table, results)
+    results["AdditionalMetadata"] = "Unused prose"
+    results["Data"][0]["AdditionalColumn"] = "Unused column"
+    results["Dimensions"][0]["AdditionalDimensionMetadata"] = "Unused prose"
+    results["Notes"][0]["AdditionalNoteMetadata"] = "Unused prose"
+    # Unrelated note prose and nonnumeric values do not define the PCE mapping.
+    results["Notes"][1]["NoteText"] = "Another definition from the provider."
+    assert pce.project_provider_results(table, results) == expected
+    assert pce.project_provider_results(table, expected) == expected
+    assert edge._clean_capture(table, serialize(document), DUMMY)
+
+
+@pytest.mark.parametrize("table", pce.TABLES)
+@pytest.mark.parametrize(
+    "case",
+    [
+        "statistic",
+        "dimensions_missing",
+        "dimension_name",
+        "dimension_duplicate",
+        "production",
+        "table_note",
+        "revision_missing",
+        "revision_invalid",
+        "metric",
+        "unit",
+        "series",
+        "note_ref",
+        "target",
+        "comparison",
+        "duplicate",
+        "note_type",
+        "row_type",
+        "row_limit",
+        "note_limit",
+    ],
+)
+def test_real_provider_shape_required_semantics_fail_closed(table, case):
+    document = fabricated_response(table)
+    results = document["BEAAPI"]["Results"]
+    if case == "statistic":
+        results["Statistic"] = "Another statistic"
+    elif case == "dimensions_missing":
+        del results["Dimensions"]
+    elif case == "dimension_name":
+        results["Dimensions"][0]["Name"] = "AnotherName"
+    elif case == "dimension_duplicate":
+        results["Dimensions"][0] = results["Dimensions"][1]
+    elif case == "production":
+        results["UTCProductionTime"] = "2026-99-99T13:24:43.613"
+    elif case == "table_note":
+        results["Notes"][0]["NoteRef"] = "AnotherTable"
+    elif case == "revision_missing":
+        results["Notes"][0]["NoteText"] = results["Notes"][0]["NoteText"].split(
+            " - LastRevised:"
+        )[0]
+    elif case == "revision_invalid":
+        results["Notes"][0]["NoteText"] = results["Notes"][0]["NoteText"].replace(
+            "September 30", "September 99"
+        )
+    elif case in {"metric", "unit", "series", "note_ref"}:
+        field = {
+            "metric": "METRIC_NAME",
+            "unit": "CL_UNIT",
+            "series": "SeriesCode",
+            "note_ref": "NoteRef",
+        }[case]
+        results["Data"][0][field] = "Wrong"
+    elif case == "target":
+        results["Data"].pop(0)
+    elif case == "comparison":
+        results["Data"].pop(1)
+    elif case == "duplicate":
+        results["Data"].append(results["Data"][0])
+    elif case == "note_type":
+        results["Notes"].append("Invalid note")
+    elif case == "row_type":
+        results["Data"].append("Invalid row")
+    elif case == "row_limit":
+        results["Data"] *= 501
+    elif case == "note_limit":
+        results["Notes"] *= 129
+    with pytest.raises(edge.EdgeRejected, match="source_shape_rejected"):
+        edge._clean_capture(table, serialize(document), DUMMY)
+
+
+def test_retained_replay_requires_extracted_revision_consistent_with_table_note(
+    successful_candidate,
+):
+    document = json.loads(successful_candidate.projection)
+    for response in document["responses"]:
+        response["results"]["Notes"][1]["NoteText"] = "October 01, 2026"
+    with pytest.raises(edge.EdgeRejected, match="source_shape_rejected"):
+        edge.inspect_candidate(
+            serialize(document), successful_candidate.receipt, expected=IDENTITY
+        )
+
+
+def test_provider_pair_revision_mismatch_emits_no_candidate():
+    class RevisionMismatchTransport:
+        def exchange(self, table, key, deadline):
+            document = fabricated_response(table, key)
+            if table == "T20804":
+                note = document["BEAAPI"]["Results"]["Notes"][0]
+                note["NoteText"] = note["NoteText"].replace(
+                    "September 30, 2026", "October 01, 2026"
+                )
+            return serialize(document)
+
+    pipe, output, sizes = CapturingPipe(), bytearray(edge.OUTPUT_LIMIT), [0, 0]
+    edge._worker(
+        pipe, output, sizes, IDENTITY, RevisionMismatchTransport(), dummy_loader
+    )
+    assert pipe.frames == [
+        b"ready",
+        b"complete",
+        b"ready",
+        b"complete",
+        b"source_shape_rejected",
+    ]
+    assert sizes == [0, 0] and not any(output)

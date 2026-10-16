@@ -1,4 +1,4 @@
-"""Offline B1 contract and B2 counterexamples, never a real Source verdict."""
+"""Historical offline boundary experiment, never a runtime admission gate."""
 
 import hashlib
 import json
@@ -9,7 +9,6 @@ import signal
 import stat
 import tempfile
 import time
-from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -30,7 +29,6 @@ from market_data_foundation.historical import bea_pce_boundary as boundary
 from market_data_foundation.historical import bea_pce_live as edge
 
 REVIEWER = "e" * 64  # Synthetic reviewer binding, not independent acceptance.
-REAL_LOADER = edge._load_key  # Capture callable identity, never invoke it.
 
 
 @pytest.fixture
@@ -319,90 +317,6 @@ def test_artifact_io_and_replay_tamper_rejection(workspace, attack, tmp_path):
         candidate.write_bytes(b'{"untrusted":"auth-url"}')
     with pytest.raises((boundary.BoundaryRejected, OSError)):
         boundary.replay(repo, manifest, REVIEWER)
-
-
-def test_live_and_unpaired_bypasses_fail_before_key_worker_or_transport(monkeypatch):
-    monkeypatch.setattr(edge, "_load_key", forbid_external)
-    monkeypatch.setattr(edge, "_worker", forbid_external)
-    for transport in (None, edge._HttpsTransport()):
-        result = edge.acquire(
-            IDENTITY,
-            enabled=True,
-            provider_budget=2,
-            transport=transport,
-            credential_loader=None if transport is None else dummy_loader,
-        )
-        assert result.classification == "source_execution_boundary_blocked"
-        assert not result.observations
-        assert result.projection is result.receipt is None
-    assert (
-        edge._supervise(
-            IDENTITY, edge._HttpsTransport(), forbid_external
-        ).classification
-        == "source_execution_boundary_blocked"
-    )
-
-
-@pytest.mark.parametrize(
-    "loader_kind",
-    ["real", "alias", "partial", "wrapper", "callable", "string", "dummy"],
-)
-@pytest.mark.parametrize("transport_kind", ["fake", "wrapped", "subclass"])
-def test_public_acquire_rejects_all_loader_variants_before_secret_or_worker(
-    monkeypatch, loader_kind, transport_kind
-):
-    calls = []
-
-    def forbidden(*args, **kwargs):
-        calls.append("forbidden_effect")
-        raise AssertionError("offline_external_io_forbidden")
-
-    class Loader:
-        def __call__(self):
-            return REAL_LOADER()
-
-    class Wrapped:
-        def __init__(self):
-            self.transport = edge._HttpsTransport()
-
-        def exchange(self, *args):
-            return self.transport.exchange(*args)
-
-    class Subclass(edge._HttpsTransport):
-        pass
-
-    alias = REAL_LOADER
-    loaders = {
-        "real": REAL_LOADER,
-        "alias": alias,
-        "partial": partial(REAL_LOADER),
-        "wrapper": lambda: REAL_LOADER(),
-        "callable": Loader(),
-        "string": lambda: "ordinary-qualified-string-23456789",
-        "dummy": dummy_loader,
-    }
-    transports = {
-        "fake": SyntheticTransport(),
-        "wrapped": Wrapped(),
-        "subclass": Subclass(),
-    }
-    # Trap before any file open. The captured real loader and aliases are never
-    # called, and no actual secret path is opened, read, hashed or logged.
-    monkeypatch.setattr(Path, "open", forbidden)
-    monkeypatch.setattr(edge, "_supervise", forbidden)
-    monkeypatch.setattr(edge, "_worker", forbidden)
-    monkeypatch.setattr(edge._HttpsTransport, "exchange", forbidden)
-    result = edge.acquire(
-        IDENTITY,
-        enabled=True,
-        provider_budget=2,
-        transport=transports[transport_kind],
-        credential_loader=loaders[loader_kind],
-    )
-    assert result.classification == "source_execution_boundary_blocked"
-    assert result.observations == ()
-    assert result.projection is result.receipt is None
-    assert calls == []
 
 
 @pytest.mark.parametrize("location", ["ancestor", "repo", "artifacts"])

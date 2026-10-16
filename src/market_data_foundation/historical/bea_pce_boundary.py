@@ -1,9 +1,9 @@
-"""T04 owner-local single-slot OFFLINE execution boundary.
+"""Historical T04 owner-local single-slot OFFLINE test helper.
 
-No grant issuer, live transport, credential loader or storage adapter is exposed.
-The private supervisor remains a laboratory mechanism, not a B2 hard deadline.
-Owner filesystem access is the trust boundary; hashes do not authenticate an
-owner, reviewer or provider. Deleting/replacing the slot is outside this API.
+Not used by public acquire or required for standing BEA capability execution.
+Legacy B1/B2/reviewer/grant records below describe only this offline experiment.
+No live transport, credential loader or storage adapter is exposed. Hashes do
+not authenticate an owner, reviewer or provider; no host hard bound is claimed.
 """
 
 from __future__ import annotations

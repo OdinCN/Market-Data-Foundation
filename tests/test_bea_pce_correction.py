@@ -362,24 +362,11 @@ def test_pce_oversize_bundle_and_forged_plan_fail_before_effects():
     assert ledger.snapshot() == InMemoryLedger().snapshot()
 
 
-@pytest.mark.parametrize("character", ["x", "\u0080"])
-def test_dense_maximum_bundle_preserves_normalized_carrier_and_lineage(character):
-    document = bundle()
-    empty_size = len(json.dumps(document, ensure_ascii=False).encode())
-    label_size = (MAX_RESPONSE_BYTES - empty_size) // (2 * len(character.encode()))
-    for response in document["responses"]:
-        response["results"]["Notes"][1]["NoteText"] += character * label_size
-    raw = json.dumps(document, ensure_ascii=False).encode()
-    raw += b" " * (MAX_RESPONSE_BYTES - len(raw))
-    assert len(raw) == MAX_RESPONSE_BYTES
-    evidence = PceRetainedEvidence(raw, "dense:acquisition", "synthetic:dense")
-    plan = build_plan(
-        evidence,
-        identity="dense",
-        finished_at=BASE + timedelta(seconds=4),
-        frozen_at=BASE + timedelta(seconds=5),
-    )
-    assert 4_000_000 < len(plan.content) <= MAX_NORMALIZED_BYTES
+def test_maximum_bundle_preserves_normalized_carrier_and_lineage():
+    # Size is a material contract, not permission for opaque revision metadata.
+    retained = _sized_candidate(MAX_RESPONSE_BYTES)
+    raw, plan = retained.evidence.raw_bytes, retained.plan
+    assert 2_000_000 < len(plan.content) <= MAX_NORMALIZED_BYTES
     result = materialize_persist_publish(
         CanonicalKernel(ledger := InMemoryLedger(), Clock()),
         plan,

@@ -1,8 +1,9 @@
 # BEA PCE retained candidate R1
 
 This T04 candidate is bounded to BEA NIPA monthly T20807/T20804, lines 1 and 25,
-reference July 2026 and its July 2025 index comparison. It has **no live execution
-edge and no qualified real retained source proof**. The historical MDD text sent
+reference July 2026 and its July 2025 index comparison. The explicit
+[Source adapter](bea-pce-live-edge-r1.md) uses the standing BEA capability; real
+retained source proof is still unqualified. The historical MDD text sent
 by WebChat is NON-AUTHORITATIVE / LEGACY; MDF-DEV has not read MDD source code,
 original API responses or its retained artifacts. It grants no migration or
 cutover authority. The fixed reference is a candidate boundary, not a freshness
@@ -15,22 +16,26 @@ or historical-coverage claim.
 | Headline YoY SA | T20804 / 1 | DPCERG | Product-derived index ratio |
 | Core YoY SA | T20804 / 25 | DPCCRG | Product-derived index ratio |
 
-This mapping comes from the Owner objective and supplied legacy reference. It
-remains a candidate until independently checked against actual BEA evidence.
-The parser requires exact table/line/series/description, monthly periods, zero
-scale, expected units/metric names and table notes for monthly seasonally
-adjusted prices. T20804 must declare 2017=100; T20807 must declare preceding-month
-changes without annual-rate wording. Both table LastRevised labels must match.
-All Notes are preserved, including source-specific core/food definitions if
-present. No BLS NSA YoY convention is imported.
+The bounded mapping now follows the Owner-generated sanitized real Provider pair
+under ignored `artifacts/t04-shape-diagnostic/`. Both Results have
+Statistic=`NIPA Table`, Dimensions, 620 rows, Notes and fractional
+UTCProductionTime metadata.
+The shared projection retains only lines 1/25 for 2025/2026 monthly periods,
+actual provider row fields including NoteRef, Dimensions, production time, the
+table note and its extracted inline LastRevised. Unrelated rows/notes receive
+bounded structural checks and are discarded. The committed fixtures encode the
+representative shape without depending on ignored diagnostic files.
 
-The accepted Results/Notes/LastRevised shape is deliberately strict and **has
-not been verified against a current real response**. Missing metadata, schema
-variation, unavailable values or operands, duplicate rows, wrong source identity,
-and incompatible units fail closed. A real evidence intake may require a parser
-revision and renewed manifest/review. No arbitrary metadata is synthesized to
-make actual responses fit. The named API endpoint and guide in the legacy
-reference have not been requested in this child; Provider budget remains zero.
+Both tables use METRIC_NAME=`Fisher Price Index`; CL_UNIT is `Percent change`
+for T20807 and `Level` for T20804. T20807 declares changes from the preceding
+period in a monthly context. Its real table note omits explicit SA wording;
+the fixed DPCERGM/DPCCRGM mapping and paired SA level table preserve that
+interpretation. T20804 must declare 2017=100 and seasonally adjusted. Required
+July 2026/2025 rows, exact table/line/series/description, zero scale, values,
+duplicate checks and matching LastRevised labels remain enforced. Replay
+requires the exact bounded projection and consistent extracted revision.
+Missing metadata, unavailable operands and incompatible units fail closed.
+This correction's deterministic QA has zero real Provider effects.
 
 YoY is `(current_index / index_12_months_earlier - 1) * 100`, formula revision
 `pce-index-ratio-12m-v1`. It uses a fresh Decimal context with precision 28 and
@@ -48,8 +53,8 @@ objects and the caller's credential for echo checking. It validates the returned
 non-secret request parameters, removes the entire BEA Request envelope in memory,
 and rejects credential echoes outside it. It performs no network or filesystem
 IO. The returned bundle keeps non-secret request parameters, per-response start
-and completion times and Results. It has `exact_original_retained=false` and
-sanitizer revision `bea-remove-request-envelope-v1`. Neither the original bytes
+and completion times and the bounded Results projection. It has
+`exact_original_retained=false` and sanitizer revision `bea-pce-bounded-results-v2`. Neither the original bytes
 nor an original-response digest are produced or persisted. Callers must keep
 original input out of logging and store sanitized bytes only in restricted,
 ignored `artifacts/` or an independently approved material store.
@@ -139,10 +144,13 @@ adds that exact namespace to the canonical allowlist and the named temporal
 validation above; no connection, schema, row or Garage mutation has been executed.
 Shared publication paths also revalidate an existing occurrence and the final
 PG decision with the existing canonical rules; CPI/PPI time policies are unchanged.
-Real execution still needs a reviewed
-capability/fixture/observation plan, independent revision-bound review, explicit
-opt-in and an effects budget; credentials alone are insufficient. Source evidence
-and operational mutations remain unavailable/unproved in this candidate.
+The BEA key is the standing Source capability in the authorized T04 scope;
+explicit Source opt-in and exact budget 2 select the fixed request pair. External
+grant/verifier, per-call Owner approval, B1/B2/B3 and a whole-process hard deadline
+are retired requirements. Fresh independent review of this correction precedes
+real Source -> Garage -> PG -> local Read execution through the existing explicit
+APIs. The retained job still has zero Provider budget and never acquires from BEA.
+Real Source evidence and operational storage/readback remain unproved by fixtures.
 
 Python stays uv-managed 3.14.8 with unchanged dependencies and uv.lock. CI tests
 are synthetic and reject external IO; private LAN and live-provider tests are

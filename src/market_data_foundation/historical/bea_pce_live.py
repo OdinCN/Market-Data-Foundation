@@ -1,10 +1,10 @@
 """Default-off, source-only BEA edge. No storage, publication or qualification.
 
 A supervised process holds the credential, HTTP request and unsanitized bodies.
-The parent permits two sequential synthetic exchanges with cancellation timers
-and receives only fixed classifications and a clean projection. Full lifecycle
-deadlines remain unproved; current real transport admission is closed.
-Private test transports are synthetic; receipts never qualify a source.
+Explicit opt-in and an exact budget of two permit the fixed sequential requests.
+The parent applies cancellation timers and receives only fixed classifications
+and a clean projection. Test transports remain synthetic; receipts never qualify
+a source. Timers are cancellation thresholds, not host lifecycle guarantees.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from urllib.parse import quote, quote_plus, unquote
 
 from market_data_foundation.historical import bea_pce as pce
 
-ADAPTER_REVISION = "t04-bea-pce-live-edge-execution-boundary-r1"
+ADAPTER_REVISION = "t04-bea-pce-live-edge-real-shape-r2"
 PLAN_SHA256 = "c5b7e35d0d6434b2d2d0d80223ea8ea083ac33dc77443bcce744bfab23965726"
 CAPABILITY = "bea.nipa.pce.headline_core.monthly.source_projection"
 FIXTURE = "bea-nipa-pce-2026-07-t20807-t20804-lines-1-25-v1"
@@ -149,20 +149,95 @@ def _load_key() -> str:
         raise EdgeRejected("credential_unavailable") from None
 
 
+def _credential_fragments(key: str) -> set[str]:
+    standard = base64.b64encode(key.encode()).decode().casefold()
+    urlsafe = base64.urlsafe_b64encode(key.encode()).decode().casefold()
+    return {
+        key.casefold(),
+        quote(key, safe="").casefold(),
+        quote_plus(key, safe="").casefold(),
+        key.encode().hex().casefold(),
+        standard,
+        standard.rstrip("="),
+        urlsafe,
+        urlsafe.rstrip("="),
+    }
+
+
+def _identity_credential_scan(value: str, key: str) -> None:
+    """Bounded credential decoding, without provider-payload metadata rules."""
+    codecs = ("utf-8", "utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be")
+    key_bytes = tuple(key.encode(codec) for codec in codecs)
+    folded_key = key.casefold()
+    pending = [(value, 0)]
+    visited = set()
+    work = 0
+
+    def charge(size: int) -> None:
+        nonlocal work
+        work += size
+        _check(work <= 262_144, "credential_echo_rejected")
+
+    while pending:
+        candidate, depth = pending.pop()
+        if candidate in visited:
+            continue
+        _check(depth <= 8 and len(visited) < 128, "credential_echo_rejected")
+        charge(len(candidate))
+        visited.add(candidate)
+        _check(folded_key not in candidate.casefold(), "credential_echo_rejected")
+        for decoded in (unquote(candidate), html.unescape(candidate)):
+            if decoded != candidate:
+                pending.append((decoded, depth + 1))
+        blobs = []
+        for token in re.findall(r"[A-Za-z0-9+/_-]{16,}={0,2}", candidate):
+            # Inspect each alignment so an embedded encoding still decodes when
+            # adjacent identity characters also belong to the base64 alphabet.
+            for offset in range(4):
+                encoded = token[offset:].rstrip("=")
+                # A trailing partial quartet can belong to an identity suffix.
+                if len(encoded) % 4 == 1:
+                    encoded = encoded[:-1]
+                charge(len(encoded))
+                try:
+                    blobs.append(
+                        base64.b64decode(
+                            encoded + "=" * (-len(encoded) % 4),
+                            altchars=b"-_",
+                            validate=True,
+                        )
+                    )
+                except ValueError, UnicodeError, binascii.Error:
+                    pass
+        for token in re.findall(r"[0-9a-fA-F]{16,}", candidate):
+            for offset in range(2):
+                encoded = token[offset:]
+                encoded = encoded[: len(encoded) // 2 * 2]
+                charge(len(encoded))
+                blobs.append(bytes.fromhex(encoded))
+        for blob in blobs:
+            charge(len(blob))
+            _check(
+                not any(encoded_key in blob for encoded_key in key_bytes),
+                "credential_echo_rejected",
+            )
+            # Arbitrary binary data (including NUL and invalid UTF-8) is allowed.
+            # Successful text decodings permit nested encodings and casefolding.
+            for codec in codecs:
+                charge(len(blob))
+                try:
+                    pending.append((blob.decode(codec), depth + 1))
+                except UnicodeError:
+                    pass
+
+
 def _echo_scan(value: object, key: str) -> None:
     """Scan before hashes/IPC: structured JSON, URL encoding, base64 and hex.
 
     Only the exact BEA RequestParam UserID slot may hold authentication, and that
     envelope is removed in memory before this scan. Any other envelope is fatal.
     """
-    forbidden = {
-        key.casefold(),
-        quote(key, safe="").casefold(),
-        quote_plus(key, safe="").casefold(),
-        key.encode().hex().casefold(),
-        base64.b64encode(key.encode()).decode().casefold(),
-        base64.urlsafe_b64encode(key.encode()).decode().casefold(),
-    }
+    forbidden = _credential_fragments(key)
     if isinstance(value, dict):
         for name, item in value.items():
             _check(
@@ -245,148 +320,17 @@ def _echo_scan(value: object, key: str) -> None:
                         pass
 
 
-def _validate_table(table: str, results: dict) -> None:
-    """Single-response admission before request two; full replay follows both.
-
-    This deliberately checks the same frozen mapping as the retained parser;
-    no fabricated counterpart or single-response bundle is ever constructed.
-    """
-    _check(
-        type(results) is dict
-        and set(results) == {"Data", "Notes", "UTCProductionTime"},
-        "source_shape_rejected",
-    )
-    _check(
-        _metadata_date(results["UTCProductionTime"], production=True),
-        "source_shape_rejected",
-    )
-    notes = results["Notes"]
-    _check(type(notes) is list and len(notes) == 2, "source_shape_rejected")
-    mom = table == "T20807"
-    # This is the frozen candidate shape, not a claim of actual BEA metadata.
-    # Unreviewed prose/fields/rows cannot carry opaque bytes into the projection.
-    table_note = (
-        "Table 2.8.7. Monthly price changes from preceding month, seasonally adjusted."
-        if mom
-        else "Table 2.8.4. Monthly price indexes, 2017=100, seasonally adjusted."
-    )
-    for note in notes:
-        _check(
-            type(note) is dict
-            and set(note) == {"NoteRef", "NoteText"}
-            and all(type(v) is str for v in note.values())
-            and (
-                note["NoteRef"] == "1"
-                and note["NoteText"] in {table_note, "FABRICATED " + table_note}
-                or note["NoteRef"] == "LastRevised"
-                and _metadata_date(note["NoteText"], production=False)
-            ),
-            "source_shape_rejected",
-        )
-    text = " ".join(n["NoteText"] for n in notes).casefold()
-    revision = [n["NoteText"] for n in notes if n["NoteRef"] == "LastRevised"]
-    _check(
-        len(revision) == 1
-        and bool(revision[0])
-        and "seasonally adjusted" in text
-        and "not seasonally adjusted" not in text
-        and "monthly" in text
-        and "price" in text
-        and ("2.8.7" if mom else "2.8.4") in text
-        and (
-            ("preceding month" in text and "annual rate" not in text)
-            if mom
-            else "2017=100" in text.replace(" ", "")
-        ),
-        "source_shape_rejected",
-    )
-    rows = results["Data"]
-    _check(type(rows) is list and 1 <= len(rows) <= 48, "source_shape_rejected")
-    seen = set()
-    for row in rows:
-        _check(
-            type(row) is dict
-            and set(row)
-            == {
-                "TableName",
-                "LineNumber",
-                "SeriesCode",
-                "LineDescription",
-                "TimePeriod",
-                "METRIC_NAME",
-                "CL_UNIT",
-                "UNIT_MULT",
-                "DataValue",
-            }
-            and all(type(v) is str for v in row.values())
-            and row["TableName"] == table,
-            "source_shape_rejected",
-        )
-        line, period = row["LineNumber"], row["TimePeriod"]
-        _check(
-            type(line) is str
-            and line in {"1", "25"}
-            and type(period) is str
-            and re.fullmatch(r"202[56]M(?:0[1-9]|1[0-2])", period) is not None
-            and (line, period) not in seen,
-            "source_shape_rejected",
-        )
-        seen.add((line, period))
-        series = (
-            ("DPCERGM" if line == "1" else "DPCCRGM")
-            if mom
-            else ("DPCERG" if line == "1" else "DPCCRG")
-        )
-        descriptions = (
-            {
-                "personal consumption expenditures",
-                "personal consumption expenditures (pce)",
-            }
-            if line == "1"
-            else {
-                "pce excluding food and energy",
-                "personal consumption expenditures excluding food and energy",
-            }
-        )
-        _check(
-            row["SeriesCode"] == series
-            and row["LineDescription"].strip().casefold() in descriptions
-            and row["METRIC_NAME"] == ("Percent Change" if mom else "Index")
-            and row["CL_UNIT"] == ("Percent change" if mom else "Index Numbers")
-            and row["UNIT_MULT"] == "0",
-            "source_shape_rejected",
-        )
-        _check(
-            re.fullmatch(r"-?[0-9]{1,9}(?:\.[0-9]{1,9})?", row["DataValue"])
-            is not None,
-            "source_shape_rejected",
-        )
-        pce._value(row, positive=not mom)
-    required = {
-        (line, period)
-        for line in ("1", "25")
-        for period in (("2026M07",) if mom else ("2026M07", "2025M07"))
-    }
-    _check(required <= seen, "source_shape_rejected")
-
-
-def _metadata_date(value: object, *, production: bool) -> bool:
-    if type(value) is not str:
-        return False
-    if value == ("FABRICATED UTC metadata" if production else "FABRICATED revision A"):
-        return True
-    pattern = (
-        r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"
-        if production
-        else r"[0-9]{4}-[0-9]{2}-[0-9]{2}"
-    )
-    if re.fullmatch(pattern, value) is None:
-        return False
-    try:
-        datetime.fromisoformat(value)
-        return True
-    except ValueError:
-        return False
+def _retained_credential_scan(value: object, key: str) -> None:
+    """Reject encoded credentials only in bytes/metadata that cross the boundary."""
+    if isinstance(value, dict):
+        for name, item in value.items():
+            _retained_credential_scan(name, key)
+            _retained_credential_scan(item, key)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _retained_credential_scan(item, key)
+    elif isinstance(value, str):
+        _identity_credential_scan(value, key)
 
 
 def _clean_capture(table: str, raw: bytes, key: str) -> bytes:
@@ -418,10 +362,22 @@ def _clean_capture(table: str, raw: bytes, key: str) -> bytes:
             name = row["ParameterName"].casefold()
             _check(name not in seen, "source_shape_rejected")
             seen[name] = row["ParameterValue"]
-        _check(seen == expected, "source_shape_rejected")
+        _check(set(seen) == set(expected), "source_shape_rejected")
+        for name, expected_value in expected.items():
+            actual = seen[name]
+            if name == "userid":
+                _check(actual == expected_value, "source_shape_rejected")
+            else:
+                # BEA Request is an echo, not an execution authority boundary.
+                # The API may canonicalize enum-like parameter value casing.
+                _check(
+                    actual.casefold() == expected_value.casefold(),
+                    "source_shape_rejected",
+                )
         _echo_scan(envelope["Results"], key)
         pce.reject_sensitive(envelope["Results"], key)
-        _validate_table(table, envelope["Results"])
+        projected = pce.project_provider_results(table, envelope["Results"])
+        _retained_credential_scan(projected, key)
         # No digest or persistence of provider response or authenticated Request.
         return raw
     except EdgeRejected:
@@ -450,8 +406,15 @@ def _read_stream(
             "header_rejected",
         )
         name = name.casefold()
-        _check(name not in mapped, "header_rejected")
-        mapped[name] = value
+        if name in {
+            "content-type",
+            "content-length",
+            "content-encoding",
+            "location",
+            "transfer-encoding",
+        }:
+            _check(name not in mapped, "header_rejected")
+            mapped[name] = value
     _check(
         "location" not in mapped
         and "transfer-encoding" not in mapped
@@ -537,12 +500,13 @@ def _worker(pipe, buffer, size, identity, transport, loader):
         key = loader()
         _check(type(key) is str and len(key) >= 16, "credential_unavailable")
         identity.validate()
-        _echo_scan(list(asdict(identity).values()), key)
+        for value in asdict(identity).values():
+            _identity_credential_scan(value, key)
         captures = []
         for table in pce.TABLES:
             pipe.send_bytes(b"ready")
-            grant = pce.decode(pipe.recv_bytes(1024), max_bytes=1024)
-            raw = transport.exchange(table, key, grant["deadline"])
+            request = pce.decode(pipe.recv_bytes(1024), max_bytes=1024)
+            raw = transport.exchange(table, key, request["deadline"])
             _clean_capture(table, raw, key)
             pipe.send_bytes(b"complete")
             completion = pce.decode(pipe.recv_bytes(1024), max_bytes=1024)
@@ -550,7 +514,7 @@ def _worker(pipe, buffer, size, identity, transport, loader):
                 pce.ResponseCapture(
                     table,
                     raw,
-                    datetime.fromisoformat(grant["requested"]),
+                    datetime.fromisoformat(request["requested"]),
                     datetime.fromisoformat(completion["obtained"]),
                 )
             )
@@ -561,9 +525,11 @@ def _worker(pipe, buffer, size, identity, transport, loader):
             if type(transport) is _HttpsTransport
             else "synthetic",
         )
-        _echo_scan(pce.decode(projection)["responses"][0]["results"], key)
-        _echo_scan(pce.decode(projection)["responses"][1]["results"], key)
-        pce.reject_sensitive(pce.decode(projection), key)
+        projected_document = pce.decode(projection)
+        for response in projected_document["responses"]:
+            _echo_scan(response["results"], key)
+            _retained_credential_scan(response["results"], key)
+        pce.reject_sensitive(projected_document, key)
         _check(len(projection) <= pce.MAX_RESPONSE_BYTES, "size_rejected")
         # Only sanitized bytes are hashed, and only after complete residual scans.
         receipt = {
@@ -623,10 +589,8 @@ def _supervise(
     before_send=None,
     after_response=None,
 ):
-    # Laboratory cancellation mechanism only. start/send/join, clocks and local
-    # persistence have no qualified enclosing host deadline (B2 is blocked).
-    if transport is None or isinstance(transport, _HttpsTransport):
-        return AcquisitionResult("source_execution_boundary_blocked")
+    # Best-effort cancellation includes worker loading and sanitization. Host
+    # start/send/join and scheduling are not subject to a hard lifecycle bound.
     start = time.monotonic()
     observations = []
     context = multiprocessing.get_context("spawn")
@@ -733,12 +697,11 @@ def acquire(
     transport=None,
     credential_loader=None,
 ) -> AcquisitionResult:
-    """Source-only candidate; current authorization does not permit enabling.
+    """Explicitly acquire the fixed PCE pair using the standing BEA capability.
 
-    Real execution is unconditionally blocked: no qualified owner grant/review
-    or full-lifecycle host deadline exists. Caller-supplied transports and loaders
-    cannot establish offline trust. Use the fixed OfflineFixture boundary for
-    offline execution; this API cannot issue real execution authority.
+    The default pair is real HTTPS and the local BEA key loader. Paired transport
+    and loader overrides are test seams; their output never qualifies a Source.
+    No external grant, reviewer verifier or host hard-deadline proof is required.
     """
     if enabled is not True or type(provider_budget) is not int or provider_budget != 2:
         return AcquisitionResult("disabled_budget_zero")
@@ -750,7 +713,11 @@ def acquire(
         return AcquisitionResult("context_rejected")
     if (transport is None) != (credential_loader is None):
         return AcquisitionResult("context_rejected")
-    return AcquisitionResult("source_execution_boundary_blocked")
+    return _supervise(
+        identity,
+        _HttpsTransport() if transport is None else transport,
+        _load_key if credential_loader is None else credential_loader,
+    )
 
 
 def inspect_candidate(
@@ -786,9 +753,10 @@ def inspect_candidate(
     )
     responses = pce.decode(projection)["responses"]
     _check(type(responses) is list and len(responses) == 2, "source_shape_rejected")
-    for table, response in zip(pce.TABLES, responses, strict=True):
-        _validate_table(table, response["results"])
-    parsed = pce.parse_bundle(projection)
+    try:
+        parsed = pce.parse_bundle(projection)
+    except pce.ContractError:
+        raise EdgeRejected("source_shape_rejected") from None
     for name, value in asdict(expected).items():
         _check(document.get(name) == value, "context_rejected")
     _check(

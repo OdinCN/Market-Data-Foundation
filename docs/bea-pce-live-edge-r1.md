@@ -1,44 +1,47 @@
 # T04 BEA PCE source-only acquisition candidate
 
-This is a default-off implementation candidate for plan
+This is the default-off PCE Source adapter. Its fixed request/receipt context uses
 `SOURCE_EFFECT_PLAN_CORRECTION_002.json`, SHA256
 `c5b7e35d0d6434b2d2d0d80223ea8ea083ac33dc77443bcce744bfab23965726`.
-The plan's read-only PASS permits development and offline QA. Current Provider,
-PG and Garage budgets remain zero. No real Source opt-in has been granted.
-The existing PCE retained-only job and inactive source binding are unchanged.
+Owner has designated `/srv/market-data-foundation/config/local/secret.toml`
+-> `bea.api_key` as the MDF standing Source capability within the authorized T04
+scope. Execution needs no external grant/verifier, reviewer trust mechanism,
+per-call Owner approval, B1/B2/B3 closure or whole-process <=30s hard proof.
+The historical plan identity remains receipt context, not a runtime grant.
+This correction performs no real requests or storage effects. The existing PCE
+retained-only job and inactive source binding are unchanged.
 
 `historical/bea_pce_live.py::acquire` returns `disabled_budget_zero` without
 loading credentials or starting a worker by default (`enabled=False`, budget 0).
 There is no CLI, import-time IO, read-side acquisition, storage or publication
-edge. Public acquisition unconditionally returns
-`source_execution_boundary_blocked` for every paired transport/loader, including
-fake or wrapped transports and real-loader aliases or wrappers. `enabled=True`
-and budget 2 cannot enter a supervisor or invoke any loader. Unpaired callbacks
-remain `context_rejected`. There is no executable real grant capability.
-The offline single-slot controller and remaining B1/B2/B3 conditions are described
-in [bea-pce-execution-boundary-r1.md](bea-pce-execution-boundary-r1.md).
+edge. `acquire(identity, enabled=True, provider_budget=2)` uses the existing
+`_HttpsTransport` and `_load_key` in the supervised worker. The budget must be
+the exact integer 2; all other values and non-True enable flags fail before IO.
+Identity validation still checks the fixed receipt context. Paired transport and
+loader overrides remain synthetic test seams; unpaired callbacks are
+`context_rejected`. Fake outputs and caller identity assertions cannot establish
+Source qualification. The historical
+[offline boundary helper](bea-pce-execution-boundary-r1.md) is not imported or
+consulted by this runtime path.
 
 The only real transport is stdlib HTTPS to `https://apps.bea.gov/api/data/`.
 It sends GET `GetData`, dataset `NIPA`, frequency `M`, years `2025,2026`, JSON,
 first table `T20807`, then `T20804`. Both request two years once. No discovery,
 redirect, pagination, concurrency, retry or provider fallback is implemented.
-The dormant loader targets `/srv/market-data-foundation/config/local/secret.toml`
--> `bea.api_key`; current public admission cannot reach it.
-Supported offline execution uses only the single-slot controller's exact
-`OfflineFixture` and internal fixed synthetic loader. Private supervisor tests
-exercise the sanitizer and cancellation protocol with fabricated responses;
-their receipts are synthetic and do not authorize public execution. The private
-supervisor also rejects the built-in HTTPS transport. No tests load that file.
+The loader reads the standing capability only inside the explicitly enabled
+worker. Tests use fabricated responses and a fake loader, or exercise the real
+loader/HTTPS code with a fabricated TOML file and mocked HTTPS connection inside
+the spawned worker. No deterministic test reads the real file or opens a socket.
 
 The parent records intent before permitting each exchange and waits on fixed,
 bounded-size IPC messages. Monotonic cancellation thresholds remain 10 seconds
 per exchange, 20 seconds combined network and 30 seconds for the attempt.
-These are laboratory cancellation thresholds, **not a proved full-lifecycle hard
+These are cancellation thresholds, **not a proved full-lifecycle hard
 bound**. `process.start`, pipe operations, clocks, final `join`, persistence and
 reclamation can overrun them. Offline counterexamples demonstrate this gap.
-No socket idle timeout or external `timeout` command closes it; B2 is blocked
-and real execution fails closed. The existing mechanism cancels simulated blocked
-DNS/TLS/headers/body and local processing when the supervising process can run.
+No complete host hard bound is claimed or required for admission. The existing
+mechanism cancels blocked DNS/TLS/headers/body and local processing when the
+supervising process can run.
 The child never persists a first response. A first failure/unknown prohibits
 request two; a second failure/unknown returns neither projection nor receipt.
 Completed first-response observations remain available for accounting.
@@ -76,20 +79,30 @@ boundary. Only an exact built-in EdgeRejected with one exact string argument
 matching the local classification map can select a constant frame. Subclasses,
 mutated arguments and arbitrary exceptions cannot supply IPC bytes.
 
-Echo scanning is supplemented by a finite Results schema, also applied during
-receipt replay before hashing. Only the nine named Data columns, lines 1/25,
-monthly 2025/2026 periods, fixed series/unit/description values and bounded
-decimal operands are admitted (at most 48 rows). Notes contain exactly one
-table description and one LastRevised label. The two table descriptions are
-the exact fixture sentences with or without the explicit FABRICATED prefix.
-Production metadata admits the fixture sentinel or a valid YYYY-MM-DDTHH:MM:SSZ;
-LastRevised admits the fixture sentinel or a valid YYYY-MM-DD. Extra columns,
-rows for other lines, unknown prose, opaque encodings and unsupported dates are
-rejected before request two. The fixture sentinels remain explicitly synthetic.
-These conservative shapes have no real BEA response qualification: actual BEA
-tables/notes may fail admission, requiring evidence, revised schema and fresh
-review before any further attempt. Unknown metadata is never silently copied,
-discarded or accepted on the strength of an echo scanner alone.
+The shared `bea_pce.project_provider_results` replaces the synthetic whole-table
+validator. Its shape evidence is the Owner-generated sanitized diagnostic pair
+under ignored `artifacts/t04-shape-diagnostic/` (620 rows per table). Committed
+fixtures encode representative fields and samples; CI needs no diagnostic files.
+Provider Results require Statistic=`NIPA Table`, a production timestamp (including
+the observed fractional seconds without a Z), the nine expected dimension names,
+Data and Notes. Structural limits are 2,000 rows and 128 notes within the existing
+2 MB body cap. Unrelated rows/notes are structurally checked and discarded.
+
+Only lines 1/25 for the requested 2025/2026 monthly periods are projected (at most
+48 rows per table). Retained fields include the actual provider NoteRef,
+Dimensions, Statistic, production time, table note and extracted inline
+LastRevised label. Both tables use METRIC_NAME=`Fisher Price Index`; T20807 uses
+CL_UNIT=`Percent change`, T20804 uses `Level`. The T20807 monthly table note says
+“preceding period” and omits explicit SA wording; the fixed series mapping and
+paired T20804 SA indexes preserve the SA interpretation. T20804 must declare
+2017=100 and seasonally adjusted. Required July target/comparison rows, duplicate
+checks, series/description/scale/value checks and cross-table revision equality
+remain enforced. Replay reapplies the same helper and requires the exact projected
+shape, including consistency of the extracted revision with the original table
+note. Unknown extra source fields are discarded, never copied into the projection.
+Sanitizer/schema/parser revision v2 and source adapter revision
+`t04-bea-pce-live-edge-real-shape-r2` distinguish these bytes from old synthetic
+bundles. The authenticated Request and full response are never retained.
 
 After both validated `ResponseCapture`s, `retain_sanitized_bundle` performs full
 cross-table validation and returns a complete `source_projection` candidate of
@@ -130,13 +143,11 @@ exercise the production spawn protocol with fake transport, and retain positive
 two-response replay and ISO metadata examples. Failed captures cannot call the
 retained-bundle builder or digest and leave the result buffer and sizes empty.
 
-Next gates: independent professional/security review of this exact new revision,
-exclusive Host full QA, serial Git/CI and independent Source-specific B3 review.
-B1 real grant/reviewer/producer trust and B2 complete hard-bound capability remain
-unproved. Historical Git/CI/Postflight is not Source PASS. Only after B1/B2/B3
-closure and a fresh exact explicit Owner opt-in could a separately reviewed real
-execution implementation produce both responses and controlled receipt;
-an independent new-process source readback must establish the actual identity,
-size/SHA and lineage. Garage/PG counters, storage opt-in and independent
-publication/local-read proof remain separate unfinished work. The historical
-Git/CI/Postflight checkpoint cannot qualify this new uncommitted candidate.
+The correction is ready for fresh independent review of the current bytes.
+After review, the existing explicit Source acquisition and retained
+Garage/PG materialization APIs can be used in the authorized T04 scope, followed
+by independent projection/receipt, publication and exact/as-of local Read
+readback. No replacement approval or authority entity is introduced. The supplied
+sanitized pair establishes the observed Results shape; actual acquisition
+framing and real storage/readback remain unverified by deterministic QA; an incompatible response stops the attempt without retry or silent parser
+relaxation. This patch does not claim Source qualification or product completion.
