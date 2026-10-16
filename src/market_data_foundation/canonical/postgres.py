@@ -27,6 +27,7 @@ from .retained_restore import (
     check_restore_target,
     validate_exact_graph,
 )
+from .rules import validate_record
 
 _SCHEMA = re.compile(
     r"^(?:mdf_p3_canonical_kernel_r1_[a-z0-9_]+|"
@@ -41,7 +42,8 @@ _SCHEMA = re.compile(
     r"mdf_p6_consumer_read_r1|"
     r"mdf_p6_real_cognition_data_readiness_r1|"
     r"mdf_macro_bls_ppi_vertical_r1|"
-    r"mdf_macro_bls_employment_vertical_r1)$"
+    r"mdf_macro_bls_employment_vertical_r1|"
+    r"mdf_macro_bea_pce_vertical_r1)$"
 )
 
 
@@ -194,6 +196,7 @@ class PostgresLedger:
             existing = self.publication_by_occurrence(request.occurrence)
             if existing is not None:
                 require(existing.request == request, "occurrence_identity_conflict")
+                validate_record(existing, self.get)
                 publication = existing
             else:
                 publication = prepare_publication(self, request, self.server_now)
@@ -204,6 +207,8 @@ class PostgresLedger:
                 publication = replace(
                     publication, decision_at=decision_at, usable_at=usable_at
                 )
+                # Recheck the actual final server sample, including clock rollback.
+                validate_record(publication, self.get)
                 self.connection.execute(
                     sql.SQL("""
                         INSERT INTO {}.publications

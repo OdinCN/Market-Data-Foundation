@@ -341,6 +341,7 @@ def validate_record(record: Record, resolve: Resolver) -> None:
         instant(record.decision_at)
         instant(record.usable_at)
         require(record.usable_at >= record.decision_at, "usable_before_decision")
+        validate_pce_publication_time(record, version, resolve)
         validate_scope_monotonic(record.request.scope, (version.scope,))
         validate_evidence_for_publication(record.request, version, resolve)
         if record.request.predecessor is not None:
@@ -351,6 +352,34 @@ def validate_record(record: Record, resolve: Resolver) -> None:
         return
 
     raise TypeError(type(record))
+
+
+def validate_pce_publication_time(
+    publication: Publication, version: DatasetVersion, resolve: Resolver
+) -> None:
+    """T04's named Source boundary; other products retain their time contracts.
+
+    Compare observed instants. Never shift source/freeze times or manufacture a
+    later decision to accommodate an acquisition from the future.
+    """
+    if version.definition != Key(
+        Kind.DEFINITION, "mdf.macro.bea.pce.headline-core", "t04-r1"
+    ):
+        return
+    require(
+        version.frozen_at <= publication.decision_at,
+        "pce_publication_before_freeze",
+    )
+    for key in version.acquisitions:
+        acquisition = resolve_as(
+            resolve(key), AcquisitionOccurrence, "version_acquisition_missing"
+        )
+        require(
+            acquisition.obtained_at is not None
+            and acquisition.obtained_at <= version.frozen_at
+            and acquisition.obtained_at <= publication.decision_at,
+            "pce_publication_before_acquisition",
+        )
 
 
 def material_lineage(keys: Iterable[Key], resolve: Resolver) -> set[Key]:

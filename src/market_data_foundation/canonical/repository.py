@@ -52,6 +52,7 @@ def prepare_publication(
     existing = ledger.publication_by_occurrence(request.occurrence)
     if existing is not None:
         require(existing.request == request, "occurrence_identity_conflict")
+        validate_record(existing, ledger.get)
         return existing
     publication = build_publication(
         request,
