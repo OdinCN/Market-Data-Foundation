@@ -86,11 +86,7 @@ def row(year, month, value, net=None, pct=None):
 def response():
     catalogs = [
         ("CE", "all employees, thousands", "All employees, total nonfarm"),
-        (
-            "LN",
-            "unemployment rate",
-            "Unemployment rate, 16 years and over, both sexes, all races",
-        ),
+        ("LN", "Percent or rate", "(Seas) Unemployment Rate"),
         (
             "CE",
             "average hourly earnings of all employees",
@@ -122,6 +118,16 @@ def response():
                         ),
                         "measure_data_type": catalog[1],
                         "series_title": catalog[2],
+                        **(
+                            {
+                                "cps_labor_force_status": "Unemployment rate",
+                                "demographic_age": "16 years and over",
+                                "demographic_gender": "Both Sexes",
+                                "demographic_race": "All Races",
+                            }
+                            if catalog[0] == "LN"
+                            else {}
+                        ),
                     },
                     "data": data,
                 }
@@ -213,6 +219,24 @@ def test_retry_attempt_count_materializes_and_reads(attempts):
         assert view.acquisitions[0].provider_data_attempts == attempts
 
 
+def test_real_bls_cps_catalog_shape_is_admitted():
+    value = response()
+    catalog = value["Results"]["series"][1]["catalog"]
+    catalog.update(
+        {
+            "commerce_industry": "All Industries",
+            "demographic_education": "All educational levels",
+            "demographic_ethnic_origin": "All Origins",
+            "occupation": "All Occupations",
+        }
+    )
+    projection = parse_response(encode(value))
+    measurement = projection.data["measurements"]["2026-09"]["unemployment_rate_sa"]
+    assert measurement["series_id"] == "LNS14000000"
+    assert measurement["survey"] == "CPS"
+    assert measurement["unit"] == "percent"
+
+
 def test_source_values_calculations_units_population_and_source_operands():
     data = parse_response(encode(response())).data
     assert list(data["measurements"]) == list(REFERENCES)
@@ -265,7 +289,7 @@ def test_source_contract_fails_closed(mutation):
     elif mutation == "seasonality":
         series[0]["catalog"]["seasonality"] = "Not Seasonally Adjusted"
     elif mutation == "population":
-        series[1]["catalog"]["series_title"] = "men only"
+        series[1]["catalog"]["demographic_gender"] = "Men"
     elif mutation == "net":
         series[0]["data"][0]["calculations"]["net_changes"]["1"] = "11"
     elif mutation == "pct":

@@ -310,7 +310,7 @@ def test_source_specific_semantic_failures(mutation):
     elif mutation == "units":
         series[2]["catalog"]["measure_data_type"] = "dollars"
     elif mutation == "population":
-        series[1]["catalog"]["series_title"] = "16 years and over"
+        series[1]["catalog"]["demographic_gender"] = "Men"
     elif mutation == "nfp_calculation":
         series[0]["data"][0]["calculations"]["net_changes"]["1"] = "11"
     elif mutation == "ahe_missing_calculation":

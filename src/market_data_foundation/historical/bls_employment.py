@@ -89,7 +89,7 @@ CATALOG_CONTRACT = {
         "average hourly earnings of all employees",
         "total private",
     ),
-    "LNS14000000": ("LN", "unemployment rate", "16 years and over"),
+    "LNS14000000": ("LN", "percent or rate", "16 years and over"),
 }
 
 
@@ -345,15 +345,25 @@ def _parse_response(raw: bytes) -> EmploymentProjection:
             in catalog["survey_name"].casefold()
             and type(catalog.get("measure_data_type")) is str
             and catalog["measure_data_type"].casefold() == measure
-            and type(catalog.get("series_title")) is str
-            and population in catalog["series_title"].casefold(),
+            and type(catalog.get("series_title")) is str,
             "bls_employment_catalog_identity_mismatch",
         )
         if sid == "LNS14000000":
-            title = catalog["series_title"].casefold()
             require(
-                all(part in title for part in ("both sexes", "all races")),
+                type(catalog.get("cps_labor_force_status")) is str
+                and catalog["cps_labor_force_status"].casefold() == "unemployment rate"
+                and type(catalog.get("demographic_age")) is str
+                and catalog["demographic_age"].casefold() == population
+                and type(catalog.get("demographic_gender")) is str
+                and catalog["demographic_gender"].casefold() == "both sexes"
+                and type(catalog.get("demographic_race")) is str
+                and catalog["demographic_race"].casefold() == "all races",
                 "bls_employment_cps_population_mismatch",
+            )
+        else:
+            require(
+                population in catalog["series_title"].casefold(),
+                "bls_employment_catalog_identity_mismatch",
             )
         catalogs[sid] = catalog
         by_series[sid] = _rows(item["data"])
