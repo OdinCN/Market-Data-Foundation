@@ -22,10 +22,14 @@ from market_data_foundation.canonical.repository import InMemoryLedger
 from market_data_foundation.historical import fomc_statement as statement
 from market_data_foundation.historical import fomc_statement_live as live
 from market_data_foundation.historical.bls_cpi_material_store import (
+    MaterialIdentity,
     MaterialWriteOutcomeUnknown,
     WriteDisposition,
 )
-from market_data_foundation.historical.fomc_statement_contract import STATEMENT_DOCUMENT
+from market_data_foundation.historical.fomc_statement_contract import (
+    MAX_BODY_BYTES,
+    STATEMENT_DOCUMENT,
+)
 from market_data_foundation.historical.fomc_statement_local_job import (
     DEV_SCHEMA,
     DirectStatementAcquirer,
@@ -36,6 +40,9 @@ from market_data_foundation.historical.fomc_statement_local_job import (
 from market_data_foundation.historical.fomc_statement_local_read import (
     StatementReadRejected,
     read_local_statement,
+)
+from market_data_foundation.historical.fomc_statement_material_store import (
+    StatementMaterialIdentity,
 )
 from market_data_foundation.historical.fomc_statement_materialization import (
     StatementMaterializationOutcomeUnknown,
@@ -1003,12 +1010,8 @@ def test_restart_owner_old_writer_pid_gate_without_pg_io(tmp_path, current_pid):
     spec = StatementJobSpec(effect_domain="owner_nonproduction")
     job.submit("owner", spec)
     identities = []
-    from market_data_foundation.historical.bls_cpi_material_store import (
-        MaterialIdentity,
-    )
-
     for read in c.reads:
-        identity = MaterialIdentity(read.raw_sha256, read.raw_size)
+        identity = StatementMaterialIdentity(read.raw_sha256, read.raw_size)
         store.objects[identity] = read.raw
         identities.append(
             {
@@ -1485,3 +1488,120 @@ def test_reconcile_readback_partial_release_never_confirms_while_ticket_held(tmp
     assert [ticket.release_calls for ticket in original_readback_tickets] == [1, 2]
     assert protection.all_released()
     assert ledger.publication_calls == 1
+
+
+REAL_CALENDAR_SHA256 = (
+    "326c98e372bf6ab01b4ba6b7c88214296e6983e4cde743bec3120f3e68037fc7"
+)
+REAL_STATEMENT_SHA256 = (
+    "d82280a92adada1f904b25895fdf96de5f7789d785195cc796f008186218b7f9"
+)
+
+
+@pytest.mark.parametrize(
+    ("sha", "size"),
+    [
+        (REAL_CALENDAR_SHA256, 167856),
+        (REAL_STATEMENT_SHA256, 84741),
+        (REAL_CALENDAR_SHA256, MAX_BODY_BYTES),
+    ],
+)
+def test_statement_material_identity_admits_contract_sizes(sha, size):
+    identity = StatementMaterialIdentity(sha, size)
+    assert isinstance(identity, MaterialIdentity)
+    assert identity.key == MaterialIdentity(sha, 1).key
+    assert identity.locator == MaterialIdentity(sha, 1).locator
+    assert (
+        StatementMaterialIdentity.from_locator(
+            identity.locator, expected_sha256=sha, expected_size=size
+        )
+        == identity
+    )
+
+
+@pytest.mark.parametrize("size", [MAX_BODY_BYTES + 1, 0, -1, True, 1.0])
+def test_statement_material_identity_rejects_invalid_size(size):
+    with pytest.raises(ContractError, match="^statement_material_size_invalid$"):
+        StatementMaterialIdentity(REAL_CALENDAR_SHA256, size)
+
+
+def test_statement_identity_preserves_base_cpi_size_boundary():
+    with pytest.raises(ContractError, match="^material_size_invalid$"):
+        MaterialIdentity(REAL_CALENDAR_SHA256, 167856)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "classification"),
+    [
+        ({"sha256": "A" * 64}, "material_digest_invalid"),
+        ({"bucket": "other"}, "material_bucket_not_admitted"),
+        ({"key": "other"}, "material_key_not_admitted"),
+    ],
+)
+def test_statement_identity_reuses_base_address_allowlist(kwargs, classification):
+    args = {"sha256": REAL_CALENDAR_SHA256, "size": 167856} | kwargs
+    with pytest.raises(ContractError, match=f"^{classification}$"):
+        StatementMaterialIdentity(**args)
+    identity = StatementMaterialIdentity(REAL_CALENDAR_SHA256, 167856)
+    with pytest.raises(ContractError, match="^material_locator_not_admitted$"):
+        StatementMaterialIdentity.from_locator(
+            identity.locator + "/other",
+            expected_sha256=identity.sha256,
+            expected_size=identity.size,
+        )
+
+
+@pytest.mark.parametrize("publication_failure", [None, "before"])
+def test_real_sized_retained_local_plan_and_reconcile(
+    tmp_path, monkeypatch, publication_failure
+):
+    # Synthetic valid HTML padded to retained real body sizes; no provider IO.
+    monkeypatch.setitem(globals(), "CALENDAR", CALENDAR.ljust(167856, b" "))
+    monkeypatch.setitem(globals(), "STATEMENT", STATEMENT.ljust(84741, b" "))
+    job, journal, ledger, store, protection, clock = job_bindings(
+        tmp_path, publication_failure
+    )
+    c = candidate(clock)
+    p = statement.build_live_plan(
+        c, identity="real-sized", finished_at=clock(), frozen_at=clock()
+    )
+    raw = tuple(r.raw for r in c.reads)
+    assert tuple(map(len, raw)) == (167856, 84741)
+    statement.validate_live_plan(p, raw)
+    identities = tuple(StatementMaterialIdentity(digest(b), len(b)) for b in raw)
+    spec = StatementJobSpec(
+        mode="retained",
+        max_provider_requests=0,
+        expected_raw_sha256=tuple(i.sha256 for i in identities),
+    )
+    job.submit("real-sized", spec)
+    result = job.run("real-sized", enabled=True, preflight=lambda _: None, retained=c)
+    assert "provider_requests_possible" not in result["effects"]
+    assert tuple(i["locator"] for i in result["raw"]) == tuple(
+        i.locator for i in identities
+    )
+    assert store.creates == list(identities)
+    if publication_failure:
+        assert result["state"] == "outcome_unknown"
+        result = job.reconcile("real-sized", enabled=True)
+        assert result["reconciliation"]["outcome"] == "confirmed_not_published"
+        restarted = StatementLocalJob(
+            StatementJobJournal(journal.directory),
+            clock,
+            job.kernel,
+            store,
+            protection,
+            job.readback,
+            job.commit,
+        )
+        result = restarted.reconcile("real-sized", enabled=True)
+        assert result["reconciliation"]["raw_state"] == "verified"
+        assert result["reconciliation"]["outcome"] == "confirmed_not_published"
+    else:
+        assert result["state"] == "succeeded"
+        view = read_local_statement(copy.deepcopy(ledger), as_of=clock())
+        assert (
+            tuple(r.raw for r in statement.candidate_from_content(view.content).reads)
+            == raw
+        )
+    assert protection.all_released()

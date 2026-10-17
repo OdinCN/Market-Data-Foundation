@@ -14,7 +14,6 @@ from market_data_foundation.canonical.model import (
 from market_data_foundation.canonical.postgres import PostgresLedger
 from market_data_foundation.canonical.repository import Ledger
 from market_data_foundation.historical.bls_cpi_material_store import (
-    MaterialIdentity,
     MaterialStore,
     MaterialWriteOutcomeUnknown,
     WriteDisposition,
@@ -28,6 +27,9 @@ from market_data_foundation.historical.fomc_statement import (
     publish,
     validate_live_plan,
 )
+from market_data_foundation.historical.fomc_statement_material_store import (
+    StatementMaterialIdentity,
+)
 
 
 class StatementUnknownPhase(StrEnum):
@@ -38,7 +40,7 @@ class StatementUnknownPhase(StrEnum):
 
 @dataclass(frozen=True)
 class StatementMaterialVerification:
-    identity: MaterialIdentity
+    identity: StatementMaterialIdentity
     disposition: WriteDisposition | None
     reconciled_outcome_unknown: bool
 
@@ -84,7 +86,7 @@ class StatementMaterializationOutcomeUnknown(RuntimeError):
         self,
         phase: StatementUnknownPhase,
         plan: StatementPlan,
-        tickets: tuple[tuple[MaterialIdentity, WriterProtectionTicket], ...],
+        tickets: tuple[tuple[StatementMaterialIdentity, WriterProtectionTicket], ...],
         protection_released: Callable[[], None],
         writer_ledger: Ledger,
         *,
@@ -168,7 +170,9 @@ class StatementMaterializationOutcomeUnknown(RuntimeError):
         return outcome
 
 
-def _verify(identity: MaterialIdentity, payload: bytes, classification: str) -> None:
+def _verify(
+    identity: StatementMaterialIdentity, payload: bytes, classification: str
+) -> None:
     require(
         type(payload) is bytes
         and len(payload) == identity.size
@@ -192,7 +196,7 @@ def materialize_persist_publish(
     try:
         validate_live_plan(plan, raw)
         for material, payload in zip(plan.raw_materials, raw, strict=True):
-            identity = MaterialIdentity(material.digest or "", len(payload))
+            identity = StatementMaterialIdentity(material.digest or "", len(payload))
             ticket = protection.acquire(identity)
             tickets.append((identity, ticket))
             ticket.assert_held(identity)

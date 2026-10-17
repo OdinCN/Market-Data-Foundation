@@ -16,7 +16,6 @@ from market_data_foundation.canonical.postgres import PostgresLedger
 from market_data_foundation.canonical.repository import Ledger
 from market_data_foundation.historical.bls_cpi_material_store import (
     GarageMaterialStore,
-    MaterialIdentity,
     MaterialStore,
     PostgresAdvisoryWriterProtection,
     WriterProtection,
@@ -43,6 +42,9 @@ from market_data_foundation.historical.fomc_statement_live import (
 )
 from market_data_foundation.historical.fomc_statement_local_read import (
     read_local_statement,
+)
+from market_data_foundation.historical.fomc_statement_material_store import (
+    StatementMaterialIdentity,
 )
 from market_data_foundation.historical.fomc_statement_materialization import (
     StatementMaterializationOutcomeUnknown,
@@ -271,7 +273,7 @@ class StatementJobSpec:
                 "statement_job_two_digests_required",
             )
             for sha in self.expected_raw_sha256:
-                MaterialIdentity(sha, 1)
+                StatementMaterialIdentity(sha, 1)
         require(
             self.effect_domain in {"synthetic", "owner_nonproduction"},
             "statement_job_effect_domain_not_admitted",
@@ -500,7 +502,7 @@ class StatementLocalJob:
         spec: StatementJobSpec,
         plan: StatementPlan,
         raw: tuple[bytes, ...],
-        identities: tuple[MaterialIdentity, ...],
+        identities: tuple[StatementMaterialIdentity, ...],
     ) -> dict:
         self._check_bindings(spec)
         tickets = []
@@ -628,7 +630,8 @@ class StatementLocalJob:
                 self._check_bindings(spec)
                 plan, raw = self._candidate(identity, candidate, spec)
                 raw_identities = tuple(
-                    MaterialIdentity(digest(payload), len(payload)) for payload in raw
+                    StatementMaterialIdentity(digest(payload), len(payload))
+                    for payload in raw
                 )
                 self.journal._update(
                     identity,
@@ -829,7 +832,8 @@ class StatementLocalJob:
                     "statement_job_two_raw_required",
                 )
                 raw_identities = tuple(
-                    MaterialIdentity(item["sha256"], item["size"]) for item in raw_info
+                    StatementMaterialIdentity(item["sha256"], item["size"])
+                    for item in raw_info
                 )
                 require(
                     all(
@@ -843,7 +847,7 @@ class StatementLocalJob:
                 validate_live_plan(plan, raw)
                 require(
                     raw_identities
-                    == tuple(MaterialIdentity(digest(b), len(b)) for b in raw),
+                    == tuple(StatementMaterialIdentity(digest(b), len(b)) for b in raw),
                     "statement_job_raw_identity_mismatch",
                 )
                 require(

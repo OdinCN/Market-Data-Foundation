@@ -17,7 +17,6 @@ from market_data_foundation.canonical.model import (
     require,
 )
 from market_data_foundation.canonical.repository import Ledger
-from market_data_foundation.historical.bls_cpi_material_store import MaterialIdentity
 from market_data_foundation.historical.fomc_statement import (
     REFERENCE,
     build_live_plan,
@@ -26,6 +25,9 @@ from market_data_foundation.historical.fomc_statement import (
     validate_publication_time,
 )
 from market_data_foundation.historical.fomc_statement_contract import STATEMENT_DOCUMENT
+from market_data_foundation.historical.fomc_statement_material_store import (
+    StatementMaterialIdentity,
+)
 
 
 class StatementReadRejected(Exception):
@@ -47,7 +49,7 @@ def _validate_lineage(ledger: Ledger, view: ExactReadView) -> None:
         expected = durable_plan(
             expected,
             tuple(
-                MaterialIdentity(digest(r.raw), len(r.raw)).locator
+                StatementMaterialIdentity(digest(r.raw), len(r.raw)).locator
                 for r in candidate.reads
             ),
         )

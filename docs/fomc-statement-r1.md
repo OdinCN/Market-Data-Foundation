@@ -167,3 +167,20 @@ qualification is still not product-complete at this revision: no Garage or
 PostgreSQL effect occurred in R1 or R2. Final qualification must reuse both
 retained raws with zero new Federal Reserve requests and complete canonical
 materialization plus fresh exact/as-of local readback.
+
+
+### T07 provider-specific Garage identity boundary
+
+`StatementMaterialIdentity` is selected explicitly for official calendar and
+Statement HTML raw bodies, including local plan validation, materialization,
+local read and journal reconciliation. It admits integer sizes from 1 through
+`fomc_statement_contract.MAX_BODY_BYTES` (5 MiB); invalid sizes fail with
+`statement_material_size_invalid`. The retained calendar (167856 bytes) and
+Statement (84741 bytes) fit this boundary.
+
+The subclass reuses the base digest, bucket, key and locator allowlist through
+a size-1 `MaterialIdentity` probe. Base CPI `MaterialIdentity` retains its
+100,000-byte limit and `material_size_invalid` classification. Shared
+`GarageMaterialStore` and writer protection interfaces are unchanged.
+Deterministic coverage uses padded synthetic HTML at both retained real sizes;
+it does not perform Provider, Garage or PostgreSQL IO or add live evidence.

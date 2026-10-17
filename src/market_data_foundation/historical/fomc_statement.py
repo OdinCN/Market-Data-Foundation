@@ -817,12 +817,13 @@ def _validate_durable_plan(plan: StatementPlan) -> None:
         finished_at=plan.run.finished_at,
         frozen_at=plan.version.frozen_at,
     )
-    from .bls_cpi_material_store import MaterialIdentity
+    from .fomc_statement_material_store import StatementMaterialIdentity
 
     expected = durable_plan(
         expected,
         tuple(
-            MaterialIdentity(digest(r.raw), len(r.raw)).locator for r in candidate.reads
+            StatementMaterialIdentity(digest(r.raw), len(r.raw)).locator
+            for r in candidate.reads
         ),
     )
     require(plan == expected, "statement_durable_lineage_mismatch")
