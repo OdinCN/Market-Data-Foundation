@@ -25,14 +25,29 @@ ROW = b"""<div class="fomc-meeting"><div class="fomc-meeting__month">September</
 </div>
 <p>Minutes: <a href="/minutes.htm">HTML</a></p></div>"""
 CALENDAR = b'<div class="panel"><h4>2026 FOMC Meetings</h4>' + ROW + b"</div>"
-STATEMENT = b"""<div id="article"><p class="article__time">September 16, 2026</p>
-<h3>Federal Reserve issues FOMC statement</h3><p>For release at 2:00 p.m. EDT</p>
-<div class="col-xs-12 col-sm-8 col-md-8"><p>Economic activity has &nbsp; expanded.</p>
-<p>The Committee seeks <em>maximum employment</em> &amp; stable prices.</p>
-<p>Voting for the FOMC monetary policy action were A and B.</p>
-<p>For media inquiries, call somebody.</p><p>Implementation Note: excluded</p></div>
-<nav>Navigation excluded</nav></div>
-<div id="lastUpdate">Last Update: September 16, 2026</div>"""
+RELEASE = (
+    b'<p class="releaseTime">For release at 2:00 p.m. EDT'
+    b'<ul class="list-unstyled"><li>Share</li></ul></p>'
+)
+STATEMENT = (
+    b'<div id="article">'
+    b'<div class="heading col-xs-12 col-sm-8 col-md-8">'
+    b'<p class="article__time">September 16, 2026</p>'
+    b'<h3 class="title">Federal Reserve issues FOMC statement</h3>'
+    + RELEASE
+    + b"</div>"
+    b'<div class="col-xs-12 col-sm-8 col-md-8">'
+    b"<p>The Federal Open Market Committee approved the following statement "
+    b"for release by a 12 - 0 vote:</p>"
+    b"<p>The Committee decided to adjust the policy stance.</p>"
+    b"<p>Economic activity has expanded at a solid pace.</p>"
+    b"<p>Inflation remains elevated.</p>"
+    b"<p>For media inquiries, call somebody.</p>"
+    b'<p><a href="/newsevents/pressreleases/monetary20260916a1.htm">'
+    b"Implementation Note issued September 16, 2026</a></p>"
+    b"</div></div>"
+    b'<div id="lastUpdate">Last Update: September 16, 2026</div>'
+)
 
 
 def test_discovery_and_exact_document():
@@ -42,9 +57,11 @@ def test_discovery_and_exact_document():
     assert discovery.calendar_raw_size == len(CALENDAR)
     document = parse_statement(STATEMENT, URL)
     assert document.text == (
-        "Economic activity has expanded.\n\n"
-        "The Committee seeks maximum employment & stable prices.\n\n"
-        "Voting for the FOMC monetary policy action were A and B."
+        "The Federal Open Market Committee approved the following statement "
+        "for release by a 12 - 0 vote:\n\n"
+        "The Committee decided to adjust the policy stance.\n\n"
+        "Economic activity has expanded at a solid pace.\n\n"
+        "Inflation remains elevated."
     )
     assert document.official_published_at == OFFICIAL_PUBLISHED_AT
     assert document.extraction_revision == EXTRACTION_REVISION
@@ -169,7 +186,7 @@ def test_calendar_hidden_or_nested_discovery_evidence_rejected(mutation):
         (b"2:00 p.m. EDT", b"2:00 p.m. EST"),
         (b"2:00 p.m. EDT", b"3:00 p.m. EDT"),
         (b"Economic activity", b"Implementation Note"),
-        (b"Voting for the FOMC monetary policy action", b"Other material"),
+        (b"Inflation remains elevated", b"Other material"),
         (b"For media inquiries", b"Unrecognized footer"),
         (b'id="article"', b'id="other"'),
         (b"col-md-8", b"col-md-9"),
@@ -190,11 +207,10 @@ def test_statement_rejects_paragraph_with_noncontent_ancestor(tag):
         parse_statement(raw, URL)
 
 
-POLICY = b"<p>The Committee seeks <em>maximum employment</em> &amp; stable prices.</p>"
+POLICY = b"<p>Economic activity has expanded at a solid pace.</p>"
 METADATA = (
-    b"<h3>Federal Reserve issues FOMC statement</h3>"
-    b'<p class="article__time">September 16, 2026</p>'
-    b"<p>For release at 2:00 p.m. EDT</p>"
+    b'<h3 class="title">Federal Reserve issues FOMC statement</h3>'
+    b'<p class="article__time">September 16, 2026</p>' + RELEASE
 )
 POLLUTED_STATEMENTS = [
     STATEMENT.replace(POLICY, b"<h4>Implementation Note</h4>" + POLICY),
@@ -213,7 +229,10 @@ POLLUTED_STATEMENTS = [
         b'<div id="article">',
         b'<div id="article"><template>' + METADATA + b"</template>",
     ),
-    STATEMENT.replace(b"<h3>", b'<p class="article__time">July 29, 2026</p><h3>'),
+    STATEMENT.replace(
+        b'<h3 class="title">',
+        b'<p class="article__time">July 29, 2026</p><h3 class="title">',
+    ),
 ]
 
 
@@ -257,9 +276,9 @@ def test_hidden_policy_rejected(attrs):
 @pytest.mark.parametrize(
     "field",
     [
-        b"<h3>Federal Reserve issues FOMC statement</h3>",
+        b'<h3 class="title">Federal Reserve issues FOMC statement</h3>',
         b'<p class="article__time">September 16, 2026</p>',
-        b"<p>For release at 2:00 p.m. EDT</p>",
+        RELEASE,
     ],
 )
 def test_inert_metadata_cannot_supply_expected_value(tag, field):
@@ -273,7 +292,7 @@ def test_inert_metadata_cannot_supply_expected_value(tag, field):
     [
         b"<h3>Minutes</h3>",
         b'<p class="article__time">July 29, 2026</p>',
-        b"<p>For release at 3:00 p.m. EDT</p>",
+        b'<p class="releaseTime">For release at 3:00 p.m. EDT</p>',
         METADATA,
     ],
 )
@@ -303,9 +322,9 @@ def test_ordered_grid_wrapper_and_nonparagraph_media_terminator():
 @pytest.mark.parametrize(
     "field",
     [
-        b"<h3>Federal Reserve issues FOMC statement</h3>",
+        b'<h3 class="title">Federal Reserve issues FOMC statement</h3>',
         b'<p class="article__time">September 16, 2026</p>',
-        b"<p>For release at 2:00 p.m. EDT</p>",
+        RELEASE,
     ],
 )
 def test_hidden_metadata_cannot_supply_expected_value(attrs, field):
@@ -324,7 +343,10 @@ def test_css_comment_cannot_hide_policy_content():
 
 
 def test_hidden_child_cannot_mask_visible_release_conflict():
-    injected = b"<p>For release at 3:00 p.m. EDT<span hidden>For release</span></p>"
+    injected = (
+        b'<p class="releaseTime">For release at 3:00 p.m. EDT'
+        b"<span hidden>For release</span></p>"
+    )
     raw = STATEMENT.replace(
         b'<div id="article">',
         b'<div id="article">' + injected,

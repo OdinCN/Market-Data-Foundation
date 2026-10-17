@@ -144,3 +144,26 @@ https://www.federalreserve.gov/newsevents/pressreleases/monetary20260916a.htm.
 This retained calendar observation is partial live evidence only. The Statement
 logical read had not yet occurred at this revision, so real Source qualification
 was not complete and no Garage/PostgreSQL effect occurred.
+
+### R2 retained real Statement observation
+
+After the real-calendar correction, the second bounded qualification reused the
+R1 calendar bytes and performed only Statement logical read 2. The official
+Statement returned HTTP200 on attempt 1 and was retained before parsing at
+SHA-256 d82280a92adada1f904b25895fdf96de5f7789d785195cc796f008186218b7f9,
+84741 bytes.
+
+The retained page demonstrates the current official structure: title/date/release
+metadata live in a heading col-md-8, the release paragraph contains the Board's
+share-list UI, and the statement body is the separate exact
+col-xs-12 col-sm-8 col-md-8 container. The body has four policy paragraphs
+before the media-contact footer; the vote is carried in the approval paragraph,
+not a legacy Voting-for footer. The corrected parser binds these structural
+facts, ignores the known share UI when reading direct release metadata, and still
+fails closed on contaminated body structure.
+
+Both Source HTTP200 bodies are now retained and replay locally, but Source
+qualification is still not product-complete at this revision: no Garage or
+PostgreSQL effect occurred in R1 or R2. Final qualification must reuse both
+retained raws with zero new Federal Reserve requests and complete canonical
+materialization plus fresh exact/as-of local readback.

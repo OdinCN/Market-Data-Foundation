@@ -306,60 +306,81 @@ def _statement_texts(body: _Node) -> list[str]:
     raise DocumentError("statement_anchors_invalid")
 
 
+def _direct_text(node: _Node) -> str:
+    return " ".join(
+        "".join(child for child in node.children if isinstance(child, str)).split()
+    )
+
+
 def parse_statement(raw: bytes, source_url: str) -> StatementDocument:
     validate_statement_url(source_url)
     root = _HTML(raw).root
     article = _one(
-        [n for n in root.nodes() if n.attrs.get("id") == "article"],
+        [n for n in root.nodes() if n.attrs.get("id") == "article" and _visible(n)],
         "statement_article_ambiguous",
     )
     visible = [n for n in article.nodes() if _visible(n)]
-    for candidates, expected, classification in (
-        (
-            [n for n in visible if n.tag in {"h1", "h2", "h3"}],
-            "Federal Reserve issues FOMC statement",
-            "statement_title_invalid",
-        ),
-        (
-            [n for n in visible if n.has_class("article__time")],
-            "September 16, 2026",
-            "statement_date_invalid",
-        ),
-        (
-            [
-                n
-                for n in visible
-                if n.text().startswith("For release")
-                and n.tag in {"p", "div", "span", "time"}
-                and not any(
-                    isinstance(c, _Node)
-                    and _visible(c)
-                    and c.text().startswith("For release")
-                    for c in n.children
-                )
-            ],
-            "For release at 2:00 p.m. EDT",
-            "statement_release_invalid",
-        ),
+
+    title = _one(
+        [n for n in visible if n.tag in {"h1", "h2", "h3"}],
+        "statement_title_invalid",
+    )
+    if title.text() != "Federal Reserve issues FOMC statement" or not _inline_content(
+        title
     ):
-        metadata = _one(candidates, classification)
-        if metadata.text() != expected or not _inline_content(metadata):
-            raise DocumentError(classification)
+        raise DocumentError("statement_title_invalid")
+
+    article_time = _one(
+        [n for n in visible if n.has_class("article__time")],
+        "statement_date_invalid",
+    )
+    if article_time.text() != "September 16, 2026" or not _inline_content(article_time):
+        raise DocumentError("statement_date_invalid")
+
+    release = _one(
+        [n for n in visible if n.tag == "p" and n.has_class("releaseTime")],
+        "statement_release_invalid",
+    )
+    if _direct_text(release) != "For release at 2:00 p.m. EDT":
+        raise DocumentError("statement_release_invalid")
+    release_children = [child for child in release.children if isinstance(child, _Node)]
+    if len(release_children) > 1 or any(
+        child.tag != "ul"
+        or "list-unstyled" not in child.attrs.get("class", "").split()
+        or not _visible(child)
+        for child in release_children
+    ):
+        raise DocumentError("statement_release_invalid")
+
     body = _one(
-        [n for n in article.nodes() if n.tag == "div" and n.has_class("col-md-8")],
+        [
+            n
+            for n in visible
+            if n.tag == "div"
+            and set(n.attrs.get("class", "").split())
+            == {"col-xs-12", "col-sm-8", "col-md-8"}
+        ],
         "statement_body_ambiguous",
     )
     texts = _statement_texts(body)
     if (
-        not texts
-        or not texts[0].startswith(("Economic activity", "Recent indicators"))
-        or not any(
-            t.startswith("Voting for the FOMC monetary policy action") for t in texts
+        len(texts) != 4
+        or not texts[0].startswith(
+            "The Federal Open Market Committee approved the following statement "
+            "for release by a "
         )
+        or not texts[0].endswith(" vote:")
+        or not texts[1].startswith("The Committee decided")
+        or not texts[2].startswith("Economic activity")
+        or not texts[3].startswith("Inflation remains elevated")
     ):
         raise DocumentError("statement_anchors_invalid")
-    # Last Update is optional provider metadata, never a revision sequence.
-    updates = [n.text() for n in root.nodes() if n.attrs.get("id") == "lastUpdate"]
+
+    updates = [
+        n.text()
+        for n in root.nodes()
+        if n.attrs.get("id") == "lastUpdate" and _visible(n)
+    ]
     if len(updates) > 1:
         raise DocumentError("statement_last_update_ambiguous")
     return StatementDocument(
