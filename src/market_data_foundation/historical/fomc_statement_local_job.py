@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, fields, replace
 from datetime import datetime
 
@@ -31,6 +31,7 @@ from market_data_foundation.historical.fomc_statement import (
     StatementPlan,
     build_live_plan,
     candidate_from_content,
+    durable_plan,
     validate_live_plan,
 )
 from market_data_foundation.historical.fomc_statement_contract import STATEMENT_DOCUMENT
@@ -51,6 +52,11 @@ from market_data_foundation.historical.fomc_statement_materialization import (
     StatementProtectionReleaseFailure,
     _release,
     materialize_persist_publish,
+)
+from market_data_foundation.historical.local_job_recovery import (
+    recovery_snapshot,
+    require_repair_absence,
+    synthetic_writer_session,
 )
 from market_data_foundation.historical.macro_job_journal import (
     MacroJobJournal,
@@ -415,7 +421,7 @@ class StatementLocalJob:
                 "host": DEV_POSTGRES_HOST,
                 "backend_pid": backend_pid,
             }
-        return {"kind": "synthetic", "lock_release_proven": False}
+        return synthetic_writer_session(ledger)
 
     def _check_independent(self, ledger: Ledger, spec: StatementJobSpec) -> None:
         require(
@@ -450,6 +456,13 @@ class StatementLocalJob:
                 and old["reconciliation"]["outcome"] == "confirmed_not_published"
                 and old["reconciliation"].get("raw_state") == "verified",
                 "statement_job_repair_reconciliation_required",
+            )
+            require_repair_absence(
+                self.kernel.ledger,
+                self.readback,
+                old,
+                old["spec"]["effect_domain"],
+                _decode_plan(old["plan"]),
             )
             spec = replace(
                 StatementJobSpec.from_document(old["spec"]),
@@ -497,16 +510,86 @@ class StatementLocalJob:
         validate_live_plan(plan, raw)
         return plan, raw
 
+    @contextmanager
+    def _readback_tickets(self, job_id):
+        # Persist intent before acquiring anything. A restarted engine without
+        # these handles must quarantine, even if publication is already proven.
+        previous = self.journal.get(job_id)["reconciliation"] or {}
+        self.journal._update(
+            job_id,
+            self.clock(),
+            reconciliation=previous
+            | {
+                "outcome": "unresolved",
+                "readback_protection_pending": True,
+            },
+        )
+        tickets = []
+        try:
+            yield tickets
+        finally:
+            try:
+                _release(tickets)
+            except StatementProtectionReleaseFailure as exc:
+                self._readback_release_handles[job_id] = exc
+                raise
+            previous = self.journal.get(job_id)["reconciliation"] or {}
+            self.journal._update(
+                job_id,
+                self.clock(),
+                reconciliation=previous
+                | {
+                    "readback_protection_pending": False,
+                },
+            )
+
+    def _resume_readback_release(self, job_id):
+        reconciliation = self.journal.get(job_id)["reconciliation"] or {}
+        # Legacy journals may have lost a successful-readback release handle.
+        # Absence of the new intent marker cannot prove those tickets are gone.
+        if "readback_protection_pending" not in reconciliation and any(
+            event["stage"] == "independent_readback"
+            for event in self.journal.history(job_id)
+        ):
+            self.journal._update(
+                job_id,
+                self.clock(),
+                reconciliation=reconciliation
+                | {
+                    "outcome": "unresolved",
+                    "readback_protection_pending": True,
+                },
+            )
+            require(False, "legacy_readback_protection_unproven")
+        pending = reconciliation.get("readback_protection_pending", False)
+        handle = self._readback_release_handles.get(job_id)
+        require(
+            not pending or handle is not None, "readback_protection_handles_missing"
+        )
+        if handle is not None:
+            handle.retry_release()
+            previous = self.journal.get(job_id)["reconciliation"] or {}
+            self.journal._update(
+                job_id,
+                self.clock(),
+                reconciliation=previous
+                | {
+                    "outcome": "unresolved",
+                    "readback_protection_pending": False,
+                },
+            )
+            del self._readback_release_handles[job_id]
+
     def _readback(
         self,
+        job_id: str,
         spec: StatementJobSpec,
         plan: StatementPlan,
         raw: tuple[bytes, ...],
         identities: tuple[StatementMaterialIdentity, ...],
     ) -> dict:
         self._check_bindings(spec)
-        tickets = []
-        try:
+        with self._readback_tickets(job_id) as tickets:
             for identity, payload in zip(identities, raw, strict=True):
                 ticket = self.protection.acquire(identity)
                 tickets.append((identity, ticket))
@@ -528,8 +611,6 @@ class StatementLocalJob:
                 require(exact == as_of, "statement_job_exact_as_of_mismatch")
             for identity, ticket in tickets:
                 ticket.assert_held(identity)
-        finally:
-            _release(tickets)
         return {
             "version_identity": exact.version.identity,
             "publication_identity": (exact.publication.request.identity),
@@ -545,6 +626,7 @@ class StatementLocalJob:
         preflight: Callable[[StatementJobSpec], None],
         acquirer: DirectStatementAcquirer | None = None,
         retained: StatementCandidate | None = None,
+        effect_preflight: Callable[[StatementJobSpec], None] | None = None,
     ) -> dict:
         require(enabled is True, "statement_job_explicit_opt_in_required")
         with self.journal.executor(identity):
@@ -655,6 +737,17 @@ class StatementLocalJob:
                 )
                 if self.journal.get(identity)["cancel_requested"]:
                     return self._cancelled(identity, "before_storage")
+                if document.get("repair_of") is not None:
+                    predecessor = self.journal.get(document["repair_of"])
+                    require_repair_absence(
+                        self.kernel.ledger,
+                        self.readback,
+                        predecessor,
+                        spec.effect_domain,
+                        _decode_plan(predecessor["plan"]),
+                    )
+                if effect_preflight is not None:
+                    effect_preflight(spec)
                 self.journal._update(
                     identity,
                     self.clock(),
@@ -700,10 +793,8 @@ class StatementLocalJob:
                             self.journal._update(
                                 identity,
                                 self.clock(),
-                                writer_session={
-                                    "kind": "synthetic",
-                                    "lock_release_proven": True,
-                                },
+                                writer_session=self._writer_session()
+                                | {"lock_release_proven": True},
                             )
 
                 self._check_bindings(spec)
@@ -734,7 +825,9 @@ class StatementLocalJob:
                         ],
                     },
                 )
-                evidence = self._readback(spec, result.plan, raw, raw_identities)
+                evidence = self._readback(
+                    identity, spec, result.plan, raw, raw_identities
+                )
                 observed_at = self.clock()
                 instant(observed_at)
                 return self.journal._update(
@@ -746,6 +839,7 @@ class StatementLocalJob:
                     classification="canonical_verified",
                     reconciliation={
                         "outcome": "confirmed_published",
+                        "readback_protection_pending": False,
                         "evidence": evidence,
                     },
                 )
@@ -796,33 +890,6 @@ class StatementLocalJob:
                 is True
                 else {}
             )
-            pending_readback_release = self._readback_release_handles.get(identity)
-            if pending_readback_release is not None:
-                try:
-                    pending_readback_release.retry_release()
-                except StatementProtectionReleaseFailure as exc:
-                    self._readback_release_handles[identity] = exc
-                    return self.journal._update(
-                        identity,
-                        self.clock(),
-                        stage="reconciliation_unresolved",
-                        classification="readback_protection_release_incomplete",
-                        reconciliation={
-                            "outcome": "unresolved",
-                            "classification": "readback_protection_release_incomplete",
-                        }
-                        | release_proof,
-                    )
-                del self._readback_release_handles[identity]
-                document = self.journal._update(
-                    identity,
-                    self.clock(),
-                    reconciliation={
-                        "outcome": "unresolved",
-                        "readback_lock_release_proven": True,
-                    }
-                    | release_proof,
-                )
             try:
                 require(document["plan"] is not None, "statement_job_plan_missing")
                 plan = _decode_plan(document["plan"])
@@ -861,43 +928,41 @@ class StatementLocalJob:
                 handle = self._unknown_handles.get(identity)
                 session = document.get("writer_session")
                 require(type(session) is dict, "statement_job_writer_session_missing")
+                ledger, source_proof = recovery_snapshot(
+                    self.kernel.ledger, self.readback, document, spec.effect_domain
+                )
                 if handle is not None:
-                    with self.readback() as ledger:
-                        self._check_independent(ledger, spec)
-                        handle.reconcile(ledger)
-                        # The callback inside reconcile has already durably
-                        # recorded release proof. Drop the resolved handle before
-                        # any secondary journal observation can fail; a later
-                        # reconcile can then resume from durable proof.
-                        del self._unknown_handles[identity]
-                        release_proof = {"lock_release_proven": True}
-                        self.journal._update(
-                            identity,
-                            self.clock(),
-                            reconciliation={"outcome": "unresolved"} | release_proof,
-                        )
-                elif spec.effect_domain == "owner_nonproduction":
-                    current = self._writer_session()
                     require(
-                        session.get("kind") == "postgres"
-                        and session.get("host") == DEV_POSTGRES_HOST
-                        and type(session.get("backend_pid")) is int
-                        and current["backend_pid"] != session["backend_pid"],
-                        "statement_job_old_writer_session_not_gone",
+                        handle._writer_ledger is self.kernel.ledger
+                        and handle.plan
+                        == durable_plan(
+                            plan, tuple(item["locator"] for item in raw_info)
+                        ),
+                        "statement_job_original_writer_plan_required",
+                    )
+                self._resume_readback_release(identity)
+                if handle is not None:
+                    handle.reconcile(ledger)
+                    # The reader context has exited and its snapshot has been
+                    # checked before the original protections can be released.
+                    del self._unknown_handles[identity]
+                    release_proof = {"lock_release_proven": True}
+                    self.journal._update(
+                        identity,
+                        self.clock(),
+                        reconciliation={"outcome": "unresolved"} | release_proof,
                     )
                 else:
                     require(
-                        session == {"kind": "synthetic", "lock_release_proven": True}
-                        or (
-                            session
-                            == {"kind": "synthetic", "lock_release_proven": False}
-                            and release_proof.get("lock_release_proven") is True
+                        session.get("kind") == "synthetic"
+                        and (
+                            session.get("lock_release_proven") is True
+                            or release_proof.get("lock_release_proven") is True
                         ),
                         "statement_job_synthetic_lock_release_unproven",
                     )
 
-                tickets = []
-                try:
+                with self._readback_tickets(identity) as tickets:
                     for raw_id, payload in zip(raw_identities, raw, strict=True):
                         ticket = self.protection.acquire(raw_id)
                         tickets.append((raw_id, ticket))
@@ -906,59 +971,38 @@ class StatementLocalJob:
                             self.store.read_exact(raw_id) == payload,
                             "statement_job_raw_readback_failed",
                         )
-                    with self.readback() as ledger:
-                        self._check_independent(ledger, spec)
-                        publication = ledger.publication_by_occurrence(
-                            plan.publication_request.occurrence
-                        )
-                        if publication is None:
-                            observation = {
-                                "outcome": "confirmed_not_published",
-                                "raw_state": "verified",
-                                "version_present": ledger.get(plan.version.key)
-                                is not None,
-                            }
-                        else:
-                            exact = read_local_statement(
-                                ledger,
-                                as_of=self.clock(),
-                                version_identity=plan.version.identity,
-                            )
-                            latest = read_local_statement(ledger, as_of=self.clock())
-                            require(
-                                exact == latest, "statement_job_exact_as_of_mismatch"
-                            )
-                            observation = {
-                                "outcome": "confirmed_published",
-                                "raw_state": "verified",
-                                "evidence": {
-                                    "version_identity": exact.version.identity,
-                                    "publication_identity": (
-                                        exact.publication.request.identity
-                                    ),
-                                    "raw_sha256": [i.sha256 for i in raw_identities],
-                                    "known_at": (
-                                        exact.publication.decision_at.isoformat()
-                                    ),
-                                },
-                            }
-                finally:
-                    try:
-                        _release(tickets)
-                    except StatementProtectionReleaseFailure as exc:
-                        self._readback_release_handles[identity] = exc
-                if identity in self._readback_release_handles:
-                    return self.journal._update(
-                        identity,
-                        self.clock(),
-                        stage="reconciliation_unresolved",
-                        classification="readback_protection_release_incomplete",
-                        reconciliation={
-                            "outcome": "unresolved",
-                            "classification": "readback_protection_release_incomplete",
-                        }
-                        | release_proof,
+                    ledger, source_proof = recovery_snapshot(
+                        self.kernel.ledger, self.readback, document, spec.effect_domain
                     )
+                    publication = ledger.publication_by_occurrence(
+                        plan.publication_request.occurrence
+                    )
+                    if publication is None:
+                        observation = {
+                            "outcome": "confirmed_not_published",
+                            "raw_state": "verified",
+                            "version_present": ledger.get(plan.version.key) is not None,
+                        }
+                    else:
+                        exact = read_local_statement(
+                            ledger,
+                            as_of=self.clock(),
+                            version_identity=plan.version.identity,
+                        )
+                        latest = read_local_statement(ledger, as_of=self.clock())
+                        require(exact == latest, "statement_job_exact_as_of_mismatch")
+                        observation = {
+                            "outcome": "confirmed_published",
+                            "raw_state": "verified",
+                            "evidence": {
+                                "version_identity": exact.version.identity,
+                                "publication_identity": (
+                                    exact.publication.request.identity
+                                ),
+                                "raw_sha256": [i.sha256 for i in raw_identities],
+                                "known_at": (exact.publication.decision_at.isoformat()),
+                            },
+                        }
                 classification = (
                     "canonical_verified"
                     if observation["outcome"] == "confirmed_published"
@@ -969,17 +1013,30 @@ class StatementLocalJob:
                     self.clock(),
                     stage="reconciled",
                     classification=classification,
-                    reconciliation=observation | release_proof,
+                    reconciliation=observation
+                    | {"source_recovery": source_proof}
+                    | release_proof
+                    | {
+                        "readback_protection_pending": False,
+                    },
                 )
             except Exception:
+                pending = (self.journal.get(identity)["reconciliation"] or {}).get(
+                    "readback_protection_pending", False
+                )
                 return self.journal._update(
                     identity,
                     self.clock(),
                     stage="reconciliation_unresolved",
-                    classification="reconciliation_unresolved",
+                    classification=(
+                        "readback_protection_release_incomplete"
+                        if pending
+                        else "reconciliation_unresolved"
+                    ),
                     reconciliation={
                         "outcome": "unresolved",
                         "classification": "independent_readback_rejected",
+                        "readback_protection_pending": pending,
                     }
                     | release_proof,
                 )

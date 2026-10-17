@@ -50,16 +50,31 @@ class VintageMaterializedResult:
     publication: Publication
 
 
-def _release(tickets):
-    # Try every release even if one release fails; never report proof on failure.
+class VintageProtectionReleaseFailure(RuntimeError):
+    """Retain each ticket and release progress for an explicit retry."""
+
+    def __init__(self, tickets, released):
+        self.tickets = tuple(tickets)
+        self.released_ticket_ids = released
+        super().__init__("vintage_protection_release_incomplete")
+
+    def retry_release(self):
+        _release(self.tickets, self.released_ticket_ids)
+
+
+def _release(tickets, released=None):
+    released = set() if released is None else released
     errors = []
     for identity, ticket in reversed(tickets):
+        if id(ticket) in released:
+            continue
         try:
             ticket.release(identity)
+            released.add(id(ticket))
         except Exception as exc:
             errors.append(exc)
     if errors:
-        raise errors[0]
+        raise VintageProtectionReleaseFailure(tickets, released) from errors[0]
 
 
 class VintageMaterializationOutcomeUnknown(RuntimeError):

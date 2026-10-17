@@ -650,9 +650,7 @@ def test_invalid_plan_before_acquire_still_calls_release_proof():
 
 
 @pytest.mark.parametrize("phase", ["before", "after", "commit"])
-def test_job_unknown_handle_release_proof_precedes_readback_exit_failure(
-    tmp_path, phase
-):
+def test_job_reader_exit_failure_retains_original_protection(tmp_path, phase):
     job, journal, ledger, store, protection, clock = job_bindings(
         tmp_path, None if phase == "commit" else phase, phase == "commit"
     )
@@ -674,8 +672,9 @@ def test_job_unknown_handle_release_proof_precedes_readback_exit_failure(
     job.readback = bad_exit
     result = job.reconcile("unknown", enabled=True)
     assert result["reconciliation"]["outcome"] == "unresolved"
-    assert result["reconciliation"]["lock_release_proven"] is True
-    assert protection.all_released()
+    assert not result["reconciliation"].get("lock_release_proven")
+    assert all(ticket.held for ticket in protection.tickets)
+    assert "unknown" in job._unknown_handles
     restarted = VintageLocalJob(
         VintageJobJournal(journal.directory),
         clock,
@@ -686,6 +685,11 @@ def test_job_unknown_handle_release_proof_precedes_readback_exit_failure(
         job.commit,
     )
     result = restarted.reconcile("unknown", enabled=True)
+    assert result["reconciliation"]["outcome"] == "unresolved"
+    assert all(ticket.held for ticket in protection.tickets)
+    job.readback = original_readback
+    result = job.reconcile("unknown", enabled=True)
+    assert protection.all_released()
     assert result["reconciliation"]["outcome"] == (
         "confirmed_published" if phase == "after" else "confirmed_not_published"
     )
