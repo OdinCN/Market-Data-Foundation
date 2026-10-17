@@ -61,8 +61,10 @@ VINTAGE_BUNDLE = DatasetDefinition(
     ),
     revision_semantics="two discovered vintages per series; no finality inference",
     completeness_semantics=(
-        "GDP+PAYEMS each two distinct vintages; observation window "
-        "2025-01-01 through 2026-12-31; unavailable cells retained"
+        "GDP+PAYEMS each two distinct selected vintages globally represented; "
+        "observation window 2025-01-01 through 2026-12-31; per-reference vintage "
+        "coverage may be sparse; exact provider omission preserved by absence of "
+        "cell; explicit unavailable dot cells retained separately"
     ),
     scope=Scope(),
 )

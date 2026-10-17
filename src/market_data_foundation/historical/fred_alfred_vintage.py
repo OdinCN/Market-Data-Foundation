@@ -132,11 +132,17 @@ def parse_observations(
             ):
                 raise ContractError("invalid observation pagination metadata")
     columns = tuple(f"{series}_{vintage.replace('-', '')}" for vintage in vintages)
-    expected_keys = {"date", *columns}
+    allowed_keys = {"date", *columns}
+    represented = set()
     observations = []
     previous_day = None
     for row in rows:
-        if not isinstance(row, dict) or set(row) != expected_keys:
+        if (
+            not isinstance(row, dict)
+            or "date" not in row
+            or not set(row) <= allowed_keys
+            or not set(row).intersection(columns)
+        ):
             raise ContractError("invalid wide observation columns")
         day = row["date"]
         if (
@@ -147,6 +153,9 @@ def parse_observations(
             raise ContractError("invalid or unordered observation date")
         previous_day = day
         for vintage, column in zip(vintages, columns, strict=True):
+            if column not in row:
+                continue
+            represented.add(vintage)
             raw_value = row[column]
             if not isinstance(raw_value, str):
                 raise ContractError("invalid observation value type")
@@ -164,6 +173,8 @@ def parse_observations(
                     series, vintage, newer, day, raw_value, value, raw_value == "."
                 )
             )
+    if represented != set(vintages):
+        raise ContractError("both selected vintages must be represented")
     return tuple(observations)
 
 

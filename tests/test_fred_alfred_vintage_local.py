@@ -90,6 +90,10 @@ class Source:
                 ],
                 "series": request.series,
             }
+        if request.endpoint == "observations" and request.series == "PAYEMS":
+            document["observations"].append(
+                {"date": "2026-09-01", "PAYEMS_20260930": "234.5000"}
+            )
         return live.Response(200, json.dumps(document).encode())
 
 
@@ -228,7 +232,8 @@ def test_plan_exact_four_raw_bundle():
     p = plan()
     vintage.validate_live_plan(p, raws(p))
     assert p.run.budget == 4
-    assert len(p.acquisitions) == 4 and len(p.version.materials) == 5
+    assert len(p.acquisitions) == len(p.raw_materials) == 4
+    assert len(p.version.materials) == 5
     assert [a.provider_data_attempts for a in p.acquisitions] == [2] * 4
     assert p.run.started_at == min(a.requested_at for a in p.acquisitions)
     assert len(set(a.request_identity for a in p.acquisitions)) == 4
@@ -244,7 +249,9 @@ def test_plan_exact_four_raw_bundle():
     assert all(
         type(v) is str for values in doc["selected_vintages"].values() for v in values
     )
-    assert len(p.version.finite_scope.members) == 4
+    assert len(p.version.finite_scope.members) == 5
+    assert "PAYEMS|2026-09-30|2026-09-01" in p.version.finite_scope.members
+    assert "PAYEMS|2026-08-26|2026-09-01" not in p.version.finite_scope.members
     assert sum(row["unavailable"] for row in doc["observations"]) == 2
     assert "PAYEMS|2026-08-26|2025-01-01" in p.version.finite_scope.members
 

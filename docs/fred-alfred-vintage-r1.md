@@ -46,10 +46,15 @@ observation window, `units=lin`, integer `output_type=2`, `file_type=json`,
 integer equal to the row count, `offset` integer zero, and `limit` a positive
 integer; booleans are rejected. The observations list must be nonempty.
 
-Each row has exactly `date`, `SERIES_YYYYMMDD` for the newer vintage, and
-`SERIES_YYYYMMDD` for the older vintage. Dates must be valid, within the window
-and strictly ascending. Every row expands into two observations whose vintage
-comes from the exact column suffix. Internal `realtime_end` retains the top-level
+Allowed row keys are exactly `date` and the selected `SERIES_YYYYMMDD` columns.
+Each row requires `date` and at least one selected vintage column; unknown keys
+and columns for other series or vintages are rejected. Both selected vintages
+must be represented by actual cells somewhere in the document, and the selection
+must be strictly descending. Per-reference vintage coverage may be sparse:
+only present columns produce observations, with vintage from the exact suffix.
+An omitted column produces no cell and no finite-scope member; it is never
+converted to `.`, zero, NaN or an unavailable cell. Dates must be valid, within
+the window and strictly ascending. Internal `realtime_end` retains the top-level
 provider realtime window end. Duplicate `(series, vintage, date)` cells cannot
 qualify. A `.` cell is retained with `raw_value='.'`, `value=None`, and
 `unavailable=True`. Other cells must be strings validating as finite `Decimal`
@@ -142,6 +147,42 @@ Local read-only replay parses discovery and observations and constructs the GDP
 metadata/semantic projection for the first two logical reads: six wide rows,
 12 cells, both selected vintages represented on every date. No GDP numeric
 values are emitted or copied into Git. This replay makes no Provider, PostgreSQL
-or Garage calls. Source qualification is **not COMPLETE**: PAYEMS was not
-requested, and this partial GDP evidence is not a four-read qualified candidate
+or Garage calls. At R1, Source qualification was **not COMPLETE**: PAYEMS had not been
+requested, and the partial GDP evidence was not a four-read qualified candidate
 or a materialized canonical publication.
+
+
+## R2 PAYEMS retained sparse-vintage correction
+
+This correction is bound to input HEAD
+`c2b8971cf88dc65978ef434d281d0752a2206ef3`. R2 PAYEMS discovery selected newer
+`2026-10-02`, older `2026-09-04`. Retained files under
+`/srv/market-data-foundation/artifacts/t06-fred-alfred-vintage-real-r2/source/`:
+
+| Read | Raw path | Bytes | SHA-256 |
+| --- | --- | ---: | --- |
+| PAYEMS discovery | `570ac4882bcc40bfb09200fffceed277/raw.json` | 182 | `57b41944933383194efc361588397b78c5bd2bc2d5d25991d110019a3b26089c` |
+| PAYEMS observations | `808188b8f82647e8adbdd0f192ad6878/raw.json` | 1844 | `3a6f4ad8fb0d2997e9706995c0b720db6ce65d576afcb799eff8c5cc3b2cbdfd` |
+
+The observations document has exact requested wide `output_type=2` metadata
+and `count=21`. The first 20 rows contain exactly `date`, `PAYEMS_20261002`,
+`PAYEMS_20260904`; the final row, dated `2026-09-01`, contains only `date` and
+`PAYEMS_20261002`. Dates are strictly ascending and there are no extra row keys.
+The older vintage did not yet contain that reference observation. Its omitted
+column remains absent, separately from any explicitly returned `.` cell.
+No business values are emitted or copied into Git.
+
+Pure local four-raw replay uses the GDP R1 and PAYEMS R2 retained bytes and
+request artifacts in the original four-read order. All four sizes and SHA-256
+hashes above match. Candidate build, plan validation and reconstruction from
+embedded raw carriers pass: GDP has 6 rows / 12 cells, PAYEMS 21 rows / 41 cells,
+and the combined finite scope has 53 members. It includes
+`PAYEMS|2026-10-02|2026-09-01` and excludes
+`PAYEMS|2026-09-04|2026-09-01`. The graph still has four acquisitions, four raw
+materials and five total materials. Transport retry and multi-raw materialization
+architecture are unchanged. Replay requires no Provider, PostgreSQL or Garage IO.
+
+Source qualification remains **not COMPLETE** (`source_qualified=False`) until
+all four raw materials undergo materialization and exact readback, followed by
+the canonical publication and local readback checks. This pure candidate replay
+does not establish that materialization or qualification.

@@ -97,7 +97,7 @@ def test_missing_marker_in_each_vintage(column):
 
 
 @pytest.mark.parametrize("field", ["date", *COLUMNS])
-def test_required_fields(field):
+def test_missing_date_or_globally_unrepresented_vintage(field):
     data = rows()
     del data[0][field]
     with pytest.raises(ContractError):
@@ -268,3 +268,53 @@ def test_metadata():
 def test_discovery_fails_closed_for_invalid_or_unordered_dates(values):
     with pytest.raises(ContractError):
         parse_discovery(encoded({"vintage_dates": values}))
+
+
+def test_payems_sparse_final_row_preserves_absence_separately_from_dot():
+    vintages = ("2026-10-02", "2026-09-04")
+    newer, older = "PAYEMS_20261002", "PAYEMS_20260904"
+    data = [
+        {
+            "date": f"{2025 + index // 12}-{index % 12 + 1:02d}-01",
+            newer: "1.00",
+            older: "." if index == 0 else "2.00",
+        }
+        for index in range(20)
+    ]
+    data.append({"date": "2026-09-01", newer: "3.00"})
+    doc = {
+        **document(data),
+        "realtime_start": vintages[1],
+        "realtime_end": vintages[0],
+        "count": len(data),
+    }
+    result = parse_observations(encoded(doc), "PAYEMS", vintages)
+    cells = {(item.series_id, item.vintage, item.date): item for item in result}
+    assert len(result) == len(cells) == 2 * len(data) - 1
+    assert ("PAYEMS", vintages[1], "2026-09-01") not in cells
+    assert ("PAYEMS", vintages[0], "2026-09-01") in cells
+    dot = cells[("PAYEMS", vintages[1], "2025-01-01")]
+    assert dot.raw_value == "." and dot.value is None and dot.unavailable
+
+
+def test_row_with_only_date_rejected_even_when_vintages_globally_present():
+    data = rows() + [{"date": "2025-02-01"}]
+    with pytest.raises(ContractError, match="columns"):
+        parse_observations(encoded(document(data)), "GDP", VINTAGES)
+
+
+@pytest.mark.parametrize("column", COLUMNS)
+def test_selected_vintage_must_be_globally_represented(column):
+    data = [{"date": day, column: "."} for day in ("2025-01-01", "2025-02-01")]
+    with pytest.raises(ContractError, match="both selected vintages"):
+        parse_observations(encoded(document(data)), "GDP", VINTAGES)
+
+
+def test_sparse_rows_can_represent_vintages_on_different_dates():
+    data = [
+        {"date": "2025-01-01", COLUMNS[0]: "."},
+        {"date": "2025-02-01", COLUMNS[1]: "1.00"},
+    ]
+    result = parse_observations(encoded(document(data)), "GDP", VINTAGES)
+    assert len(result) == 2
+    assert tuple(item.vintage for item in result) == VINTAGES

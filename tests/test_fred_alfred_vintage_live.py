@@ -37,7 +37,12 @@ def observations(series="GDP"):
                     "date": "2025-01-01",
                     f"{series}_20260930": "1.00",
                     f"{series}_20260826": ".",
-                }
+                },
+                *(
+                    [{"date": "2026-09-01", "PAYEMS_20260930": "2.00"}]
+                    if series == "PAYEMS"
+                    else []
+                ),
             ],
         }
     ).encode()
@@ -127,7 +132,13 @@ def test_exact_four_reads_contract_and_candidate():
         assert read.raw == store.retained[index - 1][0]
         assert read.paths.raw == f"artifacts/{index}/raw.json"
         assert read.paths.request == f"artifacts/{index}/request.json"
-    assert len(candidate.semantic_bundle.observations) == 4
+    assert len(candidate.semantic_bundle.observations) == 5
+    keys = {
+        (item.series_id, item.vintage, item.date)
+        for item in candidate.semantic_bundle.observations
+    }
+    assert ("PAYEMS", VINTAGES[0], "2026-09-01") in keys
+    assert ("PAYEMS", VINTAGES[1], "2026-09-01") not in keys
     assert [item.series_id for item in candidate.semantic_bundle.metadata] == [
         "GDP",
         "PAYEMS",
