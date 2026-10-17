@@ -44,6 +44,7 @@ _SCHEMA = re.compile(
     r"mdf_macro_bls_ppi_vertical_r1|"
     r"mdf_macro_bls_employment_vertical_r1|"
     r"mdf_macro_census_retail_vertical_r1|"
+    r"mdf_macro_fred_alfred_vintage_r1|"
     r"mdf_macro_bea_pce_vertical_r1)$"
 )
 
