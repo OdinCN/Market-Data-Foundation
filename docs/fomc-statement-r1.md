@@ -128,3 +128,19 @@ uv run --offline python scripts/check_repository_hygiene.py
 
 All Stage-2 fixtures remain synthetic. Local canonical publication establishes
 only the tested local lineage and availability, not real Source qualification.
+
+
+### R1 retained real calendar observation
+
+The first bounded real qualification retained the official FOMC calendar HTTP200
+body before parsing. Its exact identity is SHA-256
+326c98e372bf6ab01b4ba6b7c88214296e6983e4cde743bec3120f3e68037fc7
+over 167856 bytes. The September 15-16, 2026 meeting row uses a dedicated
+Statement-labelled Bootstrap column with sibling PDF, HTML, and Implementation
+Note links. The corrected parser binds the unique HTML link inside that exact
+Statement container and replays the retained body to the official target
+https://www.federalreserve.gov/newsevents/pressreleases/monetary20260916a.htm.
+
+This retained calendar observation is partial live evidence only. The Statement
+logical read had not yet occurred at this revision, so real Source qualification
+was not complete and no Garage/PostgreSQL effect occurred.

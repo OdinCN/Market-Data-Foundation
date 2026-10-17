@@ -141,7 +141,7 @@ def validate_statement_url(url: str) -> str:
             and not parts.query
             and not parts.fragment
             and re.fullmatch(
-                r"/newsevents/pressreleases/monetary20260916[a-z]\.htm",
+                r"/newsevents/pressreleases/monetary20260916a\.htm",
                 parts.path,
             )
         )
@@ -189,12 +189,33 @@ def parse_calendar(raw: bytes) -> CalendarDiscovery:
         ],
         "calendar_meeting_ambiguous",
     )
-    statement = _one(
-        [n for n in row.nodes() if n.tag == "p" and n.text().startswith("Statement:")],
-        "calendar_statement_ambiguous",
-    )
+    statement_candidates = []
+    for node in row.nodes():
+        if node.tag not in {"div", "p"} or not _visible(node):
+            continue
+        direct_labels = [
+            child
+            for child in node.children
+            if isinstance(child, _Node) and child.tag == "strong"
+        ]
+        if (
+            len(direct_labels) == 1
+            and _visible(direct_labels[0])
+            and direct_labels[0].text() == "Statement:"
+            and _inline_content(direct_labels[0])
+        ):
+            statement_candidates.append(node)
+    statement = _one(statement_candidates, "calendar_statement_ambiguous")
     link = _one(
-        [n for n in statement.nodes() if n.tag == "a" and n.text() == "HTML"],
+        [
+            child
+            for child in statement.children
+            if isinstance(child, _Node)
+            and child.tag == "a"
+            and _visible(child)
+            and _inline_content(child)
+            and child.text() == "HTML"
+        ],
         "calendar_html_ambiguous",
     )
     href = link.attrs.get("href", "")

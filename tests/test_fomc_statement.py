@@ -17,9 +17,12 @@ from market_data_foundation.historical.fomc_statement_contract import (
 
 URL = "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260916a.htm"
 ROW = b"""<div class="fomc-meeting"><div class="fomc-meeting__month">September</div>
-<div class="fomc-meeting__date">15-16*</div><p>Statement:<br>
+<div class="fomc-meeting__date">15-16*</div>
+<div class="col-xs-12 col-md-4 col-lg-2"><strong>Statement:</strong>
+<a href="/statement.pdf">PDF</a> |
 <a href="/newsevents/pressreleases/monetary20260916a.htm">HTML</a>
-<a href="/statement.pdf">PDF</a></p>
+<a href="/newsevents/pressreleases/monetary20260916a1.htm">Implementation Note</a>
+</div>
 <p>Minutes: <a href="/minutes.htm">HTML</a></p></div>"""
 CALENDAR = b'<div class="panel"><h4>2026 FOMC Meetings</h4>' + ROW + b"</div>"
 STATEMENT = b"""<div id="article"><p class="article__time">September 16, 2026</p>
@@ -70,7 +73,7 @@ def test_replay_and_wrapper_change():
         (b"2026 FOMC", b"2025 FOMC"),
         (b"September", b"July"),
         (b"15-16*", b"16-17"),
-        (b"Statement:", b"Minutes:"),
+        (b"<strong>Statement:</strong>", b"<strong>Minutes:</strong>"),
         (b">HTML<", b">PDF<"),
         (
             b"/newsevents/pressreleases/monetary20260916a.htm",
@@ -121,6 +124,41 @@ def test_calendar_rejects_ambiguity_and_invalid_html(raw):
 def test_exact_url(url):
     with pytest.raises(DocumentError):
         validate_statement_url(url)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda raw: raw.replace(
+            b"<strong>Statement:</strong>",
+            b"<strong hidden>Statement:</strong>",
+        ),
+        lambda raw: raw.replace(
+            b'<div class="col-xs-12 col-md-4 col-lg-2">',
+            b'<div class="col-xs-12 col-md-4 col-lg-2" hidden>',
+            1,
+        ),
+        lambda raw: raw.replace(
+            b">HTML</a>",
+            b"><span hidden>HTML</span></a>",
+            1,
+        ),
+        lambda raw: raw.replace(
+            b"<strong>Statement:</strong>",
+            b"<strong>Minutes:</strong>"
+            b"<div hidden><strong>Statement:</strong>"
+            b'<a href="/newsevents/pressreleases/monetary20260916a.htm">'
+            b"HTML</a></div>",
+        ),
+        lambda raw: raw.replace(
+            b"<strong>Statement:</strong>",
+            b"<strong>Statement:</strong><strong hidden>Statement:</strong>",
+        ),
+    ],
+)
+def test_calendar_hidden_or_nested_discovery_evidence_rejected(mutation):
+    with pytest.raises(DocumentError):
+        parse_calendar(mutation(CALENDAR))
 
 
 @pytest.mark.parametrize(
