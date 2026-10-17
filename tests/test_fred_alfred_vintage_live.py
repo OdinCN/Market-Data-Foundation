@@ -12,7 +12,7 @@ import pytest
 
 from market_data_foundation.historical import fred_alfred_vintage_live as live
 
-VINTAGES = ("2026-09-30", "2026-08-28")
+VINTAGES = ("2026-09-30", "2026-08-26")
 SECRET = "private-api-key-DO-NOT-RETAIN"
 
 
@@ -20,24 +20,35 @@ def discovery():
     return json.dumps({"vintage_dates": list(VINTAGES)}).encode()
 
 
-def observations():
+def observations(series="GDP"):
     return json.dumps(
         {
+            "realtime_start": VINTAGES[1],
+            "realtime_end": VINTAGES[0],
+            "observation_start": "2025-01-01",
+            "observation_end": "2026-12-31",
+            "units": "lin",
+            "output_type": 2,
+            "file_type": "json",
+            "order_by": "observation_date",
+            "sort_order": "asc",
             "observations": [
                 {
-                    "realtime_start": vintage,
-                    "realtime_end": "9999-12-31",
                     "date": "2025-01-01",
-                    "value": "1.00" if index == 0 else ".",
+                    f"{series}_20260930": "1.00",
+                    f"{series}_20260826": ".",
                 }
-                for index, vintage in enumerate(VINTAGES)
-            ]
+            ],
         }
     ).encode()
 
 
 def responses():
-    return [live.Response(200, body) for body in (discovery(), observations()) * 2]
+    return [
+        live.Response(200, body)
+        for series in ("GDP", "PAYEMS")
+        for body in (discovery(), observations(series))
+    ]
 
 
 class FakeSource:

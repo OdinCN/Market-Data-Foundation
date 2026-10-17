@@ -100,53 +100,70 @@ def parse_observations(
         or not all(valid_date(vintage) for vintage in vintages)
     ):
         raise ContractError("invalid series or selection")
-    rows = _document(raw).get("observations")
-    if not isinstance(rows, list):
-        raise ContractError("missing observations")
+    newer, older = vintages
+    if newer <= older:
+        raise ContractError("selected vintages must be descending")
+    document = _document(raw)
+    rows = document.get("observations")
+    if not isinstance(rows, list) or not rows:
+        raise ContractError("nonempty observations required")
+    expected_metadata = {
+        "realtime_start": older,
+        "realtime_end": newer,
+        "observation_start": OBSERVATION_START,
+        "observation_end": OBSERVATION_END,
+        "units": "lin",
+        "output_type": 2,
+        "file_type": "json",
+        "order_by": "observation_date",
+        "sort_order": "asc",
+    }
+    for field, expected in expected_metadata.items():
+        actual = document.get(field)
+        if type(actual) is not type(expected) or actual != expected:
+            raise ContractError("invalid observation metadata")
+    for field in ("count", "offset", "limit"):
+        if field in document:
+            value = document[field]
+            if type(value) is not int or (
+                (field == "count" and value != len(rows))
+                or (field == "offset" and value != 0)
+                or (field == "limit" and value <= 0)
+            ):
+                raise ContractError("invalid observation pagination metadata")
+    columns = tuple(f"{series}_{vintage.replace('-', '')}" for vintage in vintages)
+    expected_keys = {"date", *columns}
     observations = []
-    seen = set()
-    represented = set()
+    previous_day = None
     for row in rows:
-        if not isinstance(row, dict) or not all(
-            key in row for key in ("realtime_start", "realtime_end", "date", "value")
-        ):
-            raise ContractError("missing observation fields")
-        vintage, end, day, raw_value = (
-            row["realtime_start"],
-            row["realtime_end"],
-            row["date"],
-            row["value"],
-        )
+        if not isinstance(row, dict) or set(row) != expected_keys:
+            raise ContractError("invalid wide observation columns")
+        day = row["date"]
         if (
-            not valid_date(vintage)
-            or not valid_date(end)
-            or not valid_date(day)
-            or vintage not in vintages
-            or end < vintage
+            not valid_date(day)
             or not OBSERVATION_START <= day <= OBSERVATION_END
-            or not isinstance(raw_value, str)
+            or (previous_day is not None and day <= previous_day)
         ):
-            raise ContractError("invalid observation fields")
-        key = (series, vintage, day)
-        if key in seen:
-            raise ContractError("duplicate observation")
-        seen.add(key)
-        represented.add(vintage)
-        value = None
-        if raw_value != ".":
-            try:
-                value = Decimal(raw_value)
-            except InvalidOperation:
-                raise ContractError("invalid numeric value") from None
-            if not value.is_finite() or not raw_value.strip():
-                raise ContractError("invalid numeric value")
-        observations.append(
-            VintageObservation(
-                series, vintage, end, day, raw_value, value, raw_value == "."
+            raise ContractError("invalid or unordered observation date")
+        previous_day = day
+        for vintage, column in zip(vintages, columns, strict=True):
+            raw_value = row[column]
+            if not isinstance(raw_value, str):
+                raise ContractError("invalid observation value type")
+            value = None
+            if raw_value != ".":
+                try:
+                    value = Decimal(raw_value)
+                except InvalidOperation:
+                    raise ContractError("invalid numeric value") from None
+                if not value.is_finite() or not raw_value.strip():
+                    raise ContractError("invalid numeric value")
+            # Vintage comes from the column; end is the provider realtime window end.
+            observations.append(
+                VintageObservation(
+                    series, vintage, newer, day, raw_value, value, raw_value == "."
+                )
             )
-        )
-    if represented != set(vintages):
-        raise ContractError("both vintages must be represented")
     return tuple(observations)
 
 

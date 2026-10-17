@@ -41,7 +41,7 @@ from market_data_foundation.historical.vintage_materialization import (
 )
 
 AT = datetime(2026, 10, 17, tzinfo=UTC)
-VINTAGES = ("2026-09-30", "2026-08-28")
+VINTAGES = ("2026-09-30", "2026-08-26")
 
 
 class Clock:
@@ -72,14 +72,21 @@ class Source:
             document = {"vintage_dates": VINTAGES, "series": request.series}
         else:
             document = {
+                "realtime_start": VINTAGES[1],
+                "realtime_end": VINTAGES[0],
+                "observation_start": "2025-01-01",
+                "observation_end": "2026-12-31",
+                "units": "lin",
+                "output_type": 2,
+                "file_type": "json",
+                "order_by": "observation_date",
+                "sort_order": "asc",
                 "observations": [
                     {
-                        "realtime_start": v,
-                        "realtime_end": "9999-12-31",
                         "date": "2025-01-01",
-                        "value": "123.4500" if i == 0 else ".",
+                        f"{request.series}_20260930": "123.4500",
+                        f"{request.series}_20260826": ".",
                     }
-                    for i, v in enumerate(VINTAGES)
                 ],
                 "series": request.series,
             }
@@ -239,7 +246,7 @@ def test_plan_exact_four_raw_bundle():
     )
     assert len(p.version.finite_scope.members) == 4
     assert sum(row["unavailable"] for row in doc["observations"]) == 2
-    assert "PAYEMS|2026-08-28|2025-01-01" in p.version.finite_scope.members
+    assert "PAYEMS|2026-08-26|2025-01-01" in p.version.finite_scope.members
 
 
 @pytest.mark.parametrize("index", range(4))

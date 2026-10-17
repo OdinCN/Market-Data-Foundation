@@ -39,13 +39,22 @@ never credential values or raw exception messages. Raw provider bodies remain
 unaltered and belong only in ignored `artifacts/`, never Git. Source adapters must
 not echo credentials into response bodies or encode hidden internal retries.
 
-Observation rows require `realtime_start`, `realtime_end`, `date` and string
-`value`. All dates must be valid, `realtime_start` must match a selected vintage,
-`realtime_end` must not precede it, and observation dates must lie in the requested
-window. Both vintages must appear. Duplicate `(series, vintage, date)` rows fail.
-A `.` value is retained with `raw_value='.'`, `value=None`, and
-`unavailable=True`. Other values must validate as finite `Decimal` numbers; their
-original strings, including precision, are preserved.
+Observations accept only the real `output_type=2` wide response contract. Top
+metadata must exactly match the older/newer selected realtime bounds, requested
+observation window, `units=lin`, integer `output_type=2`, `file_type=json`,
+`order_by=observation_date` and `sort_order=asc`. Optional `count` must be an
+integer equal to the row count, `offset` integer zero, and `limit` a positive
+integer; booleans are rejected. The observations list must be nonempty.
+
+Each row has exactly `date`, `SERIES_YYYYMMDD` for the newer vintage, and
+`SERIES_YYYYMMDD` for the older vintage. Dates must be valid, within the window
+and strictly ascending. Every row expands into two observations whose vintage
+comes from the exact column suffix. Internal `realtime_end` retains the top-level
+provider realtime window end. Duplicate `(series, vintage, date)` cells cannot
+qualify. A `.` cell is retained with `raw_value='.'`, `value=None`, and
+`unavailable=True`. Other cells must be strings validating as finite `Decimal`
+numbers; their original strings, including precision, are preserved. The earlier
+assumed row-wise `realtime_start` / `value` shape is rejected.
 
 GDP metadata is quarterly, billions USD, SAAR, underlying BEA via FRED. PAYEMS
 metadata is monthly, thousands persons, SA, underlying BLS via FRED. Both identify
@@ -111,3 +120,28 @@ Retail host/schema, owned protection connection and old-writer backend PID gates
 using only the added exact schema `mdf_macro_fred_alfred_vintage_r1`. Tests inject
 all Source, material store, protection and ledger behavior; no real Provider,
 PostgreSQL or Garage service is required or exercised by this focused suite.
+
+## R1 retained real-response evidence
+
+The correction is bound to input HEAD
+`70899197f243979300527a2a4bf199e5d0dc1c20`. R1 GDP discovery succeeded and
+selected newer `2026-09-30`, older `2026-08-26`. GDP `output_type=2` returned
+HTTP 200 and was retained before parsing. Its real wide shape, six date rows
+with exactly `date`, `GDP_20260930`, `GDP_20260826`, drives this parser correction.
+The original row-wise parser assumption did not match that response.
+
+Retained files under
+`/srv/market-data-foundation/artifacts/t06-fred-alfred-vintage-real-r1/source/`:
+
+| Read | Raw path | Bytes | SHA-256 |
+| --- | --- | ---: | --- |
+| GDP discovery | `7cc3c65c7cfd44cf951f590db7913cd9/raw.json` | 182 | `0b25b5184fe982b61ffd25a3b077971ba3b3a3952ffaef509bd0d951aadbad84` |
+| GDP observations | `ec270d7726304e5fb57991e476364b7a/raw.json` | 729 | `82f980542736e0a6852cc467f425fea7de586c73018c69e89afe164cf7bb91dc` |
+
+Local read-only replay parses discovery and observations and constructs the GDP
+metadata/semantic projection for the first two logical reads: six wide rows,
+12 cells, both selected vintages represented on every date. No GDP numeric
+values are emitted or copied into Git. This replay makes no Provider, PostgreSQL
+or Garage calls. Source qualification is **not COMPLETE**: PAYEMS was not
+requested, and this partial GDP evidence is not a four-read qualified candidate
+or a materialized canonical publication.
