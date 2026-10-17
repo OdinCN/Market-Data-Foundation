@@ -5,6 +5,10 @@ import pytest
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
+        "--sdmx-historical-evidence",
+        help="host-only offline replay: path to ignored historical evidence directory",
+    )
+    parser.addoption(
         "--live-provider",
         action="store_true",
         help="allow explicitly selected live tests",
