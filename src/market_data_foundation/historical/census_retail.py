@@ -128,8 +128,19 @@ def _parse_response(raw: bytes) -> RetailProjection:
     require(
         type(header) is list
         and all(type(item) is str for item in header)
-        and len(header) == len(HEADERS)
         and set(header) == set(HEADERS),
+        "census_retail_header_invalid",
+    )
+    positions = {
+        field: [index for index, name in enumerate(header) if name == field]
+        for field in HEADERS
+    }
+    require(
+        all(
+            len(indices)
+            in ((1, 2) if field in {"seasonally_adj", "error_data"} else (1,))
+            for field, indices in positions.items()
+        ),
         "census_retail_header_invalid",
     )
     expected = {(ref, cat, "SM") for ref in REFERENCES for cat in CATEGORY_CODES} | {
@@ -143,7 +154,15 @@ def _parse_response(raw: bytes) -> RetailProjection:
             and all(type(value) is str for value in values),
             "census_retail_row_shape_invalid",
         )
-        row = dict(zip(header, values, strict=True))
+        require(
+            all(
+                values[indices[0]] == values[indices[1]]
+                for indices in positions.values()
+                if len(indices) == 2
+            ),
+            "census_retail_duplicate_dimension_mismatch",
+        )
+        row = {field: values[indices[0]] for field, indices in positions.items()}
         require(
             row["us"] == "1"
             and row["seasonally_adj"] == "yes"
@@ -172,7 +191,7 @@ def _parse_response(raw: bytes) -> RetailProjection:
             "data_type_code": key[2],
             "value": value,
             "unit": "million_current_usd" if key[2] == "SM" else "percent",
-            "source_pointer": f"/{index}/{header.index('cell_value')}",
+            "source_pointer": f"/{index}/{positions['cell_value'][0]}",
             "raw_sha256": digest(raw),
         }
     require(expected <= rows.keys(), "census_retail_required_matrix_missing")

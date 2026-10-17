@@ -1,9 +1,10 @@
 # T05 Census Retail R1 candidate
 
 This closes the existing candidate for reference `2026-09`, with comparison
-period `2026-08`. It does not activate a binding or qualify a live response.
-The deterministic fixtures are synthetic; no Census, PostgreSQL or Garage IO
-was performed for this closure.
+period `2026-08`. It does not activate a binding or establish complete source
+qualification. The deterministic fixtures are synthetic. The parser correction
+also checks retained R2 raw bytes locally; it performs no new Census request or
+PostgreSQL/Garage IO.
 
 ## Evidence boundary
 
@@ -13,11 +14,24 @@ examples use a broad `get`/`time` query, optionally with `for=us:*`; they do not
 demonstrate comma-separated category or data-type predicates. Supplied current
 variable metadata confirms `category_code`, `cell_value`, `data_type_code`,
 `seasonally_adj`, `error_data`, `time` and geography predicates. No web lookup or
-fresh official response was obtained in this transaction. The exact returned
-header, row types and complete request compatibility remain unqualified. A later
-explicit real qualification must retain raw bytes and safe observations under
-ignored `artifacts/`, and correct this provisional parser/request contract if needed.
-`source_qualified=False` and the candidate binding's limitations record this gap.
+fresh official response was obtained during this parser correction.
+
+The retained `HOST_SOURCE_CAPTURE_R2_RAW.json` and sanitized
+`HOST_SOURCE_CAPTURE_R2_SUMMARY.json` provide R2 HTTP200 real-response evidence.
+The real header is `category_code,data_type_code,seasonally_adj,cell_value,`
+`error_data,seasonally_adj,error_data,time,us`: predicate fields are repeated at
+zero-based positions `[2,5]` and `[4,6]`. Across all 84 data rows the respective
+duplicates agree (`yes`/`yes` and `no`/`no`), and all 11 target cells are present.
+Read-only local qualification parses those retained bytes, constructs all four
+measurements and their lineage, and validates the reconstructed plan. Its output
+contains only the raw hash, byte size and measurement names; raw bytes and business
+values are not copied into Git or printed.
+
+This is local parser/lineage evidence, not source qualification COMPLETE or proof
+of storage, publication or readback. `source_qualified=False` and the candidate
+binding's limitations remain unchanged. Any later live qualification requires
+explicit opt-in and retained raw bytes and safe observations under ignored
+`artifacts/`.
 
 Historical MDD descriptions are historical implementation references only. They
 are not current official dataset evidence or proof of current provider shape.
@@ -27,7 +41,7 @@ This candidate does not read MDD source/runtime, migrate MDD data, or inherit a
 historical MDD endpoint as an alternative binding. There is no MARTS-to-MRTS
 fallback; request and Source identity stay bound to `timeseries/eits/marts`.
 
-## Adopted request and synthetic shape
+## Adopted request and accepted response shape
 
 One logical GET covers both periods using the broad query shape demonstrated by
 the supplied current official examples. Category and data-type predicates are
@@ -50,13 +64,18 @@ opt-in. Errors expose classifications and attempt counts, without raw exception
 messages. A response containing the credential bytes is rejected before storage.
 Redirects are terminal; there is no alternate endpoint or provider.
 
-The provisional synthetic response is a JSON header/row array. Its columns are
+The response is a JSON header/row array. Its required columns are
 `category_code`, `data_type_code`, `seasonally_adj`, `cell_value`, `error_data`,
-`time`, `us`; column and row order may vary. Every row must have the expected
-structure, one of the two requested periods, US `1`, SA `yes` and error-data `no`.
-The parser then projects the target matrix before checking duplicate cells or
-numeric values. This exact shape is a test contract, not a claim about a qualified
-Census response.
+`time`, `us`; column and row order may vary. Only `seasonally_adj` and `error_data`
+may occur once or twice; every other column must occur exactly once. Missing,
+extra or unauthorized duplicate headers fail closed. Repeated predicate columns
+must be exactly equal in every row, including non-target rows, or parsing fails
+with `census_retail_duplicate_dimension_mismatch`. The parser explicitly indexes
+column positions and uses the first predicate value after verifying equality.
+Every row must have the expected structure, one of the two requested periods,
+US `1`, SA `yes` and error-data `no`. The parser then projects the target matrix
+before checking duplicate cells or numeric values. Each `cell_value` source
+pointer still identifies the unique value column in the original response.
 
 Only 11 cells are strictly required: five category `SM` cells for each of the two
 periods, plus current `44X72` `MPCSM`. Only those 11 target cells enter the target
@@ -123,8 +142,10 @@ trigger another acquisition.
 ## Deterministic verification
 
 `tests/test_census_retail_vertical.py` covers the required matrix, broad-response
-target projection, ignored unrelated/suppressed cells, target failures, mapping,
-plan roundtrip, in-memory materialization and exact/as-of local reads.
+target projection, matching duplicate predicates, mismatched/unauthorized
+duplicates, missing/extra headers, ignored unrelated/suppressed cells, target
+failures, mapping, plan roundtrip, in-memory materialization and exact/as-of local
+reads.
 `tests/test_census_retail_live.py` simulates default-off behavior, HTTPS/query
 shape, credential safety, shared Source retry and terminal/local failures. These
 are deterministic tests, not `live_provider` qualification tests. Network and

@@ -104,6 +104,18 @@ def response():
     return table
 
 
+def without_raw_digest(value):
+    if isinstance(value, dict):
+        return {
+            key: without_raw_digest(item)
+            for key, item in value.items()
+            if key != "raw_sha256"
+        }
+    if isinstance(value, list):
+        return [without_raw_digest(item) for item in value]
+    return value
+
+
 def evidence(raw=None, *, attempts=1):
     return RetailEvidence(
         encode(response()) if raw is None else raw,
@@ -248,17 +260,6 @@ def test_broad_query_non_target_cells_do_not_alter_projection(value):
     parsed = parse_response(raw)
     assert len(parsed.data["source_cells"]) == 11
 
-    def without_raw_digest(value):
-        if isinstance(value, dict):
-            return {
-                key: without_raw_digest(item)
-                for key, item in value.items()
-                if key != "raw_sha256"
-            }
-        if isinstance(value, list):
-            return [without_raw_digest(item) for item in value]
-        return value
-
     baseline = parse_response(encode(response()))
     assert without_raw_digest(parsed.data) == without_raw_digest(baseline.data)
     assert parsed.raw_sha256 == digest(raw)
@@ -354,6 +355,102 @@ def test_header_and_row_order_are_not_fixed():
     for cell in parsed.data["source_cells"]:
         _, row_index, col_index = cell["source_pointer"].split("/")
         assert permuted[int(row_index)][int(col_index)] == cell["value"]
+
+
+@pytest.mark.parametrize(
+    "duplicates",
+    [("seasonally_adj",), ("error_data",), ("seasonally_adj", "error_data")],
+)
+@pytest.mark.parametrize("reverse_columns", [False, True])
+def test_matching_duplicate_predicates_preserve_projection(duplicates, reverse_columns):
+    baseline = response()
+    # Both duplicates reproduce the retained R2 header, including its positions.
+    columns = [*HEADERS[:5], *duplicates, *HEADERS[5:]]
+    if reverse_columns:
+        columns.reverse()
+    table = [columns] + [
+        [values[HEADERS.index(field)] for field in columns] for values in baseline[1:]
+    ]
+    # Unavailable non-target cells stay outside the target projection.
+    unrelated = list(table[-1])
+    unrelated[columns.index("category_code")] = "445"
+    unrelated[columns.index("cell_value")] = "(S)"
+    table.extend([unrelated, unrelated])
+    raw = encode(table)
+    parsed = parse_response(raw)
+    expected = parse_response(encode(baseline))
+
+    def without_source_pointer(value):
+        if isinstance(value, dict):
+            return {
+                key: without_source_pointer(item)
+                for key, item in value.items()
+                if key != "source_pointer"
+            }
+        if isinstance(value, list):
+            return [without_source_pointer(item) for item in value]
+        return value
+
+    assert without_source_pointer(without_raw_digest(parsed.data)) == (
+        without_source_pointer(without_raw_digest(expected.data))
+    )
+    assert parsed.raw_sha256 == digest(raw)
+    assert parsed.raw_size == len(raw)
+    for cell in parsed.data["source_cells"]:
+        assert cell["raw_sha256"] == digest(raw)
+        _, row_index, col_index = cell["source_pointer"].split("/")
+        assert int(col_index) == columns.index("cell_value")
+        assert table[int(row_index)][int(col_index)] == cell["value"]
+
+
+@pytest.mark.parametrize("field", ["seasonally_adj", "error_data"])
+@pytest.mark.parametrize("duplicate_index", [0, 1])
+@pytest.mark.parametrize("non_target", [False, True])
+def test_duplicate_predicate_mismatch_fails_closed(field, duplicate_index, non_target):
+    table = response()
+    position = HEADERS.index(field)
+    for values in table:
+        values.append(values[position])
+    target = table[1]
+    if non_target:
+        target[HEADERS.index("category_code")] = "445"
+    target[position if duplicate_index == 0 else -1] = (
+        "no" if field == "seasonally_adj" else "yes"
+    )
+    with pytest.raises(
+        ContractError, match="^census_retail_duplicate_dimension_mismatch$"
+    ):
+        parse_response(encode(table))
+
+
+@pytest.mark.parametrize(
+    "field", ["category_code", "data_type_code", "cell_value", "time", "us"]
+)
+def test_unauthorized_duplicate_header_fails_closed(field):
+    table = response()
+    for values in table:
+        values.append(values[HEADERS.index(field)])
+    with pytest.raises(ContractError, match="^census_retail_header_invalid$"):
+        parse_response(encode(table))
+
+
+@pytest.mark.parametrize("field", HEADERS)
+def test_missing_header_fails_closed(field):
+    table = response()
+    for values in table:
+        del values[HEADERS.index(field)]
+    with pytest.raises(ContractError, match="^census_retail_header_invalid$"):
+        parse_response(encode(table))
+
+
+@pytest.mark.parametrize("field", ["unknown", "seasonally_adj", "error_data"])
+def test_extra_or_triplicate_header_fails_closed(field):
+    table = response()
+    table[0].extend([field, field])
+    for values in table[1:]:
+        values.extend(["yes", "yes"])
+    with pytest.raises(ContractError, match="^census_retail_header_invalid$"):
+        parse_response(encode(table))
 
 
 @pytest.mark.parametrize("attempts", [1, 2, 3])
