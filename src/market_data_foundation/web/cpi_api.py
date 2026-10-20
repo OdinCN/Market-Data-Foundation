@@ -33,6 +33,12 @@ from market_data_foundation.historical.cpi_local_read import (
     read_local_cpi,
 )
 from market_data_foundation.web.dto import DTO
+from market_data_foundation.web.observability import (
+    ObservabilityDTO,
+    ObservabilityHost,
+    ObservabilityQuery,
+    project,
+)
 from market_data_foundation.web.source_catalog import (
     DirectoryDTO,
     DirectoryQuery,
@@ -240,6 +246,7 @@ def create_app(
     scope_factory: ScopeFactory | None = None,
     *,
     ui_directory: Path | None = None,
+    observability_host: ObservabilityHost | None = None,
     evidence_mode: Literal["OFFLINE_FIXTURE", "AUTHORIZED_READ_SCOPE"] = (
         "AUTHORIZED_READ_SCOPE"
     ),
@@ -248,15 +255,22 @@ def create_app(
 
     No PG adapter is installed by this slice. A future host binding needs its own
     authorization/qualification. Never pass a live mutable ledger as a snapshot.
+    observability_host is a separate, explicitly admitted local read capability;
+    it is never inferred from the CPI scope, environment, or the serving process.
     """
     app = FastAPI(
-        title="MDF R5 read-only", version="r5-i2", docs_url=None, redoc_url=None
+        title="MDF R5 read-only", version="r5-i3", docs_url=None, redoc_url=None
     )
     evidence: Evidence = "UNCONFIGURED" if scope_factory is None else evidence_mode
 
     @app.middleware("http")
     async def reject_duplicate_query(request: Request, call_next):
-        if request.url.path in {"/api/r5/cpi", "/api/r5/cpi/read", "/api/r5/sources"}:
+        if request.url.path in {
+            "/api/r5/cpi",
+            "/api/r5/cpi/read",
+            "/api/r5/sources",
+            "/api/r5/observability",
+        }:
             keys = [key for key, _ in request.query_params.multi_items()]
             if len(keys) != len(set(keys)):
                 return JSONResponse(
@@ -280,6 +294,17 @@ def create_app(
                 status="NOT_AVAILABLE", classification=Failure.INVALID_REQUEST
             ).model_dump(mode="json"),
         )
+
+    @app.get(
+        "/api/r5/observability",
+        response_model=ObservabilityDTO,
+        responses={422: {"model": ErrorDTO}},
+        operation_id="runtime_observability",
+    )
+    def observability(
+        query: Annotated[ObservabilityQuery, Query()],
+    ) -> ObservabilityDTO:
+        return project(observability_host)
 
     @app.get(
         "/api/r5/sources",

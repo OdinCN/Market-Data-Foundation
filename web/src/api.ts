@@ -3,6 +3,10 @@ import type { components, operations, paths } from "./api.generated";
 export type Catalog = components["schemas"]["CatalogDTO"];
 export type Directory = components["schemas"]["DirectoryDTO"];
 export type DirectoryEntry = Directory["entries"][number];
+export type Observability =
+  operations["runtime_observability"]["responses"][200]["content"]["application/json"];
+export type Observation = Observability["evidence_observation"];
+export type ObjectRef = Observability["instances"][number]["related"];
 export type ReadResult = components["schemas"]["ReadDTO"];
 export type ReadMode = ReadResult["mode"];
 export type Query = operations["cpi_catalog"]["parameters"]["query"];

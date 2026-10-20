@@ -259,9 +259,8 @@ describe("CPI UI → ASGI → canonical reader", () => {
     expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
     for (const name of ["运行总览", "平台管理"]) {
       go(name);
-      expect(
-        screen.getByRole("heading", { name: "本模块尚未实现" }),
-      ).toBeTruthy();
+      await screen.findByText(/UNCONFIGURED · UNKNOWN/);
+      expect(screen.getByLabelText("运行观测")).toBeTruthy();
     }
   });
 

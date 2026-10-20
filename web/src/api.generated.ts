@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+  "/api/r5/observability": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Observability */
+    get: operations["runtime_observability"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/r5/sources": {
     parameters: {
       query?: never;
@@ -189,6 +206,66 @@ export interface components {
        */
       binding_activation: "UNKNOWN";
     };
+    /** DiagnosticDTO */
+    "DiagnosticDTO-Input": {
+      /** Identity */
+      identity: string;
+      observation: components["schemas"]["Observation-Input"];
+      /**
+       * Severity
+       * @enum {string}
+       */
+      severity: "INFO" | "WARNING" | "ERROR";
+      /**
+       * Module
+       * @enum {string}
+       */
+      module: "runtime" | "source" | "asset" | "service" | "storage" | "job";
+      /**
+       * Classification
+       * @enum {string}
+       */
+      classification:
+        | "runtime_unavailable"
+        | "read_failed"
+        | "permission_denied"
+        | "budget_exceeded"
+        | "material_missing"
+        | "contract_invalid"
+        | "job_failed"
+        | "recovered";
+      related?: components["schemas"]["ObjectRef-Input"];
+    };
+    /** DiagnosticDTO */
+    "DiagnosticDTO-Output": {
+      /** Identity */
+      identity: string;
+      observation: components["schemas"]["Observation-Output"];
+      /**
+       * Severity
+       * @enum {string}
+       */
+      severity: "INFO" | "WARNING" | "ERROR";
+      /**
+       * Module
+       * @enum {string}
+       */
+      module: "runtime" | "source" | "asset" | "service" | "storage" | "job";
+      /**
+       * Classification
+       * @enum {string}
+       */
+      classification:
+        | "runtime_unavailable"
+        | "read_failed"
+        | "permission_denied"
+        | "budget_exceeded"
+        | "material_missing"
+        | "contract_invalid"
+        | "job_failed"
+        | "recovered";
+      related: components["schemas"]["ObjectRef-Output"];
+    };
     /** DirectoryDTO */
     DirectoryDTO: {
       /**
@@ -360,6 +437,46 @@ export interface components {
       /** Evidence Refs */
       evidence_refs: string[];
     };
+    /** DiskDTO */
+    "DiskDTO-Input": {
+      observation?: components["schemas"]["Observation-Input"];
+      /**
+       * Unit
+       * @default bytes
+       * @constant
+       */
+      unit: "bytes";
+      /** Total */
+      total?: number | null;
+      /** Available */
+      available?: number | null;
+      /**
+       * Mount
+       * @default root
+       * @constant
+       */
+      mount: "root";
+    };
+    /** DiskDTO */
+    "DiskDTO-Output": {
+      observation: components["schemas"]["Observation-Output"];
+      /**
+       * Unit
+       * @default bytes
+       * @constant
+       */
+      unit: "bytes";
+      /** Total */
+      total: number | null;
+      /** Available */
+      available: number | null;
+      /**
+       * Mount
+       * @default root
+       * @constant
+       */
+      mount: "root";
+    };
     /** ErrorDTO */
     ErrorDTO: {
       /**
@@ -398,6 +515,80 @@ export interface components {
       | "coverage_partial_or_mismatched"
       | "quality_not_admitted"
       | "cpi_payload_invalid_or_mismatched";
+    /** InstanceDTO */
+    "InstanceDTO-Input": {
+      /** Component Identity */
+      component_identity: string;
+      /** Instance Identity */
+      instance_identity: string;
+      observation?: components["schemas"]["Observation-Input"];
+      /**
+       * State
+       * @default UNKNOWN
+       * @enum {string}
+       */
+      state: "RUNNING" | "STOPPED" | "DEGRADED" | "UNKNOWN";
+      /** Started At */
+      started_at?: string | null;
+      /** Heartbeat At */
+      heartbeat_at?: string | null;
+      /**
+       * Observe Only
+       * @default true
+       * @constant
+       */
+      observe_only: true;
+      related?: components["schemas"]["ObjectRef-Input"];
+    };
+    /** InstanceDTO */
+    "InstanceDTO-Output": {
+      /** Component Identity */
+      component_identity: string;
+      /** Instance Identity */
+      instance_identity: string;
+      observation: components["schemas"]["Observation-Output"];
+      /**
+       * State
+       * @default UNKNOWN
+       * @enum {string}
+       */
+      state: "RUNNING" | "STOPPED" | "DEGRADED" | "UNKNOWN";
+      /** Started At */
+      started_at: string | null;
+      /** Heartbeat At */
+      heartbeat_at: string | null;
+      /**
+       * Observe Only
+       * @default true
+       * @constant
+       */
+      observe_only: true;
+      related: components["schemas"]["ObjectRef-Output"];
+    };
+    /** LoadDTO */
+    "LoadDTO-Input": {
+      observation?: components["schemas"]["Observation-Input"];
+      /**
+       * Unit
+       * @default runnable_tasks_1m_5m_15m
+       * @constant
+       */
+      unit: "runnable_tasks_1m_5m_15m";
+      /** Values */
+      values?: number[] | null;
+    };
+    /** LoadDTO */
+    "LoadDTO-Output": {
+      observation: components["schemas"]["Observation-Output"];
+      /**
+       * Unit
+       * @default runnable_tasks_1m_5m_15m
+       * @constant
+       */
+      unit: "runnable_tasks_1m_5m_15m";
+      /** Values */
+      values: number[] | null;
+    };
     /** MappingDTO */
     MappingDTO: {
       /** Identity */
@@ -443,6 +634,197 @@ export interface components {
       preliminary: boolean;
       /** Finality */
       finality: string;
+    };
+    /** MemoryDTO */
+    "MemoryDTO-Input": {
+      observation?: components["schemas"]["Observation-Input"];
+      /**
+       * Unit
+       * @default bytes
+       * @constant
+       */
+      unit: "bytes";
+      /** Total */
+      total?: number | null;
+      /** Available */
+      available?: number | null;
+    };
+    /** MemoryDTO */
+    "MemoryDTO-Output": {
+      observation: components["schemas"]["Observation-Output"];
+      /**
+       * Unit
+       * @default bytes
+       * @constant
+       */
+      unit: "bytes";
+      /** Total */
+      total: number | null;
+      /** Available */
+      available: number | null;
+    };
+    /** NetworkDTO */
+    "NetworkDTO-Input": {
+      /** Interface */
+      interface: string;
+      observation?: components["schemas"]["Observation-Input"];
+      /**
+       * Unit
+       * @default cumulative_bytes
+       * @constant
+       */
+      unit: "cumulative_bytes";
+      /** Received */
+      received?: number | null;
+      /** Transmitted */
+      transmitted?: number | null;
+    };
+    /** NetworkDTO */
+    "NetworkDTO-Output": {
+      /** Interface */
+      interface: string;
+      observation: components["schemas"]["Observation-Output"];
+      /**
+       * Unit
+       * @default cumulative_bytes
+       * @constant
+       */
+      unit: "cumulative_bytes";
+      /** Received */
+      received: number | null;
+      /** Transmitted */
+      transmitted: number | null;
+    };
+    /** ObjectRef */
+    "ObjectRef-Input": {
+      /** Operation Identity */
+      operation_identity?: string | null;
+      /** Asset Identity */
+      asset_identity?: string | null;
+      /** Asset Revision */
+      asset_revision?: string | null;
+      /** Version Identity */
+      version_identity?: string | null;
+      /** Publication Identity */
+      publication_identity?: string | null;
+      /** Job Identity */
+      job_identity?: string | null;
+      /** Attempt Identity */
+      attempt_identity?: string | null;
+    };
+    /** ObjectRef */
+    "ObjectRef-Output": {
+      /** Operation Identity */
+      operation_identity: string | null;
+      /** Asset Identity */
+      asset_identity: string | null;
+      /** Asset Revision */
+      asset_revision: string | null;
+      /** Version Identity */
+      version_identity: string | null;
+      /** Publication Identity */
+      publication_identity: string | null;
+      /** Job Identity */
+      job_identity: string | null;
+      /** Attempt Identity */
+      attempt_identity: string | null;
+    };
+    /** ObservabilityDTO */
+    ObservabilityDTO: {
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "OK" | "UNKNOWN";
+      /** Generated At */
+      generated_at: string;
+      /**
+       * Max Age Seconds
+       * @default 60
+       * @constant
+       */
+      max_age_seconds: 60;
+      /**
+       * Evidence Mode
+       * @enum {string}
+       */
+      evidence_mode: "UNCONFIGURED" | "AUTHORIZED_HOST" | "OFFLINE_FIXTURE";
+      resources: components["schemas"]["ResourcesDTO-Output"];
+      evidence_observation: components["schemas"]["Observation-Output"];
+      /** Instances */
+      instances: components["schemas"]["InstanceDTO-Output"][];
+      /** Storage */
+      storage: components["schemas"]["StorageDTO-Output"][];
+      /** Diagnostics */
+      diagnostics: components["schemas"]["DiagnosticDTO-Output"][];
+    };
+    /** Observation */
+    "Observation-Input": {
+      /**
+       * Status
+       * @default UNKNOWN
+       * @enum {string}
+       */
+      status: "OK" | "UNKNOWN";
+      /**
+       * Classification
+       * @default not_configured
+       * @enum {string}
+       */
+      classification:
+        | "not_configured"
+        | "permission_denied"
+        | "source_unavailable"
+        | "invalid_sample"
+        | "limit_exceeded"
+        | "stale"
+        | "clock_invalid"
+        | "host_contract_invalid"
+        | "observed";
+      /** Sampled At */
+      sampled_at?: string | null;
+      /** Source */
+      source?: ("LINUX_NAMESPACE" | "TRUSTED_HOST" | "OFFLINE_FIXTURE") | null;
+      /**
+       * Clock
+       * @default UTC_REALTIME
+       * @constant
+       */
+      clock: "UTC_REALTIME";
+    };
+    /** Observation */
+    "Observation-Output": {
+      /**
+       * Status
+       * @default UNKNOWN
+       * @enum {string}
+       */
+      status: "OK" | "UNKNOWN";
+      /**
+       * Classification
+       * @default not_configured
+       * @enum {string}
+       */
+      classification:
+        | "not_configured"
+        | "permission_denied"
+        | "source_unavailable"
+        | "invalid_sample"
+        | "limit_exceeded"
+        | "stale"
+        | "clock_invalid"
+        | "host_contract_invalid"
+        | "observed";
+      /** Sampled At */
+      sampled_at: string | null;
+      /** Source */
+      source: ("LINUX_NAMESPACE" | "TRUSTED_HOST" | "OFFLINE_FIXTURE") | null;
+      /**
+       * Clock
+       * @default UTC_REALTIME
+       * @constant
+       */
+      clock: "UTC_REALTIME";
     };
     /** PublicationDTO */
     PublicationDTO: {
@@ -507,6 +889,44 @@ export interface components {
       /** Measurements */
       measurements: components["schemas"]["MeasurementDTO"][];
     };
+    /** ResourcesDTO */
+    "ResourcesDTO-Input": {
+      /** Host Identity */
+      host_identity?: string | null;
+      cpu_load?: components["schemas"]["LoadDTO-Input"];
+      memory?: components["schemas"]["MemoryDTO-Input"];
+      /** Disks */
+      disks?: components["schemas"]["DiskDTO-Input"][];
+      /** Networks */
+      networks?: components["schemas"]["NetworkDTO-Input"][];
+      /** Sample Duration Seconds */
+      sample_duration_seconds?: number | null;
+      /**
+       * Duration Clock
+       * @default MONOTONIC
+       * @constant
+       */
+      duration_clock: "MONOTONIC";
+    };
+    /** ResourcesDTO */
+    "ResourcesDTO-Output": {
+      /** Host Identity */
+      host_identity: string | null;
+      cpu_load: components["schemas"]["LoadDTO-Output"];
+      memory: components["schemas"]["MemoryDTO-Output"];
+      /** Disks */
+      disks: components["schemas"]["DiskDTO-Output"][];
+      /** Networks */
+      networks: components["schemas"]["NetworkDTO-Output"][];
+      /** Sample Duration Seconds */
+      sample_duration_seconds: number | null;
+      /**
+       * Duration Clock
+       * @default MONOTONIC
+       * @constant
+       */
+      duration_clock: "MONOTONIC";
+    };
     /** ServiceDTO */
     ServiceDTO: {
       /** Identity */
@@ -555,6 +975,56 @@ export interface components {
       /** Evidence Capability */
       evidence_capability: string[];
     };
+    /** StorageDTO */
+    "StorageDTO-Input": {
+      /**
+       * Identity
+       * @enum {string}
+       */
+      identity: "postgresql" | "garage" | "questdb";
+      /** Instance Identity */
+      instance_identity?: string | null;
+      /** Qualification Identity */
+      qualification_identity?: string | null;
+      observation?: components["schemas"]["Observation-Input"];
+      /**
+       * State
+       * @default UNKNOWN
+       * @enum {string}
+       */
+      state: "AVAILABLE" | "UNAVAILABLE" | "UNKNOWN" | "DEFER";
+      /**
+       * Qualification
+       * @default UNKNOWN
+       * @enum {string}
+       */
+      qualification: "QUALIFIED_READ_ONLY" | "UNKNOWN" | "DEFER";
+    };
+    /** StorageDTO */
+    "StorageDTO-Output": {
+      /**
+       * Identity
+       * @enum {string}
+       */
+      identity: "postgresql" | "garage" | "questdb";
+      /** Instance Identity */
+      instance_identity: string | null;
+      /** Qualification Identity */
+      qualification_identity: string | null;
+      observation: components["schemas"]["Observation-Output"];
+      /**
+       * State
+       * @default UNKNOWN
+       * @enum {string}
+       */
+      state: "AVAILABLE" | "UNAVAILABLE" | "UNKNOWN" | "DEFER";
+      /**
+       * Qualification
+       * @default UNKNOWN
+       * @enum {string}
+       */
+      qualification: "QUALIFIED_READ_ONLY" | "UNKNOWN" | "DEFER";
+    };
     /** VersionDTO */
     VersionDTO: {
       /** Identity */
@@ -581,6 +1051,35 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  runtime_observability: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ObservabilityDTO"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorDTO"];
+        };
+      };
+    };
+  };
   source_directory: {
     parameters: {
       query?: {

@@ -4,6 +4,7 @@ import json
 import socket
 import sys
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -16,6 +17,7 @@ from tests.r5_fixture import (  # noqa: E402
     fixture_app,
     fixture_ledger,
 )
+from tests.r5_observability_fixture import fixture_host  # noqa: E402
 
 
 def forbidden(*_args, **_kwargs):
@@ -27,7 +29,24 @@ socket.socket.connect = forbidden
 socket.socket.bind = forbidden
 socket.socket.listen = forbidden
 scenario = sys.argv[1]
-if scenario in {"content_storage_fault", "scope_exit_fault"}:
+if scenario.startswith("observability"):
+    ledger, _, _ = fixture_ledger()
+
+    @contextmanager
+    def scope():
+        yield ReadOnlySnapshot(ledger)
+
+    host = (
+        None
+        if scenario == "observability_unconfigured"
+        else fixture_host(
+            datetime.now(UTC) - timedelta(seconds=61)
+            if scenario == "observability_stale"
+            else None
+        )
+    )
+    app = create_app(scope, evidence_mode="OFFLINE_FIXTURE", observability_host=host)
+elif scenario in {"content_storage_fault", "scope_exit_fault"}:
     ledger, _, _ = fixture_ledger()
 
     class FaultingContentSnapshot(ReadOnlySnapshot):

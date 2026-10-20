@@ -10,6 +10,7 @@ import {
   type Transport,
 } from "./api";
 import { SourceDirectory } from "./SourceDirectory";
+import { ObservabilityView } from "./Observability";
 import "./style.css";
 
 const menus = [
@@ -231,6 +232,7 @@ export default function App({
     (!page.identity || page.identity === catalog.definition.identity) &&
     (!page.revision || page.revision === catalog.definition.revision);
   const implemented = activePages.includes(page.page);
+  const observabilityPage = page.page === 0 || page.page === 6;
   const canRead = Boolean(
     (page.page === 3 || page.page === 5) &&
       showCpi &&
@@ -314,14 +316,36 @@ export default function App({
               <p className="eyebrow">MARKET DATA FOUNDATION</p>
               <h1>{menus[page.page]}</h1>
               <p className="muted">
-                {implemented
-                  ? "具名来源合同目录 · Definition / Version / Publication · CPI 本地读取"
-                  : "设计入口已保留，业务能力尚未实现"}
+                {observabilityPage
+                  ? "受信 Host 只读观测 · 来源 / 时钟 / UNKNOWN"
+                  : implemented
+                    ? "具名来源合同目录 · Definition / Version / Publication · CPI 本地读取"
+                    : "设计入口已保留，业务能力尚未实现"}
               </p>
             </div>
-            <Chip>{implemented ? "具名只读目录" : "未实现"}</Chip>
+            <Chip>
+              {observabilityPage
+                ? "只读观测"
+                : implemented
+                  ? "具名只读目录"
+                  : "未实现"}
+            </Chip>
           </div>
-          {!implemented ? (
+          {observabilityPage ? (
+            <ObservabilityView
+              transport={transport}
+              generation={generation}
+              page={page.page}
+              onNavigate={(next, ref) =>
+                navigate(
+                  next,
+                  ref.asset_identity ?? null,
+                  ref.operation_identity ?? null,
+                  ref.asset_revision ?? null,
+                )
+              }
+            />
+          ) : !implemented ? (
             <section className="panel placeholder">
               <h2>本模块尚未实现</h2>
               {page.page === 4 && (

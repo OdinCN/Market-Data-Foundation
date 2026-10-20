@@ -2,9 +2,37 @@
   "openapi": "3.1.0",
   "info": {
     "title": "MDF R5 read-only",
-    "version": "r5-i2"
+    "version": "r5-i3"
   },
   "paths": {
+    "/api/r5/observability": {
+      "get": {
+        "summary": "Observability",
+        "operationId": "runtime_observability",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservabilityDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDTO"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/r5/sources": {
       "get": {
         "summary": "Sources",
@@ -578,6 +606,127 @@
         ],
         "title": "DefinitionDTO"
       },
+      "DiagnosticDTO-Input": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$",
+            "title": "Identity"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/Observation-Input"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "INFO",
+              "WARNING",
+              "ERROR"
+            ],
+            "title": "Severity"
+          },
+          "module": {
+            "type": "string",
+            "enum": [
+              "runtime",
+              "source",
+              "asset",
+              "service",
+              "storage",
+              "job"
+            ],
+            "title": "Module"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "runtime_unavailable",
+              "read_failed",
+              "permission_denied",
+              "budget_exceeded",
+              "material_missing",
+              "contract_invalid",
+              "job_failed",
+              "recovered"
+            ],
+            "title": "Classification"
+          },
+          "related": {
+            "$ref": "#/components/schemas/ObjectRef-Input"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "observation",
+          "severity",
+          "module",
+          "classification"
+        ],
+        "title": "DiagnosticDTO"
+      },
+      "DiagnosticDTO-Output": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$",
+            "title": "Identity"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/Observation-Output"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "INFO",
+              "WARNING",
+              "ERROR"
+            ],
+            "title": "Severity"
+          },
+          "module": {
+            "type": "string",
+            "enum": [
+              "runtime",
+              "source",
+              "asset",
+              "service",
+              "storage",
+              "job"
+            ],
+            "title": "Module"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "runtime_unavailable",
+              "read_failed",
+              "permission_denied",
+              "budget_exceeded",
+              "material_missing",
+              "contract_invalid",
+              "job_failed",
+              "recovered"
+            ],
+            "title": "Classification"
+          },
+          "related": {
+            "$ref": "#/components/schemas/ObjectRef-Output"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "observation",
+          "severity",
+          "module",
+          "classification",
+          "related"
+        ],
+        "title": "DiagnosticDTO"
+      },
       "DirectoryDTO": {
         "properties": {
           "status": {
@@ -942,6 +1091,109 @@
         ],
         "title": "DirectoryEntryDTO"
       },
+      "DiskDTO-Input": {
+        "properties": {
+          "observation": {
+            "$ref": "#/components/schemas/Observation-Input"
+          },
+          "unit": {
+            "type": "string",
+            "const": "bytes",
+            "title": "Unit",
+            "default": "bytes"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "available": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available"
+          },
+          "mount": {
+            "type": "string",
+            "const": "root",
+            "title": "Mount",
+            "default": "root"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DiskDTO"
+      },
+      "DiskDTO-Output": {
+        "properties": {
+          "observation": {
+            "$ref": "#/components/schemas/Observation-Output"
+          },
+          "unit": {
+            "type": "string",
+            "const": "bytes",
+            "title": "Unit",
+            "default": "bytes"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "available": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available"
+          },
+          "mount": {
+            "type": "string",
+            "const": "root",
+            "title": "Mount",
+            "default": "root"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "observation",
+          "unit",
+          "total",
+          "available",
+          "mount"
+        ],
+        "title": "DiskDTO"
+      },
       "ErrorDTO": {
         "properties": {
           "status": {
@@ -993,6 +1245,217 @@
           "cpi_payload_invalid_or_mismatched"
         ],
         "title": "Failure"
+      },
+      "InstanceDTO-Input": {
+        "properties": {
+          "component_identity": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$",
+            "title": "Component Identity"
+          },
+          "instance_identity": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$",
+            "title": "Instance Identity"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/Observation-Input"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "STOPPED",
+              "DEGRADED",
+              "UNKNOWN"
+            ],
+            "title": "State",
+            "default": "UNKNOWN"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "heartbeat_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat At"
+          },
+          "observe_only": {
+            "type": "boolean",
+            "const": true,
+            "title": "Observe Only",
+            "default": true
+          },
+          "related": {
+            "$ref": "#/components/schemas/ObjectRef-Input"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "component_identity",
+          "instance_identity"
+        ],
+        "title": "InstanceDTO"
+      },
+      "InstanceDTO-Output": {
+        "properties": {
+          "component_identity": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$",
+            "title": "Component Identity"
+          },
+          "instance_identity": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$",
+            "title": "Instance Identity"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/Observation-Output"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "RUNNING",
+              "STOPPED",
+              "DEGRADED",
+              "UNKNOWN"
+            ],
+            "title": "State",
+            "default": "UNKNOWN"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "heartbeat_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat At"
+          },
+          "observe_only": {
+            "type": "boolean",
+            "const": true,
+            "title": "Observe Only",
+            "default": true
+          },
+          "related": {
+            "$ref": "#/components/schemas/ObjectRef-Output"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "component_identity",
+          "instance_identity",
+          "observation",
+          "state",
+          "started_at",
+          "heartbeat_at",
+          "observe_only",
+          "related"
+        ],
+        "title": "InstanceDTO"
+      },
+      "LoadDTO-Input": {
+        "properties": {
+          "observation": {
+            "$ref": "#/components/schemas/Observation-Input"
+          },
+          "unit": {
+            "type": "string",
+            "const": "runnable_tasks_1m_5m_15m",
+            "title": "Unit",
+            "default": "runnable_tasks_1m_5m_15m"
+          },
+          "values": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number",
+                  "maximum": 1000000.0,
+                  "minimum": 0.0
+                },
+                "type": "array",
+                "maxItems": 3,
+                "minItems": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LoadDTO"
+      },
+      "LoadDTO-Output": {
+        "properties": {
+          "observation": {
+            "$ref": "#/components/schemas/Observation-Output"
+          },
+          "unit": {
+            "type": "string",
+            "const": "runnable_tasks_1m_5m_15m",
+            "title": "Unit",
+            "default": "runnable_tasks_1m_5m_15m"
+          },
+          "values": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number",
+                  "maximum": 1000000.0,
+                  "minimum": 0.0
+                },
+                "type": "array",
+                "maxItems": 3,
+                "minItems": 3
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "observation",
+          "unit",
+          "values"
+        ],
+        "title": "LoadDTO"
       },
       "MappingDTO": {
         "properties": {
@@ -1124,6 +1587,604 @@
           "finality"
         ],
         "title": "MeasurementDTO"
+      },
+      "MemoryDTO-Input": {
+        "properties": {
+          "observation": {
+            "$ref": "#/components/schemas/Observation-Input"
+          },
+          "unit": {
+            "type": "string",
+            "const": "bytes",
+            "title": "Unit",
+            "default": "bytes"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "available": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "MemoryDTO"
+      },
+      "MemoryDTO-Output": {
+        "properties": {
+          "observation": {
+            "$ref": "#/components/schemas/Observation-Output"
+          },
+          "unit": {
+            "type": "string",
+            "const": "bytes",
+            "title": "Unit",
+            "default": "bytes"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "available": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "observation",
+          "unit",
+          "total",
+          "available"
+        ],
+        "title": "MemoryDTO"
+      },
+      "NetworkDTO-Input": {
+        "properties": {
+          "interface": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.-]{1,15}$",
+            "title": "Interface"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/Observation-Input"
+          },
+          "unit": {
+            "type": "string",
+            "const": "cumulative_bytes",
+            "title": "Unit",
+            "default": "cumulative_bytes"
+          },
+          "received": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Received"
+          },
+          "transmitted": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transmitted"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "interface"
+        ],
+        "title": "NetworkDTO"
+      },
+      "NetworkDTO-Output": {
+        "properties": {
+          "interface": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.-]{1,15}$",
+            "title": "Interface"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/Observation-Output"
+          },
+          "unit": {
+            "type": "string",
+            "const": "cumulative_bytes",
+            "title": "Unit",
+            "default": "cumulative_bytes"
+          },
+          "received": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Received"
+          },
+          "transmitted": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 9.223372036854776e+18,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transmitted"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "interface",
+          "observation",
+          "unit",
+          "received",
+          "transmitted"
+        ],
+        "title": "NetworkDTO"
+      },
+      "ObjectRef-Input": {
+        "properties": {
+          "operation_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Identity"
+          },
+          "asset_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Identity"
+          },
+          "asset_revision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Revision"
+          },
+          "version_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Identity"
+          },
+          "publication_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Identity"
+          },
+          "job_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Identity"
+          },
+          "attempt_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Identity"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ObjectRef"
+      },
+      "ObjectRef-Output": {
+        "properties": {
+          "operation_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Identity"
+          },
+          "asset_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Identity"
+          },
+          "asset_revision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Revision"
+          },
+          "version_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Identity"
+          },
+          "publication_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Identity"
+          },
+          "job_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Identity"
+          },
+          "attempt_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Identity"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_identity",
+          "asset_identity",
+          "asset_revision",
+          "version_identity",
+          "publication_identity",
+          "job_identity",
+          "attempt_identity"
+        ],
+        "title": "ObjectRef"
+      },
+      "ObservabilityDTO": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "OK",
+              "UNKNOWN"
+            ],
+            "title": "Status"
+          },
+          "generated_at": {
+            "type": "string",
+            "title": "Generated At"
+          },
+          "max_age_seconds": {
+            "type": "integer",
+            "const": 60,
+            "title": "Max Age Seconds",
+            "default": 60
+          },
+          "evidence_mode": {
+            "type": "string",
+            "enum": [
+              "UNCONFIGURED",
+              "AUTHORIZED_HOST",
+              "OFFLINE_FIXTURE"
+            ],
+            "title": "Evidence Mode"
+          },
+          "resources": {
+            "$ref": "#/components/schemas/ResourcesDTO-Output"
+          },
+          "evidence_observation": {
+            "$ref": "#/components/schemas/Observation-Output"
+          },
+          "instances": {
+            "items": {
+              "$ref": "#/components/schemas/InstanceDTO-Output"
+            },
+            "type": "array",
+            "maxItems": 32,
+            "title": "Instances"
+          },
+          "storage": {
+            "items": {
+              "$ref": "#/components/schemas/StorageDTO-Output"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Storage"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticDTO-Output"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Diagnostics"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "generated_at",
+          "max_age_seconds",
+          "evidence_mode",
+          "resources",
+          "evidence_observation",
+          "instances",
+          "storage",
+          "diagnostics"
+        ],
+        "title": "ObservabilityDTO"
+      },
+      "Observation-Input": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "OK",
+              "UNKNOWN"
+            ],
+            "title": "Status",
+            "default": "UNKNOWN"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "not_configured",
+              "permission_denied",
+              "source_unavailable",
+              "invalid_sample",
+              "limit_exceeded",
+              "stale",
+              "clock_invalid",
+              "host_contract_invalid",
+              "observed"
+            ],
+            "title": "Classification",
+            "default": "not_configured"
+          },
+          "sampled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sampled At"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "LINUX_NAMESPACE",
+                  "TRUSTED_HOST",
+                  "OFFLINE_FIXTURE"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "clock": {
+            "type": "string",
+            "const": "UTC_REALTIME",
+            "title": "Clock",
+            "default": "UTC_REALTIME"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Observation"
+      },
+      "Observation-Output": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "OK",
+              "UNKNOWN"
+            ],
+            "title": "Status",
+            "default": "UNKNOWN"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "not_configured",
+              "permission_denied",
+              "source_unavailable",
+              "invalid_sample",
+              "limit_exceeded",
+              "stale",
+              "clock_invalid",
+              "host_contract_invalid",
+              "observed"
+            ],
+            "title": "Classification",
+            "default": "not_configured"
+          },
+          "sampled_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sampled At"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "LINUX_NAMESPACE",
+                  "TRUSTED_HOST",
+                  "OFFLINE_FIXTURE"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "clock": {
+            "type": "string",
+            "const": "UTC_REALTIME",
+            "title": "Clock",
+            "default": "UTC_REALTIME"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "classification",
+          "sampled_at",
+          "source",
+          "clock"
+        ],
+        "title": "Observation"
       },
       "PublicationDTO": {
         "properties": {
@@ -1269,6 +2330,135 @@
         ],
         "title": "ReadDTO"
       },
+      "ResourcesDTO-Input": {
+        "properties": {
+          "host_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host Identity"
+          },
+          "cpu_load": {
+            "$ref": "#/components/schemas/LoadDTO-Input"
+          },
+          "memory": {
+            "$ref": "#/components/schemas/MemoryDTO-Input"
+          },
+          "disks": {
+            "items": {
+              "$ref": "#/components/schemas/DiskDTO-Input"
+            },
+            "type": "array",
+            "maxItems": 1,
+            "title": "Disks"
+          },
+          "networks": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkDTO-Input"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Networks"
+          },
+          "sample_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Duration Seconds"
+          },
+          "duration_clock": {
+            "type": "string",
+            "const": "MONOTONIC",
+            "title": "Duration Clock",
+            "default": "MONOTONIC"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ResourcesDTO"
+      },
+      "ResourcesDTO-Output": {
+        "properties": {
+          "host_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host Identity"
+          },
+          "cpu_load": {
+            "$ref": "#/components/schemas/LoadDTO-Output"
+          },
+          "memory": {
+            "$ref": "#/components/schemas/MemoryDTO-Output"
+          },
+          "disks": {
+            "items": {
+              "$ref": "#/components/schemas/DiskDTO-Output"
+            },
+            "type": "array",
+            "maxItems": 1,
+            "title": "Disks"
+          },
+          "networks": {
+            "items": {
+              "$ref": "#/components/schemas/NetworkDTO-Output"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Networks"
+          },
+          "sample_duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 2.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Duration Seconds"
+          },
+          "duration_clock": {
+            "type": "string",
+            "const": "MONOTONIC",
+            "title": "Duration Clock",
+            "default": "MONOTONIC"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "host_identity",
+          "cpu_load",
+          "memory",
+          "disks",
+          "networks",
+          "sample_duration_seconds",
+          "duration_clock"
+        ],
+        "title": "ResourcesDTO"
+      },
       "ServiceDTO": {
         "properties": {
           "identity": {
@@ -1411,6 +2601,145 @@
           "evidence_capability"
         ],
         "title": "SourceContractDTO"
+      },
+      "StorageDTO-Input": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "enum": [
+              "postgresql",
+              "garage",
+              "questdb"
+            ],
+            "title": "Identity"
+          },
+          "instance_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instance Identity"
+          },
+          "qualification_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qualification Identity"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/Observation-Input"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "AVAILABLE",
+              "UNAVAILABLE",
+              "UNKNOWN",
+              "DEFER"
+            ],
+            "title": "State",
+            "default": "UNKNOWN"
+          },
+          "qualification": {
+            "type": "string",
+            "enum": [
+              "QUALIFIED_READ_ONLY",
+              "UNKNOWN",
+              "DEFER"
+            ],
+            "title": "Qualification",
+            "default": "UNKNOWN"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity"
+        ],
+        "title": "StorageDTO"
+      },
+      "StorageDTO-Output": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "enum": [
+              "postgresql",
+              "garage",
+              "questdb"
+            ],
+            "title": "Identity"
+          },
+          "instance_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instance Identity"
+          },
+          "qualification_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,255}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qualification Identity"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/Observation-Output"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "AVAILABLE",
+              "UNAVAILABLE",
+              "UNKNOWN",
+              "DEFER"
+            ],
+            "title": "State",
+            "default": "UNKNOWN"
+          },
+          "qualification": {
+            "type": "string",
+            "enum": [
+              "QUALIFIED_READ_ONLY",
+              "UNKNOWN",
+              "DEFER"
+            ],
+            "title": "Qualification",
+            "default": "UNKNOWN"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "instance_identity",
+          "qualification_identity",
+          "observation",
+          "state",
+          "qualification"
+        ],
+        "title": "StorageDTO"
       },
       "VersionDTO": {
         "properties": {
