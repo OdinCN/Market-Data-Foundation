@@ -1,6 +1,8 @@
 import type { components, operations, paths } from "./api.generated";
 
 export type Catalog = components["schemas"]["CatalogDTO"];
+export type Directory = components["schemas"]["DirectoryDTO"];
+export type DirectoryEntry = Directory["entries"][number];
 export type ReadResult = components["schemas"]["ReadDTO"];
 export type ReadMode = ReadResult["mode"];
 export type Query = operations["cpi_catalog"]["parameters"]["query"];
@@ -22,7 +24,7 @@ export async function request<P extends keyof paths>(
   signal: AbortSignal,
 ): Promise<paths[P]["get"]["responses"][200]["content"]["application/json"]> {
   const fields: Record<string, string> = {};
-  for (const [key, value] of Object.entries(query)) {
+  for (const [key, value] of Object.entries(query ?? {})) {
     if (typeof value === "string") fields[key] = value;
   }
   const response = await transport(`${path}?${new URLSearchParams(fields)}`, {

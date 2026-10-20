@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+  "/api/r5/sources": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Sources */
+    get: operations["source_directory"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/r5/cpi": {
     parameters: {
       query?: never;
@@ -72,6 +89,46 @@ export interface components {
       /** Versions */
       versions: components["schemas"]["VersionDTO"][];
     };
+    /** BindingContractDTO */
+    "BindingContractDTO-Input": {
+      /** Identity */
+      identity: string;
+      /** Revision */
+      revision: string;
+      source: components["schemas"]["ContractKeyDTO"];
+      /** Mappings */
+      mappings: components["schemas"]["MappingDTO"][];
+      /** Compatibility Policy */
+      compatibility_policy: string;
+      /** Limitations */
+      limitations: string[];
+      /**
+       * Silent Fallback
+       * @default false
+       * @constant
+       */
+      silent_fallback: false;
+    };
+    /** BindingContractDTO */
+    "BindingContractDTO-Output": {
+      /** Identity */
+      identity: string;
+      /** Revision */
+      revision: string;
+      source: components["schemas"]["ContractKeyDTO"];
+      /** Mappings */
+      mappings: components["schemas"]["MappingDTO"][];
+      /** Compatibility Policy */
+      compatibility_policy: string;
+      /** Limitations */
+      limitations: string[];
+      /**
+       * Silent Fallback
+       * @default false
+       * @constant
+       */
+      silent_fallback: false;
+    };
     /** CatalogDTO */
     CatalogDTO: {
       /**
@@ -95,6 +152,13 @@ export interface components {
       definition: components["schemas"]["DefinitionDTO"];
       asset: components["schemas"]["AssetDTO-Output"] | null;
       service: components["schemas"]["ServiceDTO"] | null;
+    };
+    /** ContractKeyDTO */
+    ContractKeyDTO: {
+      /** Identity */
+      identity: string;
+      /** Revision */
+      revision: string;
     };
     /** DefinitionDTO */
     DefinitionDTO: {
@@ -125,6 +189,177 @@ export interface components {
        */
       binding_activation: "UNKNOWN";
     };
+    /** DirectoryDTO */
+    DirectoryDTO: {
+      /**
+       * Status
+       * @default OK
+       * @constant
+       */
+      status: "OK";
+      /**
+       * Evidence Mode
+       * @default CODE_CONTRACTS_ONLY
+       * @constant
+       */
+      evidence_mode: "CODE_CONTRACTS_ONLY";
+      /**
+       * Scope
+       * @default NAMED_R5_I2_ALLOWLIST
+       * @constant
+       */
+      scope: "NAMED_R5_I2_ALLOWLIST";
+      /** Entries */
+      entries: components["schemas"]["DirectoryEntryDTO-Output"][];
+    };
+    /** DirectoryEntryDTO */
+    "DirectoryEntryDTO-Input": {
+      /** Identity */
+      identity: string;
+      /**
+       * Domain
+       * @enum {string}
+       */
+      domain: "Macro" | "TDX" | "KD";
+      /** Source Name */
+      source_name: string;
+      /** Component Identity */
+      component_identity: string;
+      /** Capability Identity */
+      capability_identity: string;
+      /** Operation */
+      operation: string;
+      /**
+       * Code Delivery
+       * @enum {string}
+       */
+      code_delivery: "DELIVERED" | "CONTRACT_ONLY";
+      /**
+       * Contract Disposition
+       * @enum {string}
+       */
+      contract_disposition:
+        | "BOUNDED_CONTRACT"
+        | "CANDIDATE"
+        | "NOT_ADMITTED_SELF_BLOCKED";
+      source_contract: components["schemas"]["SourceContractDTO"] | null;
+      binding_contract:
+        | components["schemas"]["BindingContractDTO-Input"]
+        | null;
+      asset: components["schemas"]["ContractKeyDTO"] | null;
+      /** Source Qualified Contract */
+      source_qualified_contract: boolean | null;
+      /**
+       * Web Read
+       * @enum {string}
+       */
+      web_read:
+        | "CPI_REQUEST_QUALIFIED"
+        | "DOMAIN_SPECIFIC_ONLY"
+        | "UNSUPPORTED";
+      /**
+       * Source Qualification
+       * @default UNKNOWN
+       * @constant
+       */
+      source_qualification: "UNKNOWN";
+      /**
+       * Current Binding
+       * @default UNKNOWN
+       * @constant
+       */
+      current_binding: "UNKNOWN";
+      /**
+       * Runtime Observation
+       * @default UNKNOWN
+       * @constant
+       */
+      runtime_observation: "UNKNOWN";
+      /**
+       * Local Holding
+       * @default UNKNOWN
+       * @constant
+       */
+      local_holding: "UNKNOWN";
+      /** Reasons */
+      reasons: string[];
+      /** Evidence Refs */
+      evidence_refs: string[];
+    };
+    /** DirectoryEntryDTO */
+    "DirectoryEntryDTO-Output": {
+      /** Identity */
+      identity: string;
+      /**
+       * Domain
+       * @enum {string}
+       */
+      domain: "Macro" | "TDX" | "KD";
+      /** Source Name */
+      source_name: string;
+      /** Component Identity */
+      component_identity: string;
+      /** Capability Identity */
+      capability_identity: string;
+      /** Operation */
+      operation: string;
+      /**
+       * Code Delivery
+       * @enum {string}
+       */
+      code_delivery: "DELIVERED" | "CONTRACT_ONLY";
+      /**
+       * Contract Disposition
+       * @enum {string}
+       */
+      contract_disposition:
+        | "BOUNDED_CONTRACT"
+        | "CANDIDATE"
+        | "NOT_ADMITTED_SELF_BLOCKED";
+      source_contract: components["schemas"]["SourceContractDTO"] | null;
+      binding_contract:
+        | components["schemas"]["BindingContractDTO-Output"]
+        | null;
+      asset: components["schemas"]["ContractKeyDTO"] | null;
+      /** Source Qualified Contract */
+      source_qualified_contract: boolean | null;
+      /**
+       * Web Read
+       * @enum {string}
+       */
+      web_read:
+        | "CPI_REQUEST_QUALIFIED"
+        | "DOMAIN_SPECIFIC_ONLY"
+        | "UNSUPPORTED";
+      /**
+       * Source Qualification
+       * @default UNKNOWN
+       * @constant
+       */
+      source_qualification: "UNKNOWN";
+      /**
+       * Current Binding
+       * @default UNKNOWN
+       * @constant
+       */
+      current_binding: "UNKNOWN";
+      /**
+       * Runtime Observation
+       * @default UNKNOWN
+       * @constant
+       */
+      runtime_observation: "UNKNOWN";
+      /**
+       * Local Holding
+       * @default UNKNOWN
+       * @constant
+       */
+      local_holding: "UNKNOWN";
+      /** Reasons */
+      reasons: string[];
+      /** Evidence Refs */
+      evidence_refs: string[];
+    };
     /** ErrorDTO */
     ErrorDTO: {
       /**
@@ -141,6 +376,7 @@ export interface components {
     Failure:
       | "capability_not_configured"
       | "invalid_request"
+      | "catalog_contract_invalid"
       | "storage_unavailable"
       | "definition_not_admitted"
       | "definition_not_found"
@@ -162,6 +398,22 @@ export interface components {
       | "coverage_partial_or_mismatched"
       | "quality_not_admitted"
       | "cpi_payload_invalid_or_mismatched";
+    /** MappingDTO */
+    MappingDTO: {
+      /** Identity */
+      identity: string;
+      definition: components["schemas"]["ContractKeyDTO"];
+      /** Semantic Revision */
+      semantic_revision: string;
+      /** Temporal Revision */
+      temporal_revision: string;
+      /** Evidence Grades */
+      evidence_grades: string[];
+      /** Durable Required */
+      durable_required: boolean;
+      /** Replayable Required */
+      replayable_required: boolean;
+    };
     /** MeasurementDTO */
     MeasurementDTO: {
       /** Measure Identity */
@@ -272,6 +524,37 @@ export interface components {
        */
       qualification: "VERIFIED_FOR_REQUEST";
     };
+    /** SourceContractDTO */
+    SourceContractDTO: {
+      /** Identity */
+      identity: string;
+      /** Revision */
+      revision: string;
+      /** Product */
+      product: string;
+      /** Projection Revision */
+      projection_revision: string;
+      /** Variant */
+      variant: string;
+      /** Build Revision */
+      build_revision: string | null;
+      /** Registry Revision */
+      registry_revision: string | null;
+      /** Provider App Revision */
+      provider_app_revision: string | null;
+      /** Acquisition Mode */
+      acquisition_mode: string;
+      /** Temporal Contract */
+      temporal_contract: string;
+      /** Completeness Contract */
+      completeness_contract: string;
+      /** Pagination Contract */
+      pagination_contract: string;
+      /** Freshness Contract */
+      freshness_contract: string;
+      /** Evidence Capability */
+      evidence_capability: string[];
+    };
     /** VersionDTO */
     VersionDTO: {
       /** Identity */
@@ -298,6 +581,46 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  source_directory: {
+    parameters: {
+      query?: {
+        domain?: ("Macro" | "TDX" | "KD") | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DirectoryDTO"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorDTO"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorDTO"];
+        };
+      };
+    };
+  };
   cpi_catalog: {
     parameters: {
       query: {

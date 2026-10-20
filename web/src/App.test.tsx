@@ -144,7 +144,10 @@ describe("CPI UI → ASGI → canonical reader", () => {
     ).toBeTruthy();
     expect(screen.getByText("新建采集 / 周期任务 / 执行记录")).toBeTruthy();
     expect(screen.queryByText(/读取成功/)).toBeNull();
-    expect(api.requests).toHaveLength(3);
+    expect(api.requests).toHaveLength(4);
+    expect(
+      api.requests.filter((path) => path.startsWith("/api/r5/sources")),
+    ).toHaveLength(1);
   });
 
   it.each([
@@ -254,7 +257,7 @@ describe("CPI UI → ASGI → canonical reader", () => {
     await screen.findByRole("alert");
     expect(screen.getByRole("alert").textContent).toContain("关联对象缺失");
     expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
-    for (const name of ["运行总览", "接入管理", "平台管理"]) {
+    for (const name of ["运行总览", "平台管理"]) {
       go(name);
       expect(
         screen.getByRole("heading", { name: "本模块尚未实现" }),
@@ -285,5 +288,143 @@ describe("CPI UI → ASGI → canonical reader", () => {
     });
     expect(screen.queryByText(/读取成功/)).toBeNull();
     expect(button("读取本地数据").hasAttribute("disabled")).toBe(false);
+  });
+
+  it("uses one KD B043 identity across access, interfaces, assets and services without admission", async () => {
+    location.hash = "page=1";
+    const api = bridge();
+    render(<App transport={api.transport} initialQuery={query} />);
+    const select = await screen.findByRole("button", {
+      name: /选择 sector-analysis.current_rank/,
+    });
+    fireEvent.click(select);
+    const identity = screen.getByTestId("operation-identity").textContent;
+    expect(identity).toContain("KD_B043");
+    expect(screen.getByText("kd_runtime_descriptor_required")).toBeTruthy();
+    expect(screen.getByText("sampled_current_state_history_only")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
+    go("接口注册");
+    expect(screen.getByTestId("operation-identity").textContent).toBe(identity);
+    fireEvent.click(button("查看关联资产"));
+    expect(location.hash).toContain(
+      "asset=mdf.kd.sector-analysis.current-rank",
+    );
+    expect(screen.getByTestId("directory-asset-identity").textContent).toBe(
+      "mdf.kd.sector-analysis.current-rank@p3-r1",
+    );
+    expect(button("查看数据服务").hasAttribute("disabled")).toBe(true);
+    go("数据服务");
+    expect(screen.getByTestId("operation-identity").textContent).toBe(identity);
+    expect(
+      screen.getByText(/独立 Macro \/ TDX 合同与 KD 候选不能冒充已开放服务/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
+    expect(api.requests.every((path) => !path.includes("/read?"))).toBe(true);
+  });
+
+  it("keeps B044 unadmitted, without a fabricated Source or asset", async () => {
+    const api = bridge();
+    render(<App transport={api.transport} initialQuery={query} />);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /选择 market-stock-ranking.current_a_share/,
+      }),
+    );
+    const detail = within(screen.getByRole("region", { name: "具名操作详情" }));
+    expect(detail.getByText(/缺少 SourceOperationRef/)).toBeTruthy();
+    expect(detail.getByText(/无已 admitted Definition/)).toBeTruthy();
+    expect(button("查看关联资产").hasAttribute("disabled")).toBe(true);
+    expect(detail.getByText(/NOT_ADMITTED_SELF_BLOCKED/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
+  });
+
+  it.each([/选择 timeseries.data:PPI-final-demand/, /选择 bars.daily/])(
+    "preserves independent Macro/TDX mapping boundaries: %s",
+    async (name) => {
+      const api = bridge();
+      render(<App transport={api.transport} initialQuery={query} />);
+      fireEvent.click(await screen.findByRole("button", { name }));
+      const identity = screen.getByTestId("operation-identity").textContent;
+      const asset = screen.getByTestId("directory-asset-identity").textContent;
+      fireEvent.click(button("查看关联资产"));
+      expect(screen.getByTestId("operation-identity").textContent).toBe(
+        identity,
+      );
+      expect(screen.getByTestId("directory-asset-identity").textContent).toBe(
+        asset,
+      );
+      expect(button("查看数据服务").hasAttribute("disabled")).toBe(true);
+      expect(screen.getByText("DOMAIN_SPECIFIC_ONLY")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
+    },
+  );
+
+  it("links a direct CPI contract to the existing request-qualified asset and service", async () => {
+    const api = bridge();
+    render(<App transport={api.transport} initialQuery={query} />);
+    const choices = await screen.findAllByRole("button", {
+      name: /选择 timeseries.data:CPI/,
+    });
+    fireEvent.click(choices[0]);
+    await available();
+    const operation = screen.getByTestId("operation-identity").textContent;
+    fireEvent.click(button("查看关联资产"));
+    expect(screen.getByTestId("asset-identity").textContent).toBe(
+      "mdf.macro.bls.cpi.headlines",
+    );
+    expect(screen.getByTestId("operation-identity").textContent).toBe(
+      operation,
+    );
+    fireEvent.click(button("查看数据服务"));
+    expect(screen.getByTestId("operation-identity").textContent).toBe(
+      operation,
+    );
+    expect(screen.getByText(/Version 血缘为准/)).toBeTruthy();
+    fireEvent.click(button("读取本地数据"));
+    await screen.findByText(/读取成功/);
+  });
+
+  it.each(["missing", "market_data_foundation.domain_contracts.kd:KD_B043"])(
+    "fails closed for an unknown or mismatched operation route: %s",
+    async (operation) => {
+      location.hash = `page=3&asset=mdf.macro.bls.cpi.headlines&operation=${encodeURIComponent(operation)}`;
+      const api = bridge();
+      render(<App transport={api.transport} initialQuery={query} />);
+      await screen.findByText(/关联对象缺失：未找到请求的具名来源操作或资产/);
+      expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
+      expect(screen.queryByTestId("operation-identity")).toBeNull();
+    },
+  );
+
+  it("clears directory details when refresh fails", async () => {
+    const api = bridge();
+    let fault = false;
+    const transport = (async (...args: Parameters<Transport>) => {
+      if (fault && String(args[0]).startsWith("/api/r5/sources")) {
+        return {
+          ok: false,
+          json: async () => ({
+            status: "UNKNOWN",
+            classification: "storage_unavailable",
+          }),
+        } as Response;
+      }
+      return api.transport(...args);
+    }) as Transport;
+    render(<App transport={transport} initialQuery={query} />);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /选择 sector-analysis.current_rank/,
+      }),
+    );
+    expect(screen.getByTestId("operation-identity")).toBeTruthy();
+    await waitFor(() =>
+      expect(button("刷新").hasAttribute("disabled")).toBe(false),
+    );
+    fault = true;
+    fireEvent.click(button("刷新"));
+    await screen.findByText(/目录不可核实 · storage_unavailable/);
+    expect(screen.queryByTestId("operation-identity")).toBeNull();
+    expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
   });
 });

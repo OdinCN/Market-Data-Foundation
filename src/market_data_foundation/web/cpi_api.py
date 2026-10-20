@@ -16,7 +16,7 @@ from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from market_data_foundation.canonical.consumer_read import ReadContractError
 from market_data_foundation.canonical.model import (
@@ -32,6 +32,12 @@ from market_data_foundation.historical.cpi_local_read import (
     CpiReadRejected,
     read_local_cpi,
 )
+from market_data_foundation.web.dto import DTO
+from market_data_foundation.web.source_catalog import (
+    DirectoryDTO,
+    DirectoryQuery,
+    directory,
+)
 
 ASSET_ID = BLS_CPI_HEADLINES.identity
 SERVICE_ID = ASSET_ID + ":local-read"
@@ -41,6 +47,7 @@ Evidence = Literal["UNCONFIGURED", "OFFLINE_FIXTURE", "AUTHORIZED_READ_SCOPE"]
 class Failure(StrEnum):
     CAPABILITY_NOT_CONFIGURED = "capability_not_configured"
     INVALID_REQUEST = "invalid_request"
+    CATALOG_CONTRACT_INVALID = "catalog_contract_invalid"
     STORAGE_UNAVAILABLE = "storage_unavailable"
     DEFINITION_NOT_ADMITTED = "definition_not_admitted"
     DEFINITION_NOT_FOUND = "definition_not_found"
@@ -62,10 +69,6 @@ class Failure(StrEnum):
     COVERAGE_PARTIAL_OR_MISMATCHED = "coverage_partial_or_mismatched"
     QUALITY_NOT_ADMITTED = "quality_not_admitted"
     CPI_PAYLOAD_INVALID_OR_MISMATCHED = "cpi_payload_invalid_or_mismatched"
-
-
-class DTO(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
 
 
 class CatalogQuery(DTO):
@@ -214,6 +217,7 @@ def _state(failure: Failure) -> Literal["UNKNOWN", "NOT_AVAILABLE"]:
         Failure.CAPABILITY_NOT_CONFIGURED,
         Failure.STORAGE_UNAVAILABLE,
         Failure.OPERATOR_QUERY_BUDGET_EXCEEDED,
+        Failure.CATALOG_CONTRACT_INVALID,
     }:
         return "UNKNOWN"
     return "NOT_AVAILABLE"
@@ -246,13 +250,13 @@ def create_app(
     authorization/qualification. Never pass a live mutable ledger as a snapshot.
     """
     app = FastAPI(
-        title="MDF R5 CPI read-only", version="r5-i1", docs_url=None, redoc_url=None
+        title="MDF R5 read-only", version="r5-i2", docs_url=None, redoc_url=None
     )
     evidence: Evidence = "UNCONFIGURED" if scope_factory is None else evidence_mode
 
     @app.middleware("http")
     async def reject_duplicate_query(request: Request, call_next):
-        if request.url.path in {"/api/r5/cpi", "/api/r5/cpi/read"}:
+        if request.url.path in {"/api/r5/cpi", "/api/r5/cpi/read", "/api/r5/sources"}:
             keys = [key for key, _ in request.query_params.multi_items()]
             if len(keys) != len(set(keys)):
                 return JSONResponse(
@@ -276,6 +280,24 @@ def create_app(
                 status="NOT_AVAILABLE", classification=Failure.INVALID_REQUEST
             ).model_dump(mode="json"),
         )
+
+    @app.get(
+        "/api/r5/sources",
+        response_model=DirectoryDTO,
+        responses={422: {"model": ErrorDTO}, 503: {"model": ErrorDTO}},
+        operation_id="source_directory",
+    )
+    def sources(query: Annotated[DirectoryQuery, Query()]):
+        try:
+            return directory(query)
+        except Exception:
+            # A changed/invalid code contract cannot yield a partial inventory.
+            return JSONResponse(
+                status_code=503,
+                content=ErrorDTO(
+                    status="UNKNOWN", classification=Failure.CATALOG_CONTRACT_INVALID
+                ).model_dump(mode="json"),
+            )
 
     @app.get(
         "/api/r5/cpi",
