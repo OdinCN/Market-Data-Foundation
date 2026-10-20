@@ -1,3 +1,4 @@
+import { CpiSchedules } from "./CpiSchedules";
 import { useEffect, useRef, useState } from "react";
 import {
   ApiFailure,
@@ -148,6 +149,13 @@ export function CpiJobsView({
         {data?.write_eligible ? "已绑定" : "不可用"}
       </p>
       {notice && <p role="alert">{notice}</p>}
+      <CpiSchedules
+        transport={transport}
+        generation={generation}
+        asset={asset}
+        revision={revision}
+        mode={tab}
+      />
       {tab === "new" && (
         <section className="panel">
           <h2>CPI 人工一次性初始化</h2>
@@ -177,15 +185,13 @@ export function CpiJobsView({
               人工一次性
             </button>
             <button type="button" disabled>
-              历史起止 / 回补 · UNSUPPORTED
-            </button>
-            <button type="button" disabled>
               多来源 · UNSUPPORTED
             </button>
           </div>
           <p>
-            仅支持 2026-09 CPI release slot。提交只持久接受意图；由单独授权的
-            Host Worker 执行。页面关闭不会取消或重新执行任务。
+            本 I4 兼容入口支持 2026-09 CPI release
+            slot。提交只持久接受意图；由单独授权的 Host Worker
+            执行。页面关闭不会取消或重新执行任务。
           </p>
           <label>
             <input
@@ -216,7 +222,7 @@ export function CpiJobsView({
       {tab === "periodic" && (
         <section className="panel">
           <h2>周期任务</h2>
-          <p>UNSUPPORTED · 尚未授权或实现周期调度。</p>
+          <p>常驻 Cron / Worker 部署激活 · UNSUPPORTED</p>
           <button type="button" disabled>
             创建 Cron / 激活计划
           </button>

@@ -297,7 +297,9 @@ it("trusted read-only requests and unsupported modes remain disabled; GET and ta
       .hasAttribute("disabled"),
   ).toBe(true);
   expect(
-    screen.getByRole("button", { name: /历史起止/ }).hasAttribute("disabled"),
+    screen
+      .getByRole("button", { name: "持久提交历史计划" })
+      .hasAttribute("disabled"),
   ).toBe(true);
   expect(
     screen.getByRole("button", { name: /多来源/ }).hasAttribute("disabled"),

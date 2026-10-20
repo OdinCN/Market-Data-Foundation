@@ -49,8 +49,12 @@ def read_local_cpi(
     with their existing stable classifications. Freshness is reference evidence,
     never wall-clock age or an assumption about a future provider release.
     """
-    if reference not in _REFERENCES:
-        raise CpiReadRejected("reference_not_admitted")
+    from market_data_foundation.historical import cpi_history
+
+    try:
+        cpi_history.month_number(reference)
+    except Exception:
+        raise CpiReadRejected("reference_not_admitted") from None
     if version_identity is None:
         view = read_as_of(ledger, BLS_CPI_HEADLINES.key, as_of=as_of)
     else:
@@ -69,9 +73,11 @@ def read_local_cpi(
     if not {Grade.ORIGINAL, Grade.PROJECTED} <= view.publication.request.claimed_grades:
         raise CpiReadRejected("quality_not_admitted")
     try:
-        validate_cpi_projection(
-            _json(view.content)["data"], reference=_REFERENCES[reference]
-        )
+        content = _json(view.content)
+        if content.get("schema") == cpi_history.RULE:
+            cpi_history.validate_content(content, reference)
+        else:
+            validate_cpi_projection(content["data"], reference=_REFERENCES[reference])
     except Exception:
         # Never expose malformed content, validator messages or private values.
         raise CpiReadRejected("cpi_payload_invalid_or_mismatched") from None

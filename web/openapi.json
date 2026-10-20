@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "MDF R5 bounded CPI",
-    "version": "r5-i4"
+    "version": "r5-i5"
   },
   "paths": {
     "/api/r5/observability": {
@@ -461,6 +461,290 @@
           }
         }
       }
+    },
+    "/api/r5/cpi/plans": {
+      "get": {
+        "summary": "Plans",
+        "operationId": "cpi_plans",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlansDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDTO"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Accept",
+        "operationId": "cpi_plan_accept",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanIntent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanAccepted"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDTO"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/cpi/plans/{plan_identity}/action": {
+      "post": {
+        "summary": "Action",
+        "operationId": "cpi_plan_action",
+        "parameters": [
+          {
+            "name": "plan_identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+              "title": "Plan Identity"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanAction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanAccepted"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDTO"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
+    "/api/r5/cpi/plans/{plan_identity}/backfill": {
+      "post": {
+        "summary": "Backfill",
+        "operationId": "cpi_plan_backfill",
+        "parameters": [
+          {
+            "name": "plan_identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+              "title": "Plan Identity"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Backfill"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanAccepted"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDTO"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -585,6 +869,60 @@
           "versions"
         ],
         "title": "AssetDTO"
+      },
+      "Backfill": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+            "title": "End"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "Backfill"
+      },
+      "BatchDTO": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/ChildDTO"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Jobs"
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "reference",
+          "jobs",
+          "complete"
+        ],
+        "title": "BatchDTO"
       },
       "BindingContractDTO-Input": {
         "properties": {
@@ -775,6 +1113,118 @@
           "service"
         ],
         "title": "CatalogDTO"
+      },
+      "ChildDTO": {
+        "properties": {
+          "job_identity": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "title": "Job Identity"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "failed",
+              "cancelled",
+              "succeeded",
+              "outcome_unknown"
+            ],
+            "title": "State"
+          },
+          "attempt_identity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Identity"
+          },
+          "raw_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Sha256"
+          },
+          "version_identity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Identity"
+          },
+          "publication_occurrence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Occurrence"
+          },
+          "read_as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read As Of"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          },
+          "reconciliation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "job_identity",
+          "state",
+          "attempt_identity",
+          "raw_sha256",
+          "version_identity",
+          "publication_occurrence",
+          "read_as_of",
+          "classification",
+          "reconciliation"
+        ],
+        "title": "ChildDTO"
       },
       "ContractKeyDTO": {
         "properties": {
@@ -2666,6 +3116,14 @@
             "type": "string",
             "title": "Seasonal Adjustment"
           },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "provider_returned_calculation",
+              "mdf_index_derived_change"
+            ],
+            "title": "Classification"
+          },
           "unit": {
             "type": "string",
             "const": "percent",
@@ -2715,6 +3173,7 @@
           "reference_period",
           "comparison_period",
           "seasonal_adjustment",
+          "classification",
           "unit",
           "value",
           "availability",
@@ -3322,6 +3781,505 @@
         ],
         "title": "Observation"
       },
+      "PlanAccepted": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "OK",
+            "title": "Status",
+            "default": "OK"
+          },
+          "acceptance": {
+            "type": "string",
+            "const": "DURABLE",
+            "title": "Acceptance",
+            "default": "DURABLE"
+          },
+          "plan_identity": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "title": "Plan Identity"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "plan_identity"
+        ],
+        "title": "PlanAccepted"
+      },
+      "PlanAction": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "pause",
+              "resume",
+              "cancel"
+            ],
+            "title": "Action"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "PlanAction"
+      },
+      "PlanDTO-Input": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "title": "Identity"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/PlanSpecDTO"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "cancelled",
+              "completed"
+            ],
+            "title": "State"
+          },
+          "cycle": {
+            "type": "integer",
+            "title": "Cycle"
+          },
+          "cursor": {
+            "type": "integer",
+            "title": "Cursor"
+          },
+          "inflight_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inflight Key"
+          },
+          "retry_queue": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Retry Queue"
+          },
+          "next_due": {
+            "type": "string",
+            "title": "Next Due"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          },
+          "batches": {
+            "items": {
+              "$ref": "#/components/schemas/BatchDTO"
+            },
+            "type": "array",
+            "maxItems": 4320,
+            "title": "Batches"
+          },
+          "completed_batches": {
+            "type": "integer",
+            "title": "Completed Batches"
+          },
+          "total_batches": {
+            "type": "integer",
+            "title": "Total Batches"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "spec",
+          "state",
+          "cycle",
+          "cursor",
+          "inflight_key",
+          "retry_queue",
+          "next_due",
+          "created_at",
+          "updated_at",
+          "batches",
+          "completed_batches",
+          "total_batches"
+        ],
+        "title": "PlanDTO"
+      },
+      "PlanDTO-Output": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "title": "Identity"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/PlanSpecDTO"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "cancelled",
+              "completed"
+            ],
+            "title": "State"
+          },
+          "cycle": {
+            "type": "integer",
+            "title": "Cycle"
+          },
+          "cursor": {
+            "type": "integer",
+            "title": "Cursor"
+          },
+          "inflight_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inflight Key"
+          },
+          "retry_queue": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Retry Queue"
+          },
+          "next_due": {
+            "type": "string",
+            "title": "Next Due"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          },
+          "batches": {
+            "items": {
+              "$ref": "#/components/schemas/BatchDTO"
+            },
+            "type": "array",
+            "maxItems": 4320,
+            "title": "Batches"
+          },
+          "completed_batches": {
+            "type": "integer",
+            "title": "Completed Batches"
+          },
+          "total_batches": {
+            "type": "integer",
+            "title": "Total Batches"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "spec",
+          "state",
+          "cycle",
+          "cursor",
+          "inflight_key",
+          "retry_queue",
+          "next_due",
+          "created_at",
+          "updated_at",
+          "batches",
+          "completed_batches",
+          "total_batches"
+        ],
+        "title": "PlanDTO"
+      },
+      "PlanError": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "NOT_AVAILABLE"
+            ],
+            "title": "Status"
+          },
+          "classification": {
+            "type": "string",
+            "title": "Classification"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "classification"
+        ],
+        "title": "PlanError"
+      },
+      "PlanIntent": {
+        "properties": {
+          "plan_identity": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "title": "Plan Identity"
+          },
+          "asset_identity": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9:._-]{1,256}$",
+            "title": "Asset Identity"
+          },
+          "asset_revision": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9:._-]{1,256}$",
+            "title": "Asset Revision"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "title": "Name"
+          },
+          "start": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+            "title": "End"
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Timezone"
+          },
+          "window_start": {
+            "type": "string",
+            "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Window Start"
+          },
+          "window_end": {
+            "type": "string",
+            "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Window End"
+          },
+          "first_due": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 20,
+            "title": "First Due"
+          },
+          "interval_seconds": {
+            "type": "integer",
+            "maximum": 31622400.0,
+            "minimum": 60.0,
+            "title": "Interval Seconds"
+          },
+          "cycles": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Cycles"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "plan_identity",
+          "asset_identity",
+          "asset_revision",
+          "name",
+          "start",
+          "end",
+          "timezone",
+          "window_start",
+          "window_end",
+          "first_due",
+          "interval_seconds",
+          "cycles"
+        ],
+        "title": "PlanIntent"
+      },
+      "PlanSpecDTO": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "start": {
+            "type": "string",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "title": "End"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "window_start": {
+            "type": "string",
+            "title": "Window Start"
+          },
+          "window_end": {
+            "type": "string",
+            "title": "Window End"
+          },
+          "first_due": {
+            "type": "string",
+            "title": "First Due"
+          },
+          "interval_seconds": {
+            "type": "integer",
+            "title": "Interval Seconds"
+          },
+          "cycles": {
+            "type": "integer",
+            "title": "Cycles"
+          },
+          "effect_domain": {
+            "type": "string",
+            "enum": [
+              "synthetic",
+              "owner_nonproduction"
+            ],
+            "title": "Effect Domain"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "start",
+          "end",
+          "timezone",
+          "window_start",
+          "window_end",
+          "first_due",
+          "interval_seconds",
+          "cycles",
+          "effect_domain"
+        ],
+        "title": "PlanSpecDTO"
+      },
+      "PlansDTO": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "OK",
+              "UNKNOWN"
+            ],
+            "title": "Status"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          },
+          "evidence_mode": {
+            "type": "string",
+            "enum": [
+              "UNCONFIGURED",
+              "OFFLINE_FIXTURE",
+              "AUTHORIZED_HOST"
+            ],
+            "title": "Evidence Mode"
+          },
+          "write_eligible": {
+            "type": "boolean",
+            "title": "Write Eligible"
+          },
+          "asset_identity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Identity"
+          },
+          "asset_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Revision"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "unregistered",
+                  "registered"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier"
+          },
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/PlanDTO-Output"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Plans"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "classification",
+          "evidence_mode",
+          "write_eligible",
+          "asset_identity",
+          "asset_revision",
+          "tier",
+          "plans"
+        ],
+        "title": "PlansDTO"
+      },
       "PublicationDTO": {
         "properties": {
           "identity": {
@@ -3437,6 +4395,23 @@
           "content_sha256": {
             "type": "string",
             "title": "Content Sha256"
+          },
+          "obtained_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Obtained At"
+          },
+          "provider_vintage": {
+            "type": "string",
+            "const": "UNKNOWN",
+            "title": "Provider Vintage",
+            "default": "UNKNOWN"
           },
           "measurements": {
             "items": {

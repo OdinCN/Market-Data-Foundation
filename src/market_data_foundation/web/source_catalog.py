@@ -48,6 +48,7 @@ from market_data_foundation.historical.census_retail import (
     RETAIL_BINDING_CANDIDATE,
     RETAIL_SOURCE,
 )
+from market_data_foundation.historical.cpi_history import source_binding
 from market_data_foundation.historical.daily_bars import (
     RAW_DAILY_BARS,
     TDX_R1_DAILY_BINDING,
@@ -224,7 +225,17 @@ def _entry(
 
 def directory(query: DirectoryQuery) -> DirectoryDTO:
     """Deterministic bounded allowlist; unknown/unlisted contracts are absent."""
+    history_source, history_binding = source_binding()
     specs = (
+        (
+            "Macro",
+            "BLS",
+            "cpi_history",
+            "CPI_HISTORY_INDEX_SOURCE",
+            history_source,
+            history_binding,
+            BLS_CPI_HEADLINES,
+        ),
         (
             "Macro",
             "BLS",

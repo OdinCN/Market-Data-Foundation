@@ -826,8 +826,10 @@ def test_cpi_reference_guard_miss_stale_partial_not_admitted_without_effects(tmp
     assert read_local_cpi(rig.ledger, reference="2026-09", as_of=NOW)
     with pytest.raises(CpiReadRejected, match="reference_stale_or_mismatched"):
         read_local_cpi(rig.ledger, reference="2026-08", as_of=NOW)
-    with pytest.raises(CpiReadRejected, match="reference_not_admitted"):
+    with pytest.raises(CpiReadRejected, match="reference_stale_or_mismatched"):
         read_local_cpi(rig.ledger, reference="2026-10", as_of=NOW)
+    with pytest.raises(CpiReadRejected, match="reference_not_admitted"):
+        read_local_cpi(rig.ledger, reference="2026-13", as_of=NOW)
     with pytest.raises(ReadContractError, match="definition_not_found"):
         read_local_cpi(InMemoryLedger(), reference="2026-09", as_of=NOW)
     # Use a separately qualified partial version to prove reference-level guard.

@@ -221,7 +221,7 @@ def test_asof_clocks_and_reference_and_exact_miss():
     with TestClient(fixture_app()) as client:
         cases = [
             ({"reference": "2026-09"}, "reference_stale_or_mismatched"),
-            ({"reference": "2026-10"}, "reference_not_admitted"),
+            ({"reference": "2026-10"}, "reference_stale_or_mismatched"),
             (
                 {"mode": "exact_version", "version_identity": "absent"},
                 "version_not_found",
@@ -237,7 +237,12 @@ def test_asof_clocks_and_reference_and_exact_miss():
             ),
         ]
         for changes, classification in cases:
-            assert read(client, **changes).json()["classification"] == classification
+            response = read(client, **changes)
+            assert response.status_code == 409
+            assert response.json() == {
+                "status": "NOT_AVAILABLE",
+                "classification": classification,
+            }
 
 
 def test_ambiguity_exact_read_still_operates_without_fake_service():
@@ -254,6 +259,8 @@ def test_ambiguity_exact_read_still_operates_without_fake_service():
     "changes",
     [
         {"reference": "2026-13"},
+        {"reference": "2026-00"},
+        {"reference": "2026-10-01"},
         {"as_of": "2026-10-06T00:00:10"},
         {"as_of": "private-sensitive-invalid-value"},
         {"mode": "latest"},

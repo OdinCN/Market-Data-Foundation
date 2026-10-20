@@ -29,6 +29,7 @@ from market_data_foundation.canonical.model import Kind, digest, instant, requir
 from market_data_foundation.canonical.postgres import PostgresLedger
 from market_data_foundation.canonical.repository import Ledger
 from market_data_foundation.domain_contracts.macro import BLS_CPI_HEADLINES
+from market_data_foundation.historical import cpi_history
 from market_data_foundation.historical.bls_cpi_direct import (
     MAX_RESPONSE_BYTES,
     SEPTEMBER_REFERENCE_CONTRACT,
@@ -86,7 +87,7 @@ class CpiJobSpec:
 
     provider_revision is explicitly not_declared by the current BLS adapter.
     source_revision is the admitted operation contract, not a provider vintage.
-    Only the existing September release slot is executable in this first slice.
+    The legacy release slot and explicit history index contract are distinct.
     """
 
     definition: str
@@ -110,21 +111,28 @@ class CpiJobSpec:
     max_publications: int = 1
 
     def __post_init__(self):
+        historical = self.source_revision == cpi_history.REVISION
+        if historical:
+            cpi_history.month_number(self.reference)
         require(
             self.definition == BLS_CPI_HEADLINES.identity
             and self.definition_revision == BLS_CPI_HEADLINES.revision
             and self.series == SERIES_IDS
-            and self.reference == REFERENCE
-            and self.source_identity == CONTRACT.source_identity
-            and self.source_revision == CONTRACT.contract_revision
+            and (historical or self.reference == REFERENCE)
+            and self.source_identity
+            == (cpi_history.SOURCE if historical else CONTRACT.source_identity)
+            and self.source_revision
+            == (cpi_history.REVISION if historical else CONTRACT.contract_revision)
             and self.provider_revision == "not_declared"
-            and self.completeness == CONTRACT.completeness
+            and self.completeness
+            == (cpi_history.COMPLETENESS if historical else CONTRACT.completeness)
             and self.quality == QUALITY
-            and self.release_slot == SLOT_IDENTITY,
+            and self.release_slot
+            == ("history/" + self.reference if historical else SLOT_IDENTITY),
             "cpi_job_target_not_admitted",
         )
         require(
-            self.mode in {"acquire", "retained"}
+            self.mode in ({"acquire"} if historical else {"acquire", "retained"})
             and type(self.max_provider_requests) is int
             and self.max_provider_requests == (1 if self.mode == "acquire" else 0)
             and type(self.max_response_bytes) is int
@@ -203,12 +211,28 @@ class DirectCpiAcquirer:
     artifact_root: Path
     clock: Callable[[], datetime]
 
+    history_qualification: cpi_history.HistoryQualification | None = None
+
     def acquire(
         self,
         job_id: str,
         before_request: Callable[[], None],
         after_request: Callable[[bool, int], None] = lambda _received, _attempts: None,
+        *,
+        spec: CpiJobSpec | None = None,
     ):
+        if spec is not None and spec.source_revision == cpi_history.REVISION:
+            return cpi_history.acquire(
+                reference=spec.reference,
+                qualification=self.history_qualification,
+                secret_path=self.secret_path,
+                transport=MeteredTransport(
+                    self.transport, before_request, after_request
+                ),
+                clock=self.clock,
+                artifact_root=self.artifact_root,
+                job_id=job_id,
+            )
         return execute_live_candidate(
             secret_path=self.secret_path,
             artifact_root=self.artifact_root,
@@ -225,6 +249,25 @@ def _validate_candidate(
 ) -> tuple[DirectCpiLivePlan, bytes]:
     require(type(candidate) is LiveExecutionCandidate, "cpi_job_candidate_invalid")
     evidence, plan = candidate.evidence, candidate.plan
+    raw = evidence.raw_bytes
+    require(
+        spec.expected_raw_sha256 is None or digest(raw) == spec.expected_raw_sha256,
+        "cpi_job_retained_digest_mismatch",
+    )
+    if spec.source_revision == cpi_history.REVISION:
+        require(
+            type(evidence) is cpi_history.HistoryEvidence
+            and evidence.reference == spec.reference,
+            "cpi_job_reference_mismatch",
+        )
+        expected = cpi_history.build_plan(
+            evidence,
+            job_id,
+            finished_at=plan.run.finished_at,
+            frozen_at=plan.version.frozen_at,
+        )
+        require(plan == expected, "cpi_job_plan_mismatch")
+        return plan, raw
     require(evidence.reference_contract == CONTRACT, "cpi_job_reference_mismatch")
     # Reconstruct from the actual typed evidence, never trust a caller's quality,
     # durability, coverage, publication, or pre-promoted material flags.
@@ -253,11 +296,6 @@ def _validate_candidate(
         release_causation=causation,
     )
     require(plan == expected, "cpi_job_plan_mismatch")
-    raw = evidence.raw_bytes
-    require(
-        spec.expected_raw_sha256 is None or digest(raw) == spec.expected_raw_sha256,
-        "cpi_job_retained_digest_mismatch",
-    )
     require(
         evidence.requested_at >= RELEASE and plan.version.frozen_at >= RELEASE,
         "cpi_job_before_release",
@@ -341,9 +379,17 @@ def _verify_local(ledger: Ledger, plan: DirectCpiLivePlan, at: datetime) -> dict
     exact = read_exact_version(
         ledger, BLS_CPI_HEADLINES.key, plan.version.key, as_of=at
     )
-    asof = read_as_of(ledger, BLS_CPI_HEADLINES.key, as_of=at)
-    require(exact == asof and exact.publication == publication, "cpi_job_asof_mismatch")
-    for mode in ("exact_version", "as_of"):
+    historical = plan.source.contract_revision == cpi_history.REVISION
+    if not historical:
+        asof = read_as_of(ledger, BLS_CPI_HEADLINES.key, as_of=at)
+        require(
+            exact == asof and exact.publication == publication, "cpi_job_asof_mismatch"
+        )
+    else:
+        require(
+            exact.publication == publication, "cpi_job_publication_readback_mismatch"
+        )
+    for mode in ("exact_version",) if historical else ("exact_version", "as_of"):
         request = {
             "wire_revision": WIRE_REVISION,
             "mode": mode,
@@ -653,6 +699,7 @@ class CpiLocalJob(RetainedRepair):
         acquirer: DirectCpiAcquirer | None = None,
         retained: LiveExecutionCandidate | None = None,
         worker_identity: str | None = None,
+        start_allowed: Callable[[], bool] | None = None,
     ) -> dict:
         """One attempt only; pending registration and opt-in precede all effects.
 
@@ -660,6 +707,9 @@ class CpiLocalJob(RetainedRepair):
         target, role, budget and release authorization. It must leave the writer
         idle, explicitly cleaning up only its own isolated probe transaction.
         A duplicate completed call returns its recorded result without effects.
+        A scheduler may defer admission after host preflight, under the child
+        lock and before allocating its immutable Attempt. Manual jobs retain
+        their existing preflight/Attempt semantics when this gate is absent.
         """
         if worker_identity is not None:
             valid_identity(worker_identity)
@@ -680,9 +730,18 @@ class CpiLocalJob(RetainedRepair):
                     finished_at=self.clock().isoformat(),
                 )
             require(enabled is True, "cpi_job_explicit_opt_in_required")
+            if start_allowed is not None:
+                self._check_pg_writer(spec)
+                preflight(spec)
+                self._check_pg_writer(spec)
+                if not start_allowed():
+                    return document
             now = self.clock()
             instant(now)
-            require(now >= RELEASE, "cpi_job_release_not_due")
+            require(
+                spec.source_revision == cpi_history.REVISION or now >= RELEASE,
+                "cpi_job_release_not_due",
+            )
             self._update(
                 job_id,
                 state="running",
@@ -693,9 +752,10 @@ class CpiLocalJob(RetainedRepair):
                 worker_identity=worker_identity,
             )
             try:
-                self._check_pg_writer(spec)
-                preflight(spec)
-                self._check_pg_writer(spec)
+                if start_allowed is None:
+                    self._check_pg_writer(spec)
+                    preflight(spec)
+                    self._check_pg_writer(spec)
                 if spec.mode == "acquire":
                     require(
                         type(acquirer) is DirectCpiAcquirer and retained is None,
@@ -746,7 +806,13 @@ class CpiLocalJob(RetainedRepair):
                 )
                 self._check_pg_writer(spec)
                 candidate = (
-                    acquirer.acquire(job_id, before_request, after_request)
+                    (
+                        acquirer.acquire(
+                            job_id, before_request, after_request, spec=spec
+                        )
+                        if spec.source_revision == cpi_history.REVISION
+                        else acquirer.acquire(job_id, before_request, after_request)
+                    )
                     if acquirer
                     else retained
                 )

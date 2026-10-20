@@ -962,13 +962,20 @@ def persist_live_plan_before_publication(
 ) -> DatasetVersion:
     """Persist exact live lineage; the candidate binding remains inactive metadata."""
     require(plan.run.kind == RunKind.COLLECT, "bls_cpi_live_collect_required")
+    from market_data_foundation.historical.cpi_history import source_binding
+
+    history_source, history_binding = source_binding()
     require(
         plan.binding_candidate
         in (
+            history_binding,
             BLS_CPI_DIRECT_BINDING_CANDIDATE,
             BLS_CPI_SEPTEMBER_RELEASE_BINDING_CANDIDATE,
         )
-        and plan.source.key == plan.binding_candidate.source,
+        and plan.source.key == plan.binding_candidate.source
+        and (
+            plan.binding_candidate != history_binding or plan.source == history_source
+        ),
         "bls_cpi_live_binding_candidate_mismatch",
     )
     require(

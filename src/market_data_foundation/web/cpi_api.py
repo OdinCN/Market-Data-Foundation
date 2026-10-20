@@ -33,6 +33,7 @@ from market_data_foundation.historical.cpi_local_read import (
     read_local_cpi,
 )
 from market_data_foundation.web.cpi_jobs import CpiJobsHost, install_jobs
+from market_data_foundation.web.cpi_schedules import CpiSchedulesHost, install_schedules
 from market_data_foundation.web.dto import DTO
 from market_data_foundation.web.observability import (
     ObservabilityDTO,
@@ -170,6 +171,7 @@ class MeasurementDTO(DTO):
     reference_period: str
     comparison_period: str
     seasonal_adjustment: str
+    classification: Literal["provider_returned_calculation", "mdf_index_derived_change"]
     unit: Literal["percent"]
     value: str | None
     availability: str
@@ -192,6 +194,8 @@ class ReadDTO(DTO):
     mode: Literal["as_of", "exact_version"]
     content_mode: Literal["whole_version"] = "whole_version"
     content_sha256: str
+    obtained_at: str | None = None
+    provider_vintage: Literal["UNKNOWN"] = "UNKNOWN"
     measurements: list[MeasurementDTO] = Field(min_length=4, max_length=4)
 
 
@@ -249,6 +253,7 @@ def create_app(
     ui_directory: Path | None = None,
     observability_host: ObservabilityHost | None = None,
     jobs_host: CpiJobsHost | None = None,
+    schedules_host: CpiSchedulesHost | None = None,
     evidence_mode: Literal["OFFLINE_FIXTURE", "AUTHORIZED_READ_SCOPE"] = (
         "AUTHORIZED_READ_SCOPE"
     ),
@@ -263,7 +268,7 @@ def create_app(
     writes fail closed. HTTP acceptance never invokes a source or worker.
     """
     app = FastAPI(
-        title="MDF R5 bounded CPI", version="r5-i4", docs_url=None, redoc_url=None
+        title="MDF R5 bounded CPI", version="r5-i5", docs_url=None, redoc_url=None
     )
     evidence: Evidence = "UNCONFIGURED" if scope_factory is None else evidence_mode
 
@@ -437,7 +442,8 @@ def create_app(
             try:
                 with scope_factory() as scope:
                     view = _read(scope, query, query.version_identity)
-                    data = json.loads(view.content)["data"]
+                    content = json.loads(view.content)
+                    data = content["data"]
                     result = ReadDTO(
                         evidence_mode=evidence,
                         asset_identity=ASSET_ID,
@@ -450,6 +456,7 @@ def create_app(
                         as_of=query.as_of,
                         mode=query.mode,
                         content_sha256=view.version.content_digest,
+                        obtained_at=content.get("obtained_at"),
                         measurements=[
                             MeasurementDTO(
                                 **{
@@ -471,6 +478,7 @@ def create_app(
         )
 
     install_jobs(app, jobs_host, ErrorDTO)
+    install_schedules(app, schedules_host, ErrorDTO)
 
     if ui_directory is not None:
         app.mount("/", StaticFiles(directory=ui_directory, html=True), name="webui")

@@ -50,7 +50,7 @@ def test_code_inventory_is_stable_bounded_and_never_opens_host_scope(monkeypatch
         assert body["evidence_mode"] == "CODE_CONTRACTS_ONLY"
         assert body["scope"] == "NAMED_R5_I2_ALLOWLIST"
         entries = body["entries"]
-        assert len(entries) == 15 <= source_catalog.MAX_ENTRIES
+        assert len(entries) == 16 <= source_catalog.MAX_ENTRIES
         assert len({e["identity"] for e in entries}) == len(entries)
 
         def order(e):

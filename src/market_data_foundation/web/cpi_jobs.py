@@ -333,6 +333,24 @@ def _job(document: dict, history: tuple, spec: CpiJobSpec) -> JobDTO:
     )
 
 
+def _view_spec(document: dict, host: CpiJobsHost) -> CpiJobSpec:
+    """Read only family admission; manual HTTP acceptance stays exact-slot bound."""
+    from market_data_foundation.historical import cpi_history
+
+    spec = CpiJobSpec.from_document(document["spec"])
+    require(
+        spec == host.spec
+        or (
+            spec.source_revision == cpi_history.REVISION
+            and spec.definition == host.spec.definition
+            and spec.definition_revision == host.spec.definition_revision
+            and spec.effect_domain == host.spec.effect_domain
+        ),
+        "job_target_unsupported",
+    )
+    return spec
+
+
 def install_jobs(
     app: FastAPI, host: CpiJobsHost | None, validation_error: type[DTO]
 ) -> None:
@@ -384,10 +402,12 @@ def install_jobs(
             snapshot = host.reader().snapshot(query.job_identity)
             projected = []
             for document, history in snapshot:
-                if document["spec"] != host.spec.document():
+                try:
+                    target = _view_spec(document, host)
+                except Exception:
                     require(query.job_identity is None, "job_target_unsupported")
-                    continue  # The same journal may also contain admitted PPI jobs.
-                projected.append(_job(document, history, host.spec))
+                    continue
+                projected.append(_job(document, history, target))
             return JobsDTO(status="OK", classification=None, jobs=projected, **data)
         except Exception as error:
             failure = _error(error)
@@ -463,10 +483,7 @@ def install_jobs(
         if denied is not None:
             return denied
         try:
-            require(
-                host.reader().get(job_identity)["spec"] == host.spec.document(),
-                "job_target_unsupported",
-            )
+            _view_spec(host.reader().get(job_identity), host)
             host.journal.cancel(job_identity, host.clock())
             return AcceptedDTO(job_identity=job_identity)
         except Exception as error:

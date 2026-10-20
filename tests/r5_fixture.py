@@ -19,6 +19,38 @@ AT = (BASE + timedelta(seconds=10)).isoformat()
 
 
 def fixture_ledger(scenario="available"):
+    if scenario == "history_over_budget":
+        # Real history plans and canonical admission, without provider/SQLite IO.
+        from market_data_foundation.canonical.kernel import CanonicalKernel
+        from market_data_foundation.historical import cpi_history as history
+        from market_data_foundation.historical.bls_cpi_direct import (
+            persist_live_plan_before_publication,
+            publish_live_plan,
+        )
+        from tests.test_cpi_scheduling import raw_indices
+
+        ledger = InMemoryLedger()
+        kernel = CanonicalKernel(ledger, lambda: BASE + timedelta(seconds=4))
+        for index in range(129):
+            reference = history.month_text(history.month_number("2015-01") + index)
+            year = int(reference[:4])
+            evidence = history.HistoryEvidence(
+                raw_indices(year - 1, year),
+                reference,
+                BASE,
+                BASE + timedelta(seconds=1),
+                1,
+                "fixture://history-budget",
+            )
+            plan = history.build_plan(
+                evidence,
+                f"budget-{index}",
+                finished_at=BASE + timedelta(seconds=2),
+                frozen_at=BASE + timedelta(seconds=3),
+            )
+            persist_live_plan_before_publication(kernel, plan)
+            publication = publish_live_plan(kernel, plan)
+        return ledger, plan, publication
     ledger, plan, publication = _seed_bound_cpi()
     if scenario == "empty":
         ledger = InMemoryLedger()

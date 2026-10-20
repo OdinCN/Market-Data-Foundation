@@ -12,7 +12,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
 import App from "./App";
-import type { Transport } from "./api";
+import type { Catalog, Directory, Transport } from "./api";
 
 const query = { reference: "2026-08", as_of: "2026-10-06T00:00:10+00:00" };
 const bridges: ChildProcessWithoutNullStreams[] = [];
@@ -92,6 +92,212 @@ function go(name: string) {
 }
 
 describe("CPI UI → ASGI → canonical reader", () => {
+  it.each([
+    ["over_budget", query.reference, "p6-cpi-live:version"],
+    ["history_over_budget", "2025-09", "r5-cpi-history-budget-128-a1:version"],
+  ])(
+    "reads a named exact link despite the bounded catalog exceeding 128 versions: %s",
+    async (scenario, reference, identity) => {
+      location.hash = new URLSearchParams({
+        page: "5",
+        asset: "mdf.macro.bls.cpi.headlines",
+        asset_revision: "p3-r1",
+        reference,
+        as_of: query.as_of,
+        version: identity,
+      }).toString();
+      const api = bridge(scenario);
+      render(<App transport={api.transport} />);
+      await screen.findByText(
+        /没有满足当前条件的数据服务/,
+        {},
+        { timeout: 10000 },
+      );
+      expect(
+        screen.getAllByText(/operator_query_budget_exceeded/).length,
+      ).toBeGreaterThan(0);
+      expect(screen.getByText("没有可核实的版本")).toBeTruthy();
+      expect(api.requests.some((path) => path.includes("/read?"))).toBe(false);
+      const read = button("读取本地数据");
+      expect(read.hasAttribute("disabled")).toBe(false);
+      fireEvent.click(read);
+      await screen.findByText(/读取成功/);
+      expect(screen.getByText(identity)).toBeTruthy();
+      expect(screen.getByText(/没有满足当前条件的数据服务/)).toBeTruthy();
+      fireEvent.change(screen.getByLabelText("读取方式"), {
+        target: { value: "as_of" },
+      });
+      expect(screen.queryByText(/读取成功/)).toBeNull();
+      expect(read.hasAttribute("disabled")).toBe(true);
+      fireEvent.change(screen.getByLabelText("读取方式"), {
+        target: { value: "exact_version" },
+      });
+      expect(read.hasAttribute("disabled")).toBe(false);
+      fireEvent.change(screen.getByLabelText("版本标识"), {
+        target: { value: identity.slice(0, -1) },
+      });
+      expect(read.hasAttribute("disabled")).toBe(true);
+      expect(
+        api.requests.filter((path) => path.includes("/read?")),
+      ).toHaveLength(1);
+    },
+  );
+
+  it.each<Record<string, string>>([
+    { asset: "missing" },
+    { asset_revision: "wrong-revision" },
+    { asset_revision: "" },
+    { operation: "missing" },
+    { operation: "market_data_foundation.domain_contracts.kd:KD_B043" },
+  ])(
+    "keeps exact-link identity gates when the catalog exceeds budget: %j",
+    async (changes) => {
+      location.hash = new URLSearchParams({
+        page: "5",
+        asset: "mdf.macro.bls.cpi.headlines",
+        asset_revision: "p3-r1",
+        ...query,
+        version: "p6-cpi-live:version",
+        ...changes,
+      }).toString();
+      const api = bridge("over_budget");
+      render(<App transport={api.transport} />);
+      await waitFor(
+        () => expect(button("刷新").hasAttribute("disabled")).toBe(false),
+        { timeout: 10000 },
+      );
+      expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
+      expect(api.requests.some((path) => path.includes("/read?"))).toBe(false);
+    },
+  );
+
+  it("leaves a nonexistent named version to the Reader without claiming service availability", async () => {
+    location.hash = new URLSearchParams({
+      page: "5",
+      asset: "mdf.macro.bls.cpi.headlines",
+      asset_revision: "p3-r1",
+      ...query,
+      version: "absent-version",
+    }).toString();
+    const api = bridge("over_budget");
+    render(<App transport={api.transport} />);
+    const read = await screen.findByRole(
+      "button",
+      { name: "读取本地数据" },
+      { timeout: 10000 },
+    );
+    fireEvent.click(read);
+    await screen.findByText(/NOT_AVAILABLE · version_not_found/);
+    expect(screen.queryByText(/读取成功/)).toBeNull();
+    expect(screen.getByText(/没有满足当前条件的数据服务/)).toBeTruthy();
+    expect(api.requests.filter((path) => path.includes("/read?"))).toHaveLength(
+      1,
+    );
+  });
+
+  it("keeps page 06 controls usable while editing an exact link without an as-of service", async () => {
+    location.hash = new URLSearchParams({
+      page: "5",
+      asset: "mdf.macro.bls.cpi.headlines",
+      asset_revision: "p3-r1",
+      reference: query.reference,
+      as_of: query.as_of,
+      version: "p6-cpi-live:version",
+    }).toString();
+    // Isolate React mounting and action gates from the separate TestClient bridge.
+    const catalog: Catalog = {
+      status: "NOT_AVAILABLE",
+      classification: "as_of_ambiguous",
+      evidence_mode: "OFFLINE_FIXTURE",
+      ...query,
+      definition: {
+        identity: "mdf.macro.bls.cpi.headlines",
+        revision: "p3-r1",
+        title: "Synthetic CPI",
+        registration: "CANONICAL_CONTRACT",
+        source_qualified_contract: true,
+        source_health: "UNKNOWN",
+        binding_activation: "UNKNOWN",
+      },
+      asset: {
+        identity: "mdf.macro.bls.cpi.headlines",
+        definition_revision: "p3-r1",
+        local_holding: "UNKNOWN",
+        qualification: "as_of_ambiguous",
+        versions: ["p6-cpi-live:version", "synthetic-second-version"].map(
+          (identity) => ({
+            identity,
+            frozen_at: query.as_of,
+            completeness: "synthetic-complete",
+            selection_state: "eligible",
+            binding_identity: null,
+            binding_revision: null,
+            publications: [],
+          }),
+        ),
+      },
+      service: null,
+    };
+    const directory: Directory = {
+      status: "OK",
+      evidence_mode: "CODE_CONTRACTS_ONLY",
+      scope: "NAMED_R5_I2_ALLOWLIST",
+      entries: [],
+    };
+    const requests: string[] = [];
+    const api = {
+      requests,
+      transport: (async (input, init) => {
+        expect(init?.method).toBe("GET");
+        const path = String(input);
+        requests.push(path);
+        const isRead = path.startsWith("/api/r5/cpi/read?");
+        return {
+          ok: !isRead,
+          json: async () =>
+            isRead
+              ? { status: "NOT_AVAILABLE", classification: "version_not_found" }
+              : path.startsWith("/api/r5/sources?")
+                ? directory
+                : catalog,
+        } as Response;
+      }) as Transport,
+    };
+    render(<App transport={api.transport} />);
+    await screen.findByRole("heading", { name: "本地服务读取" });
+    expect(screen.getByText(/没有满足当前条件的数据服务/)).toBeTruthy();
+    const mode = screen.getByLabelText("读取方式");
+    const version = screen.getByLabelText("版本标识");
+    const read = button("读取本地数据");
+    expect(read.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(read);
+    await screen.findByRole("alert");
+    const before = api.requests.length;
+    for (const value of ["p6-cpi-live:versio", ""]) {
+      fireEvent.change(version, { target: { value } });
+      expect(screen.getByLabelText("版本标识")).toBe(version);
+      expect(screen.getByLabelText("读取方式")).toBe(mode);
+      expect(read.hasAttribute("disabled")).toBe(true);
+      expect(screen.queryByText(/读取成功/)).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+      fireEvent.click(read);
+    }
+    fireEvent.change(version, { target: { value: "p6-cpi-live:version" } });
+    expect(read.hasAttribute("disabled")).toBe(false);
+    fireEvent.change(mode, { target: { value: "as_of" } });
+    expect(screen.getByLabelText("读取方式")).toBe(mode);
+    expect(read.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(read);
+    expect(api.requests).toHaveLength(before);
+    fireEvent.change(mode, { target: { value: "exact_version" } });
+    expect(screen.getByLabelText("读取方式")).toBe(mode);
+    expect(read.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(read);
+    await screen.findByRole("alert");
+    expect(screen.getByText(/没有满足当前条件的数据服务/)).toBeTruthy();
+    expect(api.requests).toHaveLength(before + 1);
+  });
+
   it("keeps seven entries, identity through 03→04→06, both readers and themes", async () => {
     const api = bridge();
     render(<App transport={api.transport} initialQuery={query} />);
@@ -138,6 +344,7 @@ describe("CPI UI → ASGI → canonical reader", () => {
     expect(document.querySelector(".shell.dark")).toBeTruthy();
     fireEvent.click(button("收起侧栏"));
     expect(button("展开侧栏")).toBeTruthy();
+    expect(api.requests.some((path) => path.includes("/plans"))).toBe(false);
     go("采集任务");
     expect(
       screen.getByRole("heading", { name: "CPI 人工一次性初始化" }),
@@ -145,10 +352,25 @@ describe("CPI UI → ASGI → canonical reader", () => {
     expect(screen.getAllByRole("tab")).toHaveLength(3);
     expect(button("持久提交一次性意图").hasAttribute("disabled")).toBe(true);
     expect(screen.queryByText(/读取成功/)).toBeNull();
-    await waitFor(() => expect(api.requests).toHaveLength(5));
+    // The task page mounts both the legacy job view and history-plan form.
+    // Its plan GET reads eligibility/state; it must never execute a plan.
+    await waitFor(() => expect(api.requests).toHaveLength(6));
     expect(
-      api.requests.filter((path) => path.startsWith("/api/r5/sources")),
-    ).toHaveLength(1);
+      api.requests
+        .map((path) => new URL(path, "http://fixture").pathname)
+        .sort(),
+    ).toEqual([
+      "/api/r5/cpi",
+      "/api/r5/cpi/jobs",
+      "/api/r5/cpi/plans",
+      "/api/r5/cpi/read",
+      "/api/r5/cpi/read",
+      "/api/r5/sources",
+    ]);
+    fireEvent.click(screen.getByRole("tab", { name: "周期任务" }));
+    await screen.findByRole("heading", { name: "CPI 有界周期计划" });
+    expect(button("持久提交历史计划").hasAttribute("disabled")).toBe(true);
+    expect(api.requests).toHaveLength(6);
   });
 
   it.each([
@@ -186,7 +408,13 @@ describe("CPI UI → ASGI → canonical reader", () => {
     }
     go("数据服务");
     expect(screen.getByText(/没有满足当前条件的数据服务/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
+    if (noAsset) {
+      expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
+    } else {
+      expect(button("读取本地数据").hasAttribute("disabled")).toBe(true);
+      expect(screen.getByLabelText("读取方式")).toBeTruthy();
+    }
+    expect(api.requests.every((path) => !path.includes("/read?"))).toBe(true);
   });
 
   it.each(["content_storage_fault", "scope_exit_fault"])(

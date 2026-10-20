@@ -107,6 +107,58 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/r5/cpi/plans": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Plans */
+    get: operations["cpi_plans"];
+    put?: never;
+    /** Accept */
+    post: operations["cpi_plan_accept"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/cpi/plans/{plan_identity}/action": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Action */
+    post: operations["cpi_plan_action"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/cpi/plans/{plan_identity}/backfill": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Backfill */
+    post: operations["cpi_plan_backfill"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -157,6 +209,24 @@ export interface components {
       qualification: components["schemas"]["Failure"] | null;
       /** Versions */
       versions: components["schemas"]["VersionDTO"][];
+    };
+    /** Backfill */
+    Backfill: {
+      /** Start */
+      start: string;
+      /** End */
+      end: string;
+    };
+    /** BatchDTO */
+    BatchDTO: {
+      /** Key */
+      key: string;
+      /** Reference */
+      reference: string;
+      /** Jobs */
+      jobs: components["schemas"]["ChildDTO"][];
+      /** Complete */
+      complete: boolean;
     };
     /** BindingContractDTO */
     "BindingContractDTO-Input": {
@@ -221,6 +291,36 @@ export interface components {
       definition: components["schemas"]["DefinitionDTO"];
       asset: components["schemas"]["AssetDTO-Output"] | null;
       service: components["schemas"]["ServiceDTO"] | null;
+    };
+    /** ChildDTO */
+    ChildDTO: {
+      /** Job Identity */
+      job_identity: string;
+      /**
+       * State
+       * @enum {string}
+       */
+      state:
+        | "pending"
+        | "running"
+        | "failed"
+        | "cancelled"
+        | "succeeded"
+        | "outcome_unknown";
+      /** Attempt Identity */
+      attempt_identity: string | null;
+      /** Raw Sha256 */
+      raw_sha256: string | null;
+      /** Version Identity */
+      version_identity: string | null;
+      /** Publication Occurrence */
+      publication_occurrence: string | null;
+      /** Read As Of */
+      read_as_of: string | null;
+      /** Classification */
+      classification: string | null;
+      /** Reconciliation */
+      reconciliation: string | null;
     };
     /** ContractKeyDTO */
     ContractKeyDTO: {
@@ -1088,6 +1188,13 @@ export interface components {
       /** Seasonal Adjustment */
       seasonal_adjustment: string;
       /**
+       * Classification
+       * @enum {string}
+       */
+      classification:
+        | "provider_returned_calculation"
+        | "mdf_index_derived_change";
+      /**
        * Unit
        * @constant
        */
@@ -1294,6 +1401,181 @@ export interface components {
        */
       clock: "UTC_REALTIME";
     };
+    /** PlanAccepted */
+    PlanAccepted: {
+      /**
+       * Status
+       * @default OK
+       * @constant
+       */
+      status: "OK";
+      /**
+       * Acceptance
+       * @default DURABLE
+       * @constant
+       */
+      acceptance: "DURABLE";
+      /** Plan Identity */
+      plan_identity: string;
+    };
+    /** PlanAction */
+    PlanAction: {
+      /**
+       * Action
+       * @enum {string}
+       */
+      action: "pause" | "resume" | "cancel";
+    };
+    /** PlanDTO */
+    "PlanDTO-Input": {
+      /** Identity */
+      identity: string;
+      spec: components["schemas"]["PlanSpecDTO"];
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "active" | "paused" | "cancelled" | "completed";
+      /** Cycle */
+      cycle: number;
+      /** Cursor */
+      cursor: number;
+      /** Inflight Key */
+      inflight_key: string | null;
+      /** Retry Queue */
+      retry_queue: string[];
+      /** Next Due */
+      next_due: string;
+      /** Created At */
+      created_at: string;
+      /** Updated At */
+      updated_at: string;
+      /** Batches */
+      batches: components["schemas"]["BatchDTO"][];
+      /** Completed Batches */
+      completed_batches: number;
+      /** Total Batches */
+      total_batches: number;
+    };
+    /** PlanDTO */
+    "PlanDTO-Output": {
+      /** Identity */
+      identity: string;
+      spec: components["schemas"]["PlanSpecDTO"];
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "active" | "paused" | "cancelled" | "completed";
+      /** Cycle */
+      cycle: number;
+      /** Cursor */
+      cursor: number;
+      /** Inflight Key */
+      inflight_key: string | null;
+      /** Retry Queue */
+      retry_queue: string[];
+      /** Next Due */
+      next_due: string;
+      /** Created At */
+      created_at: string;
+      /** Updated At */
+      updated_at: string;
+      /** Batches */
+      batches: components["schemas"]["BatchDTO"][];
+      /** Completed Batches */
+      completed_batches: number;
+      /** Total Batches */
+      total_batches: number;
+    };
+    /** PlanError */
+    PlanError: {
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "UNKNOWN" | "NOT_AVAILABLE";
+      /** Classification */
+      classification: string;
+    };
+    /** PlanIntent */
+    PlanIntent: {
+      /** Plan Identity */
+      plan_identity: string;
+      /** Asset Identity */
+      asset_identity: string;
+      /** Asset Revision */
+      asset_revision: string;
+      /** Name */
+      name: string;
+      /** Start */
+      start: string;
+      /** End */
+      end: string;
+      /** Timezone */
+      timezone: string;
+      /** Window Start */
+      window_start: string;
+      /** Window End */
+      window_end: string;
+      /** First Due */
+      first_due: string;
+      /** Interval Seconds */
+      interval_seconds: number;
+      /** Cycles */
+      cycles: number;
+    };
+    /** PlanSpecDTO */
+    PlanSpecDTO: {
+      /** Name */
+      name: string;
+      /** Start */
+      start: string;
+      /** End */
+      end: string;
+      /** Timezone */
+      timezone: string;
+      /** Window Start */
+      window_start: string;
+      /** Window End */
+      window_end: string;
+      /** First Due */
+      first_due: string;
+      /** Interval Seconds */
+      interval_seconds: number;
+      /** Cycles */
+      cycles: number;
+      /**
+       * Effect Domain
+       * @enum {string}
+       */
+      effect_domain: "synthetic" | "owner_nonproduction";
+    };
+    /** PlansDTO */
+    PlansDTO: {
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "OK" | "UNKNOWN";
+      /** Classification */
+      classification: string | null;
+      /**
+       * Evidence Mode
+       * @enum {string}
+       */
+      evidence_mode: "UNCONFIGURED" | "OFFLINE_FIXTURE" | "AUTHORIZED_HOST";
+      /** Write Eligible */
+      write_eligible: boolean;
+      /** Asset Identity */
+      asset_identity: string | null;
+      /** Asset Revision */
+      asset_revision: string | null;
+      /** Tier */
+      tier: ("unregistered" | "registered") | null;
+      /** Plans */
+      plans: components["schemas"]["PlanDTO-Output"][];
+    };
     /** PublicationDTO */
     PublicationDTO: {
       /** Identity */
@@ -1354,6 +1636,14 @@ export interface components {
       content_mode: "whole_version";
       /** Content Sha256 */
       content_sha256: string;
+      /** Obtained At */
+      obtained_at?: string | null;
+      /**
+       * Provider Vintage
+       * @default UNKNOWN
+       * @constant
+       */
+      provider_vintage: "UNKNOWN";
       /** Measurements */
       measurements: components["schemas"]["MeasurementDTO"][];
     };
@@ -1859,6 +2149,246 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["JobError"];
+        };
+      };
+    };
+  };
+  cpi_plans: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlansDTO"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanError"];
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanError"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorDTO"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanError"];
+        };
+      };
+    };
+  };
+  cpi_plan_accept: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PlanIntent"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanAccepted"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanError"];
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanError"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorDTO"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanError"];
+        };
+      };
+    };
+  };
+  cpi_plan_action: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        plan_identity: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PlanAction"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanAccepted"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanError"];
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanError"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorDTO"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanError"];
+        };
+      };
+    };
+  };
+  cpi_plan_backfill: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        plan_identity: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Backfill"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanAccepted"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanError"];
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanError"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorDTO"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PlanError"];
         };
       };
     };

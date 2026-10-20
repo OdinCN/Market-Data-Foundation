@@ -45,6 +45,22 @@ const defaultQuery = (): Query => ({
 });
 const errorName = (error: unknown) =>
   error instanceof ApiFailure ? error.classification : "request_failed";
+function linkedRead() {
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const reference = hash.get("reference");
+  const version = hash.get("version");
+  const as_of = hash.get("as_of");
+  return reference &&
+    /^[0-9]{4}-(0[1-9]|1[0-2])$/.test(reference) &&
+    version &&
+    /^[a-zA-Z0-9:._-]{1,256}$/.test(version) &&
+    as_of &&
+    /(?:Z|[+-][0-9]{2}:[0-9]{2})$/.test(as_of) &&
+    Number.isFinite(Date.parse(as_of))
+    ? { query: { reference, as_of }, version }
+    : null;
+}
+
 function route() {
   const hash = new URLSearchParams(location.hash.slice(1));
   const page = Number(hash.get("page") ?? 2);
@@ -75,7 +91,9 @@ export default function App({
   const [page, setPage] = useState(route);
   const [collapsed, setCollapsed] = useState(false);
   const [dark, setDark] = useState(false);
-  const [draft, setDraft] = useState<Query>(initialQuery ?? defaultQuery());
+  const [draft, setDraft] = useState<Query>(
+    linkedRead()?.query ?? initialQuery ?? defaultQuery(),
+  );
   const [query, setQuery] = useState(draft);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [directory, setDirectory] = useState<Directory | null>(null);
@@ -85,8 +103,11 @@ export default function App({
   const [busy, setBusy] = useState(false);
   const [poll, setPoll] = useState(false);
   const [generation, setGeneration] = useState(0);
-  const [mode, setMode] = useState<ReadMode>("as_of");
-  const [version, setVersion] = useState("");
+  const [mode, setMode] = useState<ReadMode>(
+    linkedRead() ? "exact_version" : "as_of",
+  );
+  const [version, setVersion] = useState(linkedRead()?.version ?? "");
+  const [exactLink, setExactLink] = useState(linkedRead);
   const [preview, setPreview] = useState<ReadResult | null>(null);
   const [readFailure, setReadFailure] = useState<{
     status: string;
@@ -98,7 +119,17 @@ export default function App({
   const refresh = useCallback(() => setGeneration((value) => value + 1), []);
 
   useEffect(() => {
-    const onHash = () => setPage(route());
+    const onHash = () => {
+      setPage(route());
+      const target = linkedRead();
+      setExactLink(target);
+      if (target) {
+        setDraft(target.query);
+        setQuery(target.query);
+        setMode("exact_version");
+        setVersion(target.version);
+      }
+    };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -247,12 +278,36 @@ export default function App({
           selected.asset.revision === catalog.definition.revision &&
           selected.source_qualified_contract === true)),
   );
-  const canRead = Boolean(
+  // A named exact link is an input to the existing Reader, never holding or
+  // as-of service evidence. Catalog enumeration keeps its finite budget.
+  const namedExactRead = Boolean(
+    page.page === 5 &&
+      showCpi &&
+      matches &&
+      page.identity === "mdf.macro.bls.cpi.headlines" &&
+      page.revision === "p3-r1" &&
+      catalog?.definition.source_qualified_contract &&
+      catalog.classification === "operator_query_budget_exceeded" &&
+      exactLink &&
+      query.reference === exactLink.query.reference &&
+      query.as_of === exactLink.query.as_of &&
+      (!page.operation || selected?.source_qualified_contract === true),
+  );
+  const showReadControls = Boolean(
     (page.page === 3 || page.page === 5) &&
       showCpi &&
       matches &&
-      catalog?.asset &&
-      (page.page === 3 || catalog?.service),
+      (catalog?.asset || namedExactRead),
+  );
+  const canRead = Boolean(
+    showReadControls &&
+      (page.page === 3 ||
+        (mode === "as_of"
+          ? catalog?.service
+          : catalog?.asset?.versions.some(
+              (item) => item.identity === version,
+            ) ||
+            (namedExactRead && version === exactLink?.version))),
   );
   return (
     <div
@@ -696,7 +751,7 @@ export default function App({
                       )}
                     </>
                   )}
-                  {canRead && (
+                  {showReadControls && (
                     <section className="panel">
                       <div className="panel-title">
                         <h2>
@@ -704,6 +759,12 @@ export default function App({
                         </h2>
                         <Chip>whole_version</Chip>
                       </div>
+                      {namedExactRead && (
+                        <p className="muted">
+                          目录预算已达上限。具名版本须经本地 Reader 独立核验；
+                          当前持有与按时点服务资格仍为 UNKNOWN。
+                        </p>
+                      )}
                       <div className="read-controls">
                         <label>
                           读取方式
@@ -716,6 +777,7 @@ export default function App({
                               setVersion(
                                 catalog?.service?.version_identity ??
                                   catalog?.asset?.versions[0]?.identity ??
+                                  exactLink?.version ??
                                   "",
                               );
                             }}
@@ -743,7 +805,9 @@ export default function App({
                           type="button"
                           className="primary"
                           disabled={
-                            reading || (mode === "exact_version" && !version)
+                            !canRead ||
+                            reading ||
+                            (mode === "exact_version" && !version)
                           }
                           onClick={read}
                         >
@@ -764,6 +828,14 @@ export default function App({
                           <p role="status">
                             读取成功 · {preview.evidence_mode} ·{" "}
                             {preview.content_mode}
+                          </p>
+                          <p>
+                            取得时刻 {preview.obtained_at ?? "UNKNOWN"} ·
+                            Provider vintage UNKNOWN ·
+                            {preview.measurements[0]?.classification ===
+                            "mdf_index_derived_change"
+                              ? "MDF 从原始指数计算；不是 Provider pct_changes"
+                              : "Provider 返回的 pct_changes"}
                           </p>
                           <p>
                             <code>{preview.version_identity}</code> /{" "}
