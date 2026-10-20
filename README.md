@@ -48,3 +48,7 @@ and `docs/qualification/q0-runtime.md` for tested runtime/candidate evidence.
 `MDF_CI_READ_PAT` is reserved for future read-only access to other private
 repositories. Same-repository CI does not require it. Never put its value, other
 credentials, private keys or production data in this repository.
+
+The [R5-I1 CPI read-only candidate](docs/r5-i1-cpi-readonly.md) adds a
+React/TypeScript UI and strict DTO API over existing local canonical readers.
+It defaults to UNKNOWN without an explicitly supplied read capability.

@@ -1,5 +1,6 @@
 """Reject tracked credentials, private keys and local runtime material offline."""
 
+import argparse
 import re
 import subprocess
 from fnmatch import fnmatch
@@ -22,6 +23,7 @@ FORBIDDEN_DIRECTORIES = {
     "dist",
     "logs",
     "notes",
+    "node_modules",
     "provider-lab",
     "secrets",
     "tmp",
@@ -62,12 +64,18 @@ SENSITIVE_CONTENT = re.compile(
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--include-untracked", action="store_true")
+    options = parser.parse_args()
     root = Path(
         subprocess.check_output(
             ["git", "rev-parse", "--show-toplevel"], text=True
         ).strip()
     )
-    paths = subprocess.check_output(["git", "ls-files", "-z"], cwd=root).split(b"\0")
+    command = ["git", "ls-files", "-z"]
+    if options.include_untracked:
+        command.extend(["--cached", "--others", "--exclude-standard"])
+    paths = subprocess.check_output(command, cwd=root).split(b"\0")
     failures = []
     for raw_path in filter(None, paths):
         path = PurePosixPath(raw_path.decode())
@@ -90,7 +98,8 @@ def main() -> None:
         raise SystemExit(
             "Repository hygiene failed (paths only):\n" + "\n".join(failures)
         )
-    print(f"Repository hygiene passed: {len(list(filter(None, paths)))} tracked files.")
+    scope = "tracked and untracked" if options.include_untracked else "tracked"
+    print(f"Repository hygiene passed: {len(list(filter(None, paths)))} {scope} files.")
 
 
 if __name__ == "__main__":

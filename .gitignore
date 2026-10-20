@@ -57,3 +57,7 @@ id_ed25519*
 .vscode/
 .DS_Store
 *.swp
+
+# R5 WebUI dependencies and generated build caches
+node_modules/
+*.tsbuildinfo

@@ -9,11 +9,14 @@ description = "Market-data foundation qualification harness"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
 dependencies = [
+    "fastapi==0.119.1",
     "psycopg[binary]==3.3.6",
+    "pydantic==2.12.3",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx==0.28.1",
     "jsonschema>=4.25,<5",
     "pytest>=8.3,<9",
     "rfc3339-validator>=0.1.4,<0.2",

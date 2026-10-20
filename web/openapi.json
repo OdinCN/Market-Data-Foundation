@@ -1,0 +1,760 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MDF R5 CPI read-only",
+    "version": "r5-i1"
+  },
+  "paths": {
+    "/api/r5/cpi": {
+      "get": {
+        "summary": "Catalog",
+        "operationId": "cpi_catalog",
+        "parameters": [
+          {
+            "name": "reference",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 7,
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "title": "Reference"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 40,
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDTO"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
+    "/api/r5/cpi/read": {
+      "get": {
+        "summary": "Read",
+        "operationId": "cpi_read",
+        "parameters": [
+          {
+            "name": "reference",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 7,
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "title": "Reference"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 40,
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "as_of",
+                "exact_version"
+              ],
+              "type": "string",
+              "title": "Mode"
+            }
+          },
+          {
+            "name": "version_identity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadDTO"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDTO"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDTO"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDTO"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AssetDTO-Input": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "title": "Identity"
+          },
+          "definition_revision": {
+            "type": "string",
+            "title": "Definition Revision"
+          },
+          "local_holding": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "VERIFIED_FOR_REQUEST"
+            ],
+            "title": "Local Holding"
+          },
+          "qualification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Failure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/VersionDTO"
+            },
+            "type": "array",
+            "title": "Versions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "definition_revision",
+          "local_holding",
+          "qualification",
+          "versions"
+        ],
+        "title": "AssetDTO"
+      },
+      "AssetDTO-Output": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "title": "Identity"
+          },
+          "definition_revision": {
+            "type": "string",
+            "title": "Definition Revision"
+          },
+          "local_holding": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "VERIFIED_FOR_REQUEST"
+            ],
+            "title": "Local Holding"
+          },
+          "qualification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Failure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/VersionDTO"
+            },
+            "type": "array",
+            "title": "Versions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "definition_revision",
+          "local_holding",
+          "qualification",
+          "versions"
+        ],
+        "title": "AssetDTO"
+      },
+      "CatalogDTO": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "OK",
+              "UNKNOWN",
+              "NOT_AVAILABLE"
+            ],
+            "title": "Status"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Failure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence_mode": {
+            "type": "string",
+            "enum": [
+              "UNCONFIGURED",
+              "OFFLINE_FIXTURE",
+              "AUTHORIZED_READ_SCOPE"
+            ],
+            "title": "Evidence Mode"
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "as_of": {
+            "type": "string",
+            "title": "As Of"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/DefinitionDTO"
+          },
+          "asset": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssetDTO-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "service": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServiceDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "classification",
+          "evidence_mode",
+          "reference",
+          "as_of",
+          "definition",
+          "asset",
+          "service"
+        ],
+        "title": "CatalogDTO"
+      },
+      "DefinitionDTO": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "title": "Identity"
+          },
+          "revision": {
+            "type": "string",
+            "title": "Revision"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "registration": {
+            "type": "string",
+            "const": "CANONICAL_CONTRACT",
+            "title": "Registration",
+            "default": "CANONICAL_CONTRACT"
+          },
+          "source_qualified_contract": {
+            "type": "boolean",
+            "title": "Source Qualified Contract"
+          },
+          "source_health": {
+            "type": "string",
+            "const": "UNKNOWN",
+            "title": "Source Health",
+            "default": "UNKNOWN"
+          },
+          "binding_activation": {
+            "type": "string",
+            "const": "UNKNOWN",
+            "title": "Binding Activation",
+            "default": "UNKNOWN"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "revision",
+          "title",
+          "source_qualified_contract"
+        ],
+        "title": "DefinitionDTO"
+      },
+      "ErrorDTO": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "NOT_AVAILABLE"
+            ],
+            "title": "Status"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/Failure"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "classification"
+        ],
+        "title": "ErrorDTO"
+      },
+      "Failure": {
+        "type": "string",
+        "enum": [
+          "capability_not_configured",
+          "invalid_request",
+          "storage_unavailable",
+          "definition_not_admitted",
+          "definition_not_found",
+          "version_not_found",
+          "version_definition_mismatch",
+          "content_missing",
+          "content_digest_mismatch",
+          "unpublished_or_unavailable_as_of",
+          "version_withdrawn",
+          "version_superseded",
+          "as_of_no_version",
+          "as_of_ambiguous",
+          "publication_state_invalid",
+          "lineage_missing_or_mismatched",
+          "invalid_as_of",
+          "operator_query_budget_exceeded",
+          "reference_not_admitted",
+          "reference_stale_or_mismatched",
+          "coverage_partial_or_mismatched",
+          "quality_not_admitted",
+          "cpi_payload_invalid_or_mismatched"
+        ],
+        "title": "Failure"
+      },
+      "MeasurementDTO": {
+        "properties": {
+          "measure_identity": {
+            "type": "string",
+            "title": "Measure Identity"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "series_id": {
+            "type": "string",
+            "title": "Series Id"
+          },
+          "reference_period": {
+            "type": "string",
+            "title": "Reference Period"
+          },
+          "comparison_period": {
+            "type": "string",
+            "title": "Comparison Period"
+          },
+          "seasonal_adjustment": {
+            "type": "string",
+            "title": "Seasonal Adjustment"
+          },
+          "unit": {
+            "type": "string",
+            "const": "percent",
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "availability": {
+            "type": "string",
+            "title": "Availability"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          },
+          "preliminary": {
+            "type": "boolean",
+            "title": "Preliminary"
+          },
+          "finality": {
+            "type": "string",
+            "title": "Finality"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "measure_identity",
+          "name",
+          "series_id",
+          "reference_period",
+          "comparison_period",
+          "seasonal_adjustment",
+          "unit",
+          "value",
+          "availability",
+          "unavailable_reason",
+          "preliminary",
+          "finality"
+        ],
+        "title": "MeasurementDTO"
+      },
+      "PublicationDTO": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "title": "Identity"
+          },
+          "decision": {
+            "type": "string",
+            "title": "Decision"
+          },
+          "decision_at": {
+            "type": "string",
+            "title": "Decision At"
+          },
+          "usable_at": {
+            "type": "string",
+            "title": "Usable At"
+          },
+          "effective_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective At"
+          },
+          "pending_clocks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pending Clocks"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "decision",
+          "decision_at",
+          "usable_at",
+          "effective_at",
+          "pending_clocks"
+        ],
+        "title": "PublicationDTO"
+      },
+      "ReadDTO": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "OK",
+            "title": "Status",
+            "default": "OK"
+          },
+          "evidence_mode": {
+            "type": "string",
+            "enum": [
+              "UNCONFIGURED",
+              "OFFLINE_FIXTURE",
+              "AUTHORIZED_READ_SCOPE"
+            ],
+            "title": "Evidence Mode"
+          },
+          "asset_identity": {
+            "type": "string",
+            "title": "Asset Identity"
+          },
+          "definition_revision": {
+            "type": "string",
+            "title": "Definition Revision"
+          },
+          "version_identity": {
+            "type": "string",
+            "title": "Version Identity"
+          },
+          "publication_identity": {
+            "type": "string",
+            "title": "Publication Identity"
+          },
+          "publication_decision_at": {
+            "type": "string",
+            "title": "Publication Decision At"
+          },
+          "publication_usable_at": {
+            "type": "string",
+            "title": "Publication Usable At"
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "as_of": {
+            "type": "string",
+            "title": "As Of"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "as_of",
+              "exact_version"
+            ],
+            "title": "Mode"
+          },
+          "content_mode": {
+            "type": "string",
+            "const": "whole_version",
+            "title": "Content Mode",
+            "default": "whole_version"
+          },
+          "content_sha256": {
+            "type": "string",
+            "title": "Content Sha256"
+          },
+          "measurements": {
+            "items": {
+              "$ref": "#/components/schemas/MeasurementDTO"
+            },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Measurements"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "evidence_mode",
+          "asset_identity",
+          "definition_revision",
+          "version_identity",
+          "publication_identity",
+          "publication_decision_at",
+          "publication_usable_at",
+          "reference",
+          "as_of",
+          "mode",
+          "content_sha256",
+          "measurements"
+        ],
+        "title": "ReadDTO"
+      },
+      "ServiceDTO": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "title": "Identity"
+          },
+          "asset_identity": {
+            "type": "string",
+            "title": "Asset Identity"
+          },
+          "version_identity": {
+            "type": "string",
+            "title": "Version Identity"
+          },
+          "publication_identity": {
+            "type": "string",
+            "title": "Publication Identity"
+          },
+          "qualification": {
+            "type": "string",
+            "const": "VERIFIED_FOR_REQUEST",
+            "title": "Qualification",
+            "default": "VERIFIED_FOR_REQUEST"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "asset_identity",
+          "version_identity",
+          "publication_identity"
+        ],
+        "title": "ServiceDTO"
+      },
+      "VersionDTO": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "title": "Identity"
+          },
+          "frozen_at": {
+            "type": "string",
+            "title": "Frozen At"
+          },
+          "completeness": {
+            "type": "string",
+            "title": "Completeness"
+          },
+          "selection_state": {
+            "type": "string",
+            "title": "Selection State"
+          },
+          "binding_identity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding Identity"
+          },
+          "binding_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding Revision"
+          },
+          "publications": {
+            "items": {
+              "$ref": "#/components/schemas/PublicationDTO"
+            },
+            "type": "array",
+            "title": "Publications"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "frozen_at",
+          "completeness",
+          "selection_state",
+          "binding_identity",
+          "binding_revision",
+          "publications"
+        ],
+        "title": "VersionDTO"
+      }
+    }
+  }
+}
