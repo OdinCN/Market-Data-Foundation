@@ -140,11 +140,12 @@ describe("CPI UI → ASGI → canonical reader", () => {
     expect(button("展开侧栏")).toBeTruthy();
     go("采集任务");
     expect(
-      screen.getByRole("heading", { name: "本模块尚未实现" }),
+      screen.getByRole("heading", { name: "CPI 人工一次性初始化" }),
     ).toBeTruthy();
-    expect(screen.getByText("新建采集 / 周期任务 / 执行记录")).toBeTruthy();
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+    expect(button("持久提交一次性意图").hasAttribute("disabled")).toBe(true);
     expect(screen.queryByText(/读取成功/)).toBeNull();
-    expect(api.requests).toHaveLength(4);
+    await waitFor(() => expect(api.requests).toHaveLength(5));
     expect(
       api.requests.filter((path) => path.startsWith("/api/r5/sources")),
     ).toHaveLength(1);
@@ -259,7 +260,10 @@ describe("CPI UI → ASGI → canonical reader", () => {
     expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
     for (const name of ["运行总览", "平台管理"]) {
       go(name);
-      await screen.findByText(/UNCONFIGURED · UNKNOWN/);
+      await within(screen.getByLabelText("运行观测")).findByText(
+        "UNCONFIGURED · UNKNOWN",
+        { selector: '[role="status"]' },
+      );
       expect(screen.getByLabelText("运行观测")).toBeTruthy();
     }
   });

@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "MDF R5 read-only",
-    "version": "r5-i3"
+    "title": "MDF R5 bounded CPI",
+    "version": "r5-i4"
   },
   "paths": {
     "/api/r5/observability": {
@@ -248,10 +248,250 @@
           }
         }
       }
+    },
+    "/api/r5/cpi/jobs": {
+      "get": {
+        "summary": "Jobs",
+        "operationId": "cpi_jobs",
+        "parameters": [
+          {
+            "name": "job_identity",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Job Identity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobsDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDTO"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      },
+      "post": {
+        "summary": "Accept",
+        "operationId": "cpi_job_accept",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Intent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDTO"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
+    "/api/r5/cpi/jobs/{job_identity}/cancel": {
+      "post": {
+        "summary": "Cancel",
+        "operationId": "cpi_job_cancel",
+        "parameters": [
+          {
+            "name": "job_identity",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+              "title": "Job Identity"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Empty"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDTO"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AcceptedDTO": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "OK",
+            "title": "Status",
+            "default": "OK"
+          },
+          "job_identity": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "title": "Job Identity"
+          },
+          "acceptance": {
+            "type": "string",
+            "const": "DURABLE",
+            "title": "Acceptance",
+            "default": "DURABLE"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "job_identity"
+        ],
+        "title": "AcceptedDTO"
+      },
       "AssetDTO-Input": {
         "properties": {
           "identity": {
@@ -1194,6 +1434,12 @@
         ],
         "title": "DiskDTO"
       },
+      "Empty": {
+        "properties": {},
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Empty"
+      },
       "ErrorDTO": {
         "properties": {
           "status": {
@@ -1215,6 +1461,129 @@
           "classification"
         ],
         "title": "ErrorDTO"
+      },
+      "EventDTO": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "outcome_unknown"
+            ],
+            "title": "State"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "registered",
+              "preflight",
+              "acquiring",
+              "validating_candidate",
+              "planned",
+              "materializing",
+              "raw_write",
+              "raw_verified",
+              "ledger_commit",
+              "publication_possible",
+              "independent_readback",
+              "local_read_verified",
+              "stopped",
+              "cancelled_before_effects",
+              "cancelled_before_storage",
+              "restart_detected",
+              "reconciled",
+              "reconciliation_unresolved"
+            ],
+            "title": "Stage"
+          },
+          "attempt_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Identity"
+          },
+          "worker_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Identity"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "preflight_rejected",
+                  "source_or_plan_rejected",
+                  "candidate_rejected",
+                  "plan_rejected",
+                  "material_protection_unconfirmed",
+                  "raw_write_unconfirmed",
+                  "ledger_handoff_unconfirmed",
+                  "ledger_commit_outcome_unknown",
+                  "publication_outcome_unknown",
+                  "independent_readback_rejected",
+                  "job_action_rejected",
+                  "interrupted_attempt",
+                  "no_durable_plan_no_reexecution",
+                  "bls_live_credential_invalid",
+                  "bls_live_transport_failure",
+                  "bls_live_response_too_large",
+                  "bls_live_redirect_rejected",
+                  "bls_live_http_failure",
+                  "bls_live_content_encoding_rejected",
+                  "bls_live_reference_not_available",
+                  "bls_live_response_contract_failed",
+                  "bls_live_credential_persistence_forbidden",
+                  "bls_live_artifact_write_failed"
+                ]
+              },
+              {
+                "$ref": "#/components/schemas/ReadFailure"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          },
+          "cancel_requested": {
+            "type": "boolean",
+            "title": "Cancel Requested"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "stage",
+          "attempt_identity",
+          "worker_identity",
+          "updated_at",
+          "classification",
+          "cancel_requested"
+        ],
+        "title": "EventDTO"
       },
       "Failure": {
         "type": "string",
@@ -1383,6 +1752,773 @@
           "related"
         ],
         "title": "InstanceDTO"
+      },
+      "Intent": {
+        "properties": {
+          "job_identity": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "title": "Job Identity"
+          },
+          "asset_identity": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9:._-]{1,256}$",
+            "title": "Asset Identity"
+          },
+          "asset_revision": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9:._-]{1,256}$",
+            "title": "Asset Revision"
+          },
+          "reference": {
+            "type": "string",
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "title": "Reference"
+          },
+          "release_slot": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9/:._-]{1,128}$",
+            "title": "Release Slot"
+          },
+          "mode": {
+            "type": "string",
+            "const": "manual_once",
+            "title": "Mode"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "job_identity",
+          "asset_identity",
+          "asset_revision",
+          "reference",
+          "release_slot",
+          "mode"
+        ],
+        "title": "Intent"
+      },
+      "JobDTO-Input": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "outcome_unknown"
+            ],
+            "title": "State"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "registered",
+              "preflight",
+              "acquiring",
+              "validating_candidate",
+              "planned",
+              "materializing",
+              "raw_write",
+              "raw_verified",
+              "ledger_commit",
+              "publication_possible",
+              "independent_readback",
+              "local_read_verified",
+              "stopped",
+              "cancelled_before_effects",
+              "cancelled_before_storage",
+              "restart_detected",
+              "reconciled",
+              "reconciliation_unresolved"
+            ],
+            "title": "Stage"
+          },
+          "attempt_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Identity"
+          },
+          "worker_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Identity"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "preflight_rejected",
+                  "source_or_plan_rejected",
+                  "candidate_rejected",
+                  "plan_rejected",
+                  "material_protection_unconfirmed",
+                  "raw_write_unconfirmed",
+                  "ledger_handoff_unconfirmed",
+                  "ledger_commit_outcome_unknown",
+                  "publication_outcome_unknown",
+                  "independent_readback_rejected",
+                  "job_action_rejected",
+                  "interrupted_attempt",
+                  "no_durable_plan_no_reexecution",
+                  "bls_live_credential_invalid",
+                  "bls_live_transport_failure",
+                  "bls_live_response_too_large",
+                  "bls_live_redirect_rejected",
+                  "bls_live_http_failure",
+                  "bls_live_content_encoding_rejected",
+                  "bls_live_reference_not_available",
+                  "bls_live_response_contract_failed",
+                  "bls_live_credential_persistence_forbidden",
+                  "bls_live_artifact_write_failed"
+                ]
+              },
+              {
+                "$ref": "#/components/schemas/ReadFailure"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          },
+          "cancel_requested": {
+            "type": "boolean",
+            "title": "Cancel Requested"
+          },
+          "job_identity": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "title": "Job Identity"
+          },
+          "asset_identity": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9:._-]{1,256}$",
+            "title": "Asset Identity"
+          },
+          "asset_revision": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9:._-]{1,256}$",
+            "title": "Asset Revision"
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "release_slot": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9/:._-]{1,128}$",
+            "title": "Release Slot"
+          },
+          "attempts": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "title": "Attempts"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "failure_stage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "registered",
+                  "preflight",
+                  "acquiring",
+                  "validating_candidate",
+                  "planned",
+                  "materializing",
+                  "raw_write",
+                  "raw_verified",
+                  "ledger_commit",
+                  "publication_possible",
+                  "independent_readback",
+                  "local_read_verified",
+                  "stopped",
+                  "cancelled_before_effects",
+                  "cancelled_before_storage",
+                  "restart_detected",
+                  "reconciled",
+                  "reconciliation_unresolved"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Stage"
+          },
+          "version_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Identity"
+          },
+          "publication_occurrence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Occurrence"
+          },
+          "reconciliation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "confirmed_published",
+                  "confirmed_not_published",
+                  "unresolved"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliation"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/EventDTO"
+            },
+            "type": "array",
+            "maxItems": 256,
+            "title": "History"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "stage",
+          "attempt_identity",
+          "worker_identity",
+          "updated_at",
+          "classification",
+          "cancel_requested",
+          "job_identity",
+          "asset_identity",
+          "asset_revision",
+          "reference",
+          "release_slot",
+          "attempts",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "failure_stage",
+          "version_identity",
+          "publication_occurrence",
+          "reconciliation",
+          "history"
+        ],
+        "title": "JobDTO"
+      },
+      "JobDTO-Output": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "outcome_unknown"
+            ],
+            "title": "State"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "registered",
+              "preflight",
+              "acquiring",
+              "validating_candidate",
+              "planned",
+              "materializing",
+              "raw_write",
+              "raw_verified",
+              "ledger_commit",
+              "publication_possible",
+              "independent_readback",
+              "local_read_verified",
+              "stopped",
+              "cancelled_before_effects",
+              "cancelled_before_storage",
+              "restart_detected",
+              "reconciled",
+              "reconciliation_unresolved"
+            ],
+            "title": "Stage"
+          },
+          "attempt_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Identity"
+          },
+          "worker_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Identity"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "preflight_rejected",
+                  "source_or_plan_rejected",
+                  "candidate_rejected",
+                  "plan_rejected",
+                  "material_protection_unconfirmed",
+                  "raw_write_unconfirmed",
+                  "ledger_handoff_unconfirmed",
+                  "ledger_commit_outcome_unknown",
+                  "publication_outcome_unknown",
+                  "independent_readback_rejected",
+                  "job_action_rejected",
+                  "interrupted_attempt",
+                  "no_durable_plan_no_reexecution",
+                  "bls_live_credential_invalid",
+                  "bls_live_transport_failure",
+                  "bls_live_response_too_large",
+                  "bls_live_redirect_rejected",
+                  "bls_live_http_failure",
+                  "bls_live_content_encoding_rejected",
+                  "bls_live_reference_not_available",
+                  "bls_live_response_contract_failed",
+                  "bls_live_credential_persistence_forbidden",
+                  "bls_live_artifact_write_failed"
+                ]
+              },
+              {
+                "$ref": "#/components/schemas/ReadFailure"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          },
+          "cancel_requested": {
+            "type": "boolean",
+            "title": "Cancel Requested"
+          },
+          "job_identity": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "title": "Job Identity"
+          },
+          "asset_identity": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9:._-]{1,256}$",
+            "title": "Asset Identity"
+          },
+          "asset_revision": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9:._-]{1,256}$",
+            "title": "Asset Revision"
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "release_slot": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9/:._-]{1,128}$",
+            "title": "Release Slot"
+          },
+          "attempts": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "title": "Attempts"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "failure_stage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "registered",
+                  "preflight",
+                  "acquiring",
+                  "validating_candidate",
+                  "planned",
+                  "materializing",
+                  "raw_write",
+                  "raw_verified",
+                  "ledger_commit",
+                  "publication_possible",
+                  "independent_readback",
+                  "local_read_verified",
+                  "stopped",
+                  "cancelled_before_effects",
+                  "cancelled_before_storage",
+                  "restart_detected",
+                  "reconciled",
+                  "reconciliation_unresolved"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Stage"
+          },
+          "version_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Identity"
+          },
+          "publication_occurrence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Occurrence"
+          },
+          "reconciliation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "confirmed_published",
+                  "confirmed_not_published",
+                  "unresolved"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reconciliation"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/EventDTO"
+            },
+            "type": "array",
+            "maxItems": 256,
+            "title": "History"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "stage",
+          "attempt_identity",
+          "worker_identity",
+          "updated_at",
+          "classification",
+          "cancel_requested",
+          "job_identity",
+          "asset_identity",
+          "asset_revision",
+          "reference",
+          "release_slot",
+          "attempts",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "failure_stage",
+          "version_identity",
+          "publication_occurrence",
+          "reconciliation",
+          "history"
+        ],
+        "title": "JobDTO"
+      },
+      "JobError": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "NOT_AVAILABLE"
+            ],
+            "title": "Status"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "operator_not_authorized",
+              "job_capability_not_configured",
+              "job_storage_unavailable",
+              "job_not_found",
+              "job_identity_reused",
+              "job_scope_already_registered",
+              "job_target_unsupported",
+              "job_query_budget_exceeded",
+              "job_record_invalid"
+            ],
+            "title": "Classification"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "classification"
+        ],
+        "title": "JobError"
+      },
+      "JobsDTO": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "OK",
+              "UNKNOWN"
+            ],
+            "title": "Status"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "job_capability_not_configured",
+                  "job_storage_unavailable",
+                  "job_query_budget_exceeded",
+                  "job_record_invalid"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          },
+          "evidence_mode": {
+            "type": "string",
+            "enum": [
+              "UNCONFIGURED",
+              "OFFLINE_FIXTURE",
+              "AUTHORIZED_HOST"
+            ],
+            "title": "Evidence Mode"
+          },
+          "operator_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Identity"
+          },
+          "write_eligible": {
+            "type": "boolean",
+            "title": "Write Eligible"
+          },
+          "asset_identity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Identity"
+          },
+          "asset_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Revision"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference"
+          },
+          "release_slot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Slot"
+          },
+          "intent_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intent Identity"
+          },
+          "storage_target": {
+            "type": "string",
+            "const": "INHERITED_03_04",
+            "title": "Storage Target",
+            "default": "INHERITED_03_04"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobDTO-Output"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Jobs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "classification",
+          "evidence_mode",
+          "operator_identity",
+          "write_eligible",
+          "asset_identity",
+          "asset_revision",
+          "reference",
+          "release_slot",
+          "intent_identity",
+          "jobs"
+        ],
+        "title": "JobsDTO"
       },
       "LoadDTO-Input": {
         "properties": {
@@ -2329,6 +3465,27 @@
           "measurements"
         ],
         "title": "ReadDTO"
+      },
+      "ReadFailure": {
+        "type": "string",
+        "enum": [
+          "definition_not_admitted",
+          "definition_not_found",
+          "version_not_found",
+          "version_definition_mismatch",
+          "content_missing",
+          "content_digest_mismatch",
+          "unpublished_or_unavailable_as_of",
+          "version_withdrawn",
+          "version_superseded",
+          "as_of_no_version",
+          "as_of_ambiguous",
+          "publication_state_invalid",
+          "lineage_missing_or_mismatched",
+          "invalid_as_of",
+          "storage_unavailable"
+        ],
+        "title": "ReadFailure"
       },
       "ResourcesDTO-Input": {
         "properties": {

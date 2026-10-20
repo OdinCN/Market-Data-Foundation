@@ -72,10 +72,62 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/r5/cpi/jobs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Jobs */
+    get: operations["cpi_jobs"];
+    put?: never;
+    /** Accept */
+    post: operations["cpi_job_accept"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/cpi/jobs/{job_identity}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Cancel */
+    post: operations["cpi_job_cancel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** AcceptedDTO */
+    AcceptedDTO: {
+      /**
+       * Status
+       * @default OK
+       * @constant
+       */
+      status: "OK";
+      /** Job Identity */
+      job_identity: string;
+      /**
+       * Acceptance
+       * @default DURABLE
+       * @constant
+       */
+      acceptance: "DURABLE";
+    };
     /** AssetDTO */
     "AssetDTO-Input": {
       /** Identity */
@@ -477,6 +529,8 @@ export interface components {
        */
       mount: "root";
     };
+    /** Empty */
+    Empty: Record<string, never>;
     /** ErrorDTO */
     ErrorDTO: {
       /**
@@ -485,6 +539,80 @@ export interface components {
        */
       status: "UNKNOWN" | "NOT_AVAILABLE";
       classification: components["schemas"]["Failure"];
+    };
+    /** EventDTO */
+    EventDTO: {
+      /**
+       * State
+       * @enum {string}
+       */
+      state:
+        | "pending"
+        | "running"
+        | "succeeded"
+        | "failed"
+        | "cancelled"
+        | "outcome_unknown";
+      /**
+       * Stage
+       * @enum {string}
+       */
+      stage:
+        | "registered"
+        | "preflight"
+        | "acquiring"
+        | "validating_candidate"
+        | "planned"
+        | "materializing"
+        | "raw_write"
+        | "raw_verified"
+        | "ledger_commit"
+        | "publication_possible"
+        | "independent_readback"
+        | "local_read_verified"
+        | "stopped"
+        | "cancelled_before_effects"
+        | "cancelled_before_storage"
+        | "restart_detected"
+        | "reconciled"
+        | "reconciliation_unresolved";
+      /** Attempt Identity */
+      attempt_identity: string | null;
+      /** Worker Identity */
+      worker_identity: string | null;
+      /** Updated At */
+      updated_at: string;
+      /** Classification */
+      classification:
+        | (
+            | "preflight_rejected"
+            | "source_or_plan_rejected"
+            | "candidate_rejected"
+            | "plan_rejected"
+            | "material_protection_unconfirmed"
+            | "raw_write_unconfirmed"
+            | "ledger_handoff_unconfirmed"
+            | "ledger_commit_outcome_unknown"
+            | "publication_outcome_unknown"
+            | "independent_readback_rejected"
+            | "job_action_rejected"
+            | "interrupted_attempt"
+            | "no_durable_plan_no_reexecution"
+            | "bls_live_credential_invalid"
+            | "bls_live_transport_failure"
+            | "bls_live_response_too_large"
+            | "bls_live_redirect_rejected"
+            | "bls_live_http_failure"
+            | "bls_live_content_encoding_rejected"
+            | "bls_live_reference_not_available"
+            | "bls_live_response_contract_failed"
+            | "bls_live_credential_persistence_forbidden"
+            | "bls_live_artifact_write_failed"
+          )
+        | components["schemas"]["ReadFailure"]
+        | null;
+      /** Cancel Requested */
+      cancel_requested: boolean;
     };
     /**
      * Failure
@@ -564,6 +692,346 @@ export interface components {
        */
       observe_only: true;
       related: components["schemas"]["ObjectRef-Output"];
+    };
+    /** Intent */
+    Intent: {
+      /** Job Identity */
+      job_identity: string;
+      /** Asset Identity */
+      asset_identity: string;
+      /** Asset Revision */
+      asset_revision: string;
+      /** Reference */
+      reference: string;
+      /** Release Slot */
+      release_slot: string;
+      /**
+       * Mode
+       * @constant
+       */
+      mode: "manual_once";
+    };
+    /** JobDTO */
+    "JobDTO-Input": {
+      /**
+       * State
+       * @enum {string}
+       */
+      state:
+        | "pending"
+        | "running"
+        | "succeeded"
+        | "failed"
+        | "cancelled"
+        | "outcome_unknown";
+      /**
+       * Stage
+       * @enum {string}
+       */
+      stage:
+        | "registered"
+        | "preflight"
+        | "acquiring"
+        | "validating_candidate"
+        | "planned"
+        | "materializing"
+        | "raw_write"
+        | "raw_verified"
+        | "ledger_commit"
+        | "publication_possible"
+        | "independent_readback"
+        | "local_read_verified"
+        | "stopped"
+        | "cancelled_before_effects"
+        | "cancelled_before_storage"
+        | "restart_detected"
+        | "reconciled"
+        | "reconciliation_unresolved";
+      /** Attempt Identity */
+      attempt_identity: string | null;
+      /** Worker Identity */
+      worker_identity: string | null;
+      /** Updated At */
+      updated_at: string;
+      /** Classification */
+      classification:
+        | (
+            | "preflight_rejected"
+            | "source_or_plan_rejected"
+            | "candidate_rejected"
+            | "plan_rejected"
+            | "material_protection_unconfirmed"
+            | "raw_write_unconfirmed"
+            | "ledger_handoff_unconfirmed"
+            | "ledger_commit_outcome_unknown"
+            | "publication_outcome_unknown"
+            | "independent_readback_rejected"
+            | "job_action_rejected"
+            | "interrupted_attempt"
+            | "no_durable_plan_no_reexecution"
+            | "bls_live_credential_invalid"
+            | "bls_live_transport_failure"
+            | "bls_live_response_too_large"
+            | "bls_live_redirect_rejected"
+            | "bls_live_http_failure"
+            | "bls_live_content_encoding_rejected"
+            | "bls_live_reference_not_available"
+            | "bls_live_response_contract_failed"
+            | "bls_live_credential_persistence_forbidden"
+            | "bls_live_artifact_write_failed"
+          )
+        | components["schemas"]["ReadFailure"]
+        | null;
+      /** Cancel Requested */
+      cancel_requested: boolean;
+      /** Job Identity */
+      job_identity: string;
+      /** Asset Identity */
+      asset_identity: string;
+      /** Asset Revision */
+      asset_revision: string;
+      /** Reference */
+      reference: string;
+      /** Release Slot */
+      release_slot: string;
+      /**
+       * Attempts
+       * @enum {integer}
+       */
+      attempts: 0 | 1;
+      /** Created At */
+      created_at: string;
+      /** Started At */
+      started_at: string | null;
+      /** Finished At */
+      finished_at: string | null;
+      /** Failure Stage */
+      failure_stage:
+        | (
+            | "registered"
+            | "preflight"
+            | "acquiring"
+            | "validating_candidate"
+            | "planned"
+            | "materializing"
+            | "raw_write"
+            | "raw_verified"
+            | "ledger_commit"
+            | "publication_possible"
+            | "independent_readback"
+            | "local_read_verified"
+            | "stopped"
+            | "cancelled_before_effects"
+            | "cancelled_before_storage"
+            | "restart_detected"
+            | "reconciled"
+            | "reconciliation_unresolved"
+          )
+        | null;
+      /** Version Identity */
+      version_identity: string | null;
+      /** Publication Occurrence */
+      publication_occurrence: string | null;
+      /** Reconciliation */
+      reconciliation:
+        | ("confirmed_published" | "confirmed_not_published" | "unresolved")
+        | null;
+      /** History */
+      history: components["schemas"]["EventDTO"][];
+    };
+    /** JobDTO */
+    "JobDTO-Output": {
+      /**
+       * State
+       * @enum {string}
+       */
+      state:
+        | "pending"
+        | "running"
+        | "succeeded"
+        | "failed"
+        | "cancelled"
+        | "outcome_unknown";
+      /**
+       * Stage
+       * @enum {string}
+       */
+      stage:
+        | "registered"
+        | "preflight"
+        | "acquiring"
+        | "validating_candidate"
+        | "planned"
+        | "materializing"
+        | "raw_write"
+        | "raw_verified"
+        | "ledger_commit"
+        | "publication_possible"
+        | "independent_readback"
+        | "local_read_verified"
+        | "stopped"
+        | "cancelled_before_effects"
+        | "cancelled_before_storage"
+        | "restart_detected"
+        | "reconciled"
+        | "reconciliation_unresolved";
+      /** Attempt Identity */
+      attempt_identity: string | null;
+      /** Worker Identity */
+      worker_identity: string | null;
+      /** Updated At */
+      updated_at: string;
+      /** Classification */
+      classification:
+        | (
+            | "preflight_rejected"
+            | "source_or_plan_rejected"
+            | "candidate_rejected"
+            | "plan_rejected"
+            | "material_protection_unconfirmed"
+            | "raw_write_unconfirmed"
+            | "ledger_handoff_unconfirmed"
+            | "ledger_commit_outcome_unknown"
+            | "publication_outcome_unknown"
+            | "independent_readback_rejected"
+            | "job_action_rejected"
+            | "interrupted_attempt"
+            | "no_durable_plan_no_reexecution"
+            | "bls_live_credential_invalid"
+            | "bls_live_transport_failure"
+            | "bls_live_response_too_large"
+            | "bls_live_redirect_rejected"
+            | "bls_live_http_failure"
+            | "bls_live_content_encoding_rejected"
+            | "bls_live_reference_not_available"
+            | "bls_live_response_contract_failed"
+            | "bls_live_credential_persistence_forbidden"
+            | "bls_live_artifact_write_failed"
+          )
+        | components["schemas"]["ReadFailure"]
+        | null;
+      /** Cancel Requested */
+      cancel_requested: boolean;
+      /** Job Identity */
+      job_identity: string;
+      /** Asset Identity */
+      asset_identity: string;
+      /** Asset Revision */
+      asset_revision: string;
+      /** Reference */
+      reference: string;
+      /** Release Slot */
+      release_slot: string;
+      /**
+       * Attempts
+       * @enum {integer}
+       */
+      attempts: 0 | 1;
+      /** Created At */
+      created_at: string;
+      /** Started At */
+      started_at: string | null;
+      /** Finished At */
+      finished_at: string | null;
+      /** Failure Stage */
+      failure_stage:
+        | (
+            | "registered"
+            | "preflight"
+            | "acquiring"
+            | "validating_candidate"
+            | "planned"
+            | "materializing"
+            | "raw_write"
+            | "raw_verified"
+            | "ledger_commit"
+            | "publication_possible"
+            | "independent_readback"
+            | "local_read_verified"
+            | "stopped"
+            | "cancelled_before_effects"
+            | "cancelled_before_storage"
+            | "restart_detected"
+            | "reconciled"
+            | "reconciliation_unresolved"
+          )
+        | null;
+      /** Version Identity */
+      version_identity: string | null;
+      /** Publication Occurrence */
+      publication_occurrence: string | null;
+      /** Reconciliation */
+      reconciliation:
+        | ("confirmed_published" | "confirmed_not_published" | "unresolved")
+        | null;
+      /** History */
+      history: components["schemas"]["EventDTO"][];
+    };
+    /** JobError */
+    JobError: {
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "UNKNOWN" | "NOT_AVAILABLE";
+      /**
+       * Classification
+       * @enum {string}
+       */
+      classification:
+        | "operator_not_authorized"
+        | "job_capability_not_configured"
+        | "job_storage_unavailable"
+        | "job_not_found"
+        | "job_identity_reused"
+        | "job_scope_already_registered"
+        | "job_target_unsupported"
+        | "job_query_budget_exceeded"
+        | "job_record_invalid";
+    };
+    /** JobsDTO */
+    JobsDTO: {
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "OK" | "UNKNOWN";
+      /** Classification */
+      classification:
+        | (
+            | "job_capability_not_configured"
+            | "job_storage_unavailable"
+            | "job_query_budget_exceeded"
+            | "job_record_invalid"
+          )
+        | null;
+      /**
+       * Evidence Mode
+       * @enum {string}
+       */
+      evidence_mode: "UNCONFIGURED" | "OFFLINE_FIXTURE" | "AUTHORIZED_HOST";
+      /** Operator Identity */
+      operator_identity: string | null;
+      /** Write Eligible */
+      write_eligible: boolean;
+      /** Asset Identity */
+      asset_identity: string | null;
+      /** Asset Revision */
+      asset_revision: string | null;
+      /** Reference */
+      reference: string | null;
+      /** Release Slot */
+      release_slot: string | null;
+      /** Intent Identity */
+      intent_identity: string | null;
+      /**
+       * Storage Target
+       * @default INHERITED_03_04
+       * @constant
+       */
+      storage_target: "INHERITED_03_04";
+      /** Jobs */
+      jobs: components["schemas"]["JobDTO-Output"][];
     };
     /** LoadDTO */
     "LoadDTO-Input": {
@@ -889,6 +1357,26 @@ export interface components {
       /** Measurements */
       measurements: components["schemas"]["MeasurementDTO"][];
     };
+    /**
+     * ReadFailure
+     * @enum {string}
+     */
+    ReadFailure:
+      | "definition_not_admitted"
+      | "definition_not_found"
+      | "version_not_found"
+      | "version_definition_mismatch"
+      | "content_missing"
+      | "content_digest_mismatch"
+      | "unpublished_or_unavailable_as_of"
+      | "version_withdrawn"
+      | "version_superseded"
+      | "as_of_no_version"
+      | "as_of_ambiguous"
+      | "publication_state_invalid"
+      | "lineage_missing_or_mismatched"
+      | "invalid_as_of"
+      | "storage_unavailable";
     /** ResourcesDTO */
     "ResourcesDTO-Input": {
       /** Host Identity */
@@ -1200,6 +1688,177 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorDTO"];
+        };
+      };
+    };
+  };
+  cpi_jobs: {
+    parameters: {
+      query?: {
+        job_identity?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobsDTO"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobError"];
+        };
+      };
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobError"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorDTO"];
+        };
+      };
+    };
+  };
+  cpi_job_accept: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Intent"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AcceptedDTO"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobError"];
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobError"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorDTO"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobError"];
+        };
+      };
+    };
+  };
+  cpi_job_cancel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        job_identity: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Empty"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AcceptedDTO"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobError"];
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobError"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorDTO"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobError"];
         };
       };
     };

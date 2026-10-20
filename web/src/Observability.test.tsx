@@ -105,10 +105,7 @@ it("projects real contract fixtures, seven menus, alarm → same diagnostic → 
   expect(location.hash).toContain("asset_revision=p3-r1");
   expect(
     api.requests.every(
-      (path) =>
-        path.startsWith("/api/r5/") &&
-        !path.includes("/read?") &&
-        !path.includes("/jobs"),
+      (path) => path.startsWith("/api/r5/") && !path.includes("/read?"),
     ),
   ).toBe(true);
 });

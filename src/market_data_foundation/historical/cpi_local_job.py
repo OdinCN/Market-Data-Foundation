@@ -58,7 +58,10 @@ from market_data_foundation.historical.bls_cpi_release_runner import (
     RELEASE,
     SLOT_IDENTITY,
 )
-from market_data_foundation.historical.cpi_job_journal import FileJobJournal
+from market_data_foundation.historical.cpi_job_journal import (
+    FileJobJournal,
+    valid_identity,
+)
 from market_data_foundation.historical.macro_lifecycle import (
     MeteredTransport,
     RetainedRepair,
@@ -649,6 +652,7 @@ class CpiLocalJob(RetainedRepair):
         preflight: Callable[[CpiJobSpec], None],
         acquirer: DirectCpiAcquirer | None = None,
         retained: LiveExecutionCandidate | None = None,
+        worker_identity: str | None = None,
     ) -> dict:
         """One attempt only; pending registration and opt-in precede all effects.
 
@@ -657,6 +661,8 @@ class CpiLocalJob(RetainedRepair):
         idle, explicitly cleaning up only its own isolated probe transaction.
         A duplicate completed call returns its recorded result without effects.
         """
+        if worker_identity is not None:
+            valid_identity(worker_identity)
         with self.journal.executor(job_id):
             document = self.journal.get(job_id)
             if document["state"] != "pending":
@@ -684,6 +690,7 @@ class CpiLocalJob(RetainedRepair):
                 attempts=1,
                 attempt_id=job_id + "-a1",
                 started_at=now.isoformat(),
+                worker_identity=worker_identity,
             )
             try:
                 self._check_pg_writer(spec)

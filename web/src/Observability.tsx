@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CpiJobAlerts } from "./CpiJobs";
 import {
   ApiFailure,
   request,
@@ -100,11 +101,13 @@ export function ObservabilityView({
   generation,
   page,
   onNavigate,
+  includeJobs = false,
 }: {
   transport: Transport;
   generation: number;
   page: number;
   onNavigate: (page: number, ref: ObjectRef) => void;
+  includeJobs?: boolean;
 }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const data = snapshot?.data ?? null;
@@ -276,6 +279,9 @@ export function ObservabilityView({
   );
   return (
     <div aria-label="运行观测">
+      {includeJobs && (page === 0 || (page === 6 && tab === "diagnostics")) && (
+        <CpiJobAlerts transport={transport} generation={generation} job={job} />
+      )}
       <p role="status">
         {busy
           ? "正在核实运行观测…"

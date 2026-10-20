@@ -1,7 +1,7 @@
-"""R5 CPI read-only projection; no client, scheduler, journal or writer creation.
+"""R5 CPI reads and explicitly host-bound manual journal acceptance.
 
 A caller supplies a consistent read-only scope. No default production backend is
-inferred. Existing consumer wire and canonical selection semantics are untouched.
+inferred. No worker/client is created. Existing reader semantics are untouched.
 """
 
 import json
@@ -32,6 +32,7 @@ from market_data_foundation.historical.cpi_local_read import (
     CpiReadRejected,
     read_local_cpi,
 )
+from market_data_foundation.web.cpi_jobs import CpiJobsHost, install_jobs
 from market_data_foundation.web.dto import DTO
 from market_data_foundation.web.observability import (
     ObservabilityDTO,
@@ -247,6 +248,7 @@ def create_app(
     *,
     ui_directory: Path | None = None,
     observability_host: ObservabilityHost | None = None,
+    jobs_host: CpiJobsHost | None = None,
     evidence_mode: Literal["OFFLINE_FIXTURE", "AUTHORIZED_READ_SCOPE"] = (
         "AUTHORIZED_READ_SCOPE"
     ),
@@ -257,9 +259,11 @@ def create_app(
     authorization/qualification. Never pass a live mutable ledger as a snapshot.
     observability_host is a separate, explicitly admitted local read capability;
     it is never inferred from the CPI scope, environment, or the serving process.
+    jobs_host is a separate trusted identity/journal binding; absent it, manual
+    writes fail closed. HTTP acceptance never invokes a source or worker.
     """
     app = FastAPI(
-        title="MDF R5 read-only", version="r5-i3", docs_url=None, redoc_url=None
+        title="MDF R5 bounded CPI", version="r5-i4", docs_url=None, redoc_url=None
     )
     evidence: Evidence = "UNCONFIGURED" if scope_factory is None else evidence_mode
 
@@ -270,6 +274,7 @@ def create_app(
             "/api/r5/cpi/read",
             "/api/r5/sources",
             "/api/r5/observability",
+            "/api/r5/cpi/jobs",
         }:
             keys = [key for key, _ in request.query_params.multi_items()]
             if len(keys) != len(set(keys)):
@@ -464,6 +469,8 @@ def create_app(
                 mode="json"
             ),
         )
+
+    install_jobs(app, jobs_host, ErrorDTO)
 
     if ui_directory is not None:
         app.mount("/", StaticFiles(directory=ui_directory, html=True), name="webui")

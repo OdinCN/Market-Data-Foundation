@@ -8,6 +8,9 @@ export type Observability =
 export type Observation = Observability["evidence_observation"];
 export type ObjectRef = Observability["instances"][number]["related"];
 export type ReadResult = components["schemas"]["ReadDTO"];
+export type Jobs = components["schemas"]["JobsDTO"];
+export type Job = Jobs["jobs"][number];
+export type JobIntent = components["schemas"]["Intent"];
 export type ReadMode = ReadResult["mode"];
 export type Query = operations["cpi_catalog"]["parameters"]["query"];
 export type Transport = typeof fetch;
@@ -24,9 +27,11 @@ export class ApiFailure extends Error {
 export async function request<P extends keyof paths>(
   transport: Transport,
   path: P,
-  query: paths[P]["get"]["parameters"]["query"],
+  query: NonNullable<paths[P]["get"]>["parameters"]["query"],
   signal: AbortSignal,
-): Promise<paths[P]["get"]["responses"][200]["content"]["application/json"]> {
+): Promise<
+  NonNullable<paths[P]["get"]>["responses"][200]["content"]["application/json"]
+> {
   const fields: Record<string, string> = {};
   for (const [key, value] of Object.entries(query ?? {})) {
     if (typeof value === "string") fields[key] = value;
@@ -56,5 +61,33 @@ export async function request<P extends keyof paths>(
   ) {
     throw new ApiFailure("invalid_response");
   }
-  return body as paths[P]["get"]["responses"][200]["content"]["application/json"];
+  return body as NonNullable<
+    paths[P]["get"]
+  >["responses"][200]["content"]["application/json"];
+}
+
+export async function submitJob(
+  transport: Transport,
+  path: string,
+  intent: JobIntent | Record<string, never>,
+) {
+  const response = await transport(path, {
+    method: "POST",
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(intent),
+  });
+  const body = await response.json();
+  if (!response.ok)
+    throw new ApiFailure(
+      typeof body?.classification === "string" &&
+      /^[a-z_]{1,80}$/.test(body.classification)
+        ? body.classification
+        : "request_failed",
+      body?.status === "NOT_AVAILABLE" ? "NOT_AVAILABLE" : "UNKNOWN",
+    );
+  if (body?.status !== "OK" || body?.acceptance !== "DURABLE")
+    throw new ApiFailure("invalid_response");
+  return body as components["schemas"]["AcceptedDTO"];
 }

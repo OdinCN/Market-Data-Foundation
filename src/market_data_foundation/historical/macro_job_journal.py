@@ -226,6 +226,8 @@ class MacroJobJournal:
                 "last_success",
             )
         }
+        if "worker_identity" in document:
+            event["worker_identity"] = document["worker_identity"]
         connection.execute(
             "INSERT INTO history(identity, event) VALUES (?, ?)",
             (document["job_id"], _json(event)),

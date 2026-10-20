@@ -11,6 +11,7 @@ import {
 } from "./api";
 import { SourceDirectory } from "./SourceDirectory";
 import { ObservabilityView } from "./Observability";
+import { CpiJobsView } from "./CpiJobs";
 import "./style.css";
 
 const menus = [
@@ -233,6 +234,19 @@ export default function App({
     (!page.revision || page.revision === catalog.definition.revision);
   const implemented = activePages.includes(page.page);
   const observabilityPage = page.page === 0 || page.page === 6;
+  // Initialization needs an admitted Definition, not an already held Version.
+  const canInitializeCpi = Boolean(
+    page.page === 3 &&
+      showCpi &&
+      matches &&
+      catalog?.definition.identity === "mdf.macro.bls.cpi.headlines" &&
+      catalog.definition.revision === "p3-r1" &&
+      catalog.definition.source_qualified_contract &&
+      (!page.operation ||
+        (selected?.asset?.identity === catalog.definition.identity &&
+          selected.asset.revision === catalog.definition.revision &&
+          selected.source_qualified_contract === true)),
+  );
   const canRead = Boolean(
     (page.page === 3 || page.page === 5) &&
       showCpi &&
@@ -293,7 +307,7 @@ export default function App({
             <span className="muted"> / {menus[page.page]}</span>
           </span>
           <div className="actions">
-            <Chip>只读</Chip>
+            <Chip>{page.page === 4 ? "有界人工意图" : "只读"}</Chip>
             <button
               type="button"
               onClick={() => setDark(!dark)}
@@ -318,21 +332,26 @@ export default function App({
               <p className="muted">
                 {observabilityPage
                   ? "受信 Host 只读观测 · 来源 / 时钟 / UNKNOWN"
-                  : implemented
-                    ? "具名来源合同目录 · Definition / Version / Publication · CPI 本地读取"
-                    : "设计入口已保留，业务能力尚未实现"}
+                  : page.page === 4
+                    ? "CPI 人工一次性初始化 · 持久 Job / Attempt · 独立 Worker"
+                    : implemented
+                      ? "具名来源合同目录 · Definition / Version / Publication · CPI 本地读取"
+                      : "设计入口已保留，业务能力尚未实现"}
               </p>
             </div>
             <Chip>
               {observabilityPage
                 ? "只读观测"
-                : implemented
-                  ? "具名只读目录"
-                  : "未实现"}
+                : page.page === 4
+                  ? "2026-09 CPI"
+                  : implemented
+                    ? "具名只读目录"
+                    : "未实现"}
             </Chip>
           </div>
           {observabilityPage ? (
             <ObservabilityView
+              includeJobs
               transport={transport}
               generation={generation}
               page={page.page}
@@ -345,12 +364,17 @@ export default function App({
                 )
               }
             />
+          ) : page.page === 4 ? (
+            <CpiJobsView
+              key={`${page.identity}:${page.revision}`}
+              transport={transport}
+              generation={generation}
+              asset={page.identity}
+              revision={page.revision}
+            />
           ) : !implemented ? (
             <section className="panel placeholder">
               <h2>本模块尚未实现</h2>
-              {page.page === 4 && (
-                <div className="tabs">新建采集 / 周期任务 / 执行记录</div>
-              )}
               {page.page === 6 && (
                 <div className="tabs">运行实例 / 数据库与存储 / 日志与诊断</div>
               )}
@@ -526,6 +550,21 @@ export default function App({
                               </tbody>
                             </table>
                           </div>
+                        )}
+                        {canInitializeCpi && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              navigate(
+                                4,
+                                catalog.definition.identity,
+                                null,
+                                catalog.definition.revision,
+                              )
+                            }
+                          >
+                            新建 CPI 一次性采集
+                          </button>
                         )}
                       </section>
                       {matches && (
