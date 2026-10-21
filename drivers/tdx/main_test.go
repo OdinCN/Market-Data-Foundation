@@ -585,3 +585,118 @@ func TestPinnedSDKTimeoutVsReplyDoneSerialized(t *testing.T) {
 		t.Fatal("peer hangs at response timeout boundary")
 	}
 }
+
+// Force cleanup before a late response, then dispatch that stale response while
+// the next request is registered. No sleep decides which response wins.
+func TestPinnedSDKLateReplyCannotCompleteNextWaiter(t *testing.T) {
+	c := testConfig()
+	c.Securities = []string{"sz000001"}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	left, right := net.Pipe()
+	defer right.Close()
+	right.SetDeadline(time.Now().Add(4 * time.Second))
+	requests := make(chan []byte, 2)
+	respond := make(chan struct{})
+	peer := make(chan error, 1)
+	go func() {
+		handshake := make([]byte, len(protocol.MConnect.Frame().Bytes()))
+		if _, err := io.ReadFull(right, handshake); err != nil {
+			peer <- err
+			return
+		}
+		for n := 0; n < 2; n++ {
+			head := make([]byte, 12)
+			if _, err := io.ReadFull(right, head); err != nil {
+				peer <- err
+				return
+			}
+			if _, err := io.CopyN(io.Discard, right, int64(binary.LittleEndian.Uint16(head[6:8]))-2); err != nil {
+				peer <- err
+				return
+			}
+			requests <- head
+		}
+		<-respond
+		peer <- nil
+	}()
+	var writes atomic.Int32
+	s, err := connect(ctx, c, candidate{Endpoint: "memory:7709"}, 1, 0, &writes,
+		func(context.Context, string) (net.Conn, error) { return left, nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	processed := make(chan struct{}, 3)
+	handler := s.sdk.Event.OnDealMessage
+	s.sdk.Event.OnDealMessage = func(cl *client.Client, msg ios.Acker) {
+		handler(cl, msg)
+		processed <- struct{}{}
+	}
+	s.sdk.SetTimeout(5 * time.Millisecond)
+	if _, err := s.sdk.GetQuote("sz000001"); err == nil || s.sdk.Wait.IsWait("1") {
+		t.Fatal("first waiter did not time out and clean up")
+	}
+	first := <-requests
+	s.sdk.SetTimeout(time.Second)
+	type result struct {
+		rows protocol.QuotesResp
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() { rows, err := s.sdk.GetQuote("sz000001"); done <- result{rows, err} }()
+	var second []byte
+	select {
+	case second = <-requests:
+	case <-ctx.Done():
+		t.Fatal("second request not written")
+	}
+	if !s.sdk.Wait.IsWait("2") {
+		t.Fatal("next waiter missing before Write")
+	}
+	writeReply := func(head []byte, price byte) {
+		t.Helper()
+		body := make([]byte, 60)
+		body[2] = 1
+		copy(body[5:11], "000001")
+		body[13] = price
+		response := make([]byte, 16)
+		binary.BigEndian.PutUint32(response, protocol.PrefixResp)
+		response[4] = 0x1c
+		copy(response[5:9], head[1:5])
+		binary.LittleEndian.PutUint16(response[10:12], protocol.TypeQuote)
+		binary.LittleEndian.PutUint16(response[12:14], uint16(len(body)))
+		binary.LittleEndian.PutUint16(response[14:16], uint16(len(body)))
+		if _, err := right.Write(append(response, body...)); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-processed:
+		case <-ctx.Done():
+			t.Fatal("reader did not finish dispatch")
+		}
+	}
+	writeReply(first, 1)
+	select {
+	case <-done:
+		t.Fatal("late reply completed the next request")
+	default:
+	}
+	writeReply(second, 2)
+	select {
+	case result := <-done:
+		if result.err != nil || len(result.rows) != 1 || result.rows[0].Kline.Close != 20 || s.sdk.Wait.IsWait("2") {
+			t.Fatal("next waiter returned wrong response or leaked")
+		}
+	case <-ctx.Done():
+		t.Fatal("next waiter stuck")
+	}
+	writeReply(second, 2) // A duplicate response must not resurrect a waiter.
+	if s.sdk.Wait.IsWait("1") || s.sdk.Wait.IsWait("2") {
+		t.Fatal("late/duplicate response resurrected a waiter")
+	}
+	close(respond)
+	if err := <-peer; err != nil {
+		t.Fatal(err)
+	}
+}

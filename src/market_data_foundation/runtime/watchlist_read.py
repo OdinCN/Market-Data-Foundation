@@ -115,7 +115,8 @@ def _completed_report(fd):
     """Explicit legacy final-report compatibility; never scans/selects sessions."""
     report = decode_json(_load(fd, "report.json", MAX_REPORT_BYTES))
     require(
-        report["sdk_release"] == DRIVER_SDK_RELEASE
+        report["sdk_release"]
+        == report["config"].get("driver_sdk_release", DRIVER_SDK_RELEASE)
         and report["provider"] == "tdx_go_pinned"
         and report["session_id"] == report["config"]["session_id"]
         and type(report["session_complete"]) is bool
@@ -203,7 +204,11 @@ def _receipt(value, at):
     )
     require(
         type(value["config"]) is dict
-        and value["config"].keys() == {f.name for f in fields(SessionConfig)}
+        and value["config"].keys()
+        in (
+            {f.name for f in fields(SessionConfig)},
+            {f.name for f in fields(SessionConfig)} - {"driver_sdk_release"},
+        )
         and type(value["config"]["securities"]) is list
         and type(value["config"]["endpoints"]) is list,
         "invalid_receipt_config",

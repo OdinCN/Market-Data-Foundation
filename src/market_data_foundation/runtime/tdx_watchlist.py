@@ -1,16 +1,19 @@
 """Real Go source -> periodic ingress/read -> per-batch ACK; no import effects."""
 
 import argparse
+import fcntl
 import json
 import math
 import os
 import re
 import selectors
+import stat
 import struct
 import subprocess
 import time
 import uuid
 from collections import deque
+from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -38,6 +41,26 @@ from market_data_foundation.canonical.model import ContractError, require
 from market_data_foundation.qualification.contracts import Capability, Fixture
 
 DRIVER_SDK_RELEASE = SDK_RELEASE + "+mdf-wait-preregister-r1"
+V100_DRIVER_SDK_RELEASE = (
+    "injoyai/tdx v1.0.0@2a9000681f5a9896ea98e4de8bc4904f1dce78ba"
+    "+mdf-wait-preregister-r1"
+)
+DRIVER_SDK_RELEASES = (DRIVER_SDK_RELEASE, V100_DRIVER_SDK_RELEASE)
+# Reviewed exact artifacts, not self-reported versions or adjacent build reports.
+# The legacy artifact predates --version. Rebuilds need independent review/pinning.
+DRIVER_BINARY_SHA256 = {
+    DRIVER_SDK_RELEASE: (
+        "9480165a514e97764bff2aace55d5fe56923b34724b51f947f8a17ce00ce159a"
+    ),
+    V100_DRIVER_SDK_RELEASE: (
+        "13cfe86189ea2309bf1dc6d7c096c390021195b577f804d90f18f0c4c64a0a93"
+    ),
+}
+# Linux UAPI (linux/fcntl.h). The qualified Python build omits these names;
+# the kernel must still implement and confirm every seal, or launch is rejected.
+F_ADD_SEALS = 1033
+F_GET_SEALS = 1034
+DRIVER_SEALS = 0x0001 | 0x0002 | 0x0004 | 0x0008  # SEAL, SHRINK, GROW, WRITE
 # Includes the Go 100 ms worker join plus finite scheduler/close allowance.
 TEARDOWN_TOLERANCE_NS = 250_000_000
 MAX_FRAME = 131_072
@@ -155,8 +178,15 @@ class SessionConfig:
     ttl_seconds: float = 30
     start_at: str = ""
     session_id: str = ""
+    # Old receipts without this field retain their original release identity.
+    driver_sdk_release: str = DRIVER_SDK_RELEASE
 
     def __post_init__(self):
+        require(
+            type(self.driver_sdk_release) is str
+            and self.driver_sdk_release in DRIVER_SDK_RELEASES,
+            "driver_sdk_release_invalid",
+        )
         validate_members(self.securities)
         require(type(self.sdk_candidates) is bool, "sdk_pool_config_invalid")
         require(self.sdk_candidates or bool(self.endpoints), "empty_candidate_pool")
@@ -235,7 +265,7 @@ class WatchlistIngress:
             body.keys()
             == {"session_id", "sdk_release", "endpoint", "segment", "connection"}
             and body["session_id"] == self.config.session_id
-            and body["sdk_release"] == DRIVER_SDK_RELEASE
+            and body["sdk_release"] == self.config.driver_sdk_release
             and type(body["segment"]) is int
             and body["segment"] == self.segment
             and self._needs_connection
@@ -291,7 +321,7 @@ class WatchlistIngress:
             maximum=self.config.rounds,
             session_id=self.config.session_id,
             connection_attempts=self.config.max_connections,
-            sdk_release=DRIVER_SDK_RELEASE,
+            sdk_release=self.config.driver_sdk_release,
             connection_elapsed_bound_ns=int(self.config.dial_timeout_seconds * 1e9)
             + TEARDOWN_TOLERANCE_NS,
             quote_elapsed_bound_ns=int(self.config.quote_timeout_seconds * 1e9)
@@ -348,22 +378,144 @@ class WatchlistIngress:
         )
 
 
+@contextmanager
+def _open_driver(path: Path):
+    """Open every component without following links, including parent directories."""
+    require(".." not in path.parts, "driver_path_untrusted")
+    path = path.absolute()
+    with ExitStack() as stack:
+        directory = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        stack.callback(os.close, directory)
+        for part in path.parts[1:-1]:
+            directory = os.open(
+                part,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                dir_fd=directory,
+            )
+            stack.callback(os.close, directory)
+        fd = os.open(
+            path.name,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+            dir_fd=directory,
+        )
+        stack.callback(os.close, fd)
+        yield fd
+
+
+def _driver_file_identity(fd):
+    info = os.fstat(fd)
+    require(
+        stat.S_ISREG(info.st_mode)
+        and info.st_mode & 0o111
+        and 0 < info.st_size <= 64 * 1024 * 1024,
+        "driver_file_untrusted",
+    )
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+@contextmanager
+def verified_driver(path: Path, release: str):
+    """Linux only: hash and execute the same sealed snapshot; never probe a child.
+
+    Sidecars confer no authority. No path-based execution or unsealed fallback is
+    permitted, even if the source is replaced or written after this check.
+    """
+    require(release in DRIVER_BINARY_SHA256, "driver_sdk_release_invalid")
+    try:
+        with ExitStack() as stack:
+            source = stack.enter_context(_open_driver(path))
+            identity = _driver_file_identity(source)
+            snapshot = os.memfd_create(
+                "mdf-tdx-verified", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING
+            )
+            stream = stack.enter_context(os.fdopen(snapshot, "w+b"))
+            remaining = identity[3]
+            while remaining:
+                chunk = os.read(source, min(remaining, 1024 * 1024))
+                require(bool(chunk), "driver_path_changed")
+                stream.write(chunk)
+                remaining -= len(chunk)
+            require(not os.read(source, 1), "driver_path_changed")
+            stream.flush()
+            os.fchmod(snapshot, 0o500)
+            fcntl.fcntl(snapshot, F_ADD_SEALS, DRIVER_SEALS)
+            require(
+                fcntl.fcntl(snapshot, F_GET_SEALS) & DRIVER_SEALS == DRIVER_SEALS,
+                "driver_snapshot_unsealed",
+            )
+            stream.seek(0)
+            digest = sha256()
+            while chunk := stream.read(1024 * 1024):
+                digest.update(chunk)
+            require(
+                digest.hexdigest() == DRIVER_BINARY_SHA256[release],
+                "driver_binary_release_mismatch",
+            )
+            require(_driver_file_identity(source) == identity, "driver_path_changed")
+            # Re-walk the supplied path to detect a rename/replacement during
+            # verification. Later races cannot alter the sealed executable.
+            with _open_driver(path) as current:
+                require(
+                    _driver_file_identity(current) == identity, "driver_path_changed"
+                )
+                # Some filesystems have coarse timestamps. Detect same-size
+                # rewrites too; this bounded read is not the execution source.
+                with os.fdopen(current, "rb", closefd=False) as current_stream:
+                    require(
+                        sha256(current_stream.read(identity[3] + 1)).digest()
+                        == digest.digest(),
+                        "driver_path_changed",
+                    )
+            yield f"/proc/self/fd/{snapshot}", snapshot
+    except ContractError:
+        raise
+    except OSError, ValueError, AttributeError:
+        raise ContractError("driver_identity_untrusted") from None
+
+
 class FramedProcess:
     """One child, bounded framing and interruptible pipe deadlines (Linux/POSIX)."""
 
     def __init__(self, command: list[str], config: SessionConfig):
-        self.process = subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            bufsize=0,
-        )
+        with ExitStack() as stack:
+            inherited = ()
+            if any(
+                arg in {"--live", "-live"} or arg.startswith(("--live=", "-live="))
+                for arg in command[1:]
+            ):
+                require(
+                    len(command) == 2 and command[1] == "--live",
+                    "driver_command_untrusted",
+                )
+                executable, fd = stack.enter_context(
+                    verified_driver(Path(command[0]), config.driver_sdk_release)
+                )
+                command = [executable, "--live"]
+                inherited = (fd,)
+            self.process = subprocess.Popen(
+                command,
+                pass_fds=inherited,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                bufsize=0,
+            )
         self._closed = False
         for stream in (self.process.stdin, self.process.stdout):
             os.set_blocking(stream.fileno(), False)
         try:
-            self.send(b"K", asdict(config), deadline=time.monotonic() + 2)
+            # Parent-only identity policy: preserve the frozen Go K-frame schema
+            # so the untouched legacy binary remains usable for rollback.
+            body = asdict(config)
+            body.pop("driver_sdk_release")
+            self.send(b"K", body, deadline=time.monotonic() + 2)
         except BaseException:
             self.close()
             raise
@@ -794,7 +946,7 @@ class RealPeriodicWatchlistSession:
             "child_exit": child_exit,
             "scope": "bounded_nonproduction_research",
             "provider": "tdx_go_pinned",
-            "sdk_release": DRIVER_SDK_RELEASE,
+            "sdk_release": self.config.driver_sdk_release,
             "session_complete": reason == "budget_exhausted",
             "capability": self.fixture.capability,
             "fixture_id": self.fixture.fixture_id,
@@ -833,6 +985,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true", help="Host opt-in; contacts TDX")
     parser.add_argument("--driver", type=Path, required=True)
+    parser.add_argument("--driver-sdk-release", choices=DRIVER_SDK_RELEASES)
     parser.add_argument("--config", type=Path, help="JSON SessionConfig values")
     parser.add_argument(
         "--watchlist", help="comma-separated sh6/sz0/sz3 equity symbols"
@@ -845,6 +998,8 @@ def main() -> int:
     args = parser.parse_args()
     require(args.live, "explicit_live_opt_in_required")
     values = decode_json(args.config.read_bytes()) if args.config else {}
+    if args.driver_sdk_release is not None:
+        values["driver_sdk_release"] = args.driver_sdk_release
     for arg, key in (("watchlist", "securities"), ("endpoints", "endpoints")):
         if getattr(args, arg) is not None:
             values[key] = tuple(getattr(args, arg).split(","))
@@ -883,7 +1038,7 @@ def main() -> int:
     from market_data_foundation.runtime.watchlist_receipt import AcceptanceReceiptWriter
 
     receipt_writer = AcceptanceReceiptWriter(output)
-    adapter = FramedProcess([str(args.driver.resolve()), "--live"], config)
+    adapter = FramedProcess([str(args.driver), "--live"], config)
     report = session.run(adapter, archive=archive, on_read_ready=receipt_writer)
     archive("report.json", json.dumps(report, indent=2).encode())
     print(

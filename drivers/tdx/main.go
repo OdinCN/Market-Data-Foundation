@@ -28,7 +28,9 @@ import (
 	"github.com/injoyai/tdx/protocol"
 )
 
-const release = "injoyai/tdx v0.0.87@51c1ed51020fa43727300339dd92cbecf06a7d2e+mdf-wait-preregister-r1"
+// The offline builder sets this explicitly for either pinned SDK profile.
+var release = "injoyai/tdx v1.0.0@2a9000681f5a9896ea98e4de8bc4904f1dce78ba+mdf-wait-preregister-r1"
+
 const maxFrame = 131072
 
 type config struct {
@@ -763,6 +765,10 @@ func run() string {
 	return reason
 }
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		os.Stdout.WriteString(release + "\n")
+		return
+	}
 	logs.SetWriter(io.Discard)
 	// Suppress dependency panic/stack text; only classified IPC observations escape.
 	null, e := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
