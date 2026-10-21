@@ -27,6 +27,7 @@ from test_tdx_watchlist_runtime import (
 
 from market_data_foundation.runtime.tdx_watchlist import (
     DRIVER_SDK_RELEASE,
+    DRIVER_SDK_RELEASES,
     FramedProcess,
     RealPeriodicWatchlistSession,
 )
@@ -126,6 +127,39 @@ def alter_receipt(path, change):
     value = receipt(path)
     change(value)
     (path / RECEIPT_NAME).write_text(json.dumps(value))
+
+
+@pytest.mark.parametrize("release", DRIVER_SDK_RELEASES)
+def test_pinned_release_receipt_replay_preserves_frozen_bytes(tmp_path, release):
+    body = batch()
+    body["sdk_release"] = release
+    _, report = produce(
+        tmp_path, [body], config=replace(CONFIG, driver_sdk_release=release)
+    )
+    assert report["session_complete"]
+    frozen = (tmp_path / "batch-1.json").read_bytes()
+    value = read_latest_watchlist(tmp_path, read_at=clocks(1))
+    assert value["status"] == "observed"
+    assert value["batch"]["sdk_release"] == release
+    assert value["batch"]["sha256"] == sha256(frozen).hexdigest()
+    # Explicit final-report compatibility also follows the configured pin.
+    saved_receipt = (tmp_path / RECEIPT_NAME).read_bytes()
+    (tmp_path / RECEIPT_NAME).unlink()
+    legacy_report = read_latest_watchlist(
+        tmp_path, read_at=clocks(1), completed_report=True
+    )
+    assert legacy_report["status"] == "observed"
+    assert legacy_report["batch"]["sdk_release"] == release
+    (tmp_path / RECEIPT_NAME).write_bytes(saved_receipt)
+    # Historical receipts predate the parent-only release policy field.
+    alter_receipt(tmp_path, lambda r: r["config"].pop("driver_sdk_release"))
+    old = read_latest_watchlist(tmp_path, read_at=clocks(1))
+    if release == DRIVER_SDK_RELEASE:
+        assert old["status"] == "observed"
+        assert old["batch"]["sdk_release"] == DRIVER_SDK_RELEASE
+    else:
+        assert old["status"] == "unavailable"
+    assert (tmp_path / "batch-1.json").read_bytes() == frozen
 
 
 def test_latest_exact_values_identity_units_and_local_clocks(tmp_path):
