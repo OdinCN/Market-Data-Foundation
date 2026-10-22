@@ -1,0 +1,13 @@
+# Review/materialize on Host only; this file installs nothing.
+[Unit]
+Description=MDF I-2 single bounded SH/SZ session observation
+[Service]
+Type=oneshot
+WorkingDirectory=@WORKTREE@
+Environment=UV_PROJECT_ENVIRONMENT=@QUALIFIED_UV_ENV@
+Environment=UV_CACHE_DIR=@PRIVATE_UV_CACHE@
+ExecStart=@UV@ run --offline --no-sync python scripts/mdf_i2_collect.py collect --live --plan @SESSION_PLAN@ --sdk-checkout @SDK@ --candidate @CANDIDATE@ --host-reviewed-collector-sha256 @CANDIDATE_SHA256@ --driver @PINNED_DRIVER@ --calendar @CALENDAR_INTAKE@ --host-reviewed-calendar-sha256 @CALENDAR_SHA256@ --output @NEW_ARTIFACT_DIRECTORY@
+TimeoutStartSec=150
+Restart=no
+UMask=0077
+NoNewPrivileges=true
