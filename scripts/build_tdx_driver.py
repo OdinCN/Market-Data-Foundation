@@ -40,7 +40,17 @@ def main():
     parser.add_argument("--module-cache", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--race", action="store_true", help="Go race detector in tests")
+    parser.add_argument(
+        "--i4-candidate",
+        action="store_true",
+        help="Explicit offline I-4 candidate profile; requires SDK v1.0.0",
+    )
     args = parser.parse_args()
+    if args.i4_candidate and args.sdk_version != "v1.0.0":
+        parser.error("I-4 candidate profile requires SDK v1.0.0")
+    profile = "i4-candidate" if args.i4_candidate else "default"
+    tags = ["mdf_i4"] if args.i4_candidate else []
+    tag_flags = [f"-tags={','.join(tags)}"] if tags else []
     sdk = args.sdk_checkout.resolve()
     go = str(args.go.resolve())
     # Reject aliases and existing destinations, including dangling symlinks.
@@ -54,8 +64,12 @@ def main():
     release = (
         f"injoyai/tdx {args.sdk_version}@{REVISIONS[args.sdk_version]}+{DERIVATION}"
     )
+    if args.i4_candidate:
+        release += "+i4-raw-r1"
     report = {
         "state": "validating",
+        "build_profile": profile,
+        "go_tags": tags,
         "sdk_version": args.sdk_version,
         "sdk_release": release,
         "upstream_revision": REVISIONS[args.sdk_version],
@@ -63,6 +77,7 @@ def main():
         "patch_sha256": PATCH_SHA256,
         "client_input_sha256": CLIENT_SHA256,
         "network": "disabled",
+        "runtime_admission": "not_reviewed",
     }
     env = dict(
         os.environ,
@@ -138,6 +153,7 @@ def main():
             shutil.copyfile(sdk / "go.sum", build / "go.sum")
             report["state"] = "testing"
             flags = ["-mod=readonly", "-count=1", "-timeout=120s"]
+            flags.extend(tag_flags)
             if args.race:
                 flags.append("-race")
             # Root SDK tests can dial providers. Only the reviewed protocol
@@ -164,6 +180,7 @@ def main():
                     "-mod=readonly",
                     "-trimpath",
                     "-buildvcs=false",
+                    *tag_flags,
                     "-ldflags",
                     f"-X 'main.release={release}'",
                     "-o",
@@ -186,7 +203,10 @@ def main():
                 shutil.copyfileobj(binary, stream)
                 os.fchmod(stream.fileno(), 0o700)
             report.update(
-                state="built", binary_sha256=sha256(output.read_bytes()).hexdigest()
+                state="built",
+                binary_path=str(output),
+                binary_size_bytes=output.stat().st_size,
+                binary_sha256=sha256(output.read_bytes()).hexdigest(),
             )
     except Exception as exc:
         report.update(state="failed", exception_classification=type(exc).__name__)
