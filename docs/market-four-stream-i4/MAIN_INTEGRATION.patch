@@ -1,0 +1,11 @@
+diff --git a/drivers/tdx/main.go b/drivers/tdx/main.go
+--- a/drivers/tdx/main.go
++++ b/drivers/tdx/main.go
+@@ -767,4 +767,7 @@
+ func main() {
++	if I4Dispatch() {
++		return
++	}
+ 	if len(os.Args) == 2 && os.Args[1] == "--version" {
+ 		os.Stdout.WriteString(release + "\n")
+ 		return

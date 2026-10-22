@@ -1,0 +1,10 @@
+# Materialize separate AM (09:35) / PM (13:30) instances, each with a fresh plan/run ID.
+# Host must first pass source/script QA and independent calendar intake review.
+[Unit]
+Description=MDF I-2 one-shot 2026-10-23 observation
+[Timer]
+OnCalendar=2026-10-23 @WINDOW@ Asia/Shanghai
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=false
+Unit=@REVIEWED_ONESHOT_SERVICE@

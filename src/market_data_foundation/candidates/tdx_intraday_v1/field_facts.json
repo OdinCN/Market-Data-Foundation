@@ -1,0 +1,1419 @@
+{
+  "sdk_commit": "2a9000681f5a9896ea98e4de8bc4904f1dce78ba",
+  "audit_sha256": "b03cd8bdfd1cf32d88391696ab35876d52767ed6971d86f94d0bc51ec48b3125",
+  "records": [
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "Market",
+      "json_name": "market",
+      "go_type": "uint8",
+      "source_ref": "protocol/model_ex.go:48",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.market"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "Code",
+      "json_name": "code",
+      "go_type": "string",
+      "source_ref": "protocol/model_ex.go:49",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.code"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "PreClose",
+      "json_name": "preClose",
+      "go_type": "float64",
+      "source_ref": "protocol/model_ex.go:50",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.preClose"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "Open",
+      "json_name": "open",
+      "go_type": "float64",
+      "source_ref": "protocol/model_ex.go:51",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.open"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "High",
+      "json_name": "high",
+      "go_type": "float64",
+      "source_ref": "protocol/model_ex.go:52",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.high"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "Low",
+      "json_name": "low",
+      "go_type": "float64",
+      "source_ref": "protocol/model_ex.go:53",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.low"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "Price",
+      "json_name": "price",
+      "go_type": "float64",
+      "source_ref": "protocol/model_ex.go:54",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.price"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "KaiCang",
+      "json_name": "kaiCang",
+      "go_type": "uint32",
+      "source_ref": "protocol/model_ex.go:55",
+      "upstream_comment": "开仓",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.kaiCang"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "ZongLiang",
+      "json_name": "zongLiang",
+      "go_type": "uint32",
+      "source_ref": "protocol/model_ex.go:56",
+      "upstream_comment": "总量",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.zongLiang"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "XianLiang",
+      "json_name": "xianLiang",
+      "go_type": "uint32",
+      "source_ref": "protocol/model_ex.go:57",
+      "upstream_comment": "现量",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.xianLiang"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "NeiPan",
+      "json_name": "neiPan",
+      "go_type": "uint32",
+      "source_ref": "protocol/model_ex.go:58",
+      "upstream_comment": "内盘",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.neiPan"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "WaiPan",
+      "json_name": "waiPan",
+      "go_type": "uint32",
+      "source_ref": "protocol/model_ex.go:59",
+      "upstream_comment": "外盘",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.waiPan"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "ChiCang",
+      "json_name": "chiCang",
+      "go_type": "uint32",
+      "source_ref": "protocol/model_ex.go:60",
+      "upstream_comment": "持仓",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.chiCang"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "Bid",
+      "json_name": "bid",
+      "go_type": "[5]float64",
+      "source_ref": "protocol/model_ex.go:61",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.bid"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "BidVol",
+      "json_name": "bidVol",
+      "go_type": "[5]uint32",
+      "source_ref": "protocol/model_ex.go:62",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.bidVol"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "Ask",
+      "json_name": "ask",
+      "go_type": "[5]float64",
+      "source_ref": "protocol/model_ex.go:63",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.ask"
+      }
+    },
+    {
+      "response_struct": "ExQuote",
+      "source_field_name": "AskVol",
+      "json_name": "askVol",
+      "go_type": "[5]uint32",
+      "source_ref": "protocol/model_ex.go:64",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExQuote",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.askVol"
+      }
+    },
+    {
+      "response_struct": "ExKline",
+      "source_field_name": "Datetime",
+      "json_name": "datetime",
+      "go_type": "string",
+      "source_ref": "protocol/model_ex.go:69",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExKline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.datetime"
+      }
+    },
+    {
+      "response_struct": "ExKline",
+      "source_field_name": "Open",
+      "json_name": "open",
+      "go_type": "float64",
+      "source_ref": "protocol/model_ex.go:70",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExKline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.open"
+      }
+    },
+    {
+      "response_struct": "ExKline",
+      "source_field_name": "High",
+      "json_name": "high",
+      "go_type": "float64",
+      "source_ref": "protocol/model_ex.go:71",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExKline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.high"
+      }
+    },
+    {
+      "response_struct": "ExKline",
+      "source_field_name": "Low",
+      "json_name": "low",
+      "go_type": "float64",
+      "source_ref": "protocol/model_ex.go:72",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExKline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.low"
+      }
+    },
+    {
+      "response_struct": "ExKline",
+      "source_field_name": "Close",
+      "json_name": "close",
+      "go_type": "float64",
+      "source_ref": "protocol/model_ex.go:73",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExKline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.close"
+      }
+    },
+    {
+      "response_struct": "ExKline",
+      "source_field_name": "Position",
+      "json_name": "position",
+      "go_type": "uint32",
+      "source_ref": "protocol/model_ex.go:74",
+      "upstream_comment": "持仓",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExKline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.position"
+      }
+    },
+    {
+      "response_struct": "ExKline",
+      "source_field_name": "Trade",
+      "json_name": "trade",
+      "go_type": "uint32",
+      "source_ref": "protocol/model_ex.go:75",
+      "upstream_comment": "成交量",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExKline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.trade"
+      }
+    },
+    {
+      "response_struct": "ExKline",
+      "source_field_name": "Price",
+      "json_name": "price",
+      "go_type": "float64",
+      "source_ref": "protocol/model_ex.go:76",
+      "upstream_comment": "结算价",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExKline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.price"
+      }
+    },
+    {
+      "response_struct": "ExKline",
+      "source_field_name": "Amount",
+      "json_name": "amount",
+      "go_type": "float64",
+      "source_ref": "protocol/model_ex.go:77",
+      "upstream_comment": "成交额(=position 字节按 float 重解释,与 pytdx 一致)",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExKline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.amount"
+      }
+    },
+    {
+      "response_struct": "ExMinuteTick",
+      "source_field_name": "Hour",
+      "json_name": "hour",
+      "go_type": "int",
+      "source_ref": "protocol/model_ex.go:82",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExMinuteTick",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.hour"
+      }
+    },
+    {
+      "response_struct": "ExMinuteTick",
+      "source_field_name": "Minute",
+      "json_name": "minute",
+      "go_type": "int",
+      "source_ref": "protocol/model_ex.go:83",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExMinuteTick",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.minute"
+      }
+    },
+    {
+      "response_struct": "ExMinuteTick",
+      "source_field_name": "Price",
+      "json_name": "price",
+      "go_type": "float64",
+      "source_ref": "protocol/model_ex.go:84",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExMinuteTick",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.price"
+      }
+    },
+    {
+      "response_struct": "ExMinuteTick",
+      "source_field_name": "AvgPrice",
+      "json_name": "avgPrice",
+      "go_type": "float64",
+      "source_ref": "protocol/model_ex.go:85",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExMinuteTick",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.avgPrice"
+      }
+    },
+    {
+      "response_struct": "ExMinuteTick",
+      "source_field_name": "Volume",
+      "json_name": "volume",
+      "go_type": "uint32",
+      "source_ref": "protocol/model_ex.go:86",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExMinuteTick",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.volume"
+      }
+    },
+    {
+      "response_struct": "ExMinuteTick",
+      "source_field_name": "OpenInterest",
+      "json_name": "openInterest",
+      "go_type": "uint32",
+      "source_ref": "protocol/model_ex.go:87",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExMinuteTick",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.openInterest"
+      }
+    },
+    {
+      "response_struct": "ExTradeTick",
+      "source_field_name": "Hour",
+      "json_name": "hour",
+      "go_type": "int",
+      "source_ref": "protocol/model_ex.go:92",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExTradeTick",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.hour"
+      }
+    },
+    {
+      "response_struct": "ExTradeTick",
+      "source_field_name": "Minute",
+      "json_name": "minute",
+      "go_type": "int",
+      "source_ref": "protocol/model_ex.go:93",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExTradeTick",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.minute"
+      }
+    },
+    {
+      "response_struct": "ExTradeTick",
+      "source_field_name": "Second",
+      "json_name": "second",
+      "go_type": "int",
+      "source_ref": "protocol/model_ex.go:94",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExTradeTick",
+      "projection": {
+        "kind": "DERIVED_RENAMED",
+        "target": "row.native.sdk_second",
+        "rule": "nature_mod_10000_if_le_59_else_zero",
+        "observed_target": "row.native.observed_second",
+        "observed_rule": "ALWAYS_NULL_SOURCE_SECONDS_UNKNOWN"
+      }
+    },
+    {
+      "response_struct": "ExTradeTick",
+      "source_field_name": "Price",
+      "json_name": "price",
+      "go_type": "uint32",
+      "source_ref": "protocol/model_ex.go:95",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExTradeTick",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.price"
+      }
+    },
+    {
+      "response_struct": "ExTradeTick",
+      "source_field_name": "Volume",
+      "json_name": "volume",
+      "go_type": "uint32",
+      "source_ref": "protocol/model_ex.go:96",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExTradeTick",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.volume"
+      }
+    },
+    {
+      "response_struct": "ExTradeTick",
+      "source_field_name": "ZengCang",
+      "json_name": "zengCang",
+      "go_type": "int32",
+      "source_ref": "protocol/model_ex.go:97",
+      "upstream_comment": "增仓",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExTradeTick",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.zengCang"
+      }
+    },
+    {
+      "response_struct": "ExTradeTick",
+      "source_field_name": "Nature",
+      "json_name": "nature",
+      "go_type": "uint16",
+      "source_ref": "protocol/model_ex.go:98",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExTradeTick",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.nature"
+      }
+    },
+    {
+      "response_struct": "ExTradeTick",
+      "source_field_name": "NatureName",
+      "json_name": "natureName",
+      "go_type": "string",
+      "source_ref": "protocol/model_ex.go:99",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExTradeTick",
+      "projection": {
+        "kind": "OMITTED",
+        "target": null,
+        "rule": "SDK_MARKET_NATURE_LABEL_NOT_PROJECTED_ECONOMICS_UNKNOWN"
+      }
+    },
+    {
+      "response_struct": "ExTradeTick",
+      "source_field_name": "Direction",
+      "json_name": "direction",
+      "go_type": "int",
+      "source_ref": "protocol/model_ex.go:100",
+      "upstream_comment": "1买 -1卖 0中性",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.ExTradeTick",
+      "projection": {
+        "kind": "DERIVED",
+        "target": "row.native.direction",
+        "rule": "SDK_MARKET_SCOPED_NATURE_GROUP"
+      }
+    },
+    {
+      "response_struct": "KlineResp",
+      "source_field_name": "Count",
+      "json_name": "Count",
+      "go_type": "uint16",
+      "source_ref": "protocol/model_kline.go:38",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.KlineResp",
+      "projection": {
+        "kind": "CONTAINER",
+        "target": "page.declared_count"
+      }
+    },
+    {
+      "response_struct": "KlineResp",
+      "source_field_name": "List",
+      "json_name": "List",
+      "go_type": "[]*Kline",
+      "source_ref": "protocol/model_kline.go:39",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.KlineResp",
+      "projection": {
+        "kind": "CONTAINER",
+        "target": "page.rows"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "Last",
+      "json_name": "Last",
+      "go_type": "Price",
+      "source_ref": "protocol/model_kline.go:43",
+      "upstream_comment": "昨日收盘价",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Kline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.Last"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "Open",
+      "json_name": "Open",
+      "go_type": "Price",
+      "source_ref": "protocol/model_kline.go:44",
+      "upstream_comment": "开盘价",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Kline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.Open"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "High",
+      "json_name": "High",
+      "go_type": "Price",
+      "source_ref": "protocol/model_kline.go:45",
+      "upstream_comment": "最高价",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Kline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.High"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "Low",
+      "json_name": "Low",
+      "go_type": "Price",
+      "source_ref": "protocol/model_kline.go:46",
+      "upstream_comment": "最低价",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Kline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.Low"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "Close",
+      "json_name": "Close",
+      "go_type": "Price",
+      "source_ref": "protocol/model_kline.go:47",
+      "upstream_comment": "收盘价,如果是当天,则是最新价/实时价",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Kline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.Close"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "Order",
+      "json_name": "Order",
+      "go_type": "int",
+      "source_ref": "protocol/model_kline.go:48",
+      "upstream_comment": "成交单数,不一定有值",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Kline",
+      "projection": {
+        "kind": "OMITTED",
+        "target": null,
+        "rule": "NOT_DECODED_FROM_THIS_WIRE_SDK_DEFAULT_NOT_OBSERVED"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "Volume",
+      "json_name": "Volume",
+      "go_type": "int64",
+      "source_ref": "protocol/model_kline.go:49",
+      "upstream_comment": "成交量,手",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Kline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.Volume"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "Amount",
+      "json_name": "Amount",
+      "go_type": "Price",
+      "source_ref": "protocol/model_kline.go:50",
+      "upstream_comment": "成交额",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Kline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.Amount"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "Time",
+      "json_name": "Time",
+      "go_type": "time.Time",
+      "source_ref": "protocol/model_kline.go:51",
+      "upstream_comment": "时间",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Kline",
+      "projection": {
+        "kind": "DERIVED",
+        "target": "row.native.Time",
+        "rule": "WIRE_LOCAL_DATE_MINUTE_NO_HOST_CLOCK_FIX"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "UpCount",
+      "json_name": "UpCount",
+      "go_type": "int",
+      "source_ref": "protocol/model_kline.go:52",
+      "upstream_comment": "上涨数量,指数有效",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Kline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.UpCount"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "DownCount",
+      "json_name": "DownCount",
+      "go_type": "int",
+      "source_ref": "protocol/model_kline.go:53",
+      "upstream_comment": "下跌数量,指数有效",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Kline",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.DownCount"
+      }
+    },
+    {
+      "response_struct": "MinuteResp",
+      "source_field_name": "Count",
+      "json_name": "Count",
+      "go_type": "uint16",
+      "source_ref": "protocol/model_minute.go:10",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.MinuteResp",
+      "projection": {
+        "kind": "CONTAINER",
+        "target": "page.declared_count"
+      }
+    },
+    {
+      "response_struct": "MinuteResp",
+      "source_field_name": "List",
+      "json_name": "List",
+      "go_type": "[]PriceNumber",
+      "source_ref": "protocol/model_minute.go:11",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.MinuteResp",
+      "projection": {
+        "kind": "CONTAINER",
+        "target": "page.rows"
+      }
+    },
+    {
+      "response_struct": "PriceNumber",
+      "source_field_name": "Time",
+      "json_name": "Time",
+      "go_type": "string",
+      "source_ref": "protocol/model_minute.go:15",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.PriceNumber",
+      "projection": {
+        "kind": "DERIVED",
+        "target": "row.native.Time",
+        "rule": "SDK_SYNTHETIC_ROW_LABEL"
+      }
+    },
+    {
+      "response_struct": "PriceNumber",
+      "source_field_name": "Price",
+      "json_name": "Price",
+      "go_type": "Price",
+      "source_ref": "protocol/model_minute.go:16",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.PriceNumber",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.Price"
+      }
+    },
+    {
+      "response_struct": "PriceNumber",
+      "source_field_name": "Number",
+      "json_name": "Number",
+      "go_type": "int",
+      "source_ref": "protocol/model_minute.go:17",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.PriceNumber",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.Number"
+      }
+    },
+    {
+      "response_struct": "TradeResp",
+      "source_field_name": "Count",
+      "json_name": "Count",
+      "go_type": "uint16",
+      "source_ref": "protocol/model_trade.go:17",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.TradeResp",
+      "projection": {
+        "kind": "CONTAINER",
+        "target": "page.declared_count"
+      }
+    },
+    {
+      "response_struct": "TradeResp",
+      "source_field_name": "List",
+      "json_name": "List",
+      "go_type": "Trades",
+      "source_ref": "protocol/model_trade.go:18",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.TradeResp",
+      "projection": {
+        "kind": "CONTAINER",
+        "target": "page.rows"
+      }
+    },
+    {
+      "response_struct": "Trade",
+      "source_field_name": "Time",
+      "json_name": "Time",
+      "go_type": "time.Time",
+      "source_ref": "protocol/model_trade.go:23",
+      "upstream_comment": "时间, 09:30",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Trade",
+      "projection": {
+        "kind": "DERIVED",
+        "target": "row.native.Time",
+        "rule": "REQUEST_DATE_WIRE_MINUTE_FIXED_UTC8"
+      }
+    },
+    {
+      "response_struct": "Trade",
+      "source_field_name": "Price",
+      "json_name": "Price",
+      "go_type": "Price",
+      "source_ref": "protocol/model_trade.go:24",
+      "upstream_comment": "价格",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Trade",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.Price"
+      }
+    },
+    {
+      "response_struct": "Trade",
+      "source_field_name": "Volume",
+      "json_name": "Volume",
+      "go_type": "int",
+      "source_ref": "protocol/model_trade.go:25",
+      "upstream_comment": "成交量,手",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Trade",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.Volume"
+      }
+    },
+    {
+      "response_struct": "Trade",
+      "source_field_name": "Status",
+      "json_name": "Status",
+      "go_type": "int",
+      "source_ref": "protocol/model_trade.go:26",
+      "upstream_comment": "0是买，1是卖，2中性/汇总 中途也可能出现2,例20241115(sz000001)的14:56",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Trade",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.Status"
+      }
+    },
+    {
+      "response_struct": "Trade",
+      "source_field_name": "Number",
+      "json_name": "Number",
+      "go_type": "int",
+      "source_ref": "protocol/model_trade.go:27",
+      "upstream_comment": "单数,历史数据该字段无效",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/protocol",
+      "qualified_response_struct": "github.com/injoyai/tdx/protocol.Trade",
+      "projection": {
+        "kind": "OUTPUT",
+        "target": "row.native.Number"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "Unix",
+      "json_name": "Unix",
+      "go_type": "int64",
+      "source_ref": "extend/model_kline.go:17",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/extend",
+      "qualified_response_struct": "github.com/injoyai/tdx/extend.Kline",
+      "projection": {
+        "kind": "OMITTED",
+        "target": null,
+        "rule": "NOT_RETURNED_BY_SUPPORTED_API"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "Turnover",
+      "json_name": "Turnover",
+      "go_type": "float64",
+      "source_ref": "extend/model_kline.go:19",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/extend",
+      "qualified_response_struct": "github.com/injoyai/tdx/extend.Kline",
+      "projection": {
+        "kind": "OMITTED",
+        "target": null,
+        "rule": "NOT_RETURNED_BY_SUPPORTED_API"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "FloatStock",
+      "json_name": "FloatStock",
+      "go_type": "int64",
+      "source_ref": "extend/model_kline.go:20",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/extend",
+      "qualified_response_struct": "github.com/injoyai/tdx/extend.Kline",
+      "projection": {
+        "kind": "OMITTED",
+        "target": null,
+        "rule": "NOT_RETURNED_BY_SUPPORTED_API"
+      }
+    },
+    {
+      "response_struct": "Kline",
+      "source_field_name": "TotalStock",
+      "json_name": "TotalStock",
+      "go_type": "int64",
+      "source_ref": "extend/model_kline.go:21",
+      "upstream_comment": "",
+      "sdk_native_unit": "UNKNOWN",
+      "decoded_unit": "UNKNOWN",
+      "semantic_status": "UPSTREAM_AST_AND_DECODER_ONLY",
+      "market_scope": "EXACT_REQUEST_ONLY",
+      "clock_semantics": "UNKNOWN_UNLESS_EXPLICIT_FIELD_OVERRIDE",
+      "nullable_unknown_rule": "NO_ECONOMIC_INFERENCE",
+      "go_package": "github.com/injoyai/tdx/extend",
+      "qualified_response_struct": "github.com/injoyai/tdx/extend.Kline",
+      "projection": {
+        "kind": "OMITTED",
+        "target": null,
+        "rule": "NOT_RETURNED_BY_SUPPORTED_API"
+      }
+    }
+  ]
+}
