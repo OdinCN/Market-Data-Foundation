@@ -765,6 +765,9 @@ func run() string {
 	return reason
 }
 func main() {
+	if I4Dispatch() {
+		return
+	}
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
 		os.Stdout.WriteString(release + "\n")
 		return
