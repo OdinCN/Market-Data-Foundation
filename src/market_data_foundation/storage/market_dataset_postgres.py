@@ -322,6 +322,10 @@ class PostgresMarketDataset:
         )
         return receipt, level
 
+    def _prepare_material(self, receipt, raw):
+        self.store.put(receipt.locator, raw)
+        read_material(self.store, receipt)
+
     def retain(self, receipt, raw, *, level="raw", fault=None):
         intent = self.material_intent(receipt, level=level)
         require(
@@ -347,8 +351,7 @@ class PostgresMarketDataset:
             )
 
         def mutate():
-            self.store.put(receipt.locator, raw)
-            read_material(self.store, receipt)
+            self._prepare_material(receipt, raw)
             self._sql(
                 "INSERT INTO {s}.materials VALUES "
                 "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",

@@ -44,6 +44,8 @@ def _transport(method, url, headers, body, maximum, timeout):
     except HTTPError as exc:
         response = exc
     with response:
+        if not 200 <= response.code < 300:
+            return response.code, b""  # S3 error XML is not a material payload.
         raw = response.read(maximum + 1)
         require(len(raw) <= maximum, "garage_response_capacity")
         return response.code, raw
@@ -214,3 +216,76 @@ class GarageMarketMaterials:
             status, _ = self._send("GET", key, maximum=1024)
             require(status == 404, "garage_cleanup_readback_failed")
         self._owned.clear()
+
+
+class SimpleGarageMaterials(GarageMarketMaterials):
+    """Fixed bytes per content address; bounded retries, no CAS or deletion.
+
+    Trusted writers only. This does not provide WORM or physical exactly-once IO.
+    Budgets account for write intents, including writes with unknown outcomes.
+    """
+
+    def __init__(self, credentials, run_id, **kwargs):
+        super().__init__(credentials, run_id, **kwargs)
+        self.prefix = f"market-datasets/dev-simplified/{run_id}/"
+        self.intents = {}
+
+    def _send(self, method, key, body=b"", **kwargs):
+        require(method in ("GET", "HEAD", "PUT"), "simple_storage_method_forbidden")
+        require(not kwargs.get("conditional"), "simple_storage_no_cas")
+        if method == "PUT":
+            self._key(f"s3://{BUCKET}/{key}")
+            self._bind_bytes(key, body)
+        return super()._send(method, key, body, **kwargs)
+
+    def qualify_conditional_create(self):
+        raise ContractError("simple_storage_no_cas")
+
+    def cleanup_owned(self):
+        raise ContractError("simple_storage_no_delete")
+
+    def _observe(self, locator, raw):
+        status, observed = self._send("GET", self._key(locator), maximum=len(raw))
+        if status >= 500:
+            raise StorageUnknown("garage_read_unknown")
+        require(status in (200, 404), "garage_read_rejected")
+        if status == 200:
+            require(observed == raw, "garage_exact_readback_mismatch")
+            return True
+        return False
+
+    def _bind_bytes(self, key, raw):
+        require(
+            type(raw) is bytes
+            and 0 < len(raw) <= 4 * 1024 * 1024
+            and key.endswith("/" + byte_digest(raw)),
+            "material_address_mismatch",
+        )
+        if key not in self.intents:
+            require(len(self.intents) < 16, "garage_object_budget")
+            require(
+                sum(self.intents.values()) + len(raw) <= 4 * 1024 * 1024,
+                "garage_byte_budget",
+            )
+            self.intents[key] = len(raw)
+
+    def put(self, locator, raw, *, max_puts=2):
+        key = self._key(locator)
+        self._bind_bytes(key, raw)
+        require(type(max_puts) is int and 1 <= max_puts <= 3, "put_retry_budget")
+        for attempt in range(max_puts + 1):
+            # A GET error/403 never means absent and never authorizes a PUT.
+            if self._observe(locator, raw):
+                return
+            if attempt == max_puts:
+                raise StorageUnknown("garage_write_not_yet_observed")
+            if attempt:
+                time.sleep(0.05 * attempt)
+            try:
+                status, _ = self._send("PUT", key, raw, maximum=1024)
+            except StorageUnknown:
+                continue
+            if status >= 500:
+                continue
+            require(status in (200, 201), "garage_write_rejected")
+        raise StorageUnknown("garage_write_unknown")
