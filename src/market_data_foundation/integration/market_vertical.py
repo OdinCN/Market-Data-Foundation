@@ -6,7 +6,7 @@ There is no provider, filesystem discovery, storage fallback or automatic publis
 
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Protocol
+from typing import Callable, Protocol
 
 from market_data_foundation.canonical.market_material import (
     DailyDecoder,
@@ -79,6 +79,22 @@ class IntakeLayout:
 
 
 @dataclass(frozen=True)
+class PhysicalIntake:
+    """Explicit pre-write address binding; never inferred from an ACK or URI."""
+
+    level: str
+    locator: Callable[[MaterialReceipt, str], str]
+
+    def __post_init__(self):
+        require(
+            type(self.level) is str
+            and self.level in ("raw", "source-projection", "status", "metadata")
+            and callable(self.locator),
+            "material_physical_binding_required",
+        )
+
+
+@dataclass(frozen=True)
 class IntakeReceipt:
     material: MaterialReceipt
     response_identity: str
@@ -88,6 +104,7 @@ class IntakeReceipt:
     retained_reference: str | None
     request_clock_evidence: str
     commit: CommitReceipt
+    physical_level: str | None = None
 
 
 def response_identity(page: Page) -> str:
@@ -147,12 +164,18 @@ def retain_page(
     request: PageRequest,
     layout: IntakeLayout,
     writer: MarketWriter,
+    *,
+    physical: PhysicalIntake | None = None,
 ) -> IntakeReceipt:
     """Read the original durable D2 receipt, then explicitly retain exact bytes.
 
     UNKNOWN/REJECTED receipts can be retained but cannot pass D3 assessment.
     No fetch, reconcile, retry, admission, Version or Publication is implicit.
     """
+    require(
+        physical is None or isinstance(physical, PhysicalIntake),
+        "material_physical_binding_required",
+    )
     validate_frozen_plan(worker.plan)
     worker.journal.check_intent(worker.plan, worker.contract)
     require(worker.source.binding == worker.binding, "offline_binding_changed")
@@ -218,7 +241,13 @@ def retain_page(
         material_kind=page.material_kind,
         fixture_id=layout.fixture_id,
     )
-    commit = writer.retain(receipt, page.raw)
+    if physical is None:
+        commit = writer.retain(receipt, page.raw)
+    else:
+        # Freeze the SAME D2 identity, times, provenance and original bytes with
+        # the explicit physical address BEFORE the first persistence effect.
+        receipt = replace(receipt, locator=physical.locator(receipt, physical.level))
+        commit = writer.retain(receipt, page.raw, level=physical.level)
     return IntakeReceipt(
         receipt,
         response,
@@ -228,6 +257,7 @@ def retain_page(
         page.retained_reference,
         layout.request_clock_evidence,
         commit,
+        physical.level if physical else None,
     )
 
 
