@@ -33,6 +33,7 @@ from market_data_foundation.historical.daily_bars import (
     persist_replay_before_publication,
     publish_replay,
 )
+from market_data_foundation.storage.postgres_runtime_config import load_pg_config
 from tests.test_p6_consumer_read_postgres_integration import (
     BASE,
     _cpi_plan,
@@ -107,21 +108,17 @@ def test_withdrawal_fixture_obeys_delivered_evidence_contract(index, monkeypatch
 
 def _connect(*, read_only=False):
     # Only the existing owner-provisioned development capability. No DSN fallback.
-    runtime = tomllib.loads(Path("config/local/runtime.toml").read_text())["postgres"]
-    assert runtime["host"] == "192.168.10.4"
-    assert runtime["database"] == "market_data_foundation_dev"
+    runtime = load_pg_config(Path("config/local/runtime.toml").absolute())
+    assert runtime.host == "192.168.10.4"
+    assert runtime.database == "market_data_foundation_dev"
     password = os.environ.get("MDF_POSTGRES_PASSWORD")
     if password is None:
         password = tomllib.loads(Path("config/local/secret.toml").read_text())[
             "postgres"
         ]["password"]
     return psycopg.connect(
-        host=runtime["host"],
-        port=runtime["port"],
-        dbname=runtime["database"],
-        user=runtime["user"],
+        **runtime.connection_kwargs(),
         password=password,
-        sslmode=runtime["sslmode"],
         connect_timeout=5,
         autocommit=True,
         options=(

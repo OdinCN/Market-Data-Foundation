@@ -14,6 +14,7 @@ from market_data_foundation.canonical.kernel import CanonicalKernel
 from market_data_foundation.canonical.model import Kind, digest
 from market_data_foundation.canonical.postgres import PostgresLedger
 from market_data_foundation.historical import cpi_retained_handoff as cpi
+from market_data_foundation.storage.postgres_runtime_config import load_pg_config
 
 pytestmark = pytest.mark.postgres_integration
 SCHEMA = "mdf_p4_macro_bls_cpi_retained_handoff_r1"
@@ -22,18 +23,14 @@ ARTIFACT_ROOT = Path("artifacts/macro-bls-cpi-retained-handoff-r1")
 
 
 def _connect():
-    runtime = tomllib.loads(Path("config/local/runtime.toml").read_text())["postgres"]
+    runtime = load_pg_config(Path("config/local/runtime.toml").absolute())
     secret = tomllib.loads(Path("config/local/secret.toml").read_text())["postgres"]
-    assert runtime["host"] == "192.168.10.4"
+    assert runtime.host == "192.168.10.4"
     try:
         # Publication's prechecks are reads. Autocommit leaves the accepted
         # kernel's publication connection idle; ordinary writes use a transaction.
         return psycopg.connect(
-            host=runtime["host"],
-            port=runtime["port"],
-            dbname=runtime["database"],
-            user=runtime["user"],
-            sslmode=runtime["sslmode"],
+            **runtime.connection_kwargs(),
             password=secret["password"],
             connect_timeout=5,
             autocommit=True,

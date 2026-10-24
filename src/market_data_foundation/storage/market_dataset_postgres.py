@@ -46,6 +46,7 @@ from market_data_foundation.domain_contracts.market_universe import (
 
 from .market_dataset_codec import dumps, loads
 from .market_dataset_garage import RUN
+from .postgres_runtime_config import DEFAULT_RUNTIME_PATH, load_pg_config
 
 SCHEMA = "mdf_market_dataset_dev_r1"
 SCHEMA_REVISION = "market.dataset.physical.r1"
@@ -75,17 +76,13 @@ SLOT_WHERE = (
 )
 
 
-def connect_dev(password: str):
+def connect_dev(password: str, *, runtime_path: Path = DEFAULT_RUNTIME_PATH):
     """Exact server/db/role/TLS binding; no DSN, env target or service fallback."""
     require(bool(password), "postgres_credential_missing")
+    profile = load_pg_config(runtime_path)
     return psycopg.connect(
-        host="192.168.10.4",
-        hostaddr="192.168.10.4",  # Do not accept libpq PGHOSTADDR override.
-        port=5432,
-        dbname="market_data_foundation_dev",
-        user="market_data_foundation_dev",
+        **profile.connection_kwargs(),
         password=password,
-        sslmode="require",
         connect_timeout=5,
         autocommit=True,
         options="-c statement_timeout=5000 -c lock_timeout=1000 -c timezone=UTC",
