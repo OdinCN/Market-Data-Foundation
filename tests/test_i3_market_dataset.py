@@ -796,7 +796,7 @@ def test_complete_host_probe_orchestration_with_sql_and_wire_doubles(
     assert result["garage_requests"] <= 96
 
 
-def test_dev_pg_hostaddr_pinned_against_libpq_environment(monkeypatch):
+def test_dev_pg_hostaddr_pinned_against_libpq_environment(monkeypatch, tmp_path):
     """A libpq env override cannot redirect authentication to a different IP."""
     import psycopg
     from psycopg.conninfo import conninfo_attempts, conninfo_to_dict, make_conninfo
@@ -813,7 +813,16 @@ def test_dev_pg_hostaddr_pinned_against_libpq_environment(monkeypatch):
         return witness
 
     monkeypatch.setattr(psycopg, "connect", capture_connection)
-    assert connect_dev("test-only-nonsecret") is witness
+    from market_data_foundation.storage.postgres_runtime_config import PgConfigError
+    from tests.test_postgres_runtime_config import runtime_file
+
+    path = runtime_file(tmp_path)
+    with pytest.raises(PgConfigError, match="postgres_environment_not_allowed"):
+        connect_dev("test-only-nonsecret", runtime_path=path)
+    assert kwargs == {}
+    monkeypatch.delenv("PGHOSTADDR")
+    monkeypatch.delenv("PGHOST")
+    assert connect_dev("test-only-nonsecret", runtime_path=path) is witness
     assert kwargs["host"] == "192.168.10.4"
     assert kwargs["hostaddr"] == "192.168.10.4"
     assert kwargs["sslmode"] == "require"

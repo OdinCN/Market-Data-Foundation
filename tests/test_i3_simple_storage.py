@@ -584,3 +584,55 @@ def test_original_attempt_slot_has_database_unique_constraint(scenario):
             "INSERT INTO ingest_pending VALUES (?,?,?,?,?,?)",
             ("changed-material-id", *row[1:]),
         )
+
+
+@pytest.mark.parametrize("mode", ["require", "verify-ca", "verify-full"])
+def test_credentials_shared_transport_without_network(tmp_path, monkeypatch, mode):
+    import socket
+
+    import psycopg
+
+    from scripts import mdf_i3_storage_simple_dev as script
+    from tests.test_postgres_runtime_config import ca_file, runtime_file
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("credentials_must_not_open_connections")
+
+    monkeypatch.setattr(psycopg, "connect", forbidden)
+    monkeypatch.setattr(socket.socket, "connect", forbidden)
+    monkeypatch.setattr(socket, "create_connection", forbidden)
+    monkeypatch.setattr(script, "CONFIG", tmp_path)
+    root = None if mode == "require" else ca_file(tmp_path)
+    runtime = runtime_file(tmp_path, mode, root=root)
+    garage = (
+        '\n[storage]\nbackend = "s3"\n[s3]\n'
+        f'endpoint_url = "{script.ENDPOINT}"\nbucket = "{script.BUCKET}"\n'
+        'region = "garage"\nkey_prefix = ""\naddressing_style = "path"\n'
+    )
+    runtime.write_text(runtime.read_text() + garage)
+    (tmp_path / "secret.toml").write_text(
+        '[postgres]\npassword = "synthetic"\n[s3]\n'
+        'access_key_id = "synthetic-id"\nsecret_access_key = "synthetic-key"\n'
+    )
+    original = runtime.read_text()
+    assert script.credentials() == (
+        "synthetic",
+        GarageCredentials("synthetic-id", "synthetic-key"),
+    )
+    # Every historical Garage/S3 contract field remains independently enforced.
+    for old, new in (
+        ('backend = "s3"', 'backend = "other"'),
+        (script.ENDPOINT, "http://untrusted.invalid"),
+        (script.BUCKET, "other-bucket"),
+        ('region = "garage"', 'region = "other"'),
+        ('key_prefix = ""', 'key_prefix = "other"'),
+        ('addressing_style = "path"', 'addressing_style = "virtual"'),
+        ('host = "192.168.10.4"', 'host = "127.0.0.1"'),
+    ):
+        runtime.write_text(original.replace(old, new))
+        with pytest.raises(ContractError):
+            script.credentials()
+    # Config rejection precedes even opening the synthetic secret file.
+    (tmp_path / "secret.toml").unlink()
+    with pytest.raises(ContractError):
+        script.credentials()

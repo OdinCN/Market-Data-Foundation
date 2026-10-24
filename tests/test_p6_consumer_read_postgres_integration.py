@@ -1,7 +1,6 @@
 """Bounded real-backend proof for the frozen P6 consumer-read contract."""
 
 import os
-import tomllib
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -26,6 +25,7 @@ from market_data_foundation.historical.daily_bars import (
     persist_replay_before_publication,
     publish_replay,
 )
+from market_data_foundation.storage.postgres_runtime_config import load_pg_config
 
 pytestmark = pytest.mark.postgres_integration
 
@@ -34,14 +34,10 @@ BASE = datetime(2026, 10, 6, tzinfo=UTC)
 
 
 def _connect(*, autocommit: bool = False):
-    runtime = tomllib.loads(Path("config/local/runtime.toml").read_text())["postgres"]
-    assert runtime["host"] == "192.168.10.4"
+    runtime = load_pg_config(Path("config/local/runtime.toml").absolute())
+    assert runtime.host == "192.168.10.4"
     return psycopg.connect(
-        host=runtime["host"],
-        port=runtime["port"],
-        dbname=runtime["database"],
-        user=runtime["user"],
-        sslmode=runtime["sslmode"],
+        **runtime.connection_kwargs(),
         password=os.environ["MDF_POSTGRES_PASSWORD"],
         connect_timeout=5,
         autocommit=autocommit,

@@ -1,7 +1,6 @@
 """Transaction-scoped PostgreSQL proof using only an in-memory material store."""
 
 import os
-import tomllib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -20,6 +19,7 @@ from market_data_foundation.historical.bls_cpi_material_store import (
     PostgresAdvisoryWriterProtection,
     materialize_persist_publish,
 )
+from market_data_foundation.storage.postgres_runtime_config import load_pg_config
 
 pytestmark = pytest.mark.postgres_integration
 
@@ -28,15 +28,11 @@ BASE = datetime(2026, 10, 6, tzinfo=UTC)
 
 
 def _connect(*, autocommit=False):
-    runtime = tomllib.loads(Path("config/local/runtime.toml").read_text())["postgres"]
+    runtime = load_pg_config(Path("config/local/runtime.toml").absolute())
     password = os.environ["MDF_POSTGRES_PASSWORD"]
-    assert runtime["host"] == "192.168.10.4"
+    assert runtime.host == "192.168.10.4"
     return psycopg.connect(
-        host=runtime["host"],
-        port=runtime["port"],
-        dbname=runtime["database"],
-        user=runtime["user"],
-        sslmode=runtime["sslmode"],
+        **runtime.connection_kwargs(),
         password=password,
         connect_timeout=5,
         autocommit=autocommit,

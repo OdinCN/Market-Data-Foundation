@@ -39,20 +39,14 @@ from market_data_foundation.storage.market_dataset_simple import (
     schema_for,
     simple_preflight,
 )
+from market_data_foundation.storage.postgres_runtime_config import load_pg_config
 
 CONFIG = Path("/srv/market-data-foundation/config/local")
 
 
 def credentials():
+    load_pg_config(CONFIG / "runtime.toml")
     runtime = tomllib.loads((CONFIG / "runtime.toml").read_text())
-    expected_pg = dict(
-        host="192.168.10.4",
-        port=5432,
-        database="market_data_foundation_dev",
-        user="market_data_foundation_dev",
-        sslmode="require",
-    )
-    require(runtime["postgres"] == expected_pg, "runtime_postgres_binding_drift")
     require(runtime["storage"]["backend"] == "s3", "runtime_backend_drift")
     s3 = runtime["s3"]
     require(
