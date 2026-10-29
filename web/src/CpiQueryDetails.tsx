@@ -1,3 +1,4 @@
+import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { CpiAvailability, CpiHttpExchange } from "./cpiTimeSeriesApi";
 import { formatBeijingTime } from "./beijingTime";
@@ -220,16 +221,19 @@ function CompactTable({
   );
 }
 export function CpiQueryApiHelp({
+  profile = CPI_PROFILE,
   availability,
   request,
 }: {
   availability: CpiAvailability;
   request: RequestDescription;
+  profile?: MacroProfile;
 }) {
   const permission = availability.data?.web_capabilities.query;
   return (
-    <section aria-label="CPI API说明" className="cpi-api-help">
-      <h4>GET /api/r5/cpi/timeseries/query</h4>
+    <section aria-label={`${profile.label} API说明`} className="cpi-api-help">
+      <h4>GET {profile.basePath}/query</h4>
+      {profile.historyNotice && <p>{profile.historyNotice}</p>}
       <p>
         当前 DEV 接口：
         {availability.failure
@@ -288,12 +292,10 @@ export function CpiQueryApiHelp({
         <CompactTable
           label="统计序列"
           headers={["series_id", "篮子 / 季调"]}
-          rows={[
-            ["CUSR0000SA0", "headline / sa"],
-            ["CUUR0000SA0", "headline / nsa"],
-            ["CUSR0000SA0L1E", "core / sa"],
-            ["CUUR0000SA0L1E", "core / nsa"],
-          ]}
+          rows={profile.series.map(([id, , basket, adjustment]) => [
+            id,
+            `${basket} / ${adjustment}`,
+          ])}
         />
       </details>
       <p>
@@ -406,7 +408,7 @@ export function CpiQueryApiHelp({
       <details>
         <summary>成功示例（字段节选，非本次响应）</summary>
         <pre>
-          <code>{`{"start_month":"2026-05","end_month":"2026-05","measure":"index","unit":"index","points":[{"series_id":"CUSR0000SA0L1E","month":"2026-05","index_value":"320.125","value":"320.125","change_1m_ratio":"0.0024","mom_pct":"0.24","available_at":null,"availability":"unpersisted"}],"missing":[],"calculation_missing":[],"persisted":false,"query_mode":"current"}`}</code>
+          <code>{`{"start_month":"2026-05","end_month":"2026-05","measure":"index","unit":"index","points":[{"series_id":"${profile.series[2][0]}","month":"2026-05","index_value":"320.125","value":"320.125","change_1m_ratio":"0.0024","mom_pct":"0.24","available_at":null,"availability":"unpersisted"}],"missing":[],"calculation_missing":[],"persisted":false,"query_mode":"current"}`}</code>
         </pre>
       </details>
       <details>

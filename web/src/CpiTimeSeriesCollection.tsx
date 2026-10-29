@@ -1,3 +1,4 @@
+import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import { DateField } from "./DateField";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
@@ -19,11 +20,12 @@ import {
 import {
   CpiStrategyWorkbench,
   cpiActionText,
-  cpiStateText,
+  cpiExecutionStateText,
 } from "./CpiStrategyWorkbench";
 import { formatBeijingTime } from "./beijingTime";
 
-const intentKey = "mdf.cpi.timeseries.pending.v1";
+const profileIntentKey = (profile: MacroProfile) =>
+  `mdf.${profile.id}.timeseries.pending.v1`;
 function requestId() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   // HTTP LAN origins still expose getRandomValues outside a secure context.
@@ -41,7 +43,7 @@ function requestId() {
     .map((part) => part.join(""))
     .join("-");
 }
-function storedIntent(): CpiJobIntent | null {
+function storedIntent(intentKey: string): CpiJobIntent | null {
   const raw = localStorage.getItem(intentKey);
   if (raw === null) return null;
   const value: CpiJobIntent = JSON.parse(raw);
@@ -59,19 +61,32 @@ const sameIntent = (a: CpiJobIntent, b: CpiJobIntent) =>
   a.action === b.action &&
   a.start === b.start &&
   a.end === b.end;
-export function CpiTimeSeriesCollection({
+export function CpiTimeSeriesCollection(
+  props: Parameters<typeof CpiTimeSeriesCollectionContent>[0],
+) {
+  return (
+    <CpiTimeSeriesCollectionContent
+      {...props}
+      key={(props.profile ?? CPI_PROFILE).id}
+    />
+  );
+}
+function CpiTimeSeriesCollectionContent({
   transport,
+  profile = CPI_PROFILE,
   availability,
   tab,
   generation = 0,
   onExecution,
 }: {
   transport: Transport;
+  profile?: MacroProfile;
   availability: CpiAvailability;
   tab: string;
   generation?: number;
   onExecution?: (id: string) => void;
 }) {
+  const intentKey = profileIntentKey(profile);
   const latest = latestMonth(availability.data);
   const [start, setStart] = useState(latest);
   const [end, setEnd] = useState(latest);
@@ -79,7 +94,7 @@ export function CpiTimeSeriesCollection({
   const [confirmed, setConfirmed] = useState(false);
   const [initial] = useState(() => {
     try {
-      return { intent: storedIntent(), failed: false };
+      return { intent: storedIntent(intentKey), failed: false };
     } catch {
       return { intent: null, failed: true };
     }
@@ -113,7 +128,7 @@ export function CpiTimeSeriesCollection({
   useEffect(() => {
     const update = () => {
       try {
-        setIntent(storedIntent());
+        setIntent(storedIntent(intentKey));
       } catch {
         setStorageFailed(true);
       }
@@ -122,8 +137,8 @@ export function CpiTimeSeriesCollection({
     return () => window.removeEventListener("storage", update);
   }, []);
   const jobs = useVisiblePolling(
-    (signal) => readCpiJobs(transport, signal),
-    [transport, generation],
+    (signal) => readCpiJobs(transport, signal, profile),
+    [transport, generation, profile.id],
     !!availability.data && tab === "new",
   );
   const matched = intent
@@ -190,7 +205,7 @@ export function CpiTimeSeriesCollection({
     setNotice("");
     let reserved: CpiJobIntent | null = null;
     try {
-      const existing = storedIntent();
+      const existing = storedIntent(intentKey);
       if (existing) {
         setIntent(existing);
         setNotice("已有请求待回查，请先核实原任务。");
@@ -216,11 +231,17 @@ export function CpiTimeSeriesCollection({
     }
     try {
       if (!reserved) return;
-      const job = await cpiRequest<CpiJob>(transport, "/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(reserved),
-      });
+      const job = await cpiRequest<CpiJob>(
+        transport,
+        "/jobs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(reserved),
+        },
+        20000,
+        profile,
+      );
       if (!validJob(job) || !sameIntent(job, reserved))
         throw new Error("receipt_unknown");
       if (mounted.current) {
@@ -234,7 +255,7 @@ export function CpiTimeSeriesCollection({
         const jobsBusy =
           error instanceof CpiServiceFailure &&
           error.status === 409 &&
-          error.classification === "cpi_jobs_busy";
+          error.classification === `${profile.id}_jobs_busy`;
         const initializationRefused =
           reserved?.action === "initialize" &&
           error instanceof CpiServiceFailure &&
@@ -249,8 +270,8 @@ export function CpiTimeSeriesCollection({
             [400, 403, 422].includes(error.status ?? 0) &&
             [
               "collection_not_enabled",
-              "cpi_package_credential_binding_unavailable",
-              "cpi_capability_disabled",
+              `${profile.id}_package_credential_binding_unavailable`,
+              `${profile.id}_capability_disabled`,
               "bls_credential_missing",
               "bls_credential_unknown",
               "operator_not_authorized",
@@ -259,7 +280,7 @@ export function CpiTimeSeriesCollection({
             ].includes(error.classification));
         if (refused && reserved) {
           try {
-            const stored = storedIntent();
+            const stored = storedIntent(intentKey);
             if (!stored || !sameIntent(stored, reserved))
               throw new Error("intent_changed");
             localStorage.removeItem(intentKey);
@@ -275,7 +296,7 @@ export function CpiTimeSeriesCollection({
         if (initializationRefused) availability.refresh?.();
         setNotice(
           jobsBusy
-            ? "另一项 CPI 采集正在执行，本次请求未创建任务。请待任务释放后重新确认原范围。"
+            ? `另一项 ${profile.label} 采集正在执行，本次请求未创建任务。请待任务释放后重新确认原范围。`
             : refused
               ? "服务明确拒绝本次采集，未创建任务。请核实写入资格或范围后重新确认。"
               : "采集回执不明，不能判断是否已执行。将自动跟踪原请求，请勿重复提交。",
@@ -290,7 +311,7 @@ export function CpiTimeSeriesCollection({
   function newIntent() {
     if (!intent || unresolved || busy || !matched) return;
     try {
-      const stored = storedIntent();
+      const stored = storedIntent(intentKey);
       if (!stored || !sameIntent(stored, intent))
         throw new Error("intent_changed");
       localStorage.removeItem(intentKey);
@@ -312,6 +333,7 @@ export function CpiTimeSeriesCollection({
   if (tab === "periodic")
     return (
       <CpiStrategyWorkbench
+        profile={profile}
         transport={transport}
         availability={availability}
         generation={generation}
@@ -320,17 +342,20 @@ export function CpiTimeSeriesCollection({
   if (tab !== "new") return null;
   return (
     <section
-      aria-label="CPI 受控采集"
+      aria-label={`${profile.label} 受控采集`}
       className="ordinary-query cpi-timeseries"
     >
-      <h3>CPI 受控采集</h3>
-      <CpiAvailabilityNotice availability={availability} />
+      <h3>{profile.label} 受控采集</h3>
+      <CpiAvailabilityNotice profile={profile} availability={availability} />
+      {profile.historyNotice && (
+        <p className="small">{profile.historyNotice}</p>
+      )}
       <p>四种口径一起采集。长范围由后端自动分批，无需手动拆分。</p>
       {maxMonths != null && (
         <p className="small">当前主机每次允许最多 {maxMonths} 个月。</p>
       )}
       {!enabled && availability.data && (
-        <p role="status">当前未开放 CPI 采集。</p>
+        <p role="status">当前未开放 {profile.label} 采集。</p>
       )}
       <div className="workbench cpi-collection-workbench">
         <div className="collection-input-pane">
@@ -374,7 +399,16 @@ export function CpiTimeSeriesCollection({
                 }}
               />
             </div>
-            {initializing && <p>初始化服务预置范围：240个月，可自行修改</p>}
+            {initializing && (
+              <p>
+                初始化服务预置范围：{preset?.months ?? "待核实"}个月，可自行修改
+              </p>
+            )}
+            {initializing && preset?.available && (
+              <p>
+                服务预置月份：{preset.start} 至 {preset.end}
+              </p>
+            )}
             {initializing && !preset?.available && (
               <p role="status">
                 服务暂无默认范围（{preset?.reason || "尚未确认"}
@@ -403,7 +437,7 @@ export function CpiTimeSeriesCollection({
                 !validRange
               }
             >
-              {busy ? "正在提交…" : "提交 CPI 采集"}
+              {busy ? "正在提交…" : `提交 ${profile.label} 采集`}
             </button>
           </form>
           {storageFailed && (
@@ -418,7 +452,9 @@ export function CpiTimeSeriesCollection({
             {intent && !briefJobs.some((job) => sameIntent(job, intent)) && (
               <li>
                 <div className="execution-brief-card" role="status">
-                  <strong>美国 CPI · {cpiActionText(intent.action)}</strong>
+                  <strong>
+                    美国 {profile.label} · {cpiActionText(intent.action)}
+                  </strong>
                   <dl>
                     <div>
                       <dt>请求编号</dt>
@@ -453,7 +489,9 @@ export function CpiTimeSeriesCollection({
                   className="execution-brief-card"
                   onClick={() => onExecution?.(job.job_id)}
                 >
-                  <strong>美国 CPI · {cpiActionText(job.action)}</strong>
+                  <strong>
+                    美国 {profile.label} · {cpiActionText(job.action)}
+                  </strong>
                   <dl>
                     <div>
                       <dt>请求编号</dt>
@@ -479,7 +517,7 @@ export function CpiTimeSeriesCollection({
                     <div>
                       <dt>结果</dt>
                       <dd>
-                        {cpiStateText(job.state)}
+                        {cpiExecutionStateText(job.state, job.result, profile)}
                         {job.classification ? ` · ${job.classification}` : ""}
                       </dd>
                     </div>
@@ -522,6 +560,7 @@ export function CpiTimeSeriesCollection({
   );
 }
 export function CpiTimeSeriesStrategy(props: {
+  profile?: MacroProfile;
   transport: Transport;
   availability: CpiAvailability;
   generation?: number;

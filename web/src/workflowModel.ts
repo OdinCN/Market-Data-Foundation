@@ -23,6 +23,10 @@ export const CPI: Key = {
   identity: "mdf.macro.bls.cpi.headlines",
   revision: "p3-r1",
 };
+export const PPI: Key = {
+  identity: "mdf.macro.bls.ppi.final-demand",
+  revision: "t01-r1",
+};
 // This is the existing manual handler's bounded SourceOperationRef, not the first CPI label.
 export const HISTORY_OPERATION =
   "mdf.source-candidate.bls-v2.cpi.history-index@r5-cpi-history-index-v1";

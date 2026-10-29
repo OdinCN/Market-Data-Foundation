@@ -1,10 +1,10 @@
+import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import { formatBeijingTime, beijingInputToIso } from "./beijingTime";
 import { DateField } from "./DateField";
 import { MultiSelect } from "./MultiSelect";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
 import {
-  cpiSeries,
   buildCpiQueryRequest,
   latestMonth,
   queryCpiRange,
@@ -26,8 +26,10 @@ import { Tabs } from "./WorkflowTable";
 
 export function CpiAvailabilityNotice({
   availability,
+  profile = CPI_PROFILE,
 }: {
   availability: CpiAvailability;
+  profile?: MacroProfile;
 }) {
   if (availability.failure)
     return (
@@ -35,7 +37,7 @@ export function CpiAvailabilityNotice({
         <p>
           {availability.data
             ? "服务状态暂未刷新，显示上次成功核实的信息；不代表已保存数据过期。"
-            : "CPI 服务状态未知，首次读取失败，当前不能确认查询或采集资格。"}
+            : `${profile.label} 服务状态未知，首次读取失败，当前不能确认查询或采集资格。`}
         </p>
         {availability.refresh && (
           <button type="button" onClick={availability.refresh}>
@@ -45,10 +47,12 @@ export function CpiAvailabilityNotice({
       </div>
     );
   if (availability.busy && !availability.data)
-    return <p role="status">正在核实 CPI 服务资格…</p>;
+    return <p role="status">正在核实 {profile.label} 服务资格…</p>;
   if (!availability.data)
     return (
-      <p role="status">CPI 服务状态待核实，当前不能确认查询或采集资格。</p>
+      <p role="status">
+        {profile.label} 服务状态待核实，当前不能确认查询或采集资格。
+      </p>
     );
   return null;
 }
@@ -113,13 +117,23 @@ const valueText = (
     ? "—"
     : `${ratio ? (Number(value) * 100).toFixed(2) : value}${unit}`;
 
-export function CpiTimeSeries({
+export function CpiTimeSeries(
+  props: Parameters<typeof CpiTimeSeriesContent>[0],
+) {
+  return (
+    <CpiTimeSeriesContent {...props} key={(props.profile ?? CPI_PROFILE).id} />
+  );
+}
+function CpiTimeSeriesContent({
   transport,
+  profile = CPI_PROFILE,
   availability,
 }: {
   transport: Transport;
+  profile?: MacroProfile;
   availability: CpiAvailability;
 }) {
+  const cpiSeries = profile.series;
   const latest = latestMonth(availability.data);
   const [start, setStart] = useState(latest ? shiftMonth(latest, -11) : "");
   const [end, setEnd] = useState(latest);
@@ -186,7 +200,7 @@ export function CpiTimeSeries({
         }
       : {}),
   };
-  const request = buildCpiQueryRequest(scope);
+  const request = buildCpiQueryRequest(scope, profile);
   async function submit() {
     if (pending || !valid || availability.data?.web_capabilities.query !== true)
       return;
@@ -206,6 +220,7 @@ export function CpiTimeSeries({
           if (active.current === controller && !controller.signal.aborted)
             setExchange(value);
         },
+        profile,
       );
       if (!controller.signal.aborted) setResult(response);
     } catch {
@@ -248,12 +263,12 @@ export function CpiTimeSeries({
   const pageSize = 40;
   return (
     <section
-      aria-label="CPI 范围查询"
-      className="ordinary-query cpi-timeseries"
+      aria-label={`${profile.label} 范围查询`}
+      className="ordinary-query cpi-timeseries macro-range-query"
     >
-      <h3>美国 CPI · 范围查询</h3>
+      <h3>美国 {profile.label} · 范围查询</h3>
       <Tabs
-        label="CPI 消费者页签"
+        label={`${profile.label} 消费者页签`}
         values={[
           ["query", "查询数据"],
           ["api", "API说明"],
@@ -262,14 +277,21 @@ export function CpiTimeSeries({
         onChange={setTab}
       />
       <div hidden={tab !== "api"}>
-        <CpiQueryApiHelp availability={availability} request={request} />
+        <CpiQueryApiHelp
+          profile={profile}
+          availability={availability}
+          request={request}
+        />
       </div>
       <div hidden={tab !== "query"}>
         <p className="muted">
           当前查询优先读取本地，缺口可向 BLS
           查询，不保存。历史截止查询只读已入库记录。
         </p>
-        <CpiAvailabilityNotice availability={availability} />
+        <CpiAvailabilityNotice profile={profile} availability={availability} />
+        {profile.historyNotice && (
+          <p className="small">{profile.historyNotice}</p>
+        )}
         {availability.data && (
           <>
             <p>
@@ -285,7 +307,9 @@ export function CpiTimeSeries({
               ))}
             </ul>
             {!availability.data.web_capabilities.query && (
-              <p role="alert">当前服务未开放 CPI 查询。请核实服务资格。</p>
+              <p role="alert">
+                当前服务未开放 {profile.label} 查询。请核实服务资格。
+              </p>
             )}
           </>
         )}
@@ -373,7 +397,7 @@ export function CpiTimeSeries({
           显示指标只控制表格列；实际请求固定 measure=index，不发送列选择参数。
         </p>
         <RequestPreview request={request} />
-        {pending && <p role="status">正在查询 CPI…</p>}
+        {pending && <p role="status">正在查询 {profile.label}…</p>}
         {failure && (
           <p role="alert">
             本次查询结果未知。服务不可用或返回范围无法核实，请稍后重新查询。
@@ -381,7 +405,7 @@ export function CpiTimeSeries({
         )}
         {(result || exchange) && (
           <Tabs
-            label="CPI 结果视图"
+            label={`${profile.label} 结果视图`}
             values={[
               ["table", "表格"],
               ["raw", "原始响应"],
@@ -401,7 +425,7 @@ export function CpiTimeSeries({
         )}
         <div hidden={resultTab !== "table"}>
           {result && columns.length > 0 && (
-            <section aria-label="CPI 范围结果">
+            <section aria-label={`${profile.label} 范围结果`}>
               <h4>
                 {result.start_month} 至 {result.end_month}
               </h4>
@@ -416,7 +440,7 @@ export function CpiTimeSeries({
                 变化率以百分比显示；3月、6月为相隔对应月数的累计变化，未经年化。
               </p>
               <div className="table-wrap">
-                <table aria-label="CPI 范围数据">
+                <table aria-label={`${profile.label} 范围数据`}>
                   <thead>
                     <tr>
                       <th>月份</th>
@@ -488,7 +512,7 @@ export function CpiTimeSeries({
                 </table>
               </div>
               {!rows.length && <p>当前范围没有可显示记录。</p>}
-              <div className="actions" aria-label="CPI 结果分页">
+              <div className="actions" aria-label={`${profile.label} 结果分页`}>
                 <button disabled={page === 0} onClick={() => setPage(page - 1)}>
                   上一页
                 </button>

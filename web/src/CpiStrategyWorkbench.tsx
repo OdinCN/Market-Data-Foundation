@@ -1,3 +1,4 @@
+import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
 import { formatBeijingTime } from "./beijingTime";
@@ -43,6 +44,60 @@ const states: Record<string, string> = {
 };
 export const cpiStateText = (value?: string | null) =>
   value ? (states[value] ?? "尚未核实") : "未记录";
+export function cpiExecutionStateText(
+  state: string | undefined,
+  result: Record<string, unknown> | null | undefined,
+  profile: MacroProfile = CPI_PROFILE,
+) {
+  return profile.id === "ppi" &&
+    state === "complete" &&
+    (result?.coverage_complete === false ||
+      result?.completion === "source_coverage_partial")
+    ? "已完成（来源有缺口）"
+    : cpiStateText(state);
+}
+function SourceCoverage({
+  result,
+}: {
+  result: CpiExecution["result"] | undefined;
+}) {
+  const readback = result?.readback;
+  if (!result) return null;
+  const data =
+    readback && typeof readback === "object"
+      ? { ...(readback as Record<string, unknown>), ...result }
+      : result;
+  const groups = [
+    ["missing", "回读缺口"],
+    ["source_missing", "来源未提供"],
+    ["source_unavailable", "官方 null"],
+  ] as const;
+  return (
+    <>
+      {typeof data.source_unavailable_count === "number" && (
+        <p>官方 null 总数：{data.source_unavailable_count}</p>
+      )}
+      {groups.map(([key, label]) => {
+        const points = data[key];
+        if (!Array.isArray(points)) return null;
+        return (
+          <details key={key}>
+            <summary>
+              {label}：{points.length} 个（最多展示 50 个）
+            </summary>
+            <ul>
+              {points.slice(0, 50).map((point, index) => (
+                <li key={index}>
+                  {point.series_id} · {point.month}
+                </li>
+              ))}
+            </ul>
+          </details>
+        );
+      })}
+    </>
+  );
+}
 export const cpiActionText = (value: string) =>
   ({
     initialize: "初始化采集",
@@ -56,6 +111,8 @@ export const cpiActionText = (value: string) =>
   })[value.startsWith("signal:") ? "signal" : value] ?? "尚未核实";
 type Stage = {
   state?: string;
+  coverage_complete?: boolean;
+  source_missing?: { series_id: string; month: string; reason?: string }[];
   next_attempt_at?: string | null;
   last_attempt_at?: string | null;
   completed_at?: string | null;
@@ -127,15 +184,17 @@ function ResultFacts({
 }
 export function CpiExecutionDetail({
   execution: e,
+  profile = CPI_PROFILE,
 }: {
   execution: CpiExecution;
+  profile?: MacroProfile;
 }) {
   return (
     <>
       <h3>执行详情</h3>
       <dl>
         <Fact name="记录编号">{e.id}</Fact>
-        <Fact name="关联资产">美国 CPI</Fact>
+        <Fact name="关联资产">美国 {profile.label}</Fact>
         <Fact name="来源">
           {e.origin === "automatic"
             ? "自动策略 · 最近真实执行摘要"
@@ -162,29 +221,23 @@ export function CpiExecutionDetail({
         <Fact name="结束时间（北京时间）">
           {formatBeijingTime(e.finished_at, "未记录")}
         </Fact>
-        <Fact name="执行结果">{cpiStateText(e.state)}</Fact>
+        <Fact name="执行结果">
+          {cpiExecutionStateText(e.state, e.result, profile)}
+        </Fact>
         {e.classification && <Fact name="结果分类">{e.classification}</Fact>}
       </dl>
       <ResultFacts result={e.result} />
+      {profile.id === "ppi" && <SourceCoverage result={e.result} />}
     </>
   );
 }
-export function CpiStrategyWorkbench({
-  transport,
-  availability,
-  generation = 0,
-  visible = true,
-  selected: selectedProp,
-  onSelect,
-}: {
-  transport: Transport;
-  availability: CpiAvailability;
-  generation?: number;
-  visible?: boolean;
-  selected?: boolean;
-  onSelect?: () => void;
-}) {
-  const [selected, setSelected] = useState(false);
+function useStrategyControl(
+  transport: Transport,
+  generation: number,
+  profile: MacroProfile,
+  availability: CpiAvailability,
+  visible: boolean,
+) {
   const [saving, setSaving] = useState(false);
   const [uncertain, setUncertain] = useState(false);
   const writing = useRef(false);
@@ -198,36 +251,14 @@ export function CpiStrategyWorkbench({
   // No mutation AbortController: navigation or a read refresh cannot cancel a PUT.
   const resource = useVisiblePolling(
     async (signal) => {
-      const strategy = await readCpiStrategy(transport, signal);
+      const strategy = await readCpiStrategy(transport, signal, profile);
       return strategy;
     },
-    [transport, generation],
+    [transport, generation, profile.id],
     !!availability.data && visible,
     () => !writing.current,
   );
-  const calendar = useVisiblePolling(
-    async (signal) => {
-      const value = await cpiRequest<Schedule>(transport, "/schedule", {
-        signal,
-      });
-      if (
-        !value ||
-        typeof value.calendar_status !== "string" ||
-        !Array.isArray(value.targets)
-      )
-        throw new Error("schedule_unknown");
-      return value;
-    },
-    [transport, generation],
-    !!availability.data && visible,
-  );
   const data = resource.data;
-  const shown = selectedProp ?? selected;
-  const currentCalendarError =
-    calendar.data?.calendar?.error ?? calendar.data?.calendar_error;
-  const calendarUsable = calendar.data?.calendar_status === "fresh";
-  const calendarTime = (value?: string | null) =>
-    formatBeijingTime(value, "未记录").replace(" 北京时间", "");
   async function toggle() {
     if (
       !data ||
@@ -242,10 +273,15 @@ export function CpiStrategyWorkbench({
     resource.invalidate();
     setSaving(true);
     try {
-      const value = await saveCpiStrategy(transport, !data.enabled);
-      resource.commit(value);
+      const value = await saveCpiStrategy(
+        transport,
+        !data.enabled,
+        undefined,
+        profile,
+      );
+      if (mounted.current) resource.commit(value);
     } catch {
-      setUncertain(true);
+      if (mounted.current) setUncertain(true);
     } finally {
       writing.current = false;
       if (mounted.current) setSaving(false);
@@ -256,6 +292,116 @@ export function CpiStrategyWorkbench({
   useEffect(() => {
     if (data) setUncertain(false);
   }, [data]);
+  return { resource, data, saving, uncertain, toggle };
+}
+export function CpiStrategyWorkbench(
+  props: Parameters<typeof CpiStrategyWorkbenchContent>[0],
+) {
+  return (
+    <CpiStrategyWorkbenchContent
+      {...props}
+      key={(props.profile ?? CPI_PROFILE).id}
+    />
+  );
+}
+function CpiStrategyWorkbenchContent({
+  transport,
+  profile: primaryProfile = CPI_PROFILE,
+  availability: primaryAvailability,
+  generation = 0,
+  visible = true,
+  additionalProfile,
+  additionalAvailability,
+  additionalVisible = true,
+  selectedId,
+  selected: selectedProp,
+  onSelect,
+}: {
+  transport: Transport;
+  profile?: MacroProfile;
+  availability: CpiAvailability;
+  generation?: number;
+  visible?: boolean;
+  selected?: boolean;
+  onSelect?: (id: string) => void;
+  additionalProfile?: MacroProfile;
+  additionalAvailability?: CpiAvailability;
+  additionalVisible?: boolean;
+  selectedId?: string | null;
+}) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const emptyAvailability: CpiAvailability = {
+    data: null,
+    legacy: false,
+    busy: false,
+    failure: null,
+  };
+  const primary = useStrategyControl(
+    transport,
+    generation,
+    primaryProfile,
+    primaryAvailability,
+    visible,
+  );
+  const secondary = useStrategyControl(
+    transport,
+    generation,
+    additionalProfile ?? primaryProfile,
+    additionalAvailability ?? emptyAvailability,
+    !!additionalProfile && additionalVisible,
+  );
+  const entries = [
+    {
+      profile: primaryProfile,
+      availability: primaryAvailability,
+      visible,
+      ...primary,
+    },
+    ...(additionalProfile
+      ? [
+          {
+            profile: additionalProfile,
+            availability: additionalAvailability ?? emptyAvailability,
+            visible: additionalVisible,
+            ...secondary,
+          },
+        ]
+      : []),
+  ];
+  const selection =
+    selectedId ?? (selectedProp ? `${primaryProfile.id}-auto` : selected);
+  const entry =
+    entries.find((e) => `${e.profile.id}-auto` === selection) ?? entries[0];
+  const { profile, data, resource, uncertain } = entry;
+  const detailVisible = entry.visible;
+  const calendar = useVisiblePolling(
+    async (signal) => {
+      const value = await cpiRequest<Schedule>(
+        transport,
+        "/schedule",
+        {
+          signal,
+        },
+        20000,
+        profile,
+      );
+      if (
+        !value ||
+        typeof value.calendar_status !== "string" ||
+        !Array.isArray(value.targets)
+      )
+        throw new Error("schedule_unknown");
+      return value;
+    },
+    [transport, generation, profile.id],
+    !!entry.availability.data && detailVisible,
+  );
+  const shown = !!selection;
+  const currentCalendarError =
+    calendar.data?.calendar?.error ?? calendar.data?.calendar_error;
+  const calendarUsable = calendar.data?.calendar_status === "fresh";
+  const calendarTime = (value?: string | null) =>
+    formatBeijingTime(value, "未记录").replace(" 北京时间", "");
   return (
     <>
       {(resource.stale || calendar.stale) && (
@@ -265,56 +411,57 @@ export function CpiStrategyWorkbench({
       <WorkflowTable
         label="周期任务"
         columns={["策略", "采集目标", "策略状态", "操作"]}
-        selected={shown ? "cpi-auto" : null}
-        onSelect={() => {
-          setSelected(true);
-          onSelect?.();
+        selected={selection}
+        onSelect={(id) => {
+          setSelected(id);
+          onSelect?.(id);
         }}
-        empty={visible ? "正在读取 CPI 策略…" : "此资产暂无可执行的预置策略。"}
-        rows={
+        empty={
           visible
-            ? [
-                {
-                  id: "cpi-auto",
-                  search: "美国 CPI 官方发布自动采集",
-                  cells: [
-                    "官方发布自动采集",
-                    "美国 CPI",
-                    data
-                      ? data.exists
-                        ? cpiStateText(
-                            data.state ?? (data.enabled ? "enabled" : "paused"),
-                          )
-                        : "未启动"
-                      : "尚未核实",
-                    <button
-                      key="toggle"
-                      disabled={
-                        !data ||
-                        saving ||
-                        uncertain ||
-                        resource.busy ||
-                        resource.stale ||
-                        (!data.enabled &&
-                          !availability.data?.web_capabilities.collect)
-                      }
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void toggle();
-                      }}
-                    >
-                      {saving ? "保存中…" : data?.enabled ? "暂停" : "启动"}
-                    </button>,
-                  ],
-                },
-              ]
-            : []
+            ? `正在读取 ${profile.label} 策略…`
+            : "此资产暂无可执行的预置策略。"
         }
+        rows={entries
+          .filter((e) => e.visible)
+          .map((e) => ({
+            id: `${e.profile.id}-auto`,
+            search: `美国 ${e.profile.label} 官方发布自动采集`,
+            cells: [
+              "官方发布自动采集",
+              `美国 ${e.profile.label}`,
+              e.data
+                ? e.data.exists
+                  ? cpiStateText(
+                      e.data.state ?? (e.data.enabled ? "enabled" : "paused"),
+                    )
+                  : "未启动"
+                : "尚未核实",
+              <button
+                key="toggle"
+                disabled={
+                  !e.data ||
+                  e.saving ||
+                  e.uncertain ||
+                  e.resource.busy ||
+                  e.resource.stale ||
+                  (!e.data.enabled &&
+                    !e.availability.data?.web_capabilities.collect)
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void e.toggle();
+                }}
+              >
+                {e.saving ? "保存中…" : e.data?.enabled ? "暂停" : "启动"}
+              </button>,
+            ],
+          }))}
       >
-        {shown && visible && data && (
+        {shown && detailVisible && data && (
           <>
-            <h3>CPI 策略详情</h3>
+            <h3>{profile.label} 策略详情</h3>
             <p>总体、核心 × 季调、未季调，共四种口径。</p>
+            {profile.historyNotice && <p>{profile.historyNotice}</p>}
             <dl>
               <Fact name="策略状态">
                 {data.exists
@@ -421,7 +568,7 @@ export function CpiStrategyWorkbench({
             <div
               className="month-plan-list"
               role="list"
-              aria-label="CPI 月份计划"
+              aria-label={`${profile.label} 月份计划`}
             >
               {(calendar.data?.targets ?? []).map((target) => (
                 <article
@@ -487,7 +634,11 @@ export function CpiStrategyWorkbench({
                           "failed",
                         ].includes(target.target?.state ?? "")
                           ? "等待当期采集"
-                          : cpiStateText(target.history?.state)}
+                          : cpiExecutionStateText(
+                              target.history?.state,
+                              target.history,
+                              profile,
+                            )}
                       </span>
                     </div>
                     <div className="month-stage-detail">
@@ -504,6 +655,9 @@ export function CpiStrategyWorkbench({
                         </time>
                       </p>
                       <ResultFacts result={target.history?.result} />
+                      {profile.id === "ppi" && (
+                        <SourceCoverage result={target.history} />
+                      )}
                       {target.history?.classification && (
                         <p>{target.history.classification}</p>
                       )}

@@ -1369,16 +1369,16 @@ footer {
   display: none !important;
 }
 /* Let consumer grids shrink before their pre/table content scrolls. */
-.cpi-timeseries[aria-label="CPI 范围查询"],
-.cpi-timeseries[aria-label="CPI 范围查询"] section,
-.cpi-timeseries[aria-label="CPI 范围查询"] form {
+.cpi-timeseries.macro-range-query,
+.cpi-timeseries.macro-range-query section,
+.cpi-timeseries.macro-range-query form {
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
 }
-.cpi-timeseries[aria-label="CPI 范围查询"] > *,
-.cpi-timeseries[aria-label="CPI 范围查询"] section > *,
-.cpi-timeseries[aria-label="CPI 范围查询"] form > *,
-.cpi-timeseries[aria-label="CPI 范围查询"] .field-grid > * {
+.cpi-timeseries.macro-range-query > *,
+.cpi-timeseries.macro-range-query section > *,
+.cpi-timeseries.macro-range-query form > *,
+.cpi-timeseries.macro-range-query .field-grid > * {
   min-width: 0;
 }
 .cpi-timeseries .cpi-http-exchange pre {

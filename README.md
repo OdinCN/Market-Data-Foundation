@@ -70,3 +70,5 @@ npm run build
 
 当前查询本地优先，真实缺口仅临时读取上游、不落库；strict 历史查询仅按本地 available 截止。
 初始化 revision=1 不等于官方首发，官方全部 vintage 仍 unsupported；真实未来发布仍待自然验证。
+
+PPI 模板开发候选的真实入口、数据口径与未验证边界见 [PPI 连续时间序列速览](docs/ppi-timeseries-quickstart-zh.md)。

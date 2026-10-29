@@ -1,8 +1,9 @@
+import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import { useState, type ReactNode } from "react";
 import type { Packages, RuntimeRevision } from "./packageApi";
 import type { Navigate, Route } from "./workflowRoute";
 import { Fact, WorkflowTable } from "./WorkflowTable";
-import { CPI, sameKey } from "./workflowModel";
+import { sameKey } from "./workflowModel";
 const eligible = (value: RuntimeRevision["local_read"]) =>
   value.allowed === true
     ? "允许"
@@ -20,6 +21,7 @@ export function RuntimeAssets({
   reference,
   cpi,
   cpiAction,
+  profile = CPI_PROFILE,
 }: {
   data: Packages | null;
   busy: boolean;
@@ -31,6 +33,7 @@ export function RuntimeAssets({
   reference: ReactNode;
   cpi?: ReactNode;
   cpiAction?: ReactNode;
+  profile?: MacroProfile;
 }) {
   const [expanded, setExpanded] = useState(false);
   const filter = route.fields.get("package");
@@ -56,15 +59,17 @@ export function RuntimeAssets({
   const selected = rows.find((r) => r.identity === route.fields.get("asset"));
   const cpiSelected =
     !!cpi &&
-    route.fields.get("asset") === CPI.identity &&
+    route.fields.get("asset") === profile.asset.identity &&
     (!route.fields.has("asset_revision") ||
-      route.fields.get("asset_revision") === CPI.revision) &&
+      route.fields.get("asset_revision") === profile.asset.revision) &&
     (!filter ||
       packages.some(
         (p) =>
-          p.capabilities.some((c) => sameKey(c.definition_ref, CPI)) ||
+          p.capabilities.some((c) =>
+            sameKey(c.definition_ref, profile.asset),
+          ) ||
           p.assets.some((a) =>
-            a.revisions.some((r) => sameKey(r.definition_ref, CPI)),
+            a.revisions.some((r) => sameKey(r.definition_ref, profile.asset)),
           ),
       ));
   const revision = route.fields.has("asset_revision")
@@ -339,7 +344,7 @@ export function RuntimeAssets({
       {cpiSelected && !selected && (
         <section>
           <div className="toolbar cpi-asset-title">
-            <h3>美国 CPI</h3>
+            <h3>美国 {profile.label}</h3>
             {cpiAction}
           </div>
           {cpi}
