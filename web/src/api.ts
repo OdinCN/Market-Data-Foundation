@@ -1,4 +1,13 @@
-import type { components, operations, paths } from "./api.generated";
+import type { components, operations, paths as R5Paths } from "./api.generated";
+import type {
+  components as ManagementComponents,
+  paths as ManagementPaths,
+} from "./management.generated";
+
+type paths = R5Paths & {
+  "/api/r3/management": ManagementPaths["/management"];
+};
+export type Management = ManagementComponents["schemas"]["ManagementDTO"];
 
 export type Catalog = components["schemas"]["CatalogDTO"];
 export type Directory = components["schemas"]["DirectoryDTO"];
@@ -90,4 +99,23 @@ export async function submitJob(
   if (body?.status !== "OK" || body?.acceptance !== "DURABLE")
     throw new ApiFailure("invalid_response");
   return body as components["schemas"]["AcceptedDTO"];
+}
+
+// Explicit PCE transport contract within the existing API layer. No CPI JobDTO,
+// release slot, qualification or successful read is synthesized.
+export async function pceRequest<T>(
+  transport: Transport,
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const response = await transport(path, {
+    method: "GET",
+    cache: "no-store",
+    ...init,
+  });
+  if (!response.ok) throw new ApiFailure("pce_request_unavailable");
+  const body = await response.json();
+  if (!body || typeof body !== "object")
+    throw new ApiFailure("invalid_pce_response");
+  return body as T;
 }

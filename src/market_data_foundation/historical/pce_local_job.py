@@ -90,7 +90,9 @@ class PceJobSpec:
             and self.quality == QUALITY,
             "pce_job_target_not_admitted",
         )
-        require(self.mode == "retained", "pce_job_mode_not_admitted")
+        require(self.mode in {"retained", "acquire"}, "pce_job_mode_not_admitted")
+        if self.mode == "acquire":
+            require(self.expected_raw_sha256 is None, "pce_job_live_digest_forbidden")
         require(
             self.mode != "retained" or self.expected_raw_sha256 is not None,
             "pce_job_retained_digest_required",
@@ -108,7 +110,7 @@ class PceJobSpec:
                 self.max_ledger_handoffs,
                 self.max_publications,
             )
-            == (0, 1, 1, 1)
+            == (2 if self.mode == "acquire" else 0, 1, 1, 1)
             and all(
                 type(value) is int
                 for value in (
@@ -162,7 +164,7 @@ def _decode_plan(value: dict) -> PcePlan:
 
 
 class PceLocalJob(RetainedRepair):
-    """Retained-only attempt; no provider construction or live execution path."""
+    """Retained workflow plus explicitly injected, bounded DEV acquisition."""
 
     spec_type = PceJobSpec
 
@@ -176,7 +178,25 @@ class PceLocalJob(RetainedRepair):
         readback: Callable[[], AbstractContextManager[Ledger]],
         commit: Callable[[], None],
     ) -> None:
-        require(type(journal) is PceJobJournal, "pce_job_journal_required")
+        from market_data_foundation.historical.pce_pg_journal import PostgresJobJournal
+
+        require(
+            type(journal) in {PceJobJournal, PostgresJobJournal},
+            "pce_job_journal_required",
+        )
+        if type(journal) is PostgresJobJournal:
+            require(isinstance(kernel.ledger, PostgresLedger), "pce_pg_ledger_required")
+            writer = kernel.ledger.connection
+            journal.binding.target.check_connection(writer)
+            require(
+                writer.info.user == journal.profile.user
+                and writer.pgconn.ssl_in_use is True
+                and writer.info.get_parameters().get("sslmode") == "verify-full"
+                and writer.info.get_parameters().get("sslrootcert")
+                == str(journal.profile.sslrootcert),
+                "pce_pg_writer_identity_mismatch",
+            )
+            journal.exclude_connection(writer)
         self.journal = journal
         self.clock = clock
         self.kernel = kernel
@@ -262,6 +282,8 @@ class PceLocalJob(RetainedRepair):
     ) -> tuple[PcePlan, bytes]:
         require(type(candidate) is PceRetainedCandidate, "pce_job_candidate_invalid")
         expected = candidate.plan.run.identity.removesuffix(":run")
+        if spec.mode == "acquire":
+            require(expected == identity, "pce_job_acquisition_identity_mismatch")
         require(
             spec.expected_raw_sha256 is None
             or digest(candidate.evidence.raw_bytes) == spec.expected_raw_sha256,
@@ -323,6 +345,8 @@ class PceLocalJob(RetainedRepair):
         enabled: bool,
         preflight: Callable[[PceJobSpec], None],
         retained: PceRetainedCandidate | None = None,
+        acquire: Callable[[], PceRetainedCandidate] | None = None,
+        prepare: Callable[[], None] | None = None,
     ) -> dict:
         require(enabled is True, "pce_job_explicit_opt_in_required")
         with self.journal.executor(identity):
@@ -336,27 +360,44 @@ class PceLocalJob(RetainedRepair):
             spec = PceJobSpec.from_document(document["spec"])
             if document["cancel_requested"]:
                 return self._cancelled(identity, "before_preflight")
+            started_at = self.clock()
             self.journal._update(
                 identity,
-                self.clock(),
+                started_at,
                 state="running",
                 stage="preflight",
                 attempt_id=identity + "-a1",
                 attempts=1,
-                started_at=self.clock().isoformat(),
+                started_at=started_at.isoformat(),
             )
             try:
+                if prepare is not None:
+                    require(spec.mode == "acquire", "pce_prepare_acquire_only")
+                    prepare()
                 self._check_bindings(spec)
-                require(
-                    type(retained) is PceRetainedCandidate,
-                    "pce_job_retained_candidate_required",
-                )
                 preflight(spec)
                 self._check_bindings(spec)
                 if self.journal.get(identity)["cancel_requested"]:
                     return self._cancelled(identity, "after_preflight")
 
-                candidate = retained
+                if spec.mode == "acquire":
+                    require(
+                        retained is None and callable(acquire), "pce_acquirer_required"
+                    )
+                    self.journal._update(
+                        identity,
+                        self.clock(),
+                        stage="source_acquisition",
+                        effects={"provider_logical_reads_possible": 2},
+                    )
+                    candidate = acquire()
+                else:
+                    require(acquire is None, "pce_retained_provider_forbidden")
+                    candidate = retained
+                require(
+                    type(candidate) is PceRetainedCandidate,
+                    "pce_job_retained_candidate_required",
+                )
                 self._check_bindings(spec)
                 plan, raw = self._candidate(identity, candidate, spec)
                 raw_identity = PceMaterialIdentity(digest(raw), len(raw))
@@ -471,7 +512,16 @@ class PceLocalJob(RetainedRepair):
                 return self._unknown(
                     identity, exc.phase.value, "authoritative_outcome_unknown"
                 )
-            except Exception:
+            except Exception as error:
+                from market_data_foundation.historical.pce_dev_acquire import (
+                    PceAcquisitionRejected,
+                )
+
+                classification = (
+                    error.classification
+                    if type(error) is PceAcquisitionRejected
+                    else "job_action_rejected"
+                )
                 possible = self.journal.get(identity)["effects"].get(
                     "canonical_possible", False
                 )
@@ -486,7 +536,7 @@ class PceLocalJob(RetainedRepair):
                         identity, self.journal.get(identity)["stage"]
                     )
                 return self._failed(
-                    identity, self.journal.get(identity)["stage"], "job_action_rejected"
+                    identity, self.journal.get(identity)["stage"], classification
                 )
 
     def reconcile(self, identity: str, *, enabled: bool) -> dict:

@@ -10,7 +10,7 @@ from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Literal, Protocol
+from typing import TYPE_CHECKING, Annotated, Literal, Protocol
 
 from fastapi import FastAPI, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -32,20 +32,26 @@ from market_data_foundation.historical.cpi_local_read import (
     CpiReadRejected,
     read_local_cpi,
 )
-from market_data_foundation.web.cpi_jobs import CpiJobsHost, install_jobs
+from market_data_foundation.web.cpi_jobs import CpiJobsHost, CpiPgJobsHost, install_jobs
 from market_data_foundation.web.cpi_schedules import CpiSchedulesHost, install_schedules
 from market_data_foundation.web.dto import DTO
+from market_data_foundation.web.management import ManagementHost, create_management_app
 from market_data_foundation.web.observability import (
     ObservabilityDTO,
     ObservabilityHost,
     ObservabilityQuery,
     project,
 )
+from market_data_foundation.web.packages import PackageHost, package_router
 from market_data_foundation.web.source_catalog import (
     DirectoryDTO,
     DirectoryQuery,
     directory,
 )
+
+if TYPE_CHECKING:
+    from market_data_foundation.web.cpi_query import CpiQueryHost
+
 
 ASSET_ID = BLS_CPI_HEADLINES.identity
 SERVICE_ID = ASSET_ID + ":local-read"
@@ -252,8 +258,11 @@ def create_app(
     *,
     ui_directory: Path | None = None,
     observability_host: ObservabilityHost | None = None,
-    jobs_host: CpiJobsHost | None = None,
+    jobs_host: CpiJobsHost | CpiPgJobsHost | None = None,
     schedules_host: CpiSchedulesHost | None = None,
+    management_host: ManagementHost | None = None,
+    package_host: PackageHost | None = None,
+    query_host: "CpiQueryHost | None" = None,
     evidence_mode: Literal["OFFLINE_FIXTURE", "AUTHORIZED_READ_SCOPE"] = (
         "AUTHORIZED_READ_SCOPE"
     ),
@@ -266,10 +275,16 @@ def create_app(
     it is never inferred from the CPI scope, environment, or the serving process.
     jobs_host is a separate trusted identity/journal binding; absent it, manual
     writes fail closed. HTTP acceptance never invokes a source or worker.
+    package_host separately owns nonsecret package storage, request admission
+    and metadata/write authorization; it grants no Job or source capability.
     """
     app = FastAPI(
         title="MDF R5 bounded CPI", version="r5-i5", docs_url=None, redoc_url=None
     )
+    from market_data_foundation.web.cpi_query import query_router
+
+    app.include_router(package_router(package_host))
+    app.include_router(query_router(query_host))
     evidence: Evidence = "UNCONFIGURED" if scope_factory is None else evidence_mode
 
     @app.middleware("http")
@@ -479,6 +494,9 @@ def create_app(
 
     install_jobs(app, jobs_host, ErrorDTO)
     install_schedules(app, schedules_host, ErrorDTO)
+
+    # Independent read-only contract; existing R5 OpenAPI and routes stay stable.
+    app.mount("/api/r3", create_management_app(management_host))
 
     if ui_directory is not None:
         app.mount("/", StaticFiles(directory=ui_directory, html=True), name="webui")

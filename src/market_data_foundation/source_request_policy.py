@@ -86,11 +86,14 @@ def request_source[Response](
     Only the transport exchange is retried. Parsing, validation, persistence,
     Garage/PG work and all other local effects must remain outside this helper.
     """
+    last_observed_http_status: int | None = None
     for attempts in range(1, SOURCE_REQUEST_POLICY.max_transport_attempts + 1):
         http_status = None
         try:
             response = exchange()
             http_status = status(response)
+            if type(http_status) is int and 100 <= http_status <= 599:
+                last_observed_http_status = http_status
         except Exception as error:
             classification, transient = classify(error)
         else:
@@ -103,7 +106,9 @@ def request_source[Response](
             raise SourceRequestFailed(
                 classification,
                 attempts,
-                http_status=http_status,
+                # A subsequent timeout must not erase the last actual HTTP
+                # response status: e.g. 503 -> Timeout -> Timeout stays 503.
+                http_status=last_observed_http_status,
             ) from None
         sleep(retry_delay_after(attempts))
 

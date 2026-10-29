@@ -5,10 +5,12 @@ builders. Spawned doubles prohibit external sockets and real credential loading.
 """
 
 import base64
+import builtins
 import gzip
 import hashlib
 import json
 import multiprocessing
+import random
 import socket
 import time
 from dataclasses import dataclass, replace
@@ -786,7 +788,9 @@ def test_total_attempt_deadline_during_local_sanitization(monkeypatch):
         dummy_loader,
         request_seconds=0.10,
         network_seconds=0.20,
-        attempt_seconds=0.5,
+        # Spawn/import startup can exceed 0.5s on isolated CI. Keep the network
+        # budget tight and stall far beyond the total test deadline below.
+        attempt_seconds=3.0,
     )
     assert result.classification == "deadline_unknown"
     assert len(result.observations) == 2
@@ -800,7 +804,7 @@ def stall_after_two(pipe, _buffer, _size, _identity, _transport, _loader):
         pipe.recv_bytes(1024)
         pipe.send_bytes(b"complete")
         pipe.recv_bytes(1024)
-    time.sleep(2)
+    time.sleep(10)
 
 
 @pytest.mark.parametrize("stage", ["dns", "tls", "headers", "body"])
@@ -1071,7 +1075,12 @@ class CorrectionTransport:
             raise typed_failure(self.failure)
         document = fabricated_response(table, key)
         if table == self.fail_table and self.echo is not None:
-            document["BEAAPI"]["Results"]["UTCProductionTime"] = self.echo
+            # Credential probes use a retained free-text field. Malformed
+            # production timestamps now fail their field contract first.
+            note = document["BEAAPI"]["Results"]["Notes"][0]
+            note["NoteText"] = note["NoteText"].replace(
+                " - LastRevised:", " " + self.echo + " - LastRevised:"
+            )
         return serialize(document)
 
 
@@ -1703,3 +1712,275 @@ def test_provider_pair_revision_mismatch_emits_no_candidate():
         b"source_shape_rejected",
     ]
     assert sizes == [0, 0] and not any(output)
+
+
+@pytest.mark.parametrize("wrapper", ["base64", "hex"])
+def test_unrelated_binary_metadata_nul_is_not_a_credential(wrapper):
+    # Before R2 both wrappers were rejected solely due to guessed binary NULs.
+    raw = b"\xff\x00unrelated-cdn-metadata\xfe"
+    value = base64.b64encode(raw).decode() if wrapper == "base64" else raw.hex()
+    edge._echo_scan({"X-CDN-Trace": value}, DUMMY)
+
+
+@pytest.mark.parametrize("codec", ENCODINGS)
+@pytest.mark.parametrize("wrapper", ["base64", "hex"])
+def test_binary_metadata_containing_actual_key_still_rejected(codec, wrapper):
+    raw = b"\xff\x00" + DUMMY.encode(codec) + b"\xfe"
+    value = base64.b64encode(raw).decode() if wrapper == "base64" else raw.hex()
+    with pytest.raises(edge.EdgeRejected, match="credential_echo_rejected"):
+        edge._echo_scan({"X-CDN-Trace": value}, DUMMY)
+
+
+@pytest.mark.parametrize("prefix", ["a", "ab", "abc"])
+@pytest.mark.parametrize("codec", ["utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be"])
+def test_nul_exception_never_accepts_prefixed_wide_encoded_key(prefix, codec):
+    value = prefix + base64.b64encode(("x:" + DUMMY).encode(codec)).decode()
+    with pytest.raises(edge.EdgeRejected, match="credential_echo_rejected"):
+        edge._echo_scan({"X-CDN-Trace": value}, DUMMY)
+
+
+@pytest.mark.parametrize("prefix", ["", "a", "ab", "abc"])
+def test_binary_nested_encoded_identity_no_ipc_candidate(prefix, monkeypatch):
+    """Regression: an encoded identity inside binary CDN metadata stays secret."""
+    inner = base64.b64encode(DUMMY.encode()).decode()
+    wrapped = base64.b64encode(b"\xff\x00" + inner.encode("ascii") + b"\xfe").decode()
+    frames = capture_failed_worker(
+        CorrectionTransport(echo=prefix + wrapped, calls=[]),
+        monkeypatch,
+        ["T20807"],
+    )
+    assert frames == [b"ready", b"credential_echo_rejected"]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "odd_hex",
+        "binary_percent",
+        "nested_utf16le",
+        "nested_utf16be",
+        "nested_utf32le",
+        "nested_utf32be",
+    ],
+)
+def test_r5_nested_binary_wrapped_credential_never_leaves_worker(case):
+    """Fabricated key cannot survive nested opaque binary provider notes."""
+    from urllib.parse import quote as encode_url
+
+    inner = base64.b64encode(DUMMY.encode())
+    wrapped = {
+        "odd_hex": "a" + (b"\xff\x00" + inner + b"\xfe").hex(),
+        "binary_percent": base64.b64encode(
+            b"\xff\x00" + encode_url(DUMMY).encode() + b"\xfe"
+        ).decode(),
+        **{
+            "nested_" + codec.replace("-", ""): base64.b64encode(
+                b"\xff\x00" + base64.b64encode(DUMMY.encode(codec)) + b"\xfe"
+            ).decode()
+            for codec in ("utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be")
+        },
+    }[case]
+
+    class NoteTransport:
+        def exchange(self, table, key, deadline):
+            doc = fabricated_response(table, key)
+            if table == "T20807":
+                note = doc["BEAAPI"]["Results"]["Notes"][0]
+                assert " - LastRevised:" in note["NoteText"]
+                note["NoteText"] = note["NoteText"].replace(
+                    " - LastRevised:", " " + wrapped + " - LastRevised:"
+                )
+            return serialize(doc)
+
+    pipe = CapturingPipe()
+    buffer = bytearray(edge.OUTPUT_LIMIT)
+    sizes = [0, 0]
+    edge._worker(pipe, buffer, sizes, IDENTITY, NoteTransport(), dummy_loader)
+    assert pipe.closed
+    assert pipe.frames == [b"ready", b"credential_echo_rejected"]
+    assert sizes == [0, 0] and not any(buffer)
+
+
+@pytest.mark.parametrize("prefix", ["", "a", "ab", "abc"])
+def test_r5_nested_binary_identity_never_enters_receipt(prefix):
+    """An unpadded opaque identity cannot encode a recoverable key."""
+    inner = base64.b64encode(DUMMY.encode())
+    encoded = (
+        base64.urlsafe_b64encode(b"\xff\x00" + inner + b"\xfe").decode().rstrip("=")
+    )
+    identity = replace(IDENTITY, controlled_observation_id=prefix + encoded)
+    identity.validate()
+    pipe = CapturingPipe()
+    buffer = bytearray(edge.OUTPUT_LIMIT)
+    sizes = [0, 0]
+    transport = CorrectionTransport(calls=[])
+    edge._worker(pipe, buffer, sizes, identity, transport, dummy_loader)
+    assert transport.calls == []
+    assert pipe.closed
+    assert pipe.frames == [b"credential_echo_rejected"]
+    assert sizes == [0, 0] and not any(buffer)
+
+
+@pytest.mark.parametrize("separator", [b"\n", b"\r\n", b" ", b"\t"])
+@pytest.mark.parametrize("prefix", ["", "a", "ab", "abc"])
+@pytest.mark.parametrize("location", ["note", "identity"])
+def test_r6_segmented_binary_base64_worker_rejects_before_digest_or_ipc(
+    separator, prefix, location, monkeypatch
+):
+    inner = base64.b64encode(DUMMY.encode())
+    split = separator.join(inner[i : i + 12] for i in range(0, len(inner), 12))
+    encoded = prefix + base64.urlsafe_b64encode(
+        b"\xff\x00" + split + b"\xfe"
+    ).decode().rstrip("=")
+    identity = (
+        replace(IDENTITY, controlled_observation_id=encoded)
+        if location == "identity"
+        else IDENTITY
+    )
+    identity.validate()
+    transport = CorrectionTransport(
+        echo=encoded if location == "note" else None, calls=[]
+    )
+    pipe, buffer, sizes = CapturingPipe(), bytearray(edge.OUTPUT_LIMIT), [0, 0]
+    forbidden_calls = []
+
+    def forbid_output(*_args, **_kwargs):
+        forbidden_calls.append(True)
+        raise AssertionError("rejected_payload_reached_output")
+
+    with monkeypatch.context() as guard:
+        guard.setattr(hashlib, "sha256", forbid_output)
+        guard.setattr(pce, "retain_sanitized_bundle", forbid_output)
+        guard.setattr(builtins, "open", forbid_output)
+        guard.setattr(Path, "open", forbid_output)
+        edge._worker(pipe, buffer, sizes, identity, transport, dummy_loader)
+    assert not forbidden_calls
+    assert transport.calls == (["T20807"] if location == "note" else [])
+    assert pipe.frames == (
+        [b"ready", b"credential_echo_rejected"]
+        if location == "note"
+        else [b"credential_echo_rejected"]
+    )
+    assert pipe.closed and sizes == [0, 0] and not any(buffer)
+
+
+@pytest.mark.parametrize("size", [4096, 8192, 65536, 65537, 1050000])
+def test_r6_invalid_production_uses_field_contract_before_scan(size, monkeypatch):
+    class InvalidTimeTransport:
+        def exchange(self, table, key, deadline):
+            document = fabricated_response(table, key)
+            document["BEAAPI"]["Results"]["UTCProductionTime"] = "a" * size
+            return serialize(document)
+
+    calls = []
+
+    def forbidden(*_args, **_kwargs):
+        calls.append(True)
+        raise AssertionError("invalid_time_reached_scan_or_digest")
+
+    pipe, buffer, sizes = CapturingPipe(), bytearray(edge.OUTPUT_LIMIT), [0, 0]
+    with monkeypatch.context() as guard:
+        guard.setattr(edge, "_echo_scan", forbidden)
+        guard.setattr(hashlib, "sha256", forbidden)
+        edge._worker(
+            pipe, buffer, sizes, IDENTITY, InvalidTimeTransport(), dummy_loader
+        )
+    assert not calls
+    assert pipe.frames == [b"ready", b"source_shape_rejected"]
+    assert pipe.closed and sizes == [0, 0] and not any(buffer)
+
+
+@pytest.mark.parametrize("kind", ["text", "binary", "random_binary"])
+@pytest.mark.parametrize("size", [4096, 8192])
+def test_r6_benign_long_metadata_preserves_projection_and_replay(kind, size):
+    if kind == "text":
+        payload = "a" * size
+    else:
+        raw = (
+            random.Random(7).randbytes(size)
+            if kind == "random_binary"
+            else bytes(i % 256 for i in range(size))
+        )
+        payload = base64.b64encode(raw).decode()
+    expected = {}
+
+    class MetadataTransport:
+        def exchange(self, table, key, deadline):
+            document = fabricated_response(table, key)
+            results = document["BEAAPI"]["Results"]
+            note = results["Notes"][0]
+            note["NoteText"] = note["NoteText"].replace(
+                " - LastRevised:", " " + payload + " - LastRevised:"
+            )
+            expected[table] = pce.project_provider_results(table, results)
+            return serialize(document)
+
+    pipe, buffer, sizes = CapturingPipe(), bytearray(edge.OUTPUT_LIMIT), [0, 0]
+    edge._worker(pipe, buffer, sizes, IDENTITY, MetadataTransport(), dummy_loader)
+    assert pipe.frames == [b"ready", b"complete", b"ready", b"complete", b"candidate"]
+    projection = bytes(buffer[: sizes[0]])
+    receipt = bytes(buffer[sizes[0] : sum(sizes)])
+    for table, response in zip(
+        pce.TABLES, pce.decode(projection)["responses"], strict=True
+    ):
+        assert response["results"] == expected[table]
+    replay = edge.inspect_candidate(projection, receipt, expected=IDENTITY)
+    assert not replay["source_qualified"]
+    assert replay["replay"]["measurements"]["headline_yoy_sa"]["value"] == "3.000000"
+
+
+@pytest.mark.parametrize("scan", [edge._identity_credential_scan, edge._echo_scan])
+def test_r7_unique_decode_work_exhaustion_still_fails_closed(scan):
+    # Independent distinct tokens, not a repeated traversal of the same blob.
+    values = [
+        base64.b64encode(random.Random(i).randbytes(4096)).decode() for i in range(20)
+    ]
+    with pytest.raises(edge.EdgeRejected, match="^credential_echo_rejected$"):
+        scan(";".join(values), DUMMY)
+
+
+@pytest.mark.parametrize(
+    "codec,width",
+    [("utf-16-le", 2), ("utf-16-be", 2), ("utf-32-le", 4), ("utf-32-be", 4)],
+)
+@pytest.mark.parametrize("separator", ["\n", "\r\n", " ", "\t"])
+def test_r7_segmented_nested_wide_text_inside_binary_all_alignments(
+    codec, width, separator
+):
+    inner = base64.b64encode(DUMMY.encode()).decode()
+    split = separator.join(inner[i : i + 5] for i in range(0, len(inner), 5))
+    for offset in range(width):
+        raw = b"\xff" * offset + split.encode(codec) + b"\xfe"
+        value = base64.b64encode(raw).decode().rstrip("=")
+        with pytest.raises(edge.EdgeRejected, match="^credential_echo_rejected$"):
+            edge._identity_credential_scan(value, DUMMY)
+
+
+@pytest.mark.parametrize("separator", [b"\n", b"\r\n", b" ", b"\t"])
+@pytest.mark.parametrize("location", ["note", "identity"])
+def test_r7_segmented_binary_noncredential_preserved_in_candidate(separator, location):
+    inner = base64.b64encode(b"public-CDN-23456789-abcd")
+    split = separator.join(inner[i : i + 12] for i in range(0, len(inner), 12))
+    encoded = "abc" + base64.urlsafe_b64encode(
+        b"\xff\x00" + split + b"\xfe"
+    ).decode().rstrip("=")
+    identity = (
+        replace(IDENTITY, controlled_observation_id=encoded)
+        if location == "identity"
+        else IDENTITY
+    )
+    pipe, buffer, sizes = CapturingPipe(), bytearray(edge.OUTPUT_LIMIT), [0, 0]
+    transport = CorrectionTransport(echo=encoded if location == "note" else None)
+    edge._worker(pipe, buffer, sizes, identity, transport, dummy_loader)
+    assert pipe.closed
+    assert pipe.frames == [b"ready", b"complete", b"ready", b"complete", b"candidate"]
+    projection = bytes(buffer[: sizes[0]])
+    receipt = bytes(buffer[sizes[0] : sum(sizes)])
+    if location == "note":
+        note = pce.decode(projection)["responses"][0]["results"]["Notes"][0]
+        assert " " + encoded + " - LastRevised:" in note["NoteText"]
+    else:
+        assert pce.decode(receipt)["controlled_observation_id"] == encoded
+    assert not edge.inspect_candidate(projection, receipt, expected=identity)[
+        "source_qualified"
+    ]

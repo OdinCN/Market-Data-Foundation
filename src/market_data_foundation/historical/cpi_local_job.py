@@ -1,13 +1,15 @@
 """Manual, opt-in, single CPI vertical; no default network/storage clients.
 
-The journal is a restricted single-host file journal. The canonical Version and
-Publication still belong exclusively to the existing kernel/ledger. Recovery
+The default journal is the historical single-host file journal. The isolated
+PG candidate requires an explicit matching binding. Canonical Version and
+Publication belong exclusively to the existing kernel/ledger. Recovery
 only observes exact identities; it never retries acquisition or publication.
 """
 
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, fields, replace
@@ -63,6 +65,8 @@ from market_data_foundation.historical.cpi_job_journal import (
     FileJobJournal,
     valid_identity,
 )
+from market_data_foundation.historical.cpi_pg_binding import CpiPgBinding
+from market_data_foundation.historical.cpi_pg_journal import PostgresJobJournal
 from market_data_foundation.historical.macro_lifecycle import (
     MeteredTransport,
     RetainedRepair,
@@ -212,6 +216,8 @@ class DirectCpiAcquirer:
     clock: Callable[[], datetime]
 
     history_qualification: cpi_history.HistoryQualification | None = None
+    # Inject only the retry sleeper; the timing policy is MDF-wide.
+    sleep: Callable[[float], None] = time.sleep
 
     def acquire(
         self,
@@ -241,6 +247,7 @@ class DirectCpiAcquirer:
             identity_factory=lambda: job_id + "-a1",
             reference_contract=CONTRACT,
             release_causation=_causation(job_id),
+            sleep=self.sleep,
         )
 
 
@@ -560,14 +567,30 @@ class CpiLocalJob(RetainedRepair):
 
     def __init__(
         self,
-        journal: FileJobJournal,
+        journal: FileJobJournal | PostgresJobJournal,
         clock: Callable[[], datetime],
         kernel: CanonicalKernel,
         store: MaterialStore,
         protection: WriterProtection,
         readback: Callable[[], AbstractContextManager[Ledger]],
         commit: Callable[[], None],
+        *,
+        target_binding: CpiPgBinding | None = None,
     ):
+        self.target_binding = target_binding
+        if target_binding is not None:
+            require(
+                type(target_binding) is CpiPgBinding
+                and type(journal) is PostgresJobJournal
+                and journal.binding == target_binding,
+                "cpi_pg_authoritative_journal_required",
+            )
+            if isinstance(kernel.ledger, PostgresLedger):
+                journal.exclude_connection(kernel.ledger.connection)
+        else:
+            require(
+                not isinstance(journal, PostgresJobJournal), "cpi_pg_binding_required"
+            )
         self.journal, self.clock, self.kernel = journal, clock, kernel
         self.store, self.protection, self.readback, self.commit = (
             store,
@@ -579,8 +602,14 @@ class CpiLocalJob(RetainedRepair):
         self._pg_owners: dict[str, _PgJobProtection] = {}
         self._check_pg_target(kernel.ledger)
 
-    @staticmethod
-    def _check_pg_target(ledger: Ledger) -> None:
+    def _check_pg_target(self, ledger: Ledger) -> None:
+        if self.target_binding is not None and isinstance(ledger, PostgresLedger):
+            self.target_binding.target.check_connection(ledger.connection)
+            require(
+                ledger.schema == self.target_binding.target.schema,
+                "cpi_pg_target_not_admitted",
+            )
+            return
         if isinstance(ledger, PostgresLedger):
             require(
                 ledger.schema == DEV_SCHEMA
@@ -604,6 +633,8 @@ class CpiLocalJob(RetainedRepair):
         self, spec: CpiJobSpec, *, allow_job_transaction: bool = False
     ) -> None:
         ledger = self.kernel.ledger
+        if self.target_binding is not None:
+            self.target_binding.check_spec(spec.document(), spec.scope)
         if isinstance(ledger, PostgresLedger):
             self._check_pg_target(ledger)
             require(
@@ -635,6 +666,8 @@ class CpiLocalJob(RetainedRepair):
 
     def submit(self, job_id: str, spec: CpiJobSpec) -> dict:
         require(type(spec) is CpiJobSpec, "cpi_job_spec_invalid")
+        if self.target_binding is not None:
+            self.target_binding.check_spec(spec.document(), spec.scope)
         return self.journal.submit(job_id, spec.document(), spec.scope, self.clock())
 
     def _job_protection(self, job_id: str, spec: CpiJobSpec) -> WriterProtection:
@@ -684,8 +717,12 @@ class CpiLocalJob(RetainedRepair):
                 "cpi_job_pg_unknown_owner_required",
             )
 
-    def _update(self, job_id: str, **changes):
-        return self.journal._update(job_id, self.clock(), **changes)
+    def _update(self, job_id: str, *, _at: datetime | None = None, **changes):
+        # Attempt admission must use one captured instant for started_at and
+        # the authoritative journal event, including a real advancing clock.
+        return self.journal._update(
+            job_id, self.clock() if _at is None else _at, **changes
+        )
 
     def _cancelled(self, job_id: str):
         return self.journal.get(job_id)["cancel_requested"]
@@ -744,6 +781,7 @@ class CpiLocalJob(RetainedRepair):
             )
             self._update(
                 job_id,
+                _at=now,
                 state="running",
                 stage="preflight",
                 attempts=1,
@@ -958,6 +996,17 @@ class CpiLocalJob(RetainedRepair):
                     self._unknowns[job_id] = exc
                 document = self.journal.get(job_id)
                 possible = document["effects"].get("canonical_possible", False)
+                # Keep the numeric HTTP status as durable evidence, not
+                # response text, credentials, headers or provider error bodies.
+                if (
+                    isinstance(exc, LiveExecutionError)
+                    and type(exc.http_status) is int
+                    and 100 <= exc.http_status <= 599
+                    and document["state"] == "running"
+                ):
+                    document = self._update(
+                        job_id, effects={"provider_last_http_status": exc.http_status}
+                    )
                 # Never persist str(exc), args, response bodies or caller codes.
                 return self._update(
                     job_id,

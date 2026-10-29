@@ -49,6 +49,24 @@ and `docs/qualification/q0-runtime.md` for tested runtime/candidate evidence.
 repositories. Same-repository CI does not require it. Never put its value, other
 credentials, private keys or production data in this repository.
 
-The [R5-I1 CPI read-only candidate](docs/r5-i1-cpi-readonly.md) adds a
-React/TypeScript UI and strict DTO API over existing local canonical readers.
-It defaults to UNKNOWN without an explicitly supplied read capability.
+## CPI 样本入口与共用 WebUI
+
+当前交付聚焦 CPI 样本：查询、显式采集、预置周期策略、执行记录和 API 说明；
+共用 React/TypeScript WebUI 保持既有 PCE 读取兼容，不代表全部 MACRO 已完成或已生产部署。
+参见 [Web 快速上手](docs/cpi-webui-quickstart-zh.md)、
+[CLI / 本机 API](docs/cpi-timeseries-cli-zh.md) 与
+[发布历史设计](docs/macro-publication-history-design.md)。服务地址与权限以 DEV 部署配置为准。
+
+从仓库根准备 Python 环境后，在前端目录执行：
+
+```sh
+uv sync --locked --group dev
+cd web
+npm ci
+npm run check
+npm test
+npm run build
+```
+
+当前查询本地优先，真实缺口仅临时读取上游、不落库；strict 历史查询仅按本地 available 截止。
+初始化 revision=1 不等于官方首发，官方全部 vintage 仍 unsupported；真实未来发布仍待自然验证。

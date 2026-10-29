@@ -1,0 +1,24 @@
+[Unit]
+Description=MDF CPI automatic strategy worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@MDF_USER@
+WorkingDirectory=@WORKTREE@
+Environment=PYTHONPATH=@WORKTREE@/src
+ExecStart=/usr/local/bin/uv run --no-sync --offline --project @WORKTREE@ python @WORKTREE@/scripts/mdf_cpi_timeseries_worker.py --opt-in-cpi-worker --config-directory @CONFIG_DIRECTORY@ --package-store-directory @PACKAGE_STORE_DIRECTORY@ --environment-id @ENVIRONMENT_ID@ --pg-role @PG_ROLE@ --pce-schema-owner @PCE_SCHEMA_OWNER@ --pce-schema-oid @PCE_SCHEMA_OID@ --schedule-path @SCHEDULE_STATE@ --job-directory @JOB_DIRECTORY@ --allow-collect --poll-seconds 5
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=60
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=@SCHEDULE_DIRECTORY@ @JOB_DIRECTORY@ /srv/market-data-foundation/artifacts/cpi-timeseries
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

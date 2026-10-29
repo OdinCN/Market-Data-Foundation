@@ -1,3 +1,4 @@
+import "./offlineTestSetup";
 import { afterEach, expect, it } from "vitest";
 import {
   act,
@@ -6,13 +7,29 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
 import { CpiSchedules } from "./CpiSchedules";
 import { CpiJobsView } from "./CpiJobs";
-import App from "./App";
+import { useState } from "react";
+// Preserved bounded history core; calendar product flow is tested in App.test.
+function HistoryCore({ transport }: { transport: Transport }) {
+  const [generation, setGeneration] = useState(0);
+  return (
+    <>
+      <button onClick={() => setGeneration((g) => g + 1)}>刷新</button>
+      <CpiJobsView
+        transport={transport}
+        generation={generation}
+        asset="mdf.macro.bls.cpi.headlines"
+        revision="p3-r1"
+      />
+    </>
+  );
+}
 import type { components } from "./api.generated";
 import type { Transport } from "./api";
 
@@ -27,7 +44,13 @@ it("persists two historical months, pauses, explicitly backfills failure and lin
   child = spawn(
     `${root}/.venv/bin/python`,
     ["-u", "tests/r5_schedules_ui_exchange.py"],
-    { cwd: root, env: { ...process.env, PYTHONPATH: `${root}/src:${root}` } },
+    {
+      cwd: root,
+      env: {
+        ...process.env,
+        PYTHONPATH: `${root}/src:${root}:${process.env.PYTHONPATH ?? ""}`,
+      },
+    },
   );
   const pending: ((value: any) => void)[] = [];
   createInterface({ input: child.stdout }).on("line", (line) =>
@@ -55,10 +78,14 @@ it("persists two historical months, pauses, explicitly backfills failure and lin
   }) as Transport;
   location.hash =
     "page=4&asset=mdf.macro.bls.cpi.headlines&asset_revision=p3-r1";
-  render(<App transport={transport} />);
-  await screen.findByText(/OFFLINE_FIXTURE · OK/);
-  fireEvent.change(screen.getByLabelText("首次到期（含时区）"), {
-    target: { value: "2028-03-10T12:00:00+00:00" },
+  render(<HistoryCore transport={transport} />);
+  await within(
+    screen
+      .getByRole("heading", { name: "CPI 多期历史采集" })
+      .closest("section")!,
+  ).findByText(/OFFLINE_FIXTURE · OK/);
+  fireEvent.change(screen.getByLabelText("首次到期（北京时间）"), {
+    target: { value: "2028-03-10T20:00:00" },
   });
   fireEvent.click(screen.getByLabelText("确认提交此有界历史计划"));
   fireEvent.click(screen.getByRole("button", { name: "持久提交历史计划" }));
@@ -172,7 +199,7 @@ function plans(writable = true): Plans {
   };
 }
 
-it("the App Refresh button reloads periodic progress and write eligibility using only GET", async () => {
+it("the preserved history core generation reloads periodic progress and write eligibility using only GET", async () => {
   location.hash =
     "page=4&tab=periodic&asset=mdf.macro.bls.cpi.headlines&asset_revision=p3-r1";
   let snapshot = plans();
@@ -189,7 +216,7 @@ it("the App Refresh button reloads periodic progress and write eligibility using
           : { status: "UNKNOWN", classification: "storage_unavailable" },
     } as Response;
   }) as Transport;
-  render(<App transport={transport} />);
+  render(<HistoryCore transport={transport} />);
   await screen.findByText(/已证实完成 0 \/ 2/);
   fireEvent.click(screen.getByLabelText("确认提交此有界历史计划"));
   const submit = screen.getByRole("button", { name: "持久提交历史计划" });
@@ -378,4 +405,44 @@ it.each([
   );
   await screen.findByText(/Job/);
   expect(screen.queryByRole("link", { name: "06 精确读取此版本" })).toBeNull();
+});
+
+it("submits a Beijing first-due instant without changing historical month bounds or schedule timezone", async () => {
+  const posts: Record<string, unknown>[] = [];
+  const transport: Transport = async (_input, init) => {
+    if (init?.method === "POST") {
+      posts.push(JSON.parse(String(init.body)));
+      return Response.json({ status: "OK", acceptance: "DURABLE" });
+    }
+    return Response.json(plans());
+  };
+  render(
+    <CpiSchedules
+      transport={transport}
+      generation={0}
+      asset="mdf.macro.bls.cpi.headlines"
+      revision="p3-r1"
+      mode="new"
+    />,
+  );
+  await screen.findByText(/已证实完成 0 \/ 2/);
+  const field = screen.getByLabelText("首次到期（北京时间）");
+  fireEvent.change(field, { target: { value: "2028-03-11T04:30:05" } });
+  fireEvent.click(screen.getByLabelText("确认提交此有界历史计划"));
+  fireEvent.click(screen.getByRole("button", { name: "持久提交历史计划" }));
+  await screen.findByText(/意图已持久接受/);
+  expect(posts).toHaveLength(1);
+  expect(posts[0]).toMatchObject({
+    first_due: "2028-03-11T04:30:05+08:00",
+    start: "2024-12",
+    end: "2025-01",
+    timezone: "Asia/Shanghai",
+  });
+  expect(Date.parse(String(posts[0].first_due))).toBe(
+    Date.parse("2028-03-10T20:30:05Z"),
+  );
+  expect(screen.getByText(/UTC 00:00–23:59/)).toBeTruthy();
+  expect(
+    screen.getByText(/下次到期 2028-03-11 20:00:00 北京时间/),
+  ).toBeTruthy();
 });

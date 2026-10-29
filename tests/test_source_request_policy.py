@@ -188,3 +188,49 @@ def test_unknown_exception_is_terminal_and_message_is_not_forwarded():
     assert caught.value.attempts == 1
     assert "credential-or-url" not in str(caught.value)
     assert waits == []
+
+
+def test_mixed_503_timeout_timeout_keeps_latest_seen_http_status():
+    outcomes = [
+        Response(503),
+        TimeoutError("secret-provider-detail"),
+        TimeoutError("secret-provider-detail"),
+    ]
+    delays = []
+
+    def exchange():
+        value = outcomes.pop(0)
+        if isinstance(value, BaseException):
+            raise value
+        return value
+
+    with pytest.raises(SourceRequestFailed) as caught:
+        request_source(
+            exchange, status=lambda response: response.status, sleep=delays.append
+        )
+    assert caught.value.classification == "timeout"
+    assert caught.value.attempts == 3
+    assert caught.value.http_status == 503
+    assert delays == [1.0, 2.0]
+    assert not outcomes
+    assert "secret" not in str(caught.value)
+
+
+def test_last_observed_http_status_replaced_by_latest_actual_response():
+    outcomes = [Response(503), TimeoutError("private"), Response(429)]
+    delays = []
+
+    def exchange():
+        value = outcomes.pop(0)
+        if isinstance(value, BaseException):
+            raise value
+        return value
+
+    with pytest.raises(SourceRequestFailed) as caught:
+        request_source(
+            exchange, status=lambda response: response.status, sleep=delays.append
+        )
+    assert caught.value.classification == "http_failure"
+    assert caught.value.attempts == 3
+    assert caught.value.http_status == 429
+    assert delays == [1.0, 2.0]

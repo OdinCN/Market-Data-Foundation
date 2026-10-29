@@ -1,3 +1,4 @@
+import "./offlineTestSetup";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   act,
@@ -6,12 +7,19 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
 import App from "./App";
-import { CpiJobAlerts } from "./CpiJobs";
+import {
+  CPI,
+  MANUAL_OPERATION,
+  HISTORY_OPERATION,
+  keyOf,
+} from "./workflowModel";
+import { CpiJobAlerts, CpiJobsView } from "./CpiJobs";
 import type { Directory, Jobs, Transport } from "./api";
 
 const bridges: ChildProcessWithoutNullStreams[] = [];
@@ -23,7 +31,10 @@ function bridge(scenario = "bound") {
     ["-u", "tests/r5_jobs_ui_exchange.py", scenario],
     {
       cwd: root,
-      env: { ...process.env, PYTHONPATH: `${root}/src:${root}` },
+      env: {
+        ...process.env,
+        PYTHONPATH: `${root}/src:${root}:${process.env.PYTHONPATH ?? ""}`,
+      },
     },
   );
   bridges.push(child);
@@ -211,70 +222,66 @@ it("preserves the bounded list query and budget failure without a selected job",
   ).toBeNull();
 });
 
-it("carries 04 identity, keeps three tabs, accepts once, survives a lost HTTP response, separately runs and reads", async () => {
+it("preserves exact manual target through lost durable receipt, explicit resubmission, separate offline worker and local read", async () => {
   const api = bridge();
-  const catalog = await api.exchange({
-    path: `/api/r5/cpi?${new URLSearchParams(query)}`,
-  });
-  expect(catalog.status).toBe(200);
-  expect(catalog.body.asset).toBeNull();
-  expect(catalog.body.service).toBeNull();
-  location.hash = "page=3";
+  const target = await api.exchange({ path: "/api/r5/cpi/jobs" });
+  const operation =
+    "mdf.source-candidate.bls-v2.cpi.release-2026-09@p4-release-reference-2026-09-r1";
+  location.hash = new URLSearchParams({
+    page: "4",
+    asset: target.body.asset_identity,
+    asset_revision: target.body.asset_revision,
+    operation,
+  }).toString();
   const view = render(<App transport={api.transport} initialQuery={query} />);
-  const create = await screen.findByRole("button", {
-    name: "新建 CPI 一次性采集",
-  });
-  expect(screen.getByText(/关联资产不可核实/)).toBeTruthy();
-  expect(screen.queryByText("VERIFIED_FOR_REQUEST")).toBeNull();
-  expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
-  expect(
-    screen
-      .getByRole("button", { name: "查看数据服务" })
-      .hasAttribute("disabled"),
-  ).toBe(true);
-  expect(api.effects).toEqual({ source: 0, raw: 0, jobs: 0 });
-  fireEvent.click(create);
-  const route = new URLSearchParams(location.hash.slice(1));
-  expect(route.get("page")).toBe("4");
-  expect(route.get("asset")).toBe(catalog.body.definition.identity);
-  expect(route.get("asset_revision")).toBe(catalog.body.definition.revision);
-  expect(route.has("operation")).toBe(false);
-  expect(screen.getAllByRole("tab")).toHaveLength(3);
-  const submit = await screen.findByRole("button", {
-    name: "持久提交一次性意图",
-  });
-  await waitFor(() =>
-    expect(
-      screen.getByText(/服务端 Operator：synthetic-operator/),
-    ).toBeTruthy(),
-  );
-  expect(submit.hasAttribute("disabled")).toBe(true);
-  fireEvent.click(screen.getByRole("checkbox", { name: /我明确提交/ }));
+  await screen.findByText(/Operator：synthetic-operator/);
+  for (const name of ["开始参考月", "结束参考月"])
+    fireEvent.change(screen.getByLabelText(name), {
+      target: { value: target.body.reference },
+    });
+  fireEvent.click(screen.getByRole("checkbox"));
   api.loseNext();
-  fireEvent.click(submit);
-  await screen.findByText(/UNKNOWN · request_failed。先刷新回查/);
+  fireEvent.click(screen.getByRole("button", { name: "创建采集任务" }));
+  await screen.findByText(/提交回执未核实/);
   expect(api.effects).toEqual({ source: 0, raw: 0, jobs: 1 });
-  const identity = (api.posts[0] as { job_identity: string }).job_identity;
-  // Browser close/reopen uses the same host-generated identity, without a new job.
+  expect(api.posts).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "创建采集任务" }));
+  expect(api.posts).toHaveLength(1);
   view.unmount();
   render(<App transport={api.transport} initialQuery={query} />);
-  await screen.findByText(/服务端 Operator：synthetic-operator/);
-  fireEvent.click(screen.getByRole("checkbox", { name: /我明确提交/ }));
-  fireEvent.click(screen.getByRole("button", { name: "持久提交一次性意图" }));
-  await screen.findByRole("heading", { name: "持久 Job / Attempt / History" });
+  await screen.findByText(/Operator：synthetic-operator/);
+  for (const name of ["开始参考月", "结束参考月"])
+    fireEvent.change(screen.getByLabelText(name), {
+      target: { value: target.body.reference },
+    });
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(screen.getByRole("button", { name: "创建采集任务" }));
+  await screen.findByRole("heading", { name: "执行详情" });
   expect(api.posts[1]).toEqual(api.posts[0]);
   expect(api.effects).toEqual({ source: 0, raw: 0, jobs: 1 });
+  const identity = (api.posts[0] as { job_identity: string }).job_identity;
   await act(async () => {
     await api.run(identity);
   });
   fireEvent.click(screen.getByRole("button", { name: "回查执行记录" }));
-  await screen.findByText(/succeeded · local_read_verified/);
+  await waitFor(() => {
+    const detail = within(
+      screen.getByRole("complementary", { name: "执行记录详情" }),
+    );
+    expect(
+      detail.getByText("执行结果").parentElement?.querySelector("dd")
+        ?.textContent,
+    ).toBe("成功");
+    expect(
+      detail.getByText("执行阶段回报").parentElement?.querySelector("dd")
+        ?.textContent,
+    ).toBe("local_read_verified · 无错误分类");
+  });
   expect(api.effects).toEqual({ source: 1, raw: 1, jobs: 1 });
-  fireEvent.click(screen.getByRole("link", { name: "04 版本与读取资格" }));
-  await screen.findByRole("heading", { name: "逻辑资产目录" });
-  // The separate worker changed holdings after App read its catalog snapshot.
-  fireEvent.click(screen.getByRole("button", { name: "刷新" }));
-  fireEvent.click(await screen.findByRole("button", { name: "读取本地数据" }));
+  fireEvent.click(screen.getByRole("button", { name: "查看关联资产 →" }));
+  await screen.findByRole("heading", { name: "CPI · 四项核心指标" });
+  const read = await screen.findByRole("button", { name: "读取本地数据" });
+  fireEvent.click(read);
   await screen.findByText(/读取成功/);
 });
 
@@ -287,7 +294,14 @@ it("trusted read-only requests and unsupported modes remain disabled; GET and ta
   expect(result.body.jobs).toEqual([]);
   location.hash =
     "page=4&asset=mdf.macro.bls.cpi.headlines&asset_revision=p3-r1";
-  render(<App transport={api.transport} initialQuery={query} />);
+  render(
+    <CpiJobsView
+      transport={api.transport}
+      generation={0}
+      asset="mdf.macro.bls.cpi.headlines"
+      revision="p3-r1"
+    />,
+  );
   await screen.findByText(/OFFLINE_FIXTURE · OK/);
   expect(screen.getByText(/服务端 Operator：readonly-operator/)).toBeTruthy();
   fireEvent.click(screen.getByRole("checkbox", { name: /我明确提交/ }));
@@ -324,7 +338,14 @@ it("anonymous requests are denied GET and expose no jobs or write action", async
   expect(result.body.jobs).toBeUndefined();
   location.hash =
     "page=4&asset=mdf.macro.bls.cpi.headlines&asset_revision=p3-r1";
-  render(<App transport={api.transport} initialQuery={query} />);
+  render(
+    <CpiJobsView
+      transport={api.transport}
+      generation={0}
+      asset="mdf.macro.bls.cpi.headlines"
+      revision="p3-r1"
+    />,
+  );
   await screen.findByText("UNKNOWN · operator_not_authorized");
   fireEvent.click(screen.getByRole("checkbox", { name: /我明确提交/ }));
   expect(
@@ -343,49 +364,79 @@ it.each([
   "identity",
   "revision",
   "missing operation",
+  "unknown operation",
   "mismatched operation",
   "unsupported operation",
 ])(
-  "04 refuses initialization for an unrecognized %s without holdings",
+  "current collection submission refuses %s with exact context and zero ASGI effects",
   async (invalid) => {
     const api = bridge();
-    const catalog = await api.exchange({
-      path: `/api/r5/cpi?${new URLSearchParams(query)}`,
-    });
     const sources = await api.exchange({ path: "/api/r5/sources" });
     const directory = sources.body as Directory;
     const route = new URLSearchParams({
-      page: "3",
-      asset: catalog.body.definition.identity,
-      asset_revision: catalog.body.definition.revision,
+      ui: "r5",
+      view: "collection",
+      tab: "new",
+      asset: CPI.identity,
+      asset_revision: CPI.revision,
+      operation: MANUAL_OPERATION,
     });
     if (invalid === "identity") route.set("asset", "missing");
     if (invalid === "revision") route.set("asset_revision", "unrecognized");
-    if (invalid === "missing operation") route.set("operation", "missing");
+    if (invalid === "missing operation") route.delete("operation");
+    if (invalid === "unknown operation") route.set("operation", "missing");
     if (invalid === "mismatched operation") {
-      const cpi = directory.entries.find(
-        (entry) => entry.web_read === "CPI_REQUEST_QUALIFIED",
-      )!;
-      route.set("operation", cpi.identity);
-      route.set("asset_revision", "unrecognized");
-    }
-    if (invalid === "unsupported operation") {
       const other = directory.entries.find(
-        (entry) => entry.web_read !== "CPI_REQUEST_QUALIFIED" && entry.asset,
+        (entry) => entry.asset && entry.asset.identity !== CPI.identity,
       )!;
       route.set("operation", other.identity);
-      route.set("asset", other.asset!.identity);
-      route.set("asset_revision", other.asset!.revision);
     }
+    if (invalid === "unsupported operation")
+      route.set("operation", HISTORY_OPERATION);
     location.hash = route.toString();
     render(<App transport={api.transport} initialQuery={query} />);
-    await screen.findByText(directory.evidence_mode);
     await waitFor(() =>
-      expect(screen.queryByText("正在核实本地只读证据…")).toBeNull(),
+      expect(
+        screen.getByRole("button", { name: "刷新" }).hasAttribute("disabled"),
+      ).toBe(false),
     );
-    expect(
-      screen.queryByRole("button", { name: "新建 CPI 一次性采集" }),
-    ).toBeNull();
+    const summary = within(screen.getByLabelText("本次采集摘要"));
+    const hasAsset = ["missing operation", "unsupported operation"].includes(
+      invalid,
+    );
+    expect((screen.getByLabelText("采集目标") as HTMLSelectElement).value).toBe(
+      hasAsset ? keyOf(CPI) : "",
+    );
+    if (hasAsset) expect(summary.getByText("CPI · 四项核心指标")).toBeTruthy();
+    else expect(screen.getByText(/关联对象缺失或身份冲突/)).toBeTruthy();
+    const source = screen.getByLabelText("关联数据源 / Operation");
+    if (invalid === "unsupported operation") {
+      const entry = directory.entries.find(
+        (e) => e.identity === HISTORY_OPERATION,
+      )!;
+      expect(source.textContent).toContain(entry.operation);
+      expect(source.textContent).not.toContain("2026-09 公布窗口");
+      await screen.findByText(/所选来源变体未绑定此人工执行器/);
+    } else expect(source.textContent).toBe("未选择具名来源变体");
+    expect(new URLSearchParams(location.hash.slice(1)).get("asset")).toBe(
+      route.get("asset"),
+    );
+    expect(new URLSearchParams(location.hash.slice(1)).get("operation")).toBe(
+      route.get("operation"),
+    );
+    for (const name of ["开始参考月", "结束参考月"])
+      fireEvent.change(screen.getByLabelText(name), {
+        target: { value: query.reference },
+      });
+    fireEvent.click(screen.getByRole("checkbox"));
+    const submit = screen.getByRole("button", { name: "创建采集任务" });
+    expect(submit.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(submit);
+    // Bypass the disabled DOM control as well: the real submit handler must refuse.
+    fireEvent.submit(submit.closest("form")!);
+    await act(async () => {
+      await api.exchange({ path: "/api/r5/cpi/jobs" });
+    });
     expect(api.posts).toEqual([]);
     expect(api.effects).toEqual({ source: 0, raw: 0, jobs: 0 });
   },
@@ -410,12 +461,14 @@ it("failed attempts appear in 01 and link back to the same durable Job", async (
   await api.run(data.intent_identity, true);
   location.hash = `page=0&job=${data.intent_identity}`;
   render(<App transport={api.transport} initialQuery={query} />);
-  await screen.findByText(/failed · preflight_rejected/);
+  await screen.findByRole("button", {
+    name: `查看执行 ${data.intent_identity} →`,
+  });
   fireEvent.click(
-    screen.getByRole("link", { name: "05 回查同一 Job / Attempt" }),
+    screen.getByRole("button", { name: `查看执行 ${data.intent_identity} →` }),
   );
-  await screen.findByRole("heading", { name: "持久 Job / Attempt / History" });
-  await screen.findByText(/failed · stopped · preflight_rejected/);
+  await screen.findByRole("heading", { name: "执行详情" });
+  await screen.findByText(/stopped · preflight_rejected/);
   expect(location.hash).toContain(`job=${data.intent_identity}`);
   expect(screen.queryByText(/private-worker-detail/)).toBeNull();
   expect(api.effects).toEqual({ source: 0, raw: 0, jobs: 1 });

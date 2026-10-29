@@ -1,3 +1,4 @@
+import { formatBeijingTime } from "./beijingTime";
 import { CpiSchedules } from "./CpiSchedules";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -257,8 +258,10 @@ export function CpiJobsView({
                 取消请求 {String(item.cancel_requested)}
               </p>
               <p>
-                创建 {item.created_at} · 开始 {item.started_at ?? "尚无"} · 完成{" "}
-                {item.finished_at ?? "尚无"} · 更新 {item.updated_at}
+                创建 {formatBeijingTime(item.created_at)} · 开始{" "}
+                {formatBeijingTime(item.started_at, "尚无")} · 完成{" "}
+                {formatBeijingTime(item.finished_at, "尚无")} · 更新{" "}
+                {formatBeijingTime(item.updated_at)}
               </p>
               <p>
                 失败阶段 {item.failure_stage ?? "无"} · 核实{" "}
@@ -295,8 +298,8 @@ export function CpiJobsView({
               <ol>
                 {item.history.map((event, i) => (
                   <li key={i}>
-                    {event.updated_at} · {event.state} / {event.stage} ·{" "}
-                    {event.attempt_identity ?? "无 Attempt"} ·{" "}
+                    {formatBeijingTime(event.updated_at)} · {event.state} /{" "}
+                    {event.stage} · {event.attempt_identity ?? "无 Attempt"} ·{" "}
                     {event.classification ?? "无错误分类"} · 取消请求{" "}
                     {String(event.cancel_requested)}
                   </li>
@@ -365,7 +368,8 @@ export function CpiJobAlerts({
         <div className="version" key={item.job_identity}>
           <p>
             {item.job_identity} · {item.state} ·{" "}
-            {item.classification ?? "UNKNOWN"} · {item.updated_at}
+            {item.classification ?? "UNKNOWN"} ·{" "}
+            {formatBeijingTime(item.updated_at)}
           </p>
           <p>
             Attempt {item.attempt_identity ?? "无"} · Worker{" "}

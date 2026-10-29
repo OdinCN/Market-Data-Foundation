@@ -27,10 +27,13 @@ from market_data_foundation.historical.cpi_local_job import (
     CpiLocalJob,
     DirectCpiAcquirer,
 )
+from market_data_foundation.historical.cpi_pg_binding import BACKFILL_JOB, INITIAL_JOB
+from market_data_foundation.historical.cpi_pg_journal import PostgresJobJournal
 from market_data_foundation.web.dto import DTO
 
 Identity = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]{0,63}$")]
 PublicIdentity = Annotated[str, Field(pattern=r"^[a-zA-Z0-9:._-]{1,256}$")]
+OperationRef = Annotated[str, Field(pattern=r"^[a-zA-Z0-9:._@-]{1,256}$")]
 ReleaseSlot = Annotated[str, Field(pattern=r"^[a-zA-Z0-9/:._-]{1,128}$")]
 Stage = Literal[
     "registered",
@@ -90,6 +93,20 @@ class Intent(DTO):
     reference: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     release_slot: ReleaseSlot
     mode: Literal["manual_once"]
+    source_operation_ref: OperationRef | None = None
+    binding_ref: OperationRef | None = None
+    target_schema: PublicIdentity | None = None
+    confirmed: bool | None = None
+
+
+class BackfillIntent(Intent):
+    parent_job_id: Identity
+
+
+class BackfillDTO(DTO):
+    eligible: bool
+    reason: str | None
+    submission: BackfillIntent | None
 
 
 class JobQuery(DTO):
@@ -112,6 +129,13 @@ class JobError(DTO):
         "job_target_unsupported",
         "job_query_budget_exceeded",
         "job_record_invalid",
+        "cpi_backfill_parent_mismatch",
+        "cpi_backfill_parent_not_failed",
+        "cpi_backfill_original_failure_mismatch",
+        "cpi_backfill_failed_attempt_required",
+        "cpi_backfill_parent_effects_unresolved",
+        "cpi_backfill_parent_missing",
+        "cpi_backfill_exact_two_scope_migration_required",
     ]
 
 
@@ -127,6 +151,7 @@ class EventDTO(DTO):
 
 class JobDTO(EventDTO):
     job_identity: Identity
+    parent_job_id: Identity | None = None
     asset_identity: PublicIdentity
     asset_revision: PublicIdentity
     reference: str
@@ -163,7 +188,12 @@ class JobsDTO(DTO):
     reference: str | None
     release_slot: str | None
     intent_identity: Identity | None
-    storage_target: Literal["INHERITED_03_04"] = "INHERITED_03_04"
+    storage_target: Literal["INHERITED_03_04", "mdf_b3_cpi_05_dev_r1"] = (
+        "INHERITED_03_04"
+    )
+    source_operation_ref: OperationRef | None = None
+    binding_ref: OperationRef | None = None
+    backfill: BackfillDTO | None = None
     jobs: list[JobDTO] = Field(max_length=100)
 
 
@@ -211,6 +241,26 @@ class CpiJobsHost:
 
 
 @dataclass(frozen=True)
+class CpiPgJobsHost:
+    """Exact DEV adapter; identity and Origin admission belong to preview Host."""
+
+    journal: PostgresJobJournal
+    spec: CpiJobSpec
+    clock: Callable[[], datetime]
+    authorize: Callable[[Request], Operator | None]
+    evidence_mode: Literal["AUTHORIZED_HOST"] = "AUTHORIZED_HOST"
+    authorize_backfill: Callable[[Request], Operator | None] | None = None
+
+    def __post_init__(self):
+        require(type(self.journal) is PostgresJobJournal, "cpi_pg_journal_required")
+        require(not self.journal.read_only, "job_writable_journal_required")
+        self.journal.binding.check_spec(self.spec.document(), self.spec.scope)
+
+    def reader(self):
+        return self.journal.reader()
+
+
+@dataclass(frozen=True)
 class CpiManualWorker:
     """Explicit single action seam for a separately invoked trusted host worker.
 
@@ -244,7 +294,7 @@ class CpiManualWorker:
         )
 
 
-def _operator(host: CpiJobsHost | None, request: Request) -> Operator | None:
+def _operator(host: CpiJobsHost | CpiPgJobsHost | None, request: Request):
     if host is None:
         return None
     try:
@@ -252,6 +302,11 @@ def _operator(host: CpiJobsHost | None, request: Request) -> Operator | None:
         if type(value) is not Operator or type(value.write_eligible) is not bool:
             return None
         valid_identity(value.identity)
+        if isinstance(host, CpiPgJobsHost):
+            require(
+                value.identity == host.journal.binding.operator,
+                "operator_not_authorized",
+            )
         return value
     except Exception:
         return None
@@ -266,6 +321,13 @@ def _error(error: Exception) -> JobError:
         "job_scope_already_registered",
         "job_target_unsupported",
         "job_query_budget_exceeded",
+        "cpi_backfill_parent_mismatch",
+        "cpi_backfill_parent_not_failed",
+        "cpi_backfill_original_failure_mismatch",
+        "cpi_backfill_failed_attempt_required",
+        "cpi_backfill_parent_effects_unresolved",
+        "cpi_backfill_parent_missing",
+        "cpi_backfill_exact_two_scope_migration_required",
     }
     code = code if type(code) is str and code in allowed else "job_storage_unavailable"
     return JobError(
@@ -303,6 +365,7 @@ def _job(document: dict, history: tuple, spec: CpiJobSpec) -> JobDTO:
     return JobDTO(
         **_event(document).model_dump(),
         job_identity=document["job_id"],
+        parent_job_id=document.get("parent_job_id"),
         asset_identity=spec.definition,
         asset_revision=spec.definition_revision,
         reference=spec.reference,
@@ -351,8 +414,40 @@ def _view_spec(document: dict, host: CpiJobsHost) -> CpiJobSpec:
     return spec
 
 
+def _backfill_intent(host):
+    binding, spec = host.journal.binding, host.spec
+    return BackfillIntent(
+        job_identity=BACKFILL_JOB,
+        parent_job_id=INITIAL_JOB,
+        asset_identity=spec.definition,
+        asset_revision=spec.definition_revision,
+        reference=spec.reference,
+        release_slot=spec.release_slot,
+        mode="manual_once",
+        source_operation_ref=f"{binding.source}@{binding.source_revision}",
+        binding_ref=f"{binding.binding}@{binding.binding_revision}",
+        target_schema=binding.target.schema,
+        confirmed=True,
+    )
+
+
+def _backfill_operator(host, request):
+    if not isinstance(host, CpiPgJobsHost) or host.authorize_backfill is None:
+        return False
+    try:
+        operator = host.authorize_backfill(request)
+        return (
+            type(operator) is Operator
+            and operator.write_eligible is True
+            and operator.identity == host.journal.binding.operator
+            and not host.journal.read_only
+        )
+    except Exception:
+        return False
+
+
 def install_jobs(
-    app: FastAPI, host: CpiJobsHost | None, validation_error: type[DTO]
+    app: FastAPI, host: CpiJobsHost | CpiPgJobsHost | None, validation_error: type[DTO]
 ) -> None:
     responses = {code: {"model": JobError} for code in (403, 409, 503)}
     responses[422] = {"model": validation_error}
@@ -391,6 +486,13 @@ def install_jobs(
                 + digest(json.dumps(host.spec.document(), sort_keys=True).encode())[:40]
             ),
         )
+        if isinstance(host, CpiPgJobsHost):
+            binding = host.journal.binding
+            data.update(
+                storage_target=binding.target.schema,
+                source_operation_ref=f"{binding.source}@{binding.source_revision}",
+                binding_ref=f"{binding.binding}@{binding.binding_revision}",
+            )
         if host is None:
             return JobsDTO(
                 status="UNKNOWN",
@@ -408,7 +510,27 @@ def install_jobs(
                     require(query.job_identity is None, "job_target_unsupported")
                     continue
                 projected.append(_job(document, history, target))
-            return JobsDTO(status="OK", classification=None, jobs=projected, **data)
+            backfill = BackfillDTO(
+                eligible=False, reason="cpi_backfill_not_supported", submission=None
+            )
+            if isinstance(host, CpiPgJobsHost):
+                reason = host.reader().backfill_eligibility()
+                if reason is None and host.journal._poisoned:
+                    reason = "cpi_backfill_outcome_unknown"
+                if reason is None and not _backfill_operator(host, request):
+                    reason = "cpi_backfill_read_only"
+                backfill = BackfillDTO(
+                    eligible=reason is None,
+                    reason=reason,
+                    submission=_backfill_intent(host),
+                )
+            return JobsDTO(
+                status="OK",
+                classification=None,
+                jobs=projected,
+                backfill=backfill,
+                **data,
+            )
         except Exception as error:
             failure = _error(error)
             if failure.classification in {"job_not_found", "job_target_unsupported"}:
@@ -445,6 +567,22 @@ def install_jobs(
             return denied
         try:
             spec = host.spec
+            if isinstance(host, CpiPgJobsHost):
+                binding = host.journal.binding
+                expected_id = (
+                    "cpi-init-"
+                    + digest(json.dumps(spec.document(), sort_keys=True).encode())[:40]
+                )
+                require(
+                    intent.confirmed is True
+                    and intent.job_identity == expected_id
+                    and intent.source_operation_ref
+                    == f"{binding.source}@{binding.source_revision}"
+                    and intent.binding_ref
+                    == f"{binding.binding}@{binding.binding_revision}"
+                    and intent.target_schema == binding.target.schema,
+                    "job_target_unsupported",
+                )
             require(
                 (
                     intent.asset_identity,
@@ -462,6 +600,39 @@ def install_jobs(
             )
             host.journal.submit(
                 intent.job_identity, spec.document(), spec.scope, host.clock()
+            )
+            return AcceptedDTO(job_identity=intent.job_identity)
+        except Exception as error:
+            failure = _error(error)
+            return JSONResponse(
+                status_code=503 if failure.status == "UNKNOWN" else 409,
+                content=failure.model_dump(),
+            )
+
+    @app.post(
+        "/api/r5/cpi/jobs/backfill",
+        response_model=AcceptedDTO,
+        status_code=202,
+        responses=responses,
+        operation_id="cpi_job_backfill",
+    )
+    def accept_backfill(request: Request, intent: BackfillIntent):
+        if not _backfill_operator(host, request):
+            return JSONResponse(
+                status_code=403,
+                content=JobError(
+                    status="NOT_AVAILABLE", classification="operator_not_authorized"
+                ).model_dump(),
+            )
+        try:
+            require(intent == _backfill_intent(host), "job_target_unsupported")
+            spec = host.spec
+            host.journal.submit_backfill(
+                intent.job_identity,
+                intent.parent_job_id,
+                spec.document(),
+                spec.scope,
+                host.clock(),
             )
             return AcceptedDTO(job_identity=intent.job_identity)
         except Exception as error:

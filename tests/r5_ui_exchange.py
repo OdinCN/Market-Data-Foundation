@@ -6,6 +6,7 @@ import sys
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -29,7 +30,21 @@ socket.socket.connect = forbidden
 socket.socket.bind = forbidden
 socket.socket.listen = forbidden
 scenario = sys.argv[1]
-if scenario.startswith("observability"):
+temporary = None
+if scenario == "workflow_unknown":
+    # Existing trusted local-job fixture: lose the in-memory commit acknowledgement.
+    # This is synthetic fixture setup, never a served-preview or Source binding.
+    from tests.r5_jobs_fixture import Rig, jobs_app
+
+    def lost_commit_ack():
+        raise OSError("private fixture commit acknowledgement")
+
+    temporary = TemporaryDirectory(prefix="mdf-workflow-unknown-")
+    rig = Rig(Path(temporary.name), commit=lost_commit_ack)
+    rig.submit()
+    assert rig.run()["state"] == "outcome_unknown"
+    app = jobs_app(rig)
+elif scenario.startswith("observability"):
     ledger, _, _ = fixture_ledger()
 
     @contextmanager
@@ -77,3 +92,6 @@ with TestClient(app) as client:
             json.dumps({"status": response.status_code, "body": response.json()}),
             flush=True,
         )
+
+if temporary is not None:
+    temporary.cleanup()
