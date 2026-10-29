@@ -201,6 +201,24 @@ _DIMENSION_NAMES = frozenset(
 _ROW_FIELDS = _DIMENSION_NAMES | {"NoteRef"}
 
 
+def validate_production_time(production: object) -> None:
+    """The shared provider/replay contract for production metadata."""
+    require(
+        type(production) is str
+        and re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+            r"(?:\.[0-9]{1,6})?Z?",
+            production,
+        )
+        is not None,
+        "pce_production_metadata_missing",
+    )
+    try:
+        datetime.fromisoformat(production)
+    except ValueError:
+        raise ContractError("pce_production_metadata_missing") from None
+
+
 def project_provider_results(table: str, results: dict) -> dict:
     """Validate the bounded NIPA response and retain only the PCE source slice.
 
@@ -217,20 +235,7 @@ def project_provider_results(table: str, results: dict) -> dict:
         "pce_results_shape_unqualified",
     )
     production = results["UTCProductionTime"]
-    require(
-        type(production) is str
-        and re.fullmatch(
-            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
-            r"(?:\.[0-9]{1,6})?Z?",
-            production,
-        )
-        is not None,
-        "pce_production_metadata_missing",
-    )
-    try:
-        datetime.fromisoformat(production)
-    except ValueError:
-        raise ContractError("pce_production_metadata_missing") from None
+    validate_production_time(production)
     dimensions = results["Dimensions"]
     require(
         type(dimensions) is list

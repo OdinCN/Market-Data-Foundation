@@ -1,0 +1,952 @@
+"""Isolated PostgreSQL CPI series persistence and verified Garage raw material.
+
+Observation cutoffs remain distinct from conservative post-commit confirmation
+cutoffs. Neither reconstructs official historical releases. Changed values and
+evidence-backed withdrawals are retained; unchanged rows keep their original
+timestamps. No connection or DDL occurs on import.
+"""
+
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+from contextlib import contextmanager
+from datetime import UTC, date, datetime
+from decimal import Decimal, InvalidOperation
+from threading import RLock
+from types import SimpleNamespace
+from urllib.parse import quote, urlsplit
+
+import psycopg
+from psycopg.types.json import Jsonb
+
+from market_data_foundation.historical.bls_cpi_material_store import (
+    BUCKET,
+    GARAGE_ENDPOINT,
+    _signed_headers,
+)
+from market_data_foundation.storage.market_dataset_garage import _transport
+
+SCHEMA = "mdf_cpi_timeseries_dev_r1"
+RAW_PREFIX = "cpi-timeseries/dev-r1/sha256/"
+MAX_RAW_BYTES = 8 * 1024 * 1024
+LOCK_ID = 78328741642028101
+SERIES_IDS = (
+    "CUSR0000SA0",
+    "CUUR0000SA0",
+    "CUSR0000SA0L1E",
+    "CUUR0000SA0L1E",
+)
+
+
+class CpiStorageError(RuntimeError):
+    def __init__(self, classification):
+        self.classification = classification
+        super().__init__(classification)
+
+
+def digest(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def raw_locator(sha):
+    return f"mdf-s3://{BUCKET}/{RAW_PREFIX}{sha}/raw-response.bin"
+
+
+def _content(point):
+    return {
+        "index_value": None if point.index_value is None else str(point.index_value),
+        "availability": (
+            "source_unavailable" if point.index_value is None else "available"
+        ),
+        "provider_calculations": point.provider_calculations,
+        "footnotes": list(point.footnotes),
+    }
+
+
+def batch_identity(batch):
+    return digest(
+        canonical(
+            {
+                "raw_sha256": digest(batch.raw),
+                "request": batch.request,
+                "observed_at": batch.observed_at.isoformat(),
+            }
+        ).encode()
+    )
+
+
+def _point_document(point, batch, revision):
+    return {
+        "series_id": point.series_id,
+        "month": point.month,
+        **_content(point),
+        "observed_at": batch.observed_at.astimezone(UTC).isoformat(),
+        "raw_sha256": digest(batch.raw),
+        "raw_locator": raw_locator(digest(batch.raw)),
+        "revision": revision,
+        "available_at": None,
+        "version_status": "active",
+        "evidence_url": None,
+    }
+
+
+PCT_PERIODS = ("1", "3", "6", "12")
+VALUE_COLUMNS = (
+    "index_value,bls_pct_1m,bls_pct_3m,bls_pct_6m,bls_pct_12m,provider_extra,footnotes"
+)
+EVENT_COLUMNS = "available_at,version_status,evidence_url"
+REVISION_COLUMNS = "series_id,month,revision,observed_at,batch_id," + VALUE_COLUMNS
+
+
+def _month_date(month):
+    return date.fromisoformat(month + "-01")
+
+
+def _numeric(value):
+    if value is None:
+        return None
+    try:
+        number = Decimal(str(value))
+    except InvalidOperation:
+        raise CpiStorageError("cpi_timeseries_numeric_invalid") from None
+    if not number.is_finite():
+        raise CpiStorageError("cpi_timeseries_numeric_invalid")
+    return number
+
+
+def _relational_content(point):
+    # Only fixed CPI percent changes become numeric columns. Any other provider
+    # attributes remain losslessly in the optional, nonduplicating supplement.
+    extra = copy.deepcopy(point.provider_calculations)
+    changes = extra.get("pct_changes", {})
+    values = []
+    for period in PCT_PERIODS:
+        value = changes.get(period) if isinstance(changes, dict) else None
+        number = None
+        if isinstance(value, (str, int, float, Decimal)) and not isinstance(
+            value, bool
+        ):
+            try:
+                number = _numeric(value)
+            except CpiStorageError:
+                pass
+            else:
+                changes.pop(period)
+        values.append(number)
+    if extra.get("pct_changes") == {}:
+        extra.pop("pct_changes")
+    if extra.get("net_changes") == {}:
+        extra.pop("net_changes")
+    return (point.index_value, *values, extra or None, list(point.footnotes))
+
+
+def _provider_calculations(values, extra):
+    if not extra and all(value is None for value in values):
+        return {}
+    result = {"net_changes": {}, "pct_changes": {}}
+    result.update(copy.deepcopy(extra or {}))
+    changes = {
+        period: str(value)
+        for period, value in zip(PCT_PERIODS, values, strict=True)
+        if value is not None
+    }
+    if changes:
+        result["pct_changes"].update(changes)
+    return result
+
+
+def _row_document(row):
+    series, month, revision, observed_at, batch_id, index, *rest = row
+    pcts, extra, footnotes, raw_sha = rest[:4], rest[4], rest[5], rest[6]
+    available_at, version_status, evidence_url = (
+        rest[7:10] if len(rest) >= 10 else (None, "active", None)
+    )
+    return {
+        "available_at": None if available_at is None else available_at.isoformat(),
+        "version_status": version_status,
+        "evidence_url": evidence_url,
+        "series_id": series,
+        "month": month.strftime("%Y-%m"),
+        "revision": revision,
+        "observed_at": observed_at.astimezone(UTC).isoformat(),
+        "index_value": None if index is None else str(index),
+        "availability": (
+            "withdrawn"
+            if version_status == "withdrawn"
+            else "source_unavailable"
+            if index is None
+            else "available"
+        ),
+        "provider_calculations": _provider_calculations(pcts, extra),
+        "footnotes": footnotes,
+        "raw_sha256": raw_sha,
+        "raw_locator": raw_locator(raw_sha),
+    }
+
+
+def _latest_view_sql(*, event_columns=False):
+    columns = REVISION_COLUMNS + ("," + EVENT_COLUMNS if event_columns else "")
+    return f"""CREATE OR REPLACE VIEW {SCHEMA}.latest AS
+        SELECT DISTINCT ON (series_id,month) {columns}
+        FROM {SCHEMA}.revisions
+        ORDER BY series_id,month,revision DESC"""
+
+
+def _revision_ddl():
+    admitted = ",".join("'" + series + "'" for series in SERIES_IDS)
+    return f"""CREATE TABLE IF NOT EXISTS {SCHEMA}.revisions (
+        series_id text NOT NULL CHECK(series_id IN ({admitted})),
+        month date NOT NULL CHECK(EXTRACT(DAY FROM month)=1),
+        revision integer NOT NULL CHECK(revision > 0),
+        observed_at timestamptz NOT NULL,
+        batch_id text NOT NULL REFERENCES {SCHEMA}.batches(batch_id),
+        index_value numeric CHECK(index_value > 0 AND index_value != 'NaN'::numeric
+            AND index_value != 'Infinity'::numeric),
+        bls_pct_1m numeric,
+        bls_pct_3m numeric,
+        bls_pct_6m numeric,
+        bls_pct_12m numeric,
+        provider_extra jsonb,
+        footnotes jsonb NOT NULL CHECK(jsonb_typeof(footnotes)='array'),
+        available_at timestamptz,
+        version_status text NOT NULL DEFAULT 'active'
+            CHECK(version_status IN ('active','withdrawn')),
+        evidence_url text,
+        CHECK(version_status != 'withdrawn' OR
+            (index_value IS NULL AND evidence_url IS NOT NULL)),
+        PRIMARY KEY(series_id,month,revision)
+    )"""
+
+
+def _rates_view_sql():
+    rates = ",".join(
+        f"round(c.index_value / nullif(p{k}.index_value,0) - 1,4) AS change_{k}m_ratio"
+        for k in (1, 3, 6, 12)
+    )
+    joins = " ".join(
+        f"LEFT JOIN {SCHEMA}.latest p{k} ON p{k}.series_id=c.series_id "
+        f"AND p{k}.month=(c.month - interval '{k} months')::date "
+        f"AND p{k}.version_status='active'"
+        for k in (1, 3, 6, 12)
+    )
+    return f"""CREATE OR REPLACE VIEW {SCHEMA}.cpi_timeseries_rates AS
+        SELECT c.*,to_char(c.month,'YYYY-MM') AS month_label,{rates}
+        FROM {SCHEMA}.latest c {joins} WHERE c.version_status='active'"""
+
+
+def validate_evidence_url(value):
+    try:
+        url = urlsplit(value)
+        valid = (
+            isinstance(value, str)
+            and url.scheme == "https"
+            and url.hostname in ("bls.gov", "www.bls.gov")
+            and url.username is None
+            and url.password is None
+            and url.port in (None, 443)
+            and url.path not in ("", "/")
+            and not url.query
+            and not url.fragment
+            and not any(c.isspace() or ord(c) < 32 for c in value)
+        )
+    except TypeError, ValueError, AttributeError:
+        valid = False
+    if not valid:
+        raise CpiStorageError("cpi_timeseries_evidence_url_invalid")
+
+
+def _restoration_expectations(points, evidence_url):
+    if points is None:
+        return None
+    try:
+        if not isinstance(points, list) or evidence_url is None:
+            raise ValueError
+        expected = {}
+        for point in points:
+            if not isinstance(point, dict) or set(point) != {
+                "series_id",
+                "month",
+                "index_value",
+            }:
+                raise ValueError
+            series, month, value = (
+                point[k] for k in ("series_id", "month", "index_value")
+            )
+            if series not in SERIES_IDS or not isinstance(month, str):
+                raise ValueError
+            _month_date(month)
+            if isinstance(value, bool) or not isinstance(
+                value, (str, int, float, Decimal)
+            ):
+                raise ValueError
+            value = _numeric(value)
+            if value is None or value <= 0 or (series, month) in expected:
+                raise ValueError
+            expected[series, month] = value
+        return expected
+    except ValueError, TypeError, CpiStorageError:
+        raise CpiStorageError(
+            "cpi_timeseries_restoration_expected_points_invalid"
+        ) from None
+
+
+def _restoration_matches(point, expected):
+    return expected is None or (
+        (point.series_id, point.month) in expected
+        and point.index_value == expected[point.series_id, point.month]
+    )
+
+
+def _withdraw(store, series_ids, start_month, end_month, evidence_url):
+    # Evidence is a caller-validated official notice reference, not an invented
+    # archived provider response. The batch request labels this material clearly.
+    from market_data_foundation.historical.cpi_timeseries_source import (
+        SourceBatch,
+        SourcePoint,
+    )
+
+    validate_evidence_url(evidence_url)
+    first, last = _month_date(start_month), _month_date(end_month)
+    months = []
+    current = first
+    while current <= last:
+        months.append(current.strftime("%Y-%m"))
+        current = date(current.year + (current.month == 12), current.month % 12 + 1, 1)
+    request = {
+        "event": "withdrawal",
+        "evidence_url": evidence_url,
+        "seriesid": list(series_ids),
+        "start_month": start_month,
+        "end_month": end_month,
+    }
+    existing = {
+        (p["series_id"], p["month"]): p
+        for p in store.read_range(series_ids, start_month, end_month)
+    }
+    points = tuple(
+        SourcePoint(s, m, None, {}, ())
+        for s in series_ids
+        for m in months
+        if existing.get((s, m), {}).get("version_status") != "withdrawn"
+    )
+    if not points:
+        return {"saved_points": 0, "saved_revisions": 0}
+    batch = SourceBatch(
+        points,
+        canonical(request).encode(),
+        request,
+        store._clock(),
+        0,
+    )
+    return store.save_batches((batch,), _withdrawal_evidence_url=evidence_url)
+
+
+class GarageCpiRawStore:
+    """Reuse MDF's fixed Garage signing/transport, with a separate raw prefix.
+
+    Identical content addresses may be adopted only after exact readback. A
+    failed GET is never a miss. A lost PUT acknowledgement is reconciled with
+    one GET; no provider re-fetch or blind write retry is performed.
+    """
+
+    def __init__(self, credentials, *, transport=None, clock=None):
+        self._credentials = credentials
+        self._transport = transport or _transport
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def _send(self, method, sha, raw=b"", maximum=MAX_RAW_BYTES):
+        path = "/" + quote(f"{BUCKET}/{RAW_PREFIX}{sha}/raw-response.bin", safe="/-_.~")
+        headers = _signed_headers(
+            method,
+            path,
+            "192.168.10.8:3900",
+            digest(raw),
+            self._clock().astimezone(UTC),
+            self._credentials,
+        )
+        try:
+            return self._transport(
+                method, GARAGE_ENDPOINT + path, headers, raw, maximum, 10.0
+            )
+        except Exception:
+            raise CpiStorageError("cpi_timeseries_raw_transport_failed") from None
+
+    def _read(self, sha, raw):
+        status, found = self._send("GET", sha, maximum=len(raw))
+        if status == 404:
+            return False
+        if status != 200:
+            raise CpiStorageError("cpi_timeseries_raw_read_failed")
+        if found != raw or digest(found) != sha:
+            raise CpiStorageError("cpi_timeseries_raw_mismatch")
+        return True
+
+    def put_verified(self, raw):
+        if type(raw) is not bytes or not 0 < len(raw) <= MAX_RAW_BYTES:
+            raise CpiStorageError("cpi_timeseries_raw_invalid")
+        sha = digest(raw)
+        if self._read(sha, raw):
+            return raw_locator(sha)
+        write_unknown = False
+        try:
+            status, _ = self._send("PUT", sha, raw, maximum=1024)
+        except CpiStorageError:
+            write_unknown = True
+        else:
+            if status not in (200, 201, 204) and status < 500:
+                raise CpiStorageError("cpi_timeseries_raw_write_rejected")
+            write_unknown = status >= 500
+        try:
+            verified = self._read(sha, raw)
+        except CpiStorageError:
+            raise CpiStorageError("cpi_timeseries_raw_outcome_unknown") from None
+        if not verified:
+            classification = (
+                "cpi_timeseries_raw_outcome_unknown"
+                if write_unknown
+                else "cpi_timeseries_raw_readback_missing"
+            )
+            raise CpiStorageError(classification)
+        return raw_locator(sha)
+
+
+class PostgresTimeSeriesStore:
+    """Two tables with numeric observations and a derived latest view."""
+
+    def __init__(self, connection, raw_store, *, clock=None):
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self.connection = connection
+        self.raw_store = raw_store
+        self._lock = RLock()
+        if not connection.autocommit:
+            raise CpiStorageError("cpi_timeseries_autocommit_required")
+
+    @contextmanager
+    def operation(self):
+        with self._lock:
+            acquired = False
+            failed = False
+            try:
+                acquired = bool(
+                    self.connection.execute(
+                        "SELECT pg_try_advisory_lock(%s)", (LOCK_ID,)
+                    ).fetchone()[0]
+                )
+            except Exception:
+                raise CpiStorageError("cpi_timeseries_storage_failed") from None
+            if not acquired:
+                raise CpiStorageError("cpi_timeseries_busy")
+            try:
+                yield
+            except BaseException:
+                failed = True
+                raise
+            finally:
+                if acquired:
+                    try:
+                        released = self.connection.execute(
+                            "SELECT pg_advisory_unlock(%s)", (LOCK_ID,)
+                        ).fetchone()[0]
+                        if not released:
+                            raise CpiStorageError("cpi_timeseries_lock_lost")
+                    except Exception:
+                        self.connection.close()
+                        if not failed:
+                            raise CpiStorageError(
+                                "cpi_timeseries_lock_release_failed"
+                            ) from None
+
+    def ensure_schema(self):
+        """Create a new relational schema; an old schema needs explicit migration."""
+        try:
+            with self.connection.transaction():
+                self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
+                owner = self.connection.execute(
+                    "SELECT pg_get_userbyid(nspowner)=current_user "
+                    "FROM pg_namespace WHERE nspname=%s",
+                    (SCHEMA,),
+                ).fetchone()
+                if owner != (True,):
+                    raise CpiStorageError("cpi_timeseries_schema_owner_mismatch")
+                self.connection.execute(f"""
+                CREATE TABLE IF NOT EXISTS {SCHEMA}.batches (
+                    batch_id text PRIMARY KEY,
+                    raw_sha256 text NOT NULL,
+                    observed_at timestamptz NOT NULL,
+                    request jsonb NOT NULL,
+                    provider_attempts integer NOT NULL CHECK(provider_attempts >= 0)
+                )""")
+                self.connection.execute(_revision_ddl())
+                kind = self.connection.execute(
+                    "SELECT relkind FROM pg_class c "
+                    "JOIN pg_namespace n ON n.oid=c.relnamespace "
+                    "WHERE n.nspname=%s AND c.relname='latest'",
+                    (SCHEMA,),
+                ).fetchone()
+                if kind is None:
+                    self.connection.execute(_latest_view_sql(event_columns=True))
+                elif kind != ("v",):
+                    raise CpiStorageError("cpi_timeseries_schema_migration_required")
+                self.connection.execute(_rates_view_sql())
+                rows = self.connection.execute(
+                    "SELECT table_name,column_name,data_type "
+                    "FROM information_schema.columns "
+                    "WHERE table_schema=%s "
+                    "AND table_name IN ('batches','revisions','latest')",
+                    (SCHEMA,),
+                ).fetchall()
+                revisions = {
+                    "series_id": "text",
+                    "month": "date",
+                    "revision": "integer",
+                    "observed_at": "timestamp with time zone",
+                    "batch_id": "text",
+                    "index_value": "numeric",
+                    "bls_pct_1m": "numeric",
+                    "bls_pct_3m": "numeric",
+                    "bls_pct_6m": "numeric",
+                    "bls_pct_12m": "numeric",
+                    "provider_extra": "jsonb",
+                    "footnotes": "jsonb",
+                    "available_at": "timestamp with time zone",
+                    "version_status": "text",
+                    "evidence_url": "text",
+                }
+                expected = {
+                    "batches": {
+                        "batch_id": "text",
+                        "raw_sha256": "text",
+                        "observed_at": "timestamp with time zone",
+                        "request": "jsonb",
+                        "provider_attempts": "integer",
+                    },
+                    "revisions": revisions,
+                    "latest": revisions,
+                }
+                actual = {name: {} for name in expected}
+                for table, column, data_type in rows:
+                    actual[table][column] = data_type
+                if actual != expected:
+                    raise CpiStorageError("cpi_timeseries_schema_shape_mismatch")
+        except CpiStorageError:
+            raise
+        except Exception:
+            raise CpiStorageError("cpi_timeseries_schema_failed") from None
+
+    def read_range(
+        self, series_ids, start_month, end_month, as_of=None, vintage_mode="observed"
+    ):
+        try:
+            fields = ",".join("r." + name for name in REVISION_COLUMNS.split(","))
+            params = (
+                list(series_ids),
+                _month_date(start_month),
+                _month_date(end_month),
+            )
+            if as_of is None and vintage_mode == "observed":
+                source, distinct, condition, order = (
+                    "latest",
+                    "",
+                    "",
+                    "r.series_id,r.month",
+                )
+            else:
+                source = "revisions"
+                distinct = "DISTINCT ON(r.series_id,r.month) "
+                if vintage_mode == "available":
+                    condition = (
+                        "AND r.available_at IS NOT NULL "
+                        f"AND NOT EXISTS (SELECT 1 FROM {SCHEMA}.revisions unconfirmed "
+                        "WHERE unconfirmed.series_id=r.series_id "
+                        "AND unconfirmed.month=r.month "
+                        "AND unconfirmed.revision > r.revision "
+                        "AND unconfirmed.available_at IS NULL "
+                        + (
+                            "AND unconfirmed.observed_at <= %s "
+                            if as_of is not None
+                            else ""
+                        )
+                        + ") "
+                    )
+                    if as_of is not None:
+                        params += (as_of,)
+                        condition += "AND r.available_at <= %s "
+                else:
+                    condition = "AND r.observed_at <= %s "
+                order = "r.series_id,r.month,r.revision DESC"
+                if as_of is not None:
+                    params += (as_of,)
+            rows = self.connection.execute(
+                f"SELECT {distinct}{fields},b.raw_sha256,"
+                "r.available_at,r.version_status,r.evidence_url "
+                f"FROM {SCHEMA}.{source} r "
+                f"JOIN {SCHEMA}.batches b USING(batch_id) "
+                "WHERE r.series_id=ANY(%s) AND r.month BETWEEN %s AND %s "
+                + condition
+                + "ORDER BY "
+                + order,
+                params,
+            ).fetchall()
+            return [_row_document(row) for row in rows]
+        except Exception:
+            raise CpiStorageError("cpi_timeseries_storage_read_failed") from None
+
+    def withdraw_range(self, series_ids, start_month, end_month, *, evidence_url):
+        return _withdraw(self, series_ids, start_month, end_month, evidence_url)
+
+    def _require_top_level_transaction(self):
+        info = getattr(self.connection, "info", None)
+        if (
+            info is not None
+            and info.transaction_status != psycopg.pq.TransactionStatus.IDLE
+        ):
+            raise CpiStorageError("cpi_timeseries_top_level_transaction_required")
+
+    def confirm_current_availability(self, series_ids, start_month, end_month):
+        """Explicitly attest that committed latest rows are consumable now.
+
+        A fresh top-level transaction sees committed data, and the table lock
+        prevents any writer replacing selected latest rows before confirmation.
+        No historical timestamp or statistical version is manufactured.
+        """
+        self._require_top_level_transaction()
+        try:
+            with self.operation():
+                with self.connection.transaction():
+                    self.connection.execute(
+                        f"LOCK TABLE {SCHEMA}.revisions IN SHARE ROW EXCLUSIVE MODE"
+                    )
+                    rows = self.connection.execute(
+                        f"SELECT series_id,month,revision FROM {SCHEMA}.latest "
+                        "WHERE series_id=ANY(%s) AND month BETWEEN %s AND %s "
+                        "AND available_at IS NULL ORDER BY series_id,month",
+                        (
+                            list(series_ids),
+                            _month_date(start_month),
+                            _month_date(end_month),
+                        ),
+                    ).fetchall()
+                    at = self._clock() if rows else None
+                    for series, month, revision in rows:
+                        self.connection.execute(
+                            f"UPDATE {SCHEMA}.revisions SET available_at=%s "
+                            "WHERE series_id=%s AND month=%s AND revision=%s "
+                            "AND available_at IS NULL",
+                            (at, series, month, revision),
+                        )
+                return {
+                    "confirmed_points": len(rows),
+                    "confirmed_at": None if at is None else at.isoformat(),
+                }
+        except CpiStorageError:
+            raise
+        except Exception:
+            raise CpiStorageError(
+                "cpi_timeseries_confirmation_outcome_unknown"
+            ) from None
+
+    def save_batches(
+        self,
+        batches,
+        *,
+        restoration_evidence_url=None,
+        restoration_expected_points=None,
+        _withdrawal_evidence_url=None,
+    ):
+        evidence = _withdrawal_evidence_url or restoration_evidence_url
+        if evidence is not None:
+            validate_evidence_url(evidence)
+        state = "withdrawn" if _withdrawal_evidence_url else "active"
+        expected = _restoration_expectations(
+            restoration_expected_points, restoration_evidence_url
+        )
+        self._require_top_level_transaction()
+        batches = tuple(batches)
+        for batch in batches:
+            locator = self.raw_store.put_verified(batch.raw)
+            if locator != raw_locator(digest(batch.raw)):
+                raise CpiStorageError("cpi_timeseries_raw_locator_mismatch")
+        points = revisions = 0
+        inserted = []
+        try:
+            with self.connection.transaction():
+                for batch in sorted(batches, key=lambda b: b.observed_at):
+                    bid = batch_identity(batch)
+                    self.connection.execute(
+                        f"INSERT INTO {SCHEMA}.batches "
+                        "(batch_id,raw_sha256,observed_at,request,provider_attempts) "
+                        "VALUES(%s,%s,%s,%s,%s) ON CONFLICT(batch_id) DO NOTHING",
+                        (
+                            bid,
+                            digest(batch.raw),
+                            batch.observed_at,
+                            Jsonb(batch.request),
+                            batch.attempts,
+                        ),
+                    )
+                    for point in batch.points:
+                        values = _relational_content(point)
+                        old = self.connection.execute(
+                            f"SELECT revision,observed_at,{VALUE_COLUMNS},"
+                            "version_status "
+                            f"FROM {SCHEMA}.revisions "
+                            "WHERE series_id=%s AND month=%s "
+                            "ORDER BY revision DESC LIMIT 1",
+                            (point.series_id, _month_date(point.month)),
+                        ).fetchone()
+                        old_state = old[-1] if old is not None else None
+                        if old_state == "withdrawn" and (
+                            state == "withdrawn"
+                            or restoration_evidence_url is None
+                            or not _restoration_matches(point, expected)
+                        ):
+                            continue
+                        if (
+                            old is not None
+                            and old_state == state
+                            and tuple(old[2:-1]) == values
+                        ):
+                            continue
+                        if old is not None and batch.observed_at <= old[1]:
+                            raise CpiStorageError(
+                                "cpi_timeseries_observation_order_conflict"
+                            )
+                        revision = 1 if old is None else old[0] + 1
+                        parameters = (
+                            point.series_id,
+                            _month_date(point.month),
+                            revision,
+                            batch.observed_at,
+                            bid,
+                            *values[:5],
+                            Jsonb(values[5]) if values[5] is not None else None,
+                            Jsonb(values[6]),
+                            state,
+                            evidence,
+                        )
+                        self.connection.execute(
+                            f"INSERT INTO {SCHEMA}.revisions "
+                            f"({REVISION_COLUMNS},version_status,evidence_url) "
+                            "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            parameters,
+                        )
+                        inserted.append(
+                            (point.series_id, _month_date(point.month), revision)
+                        )
+                        points += 1
+                        revisions += int(old is not None)
+        except CpiStorageError:
+            raise
+        except psycopg.OperationalError:
+            raise CpiStorageError("cpi_timeseries_storage_outcome_unknown") from None
+        except Exception:
+            raise CpiStorageError("cpi_timeseries_storage_write_failed") from None
+        # This timestamp is sampled only after the data transaction has returned
+        # successfully. A lost COMMIT acknowledgement never reaches this phase.
+        # Failure here leaves data durable but availability unknown; never infer
+        # the old commit time or stamp legacy rows on subsequent unchanged reads.
+        if inserted:
+            confirmed_at = self._clock()
+            try:
+                with self.connection.transaction():
+                    for series, month, revision in inserted:
+                        self.connection.execute(
+                            f"UPDATE {SCHEMA}.revisions SET available_at=%s "
+                            "WHERE series_id=%s AND month=%s AND revision=%s "
+                            "AND available_at IS NULL",
+                            (confirmed_at, series, month, revision),
+                        )
+            except Exception:
+                raise CpiStorageError(
+                    "cpi_timeseries_confirmation_outcome_unknown"
+                ) from None
+        return {"saved_points": points, "saved_revisions": revisions}
+
+    def status(self):
+        try:
+            latest = self.connection.execute(
+                f"SELECT series_id,to_char(max(month),'YYYY-MM') FROM {SCHEMA}.latest "
+                "WHERE index_value IS NOT NULL AND version_status='active' "
+                "GROUP BY series_id"
+            ).fetchall()
+            count = self.connection.execute(
+                "SELECT count(*),count(*)-count(DISTINCT(series_id,month)) "
+                f"FROM {SCHEMA}.revisions"
+            ).fetchone()
+            batches = self.connection.execute(
+                f"SELECT count(*) FROM {SCHEMA}.batches"
+            ).fetchone()[0]
+        except Exception:
+            raise CpiStorageError("cpi_timeseries_storage_read_failed") from None
+        return {
+            "schema": SCHEMA,
+            "latest_months": {s: dict(latest).get(s) for s in SERIES_IDS},
+            "observation_count": count[0],
+            "revision_count": count[1],
+            "batch_count": batches,
+        }
+
+    def close(self):
+        self.connection.close()
+
+
+class InMemoryTimeSeriesStore:
+    """Deterministic test port; runtime build_service always uses PostgreSQL."""
+
+    def __init__(self, raw_store=None, *, clock=None):
+        self.raw_store = raw_store
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self._history = {}
+        self._batches = {}
+        self._lock = RLock()
+
+    @contextmanager
+    def operation(self):
+        with self._lock:
+            yield
+
+    def read_range(
+        self, series_ids, start_month, end_month, as_of=None, vintage_mode="observed"
+    ):
+        result = []
+        for (series, month), history in sorted(self._history.items()):
+            if series not in series_ids or not start_month <= month <= end_month:
+                continue
+            options = [
+                d
+                for d in history
+                if (vintage_mode != "available" or d.get("available_at") is not None)
+                and (
+                    as_of is None
+                    or datetime.fromisoformat(
+                        d["available_at"]
+                        if vintage_mode == "available"
+                        else d["observed_at"]
+                    )
+                    <= as_of
+                )
+            ]
+            if options:
+                selected = options[-1]
+                if vintage_mode == "available" and any(
+                    d["revision"] > selected["revision"]
+                    and d.get("available_at") is None
+                    and (
+                        as_of is None
+                        or datetime.fromisoformat(d["observed_at"]) <= as_of
+                    )
+                    for d in history
+                ):
+                    continue
+                result.append(copy.deepcopy(selected))
+        return result
+
+    def withdraw_range(self, series_ids, start_month, end_month, *, evidence_url):
+        return _withdraw(self, series_ids, start_month, end_month, evidence_url)
+
+    def confirm_current_availability(self, series_ids, start_month, end_month):
+        with self.operation():
+            rows = [
+                history[-1]
+                for (series, month), history in self._history.items()
+                if series in series_ids
+                and start_month <= month <= end_month
+                and history[-1].get("available_at") is None
+            ]
+            at = self._clock().isoformat() if rows else None
+            for row in rows:
+                row["available_at"] = at
+            return {"confirmed_points": len(rows), "confirmed_at": at}
+
+    def save_batches(
+        self,
+        batches,
+        *,
+        restoration_evidence_url=None,
+        restoration_expected_points=None,
+        _withdrawal_evidence_url=None,
+    ):
+        evidence = _withdrawal_evidence_url or restoration_evidence_url
+        if evidence is not None:
+            validate_evidence_url(evidence)
+        state = "withdrawn" if _withdrawal_evidence_url else "active"
+        expected = _restoration_expectations(
+            restoration_expected_points, restoration_evidence_url
+        )
+        batches = tuple(batches)
+        for batch in batches:
+            if self.raw_store is not None:
+                locator = self.raw_store.put_verified(batch.raw)
+                if locator != raw_locator(digest(batch.raw)):
+                    raise CpiStorageError("cpi_timeseries_raw_locator_mismatch")
+        history = copy.deepcopy(self._history)
+        saved = revised = 0
+        inserted = []
+        for batch in sorted(batches, key=lambda b: b.observed_at):
+            for point in batch.points:
+                rows = history.setdefault((point.series_id, point.month), [])
+                old_state = rows[-1].get("version_status", "active") if rows else None
+                if old_state == "withdrawn" and (
+                    state == "withdrawn"
+                    or restoration_evidence_url is None
+                    or not _restoration_matches(point, expected)
+                ):
+                    continue
+                if (
+                    rows
+                    and old_state == state
+                    and _relational_content(
+                        SimpleNamespace(
+                            index_value=_numeric(rows[-1]["index_value"]),
+                            provider_calculations=rows[-1]["provider_calculations"],
+                            footnotes=rows[-1]["footnotes"],
+                        )
+                    )
+                    == _relational_content(point)
+                ):
+                    continue
+                if rows and batch.observed_at <= datetime.fromisoformat(
+                    rows[-1]["observed_at"]
+                ):
+                    raise CpiStorageError("cpi_timeseries_observation_order_conflict")
+                document = _point_document(point, batch, len(rows) + 1)
+                document.update(version_status=state, evidence_url=evidence)
+                if state == "withdrawn":
+                    document["availability"] = "withdrawn"
+                rows.append(document)
+                inserted.append(document)
+                saved += 1
+                revised += int(len(rows) > 1)
+        self._history = history
+        self._batches.update({batch_identity(b): b for b in batches})
+        if inserted:
+            at = self._clock().isoformat()
+            for document in inserted:
+                document["available_at"] = at
+        return {"saved_points": saved, "saved_revisions": revised}
+
+    def status(self):
+        latest = {s: None for s in SERIES_IDS}
+        for (s, month), rows in self._history.items():
+            if (
+                rows[-1].get("version_status") != "withdrawn"
+                and rows[-1]["index_value"] is not None
+                and (latest[s] is None or month > latest[s])
+            ):
+                latest[s] = month
+        return {
+            "schema": SCHEMA,
+            "latest_months": latest,
+            "observation_count": sum(map(len, self._history.values())),
+            "revision_count": sum(len(v) - 1 for v in self._history.values()),
+            "batch_count": len(self._batches),
+        }
+
+    def close(self):
+        pass

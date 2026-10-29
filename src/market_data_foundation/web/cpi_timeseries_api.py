@@ -1,0 +1,540 @@
+"""CPI Web adapter: read-only current pass-through and strictly local history."""
+
+import json
+from contextlib import contextmanager
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
+
+from market_data_foundation.historical.cpi_auto_strategy import CpiAutoStrategy
+from market_data_foundation.historical.cpi_timeseries_cli import (
+    error_document,
+    execute,
+    reject_json_constant,
+    require_parameters,
+    selected_series,
+    unique_json_object,
+    validate_query,
+    validate_range,
+)
+from market_data_foundation.historical.cpi_timeseries_http import error_status
+from market_data_foundation.web.cpi_timeseries_dispatch import dispatch_job
+from market_data_foundation.web.cpi_timeseries_jobs import (
+    JobJournal,
+    WebError,
+    validate_command,
+    verify_readback,
+)
+from market_data_foundation.web.cpi_timeseries_policy import (
+    PRESET_MONTHS,
+    automatic_executions,
+    initialization_preset,
+    strategy_projection,
+)
+from market_data_foundation.web.package_catalog import PackageError
+from market_data_foundation.web.pce_dev_host import CANDIDATE_ORIGIN, admitted
+
+PREFIX = "/api/r5/cpi/timeseries"
+
+
+def admitted_job(request):
+    return (
+        request.method == "POST"
+        and request.url.path == PREFIX + "/jobs"
+        and not request.url.query
+        and request.headers.getlist("origin") == [CANDIDATE_ORIGIN]
+        and request.headers.getlist("content-type") == ["application/json"]
+        and "transfer-encoding" not in request.headers
+        and admitted(
+            Request(dict(request.scope, method="GET")), origin=CANDIDATE_ORIGIN
+        )
+    )
+
+
+def admitted_strategy(request):
+    return (
+        request.method == "PUT"
+        and request.url.path == PREFIX + "/strategy"
+        and admitted_job(
+            Request(dict(request.scope, method="POST", path=PREFIX + "/jobs"))
+        )
+    )
+
+
+def failure(error):
+    if isinstance(error, WebError):
+        return JSONResponse(
+            {"status": "ERROR", "classification": error.classification}, error.status
+        )
+    if isinstance(error, PackageError):
+        return JSONResponse(error.failure.model_dump(), error.http_status)
+    return JSONResponse(error_document(error), error_status(error))
+
+
+class TimeSeriesHost:
+    def __init__(
+        self,
+        *,
+        packages,
+        read_service_factory,
+        scheduler,
+        job_directory,
+        write_service_factory=None,
+        allow_collect=False,
+        query_allowed=True,
+        max_collect_months=None,
+        strategy=None,
+        query_service_factory=None,
+        clock=lambda: datetime.now(UTC),
+    ):
+        if type(allow_collect) is not bool or type(query_allowed) is not bool:
+            raise ValueError("explicit_timeseries_permissions_required")
+        if max_collect_months is not None and (
+            type(max_collect_months) is not int or not 1 <= max_collect_months <= 2400
+        ):
+            raise ValueError("invalid_collection_limit")
+        self.packages, self.read_factory = packages, read_service_factory
+        self.write_factory, self.scheduler = write_service_factory, scheduler
+        self.allow_collect, self.query_allowed = allow_collect, query_allowed
+        self.max_collect_months, self.clock = max_collect_months, clock
+        self.journal = JobJournal(job_directory)
+        self.query_factory = query_service_factory
+        self.auto_strategy = strategy or CpiAutoStrategy(
+            scheduler, scheduler.state_path.with_name("strategy.json"), clock=clock
+        )
+
+    @contextmanager
+    def service(self, *, write=False, credential_loader=None, upstream=False):
+        service = (
+            self.query_factory(credential_loader=credential_loader)
+            if upstream and self.query_factory is not None
+            else self.write_factory(credential_loader=credential_loader)
+            if write
+            else self.read_factory()
+        )
+        try:
+            yield service
+        finally:
+            service.close()
+
+    def source(self, record=None):
+        if record is None:
+            record = self.packages.store.read(self.packages.environment_id, "macro")
+        states = self.packages.credential_states("macro", record, source_ids={"BLS"})
+        state = next(
+            (s.credential_state for s in states if s.source_id == "BLS"), "unknown"
+        )
+        return {
+            "source_id": "BLS",
+            "capability_enabled": bool(
+                record and "cpi" in record.enabled_capability_ids
+            ),
+            "credential_state": state,
+        }
+
+    def capabilities(self, source):
+        reason = (
+            "collection_not_enabled"
+            if not self.allow_collect
+            else "cpi_package_credential_binding_unavailable"
+            if self.write_factory is None
+            else "cpi_capability_disabled"
+            if not source["capability_enabled"]
+            else "bls_credential_" + source["credential_state"]
+            if source["credential_state"] != "configured"
+            else "local_read_not_authorized"
+            if not self.query_allowed
+            else None
+        )
+        return {
+            "query": self.query_allowed,
+            "collect": reason is None,
+            "reason": reason,
+        }
+
+    def upstream_access(self, source):
+        reason = (
+            "local_read_not_authorized"
+            if not self.query_allowed
+            else "cpi_passthrough_binding_unavailable"
+            if self.query_factory is None
+            else "cpi_capability_disabled"
+            if not source["capability_enabled"]
+            else "bls_credential_" + source["credential_state"]
+            if source["credential_state"] != "configured"
+            else None
+        )
+        return {"allowed": reason is None, "reason": reason}
+
+    def status(self):
+        source = self.source()
+        self.auto_strategy.get()  # Bind the persisted baseline in memory only.
+        snapshot = self.scheduler.status()
+        with self.service() as service:
+            result = execute(service, "status")
+            preset = initialization_preset(service, result, snapshot, self.clock())
+        return {
+            **result,
+            "initialization": preset,
+            "web_capabilities": self.capabilities(source),
+            "source": source,
+            "collection_scope": {
+                "max_months": self.max_collect_months,
+                "series": "all",
+                "initialization_preset_months": PRESET_MONTHS,
+            },
+        }
+
+    def query(self, params):
+        require_parameters(
+            params,
+            {
+                "start",
+                "end",
+                "basket",
+                "adjustment",
+                "measure",
+                "vintage_mode",
+                "as_of",
+                "local_only",
+                "query_mode",
+                "as_of_basis",
+            },
+        )
+        if not self.query_allowed:
+            raise WebError("local_read_not_authorized", 403)
+        local_only = params.get("local_only", "true")
+        if local_only not in {"true", "false"}:
+            raise WebError("invalid_local_only")
+        params = dict(params, local_only=local_only == "true")
+        params.setdefault(
+            "query_mode",
+            "history"
+            if params.get("as_of") is not None
+            or params.get("vintage_mode") == "available"
+            or params.get("as_of_basis") == "available"
+            else "current",
+        )
+        validate_range(params.get("start"), params.get("end"))
+        validate_query(params)
+        selected_series(params, query=True)
+        history = (
+            params.get("query_mode") == "history" or params.get("as_of") is not None
+        )
+        upstream = not params["local_only"] and not history
+        if upstream and self.query_factory is None:
+            raise WebError("cpi_passthrough_binding_unavailable")
+        with self.service(
+            upstream=upstream, credential_loader=self.effective_credential
+        ) as service:
+            result = execute(service, "query", params)
+        return self.publication_metadata(result)
+
+    def effective_credential(self):
+        record = self.packages.store.read(self.packages.environment_id, "macro")
+        source = self.source(record)
+        if not source["capability_enabled"]:
+            raise WebError("cpi_capability_disabled", 403)
+        value = self.packages.load_credential("macro", "BLS", record=record)
+        if value is None:
+            raise WebError("bls_credential_missing", 403)
+        return value
+
+    def publication_metadata(self, result):
+        events = {}
+        for target in self.scheduler.status().get("targets", []):
+            evidence = target.get("reference_month_evidence") or {}
+            month, at = target.get("reference_month"), target.get("release_at")
+            source = evidence.get("source") or evidence.get("evidence_url")
+            if (
+                not month
+                or not at
+                or not isinstance(source, str)
+                or not source.startswith("https://www.bls.gov/")
+                or evidence.get("reference_month", month) != month
+            ):
+                continue
+            try:
+                if datetime.fromisoformat(at).utcoffset() is None:
+                    continue
+            except ValueError, TypeError:
+                continue
+            status = target.get("publication_status", "scheduled")
+            if status not in {"scheduled", "published", "cancelled"}:
+                status = "scheduled"
+            event = {
+                "reference_month": month,
+                "publication_time": at,
+                "time": at,
+                "evidence": {
+                    key: evidence[key]
+                    for key in ("source", "evidence_url", "sha256")
+                    if key in evidence
+                },
+                "status": "cancelled"
+                if target.get("state") == "calendar_removed"
+                else status,
+            }
+            events[month] = event
+        result["points"] = [
+            dict(point, publication_event=events.get(point["month"]))
+            for point in result["points"]
+        ]
+        result["publication_events"] = list(events.values())
+        result["metadata"] = {
+            "publication_event": {
+                "label": "官方月度发布事件",
+                "semantics": "official_month_event_not_current_value_revision_time",
+                "binds_current_revision": False,
+            },
+            "as_of_default_basis": "available",
+            "query_mode_default": "current",
+        }
+        return result
+
+    def strategy(self):
+        value = self.auto_strategy.get()
+        return strategy_projection(value, self.scheduler.status(), self.clock())
+
+    def update_strategy(self, command):
+        require_parameters(command, {"enabled", "history_start"})
+        if (
+            set(command) not in ({"enabled"}, {"enabled", "history_start"})
+            or type(command["enabled"]) is not bool
+            or (
+                "history_start" in command
+                and not isinstance(command["history_start"], str)
+            )
+        ):
+            raise WebError("invalid_strategy_parameters")
+        command = dict(command)
+        command.setdefault("history_start", self.auto_strategy.get()["history_start"])
+        validate_range(command["history_start"], command["history_start"])
+        if command["enabled"]:
+            capabilities = self.capabilities(self.source())
+            if not capabilities["collect"]:
+                raise WebError(capabilities["reason"], 403)
+        value = self.auto_strategy.update(**command)
+        return strategy_projection(value, self.scheduler.status(), self.clock())
+
+    def schedule(self):
+        strategy = self.auto_strategy.get()
+        return {
+            **self.scheduler.status(),
+            "worker": {**strategy["worker"], "enabled": strategy["enabled"]},
+        }
+
+    def executions(self):
+        self.auto_strategy.get()
+        manual = [
+            {
+                **job,
+                "id": job["job_id"],
+                "origin": "manual",
+            }
+            for job in self.journal.list()
+        ]
+        records = manual + automatic_executions(self.scheduler.status())
+        return {
+            "executions": sorted(
+                records,
+                key=lambda r: (
+                    r.get("started_at") or r.get("created_at") or "",
+                    r["id"],
+                ),
+                reverse=True,
+            ),
+            "automatic_history_scope": "latest_attempt_per_stage",
+        }
+
+    def submit(self, command, *, on_started=None):
+        validate_command(command, None)
+        # Replay is read-only and remains available if source access is revoked.
+        existing = self.journal.read(command["request_id"])
+        if existing is not None:
+            return self.replay(existing, command)
+        # Initialization is a suggested range, not an execution constraint.
+        validate_command(command, self.max_collect_months)
+        record = self.packages.store.read(self.packages.environment_id, "macro")
+        capabilities = self.capabilities(self.source(record))
+        if not capabilities["collect"]:
+            raise WebError(capabilities["reason"], 403)
+
+        def credential_loader():
+            current = self.packages.store.read(self.packages.environment_id, "macro")
+            if current != record:
+                raise WebError("package_configuration_changed", 409)
+            value = self.packages.load_credential("macro", "BLS", record=record)
+            if value is None:
+                raise WebError("bls_credential_missing", 403)
+            return value
+
+        with self.journal.execution():
+            existing = self.journal.read(command["request_id"])
+            if existing is not None:
+                return self.replay(existing, command)
+            now = self.clock().isoformat()
+            job = dict(
+                command,
+                job_id=command["request_id"],
+                state="running",
+                created_at=now,
+                started_at=now,
+                finished_at=None,
+                classification=None,
+                result=None,
+            )
+            self.journal.save(job)
+            try:
+                if on_started is not None:
+                    on_started(dict(job))
+                with self.service(
+                    write=True, credential_loader=credential_loader
+                ) as service:
+                    written = execute(
+                        service,
+                        "update"
+                        if command["action"] == "initialize"
+                        else command["action"],
+                        {"start": command["start"], "end": command["end"]},
+                    )
+                with self.service() as service:
+                    readback = execute(
+                        service,
+                        "query",
+                        {
+                            "start": command["start"],
+                            "end": command["end"],
+                            "basket": "all",
+                            "adjustment": "all",
+                            "local_only": True,
+                            "vintage_mode": "available",
+                        },
+                    )
+                verified, result = verify_readback(written, readback, command)
+                job.update(
+                    state="complete" if verified else "failed",
+                    result=result,
+                    classification=(
+                        None
+                        if verified
+                        else "source_range_incomplete"
+                        if not result["readback"]["refresh_coverage_complete"]
+                        else "local_readback_incomplete"
+                    ),
+                )
+            except Exception as error:
+                document = error_document(error)
+                classification = (
+                    error.classification
+                    if isinstance(error, WebError)
+                    else document["classification"]
+                )
+                # A failure after a write began cannot prove rollback or no effect.
+                job.update(
+                    state="unknown",
+                    classification=classification,
+                    result={"provider_attempts": document["provider_attempts"]},
+                )
+            job["finished_at"] = self.clock().isoformat()
+            self.journal.save(job)
+            return job
+
+    def replay(self, record, command):
+        if any(record[key] != value for key, value in command.items()):
+            raise WebError("request_id_conflict", 409)
+        if record["state"] == "running":
+            return next(
+                r
+                for r in self.journal.list()
+                if r["request_id"] == command["request_id"]
+            )
+        return record
+
+
+def timeseries_router(host):
+    router = APIRouter(prefix=PREFIX)
+
+    def read(request, operation):
+        if not admitted(request, origin=CANDIDATE_ORIGIN):
+            raise WebError("operator_not_authorized", 403)
+        pairs = request.query_params.multi_items()
+        if len(dict(pairs)) != len(pairs):
+            raise WebError("duplicate_parameter")
+        if operation != "query" and pairs:
+            raise WebError("unsupported_parameters")
+        if operation == "jobs":
+            return {"jobs": host.journal.list()}
+        return (
+            host.query(dict(pairs))
+            if operation == "query"
+            else getattr(host, operation)()
+        )
+
+    def endpoint(operation):
+        def get(request: Request):
+            try:
+                return read(request, operation)
+            except Exception as error:
+                return failure(error)
+
+        return get
+
+    for operation in ("status", "query", "schedule", "strategy", "jobs", "executions"):
+        router.add_api_route(
+            "/" + operation,
+            endpoint(operation),
+            methods=["GET"],
+            name="timeseries_" + operation,
+        )
+
+    @router.put("/strategy")
+    async def update_strategy(request: Request):
+        try:
+            if not admitted_strategy(request):
+                raise WebError("operator_not_authorized", 403)
+            body = bytearray()
+            async for part in request.stream():
+                body.extend(part)
+                if len(body) > 4096:
+                    raise WebError("request_body_too_large", 413)
+            try:
+                command = json.loads(
+                    body,
+                    object_pairs_hook=unique_json_object,
+                    parse_constant=reject_json_constant,
+                )
+            except ValueError, UnicodeError, RecursionError:
+                raise WebError("invalid_strategy_json") from None
+            return await run_in_threadpool(host.update_strategy, command)
+        except Exception as error:
+            return failure(error)
+
+    @router.post("/jobs")
+    async def submit(request: Request):
+        try:
+            if not admitted_job(request):
+                raise WebError("operator_not_authorized", 403)
+            body = bytearray()
+            async for part in request.stream():
+                body.extend(part)
+                if len(body) > 4096:
+                    raise WebError("request_body_too_large", 413)
+            try:
+                command = json.loads(
+                    body,
+                    object_pairs_hook=unique_json_object,
+                    parse_constant=reject_json_constant,
+                )
+            except ValueError, UnicodeError, RecursionError:
+                raise WebError("invalid_job_json") from None
+            job = await run_in_threadpool(dispatch_job, host.submit, command)
+            return JSONResponse(
+                job, status_code=202 if job["state"] == "running" else 200
+            )
+        except Exception as error:
+            return failure(error)
+
+    return router

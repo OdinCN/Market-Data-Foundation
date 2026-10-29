@@ -20,6 +20,7 @@ import ssl
 import time
 import tomllib
 import zlib
+from collections import deque
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -183,80 +184,152 @@ def _credential_fragments(key: str) -> set[str]:
     }
 
 
-def _identity_credential_scan(value: str, key: str) -> None:
-    """Bounded credential decoding, without provider-payload metadata rules."""
+# The budget counts unique text/blob bytes and unique decoder input bytes.
+# Each state has a fixed number of linear scans; it is not a CPU/heap quota.
+# Keep the existing strict budget, deduplicating BEFORE decoding or queueing.
+_SCAN_WORK = 262_144
+_SCAN_STATES = 128
+_SCAN_DEPTH = 8
+_WIDE_ASCII = (
+    (re.compile(rb"(?:[\x01-\x7f]\x00){4,}"), "utf-16-le"),
+    (re.compile(rb"(?:\x00[\x01-\x7f]){4,}"), "utf-16-be"),
+    (re.compile(rb"(?:[\x01-\x7f]\x00\x00\x00){4,}"), "utf-32-le"),
+    (re.compile(rb"(?:\x00\x00\x00[\x01-\x7f]){4,}"), "utf-32-be"),
+)
+_METADATA_ENVELOPE = re.compile(
+    r"userid|api.?key|credential|secret|token|https?://|[?&]\w+="
+    r"|\\[ux][0-9a-f]",
+    re.IGNORECASE,
+)
+
+
+def _credential_scan(value: str, key: str, *, metadata: bool = False) -> None:
+    """One bounded decoding graph for identities and provider metadata.
+
+    Text and binary states, plus decoder inputs, are deduplicated separately.
+    Binary has a lossless ASCII-compatible view and aligned wide ASCII runs:
+    these preserve nested encodings without recursively treating arbitrary
+    Unicode guesses (or their NULs) as provider text. All key byte encodings
+    are checked even in opaque envelopes. Metadata alone bans auth syntax.
+    """
     codecs = ("utf-8", "utf-16-le", "utf-16-be", "utf-32-le", "utf-32-be")
-    key_bytes = tuple(key.encode(codec) for codec in codecs)
-    folded_key = key.casefold()
-    pending = [(value, 0)]
-    visited = set()
+    key_bytes = tuple(key.encode(codec).lower() for codec in codecs)
+    forbidden = _credential_fragments(key)
+    pending = deque()
+    states = set()
+    decoders = set()
     work = 0
 
     def charge(size: int) -> None:
         nonlocal work
         work += size
-        _check(work <= 262_144, "credential_echo_rejected")
+        _check(work <= _SCAN_WORK, "credential_echo_rejected")
 
-    while pending:
-        candidate, depth = pending.pop()
-        if candidate in visited:
-            continue
-        _check(depth <= 8 and len(visited) < 128, "credential_echo_rejected")
+    def enqueue(candidate: str | bytes, depth: int, text_syntax: bool = False) -> None:
+        state = (candidate, text_syntax)
+        if state in states:
+            return
+        _check(
+            depth <= _SCAN_DEPTH and len(states) < _SCAN_STATES,
+            "credential_echo_rejected",
+        )
         charge(len(candidate))
-        visited.add(candidate)
-        _check(folded_key not in candidate.casefold(), "credential_echo_rejected")
-        for decoded in (unquote(candidate), html.unescape(candidate)):
-            if decoded != candidate:
-                pending.append((decoded, depth + 1))
-        blobs = []
-        for token in re.findall(r"[A-Za-z0-9+/_-]{16,}={0,2}", candidate):
-            # Inspect each alignment so an embedded encoding still decodes when
-            # adjacent identity characters also belong to the base64 alphabet.
-            for offset in range(4):
-                encoded = token[offset:].rstrip("=")
-                # A trailing partial quartet can belong to an identity suffix.
-                if len(encoded) % 4 == 1:
-                    encoded = encoded[:-1]
-                charge(len(encoded))
-                try:
-                    blobs.append(
-                        base64.b64decode(
-                            encoded + "=" * (-len(encoded) % 4),
-                            altchars=b"-_",
-                            validate=True,
-                        )
-                    )
-                except ValueError, UnicodeError, binascii.Error:
-                    pass
-        for token in re.findall(r"[0-9a-fA-F]{16,}", candidate):
-            for offset in range(2):
-                encoded = token[offset:]
-                encoded = encoded[: len(encoded) // 2 * 2]
-                charge(len(encoded))
-                blobs.append(bytes.fromhex(encoded))
-        for blob in blobs:
-            charge(len(blob))
+        states.add(state)
+        pending.append((candidate, depth, text_syntax))
+
+    def decode_token(kind: str, encoded: str, depth: int) -> None:
+        identity = (kind, encoded)
+        if identity in decoders:
+            return
+        charge(len(encoded))
+        decoders.add(identity)
+        try:
+            blob = (
+                bytes.fromhex(encoded)
+                if kind == "hex"
+                else base64.b64decode(
+                    encoded + "=" * (-len(encoded) % 4),
+                    altchars=b"-_",
+                    validate=True,
+                )
+            )
+        except ValueError, UnicodeError, binascii.Error:
+            return
+        enqueue(blob, depth + 1)
+
+    enqueue(value, 0, metadata)
+    while pending:
+        candidate, depth, text_syntax = pending.popleft()
+        if isinstance(candidate, bytes):
+            lowered = candidate.lower()
             _check(
-                not any(encoded_key in blob for encoded_key in key_bytes),
+                not any(encoded in lowered for encoded in key_bytes),
                 "credential_echo_rejected",
             )
-            # Arbitrary binary data (including NUL and invalid UTF-8) is allowed.
-            # Successful text decodings permit nested encodings and casefolding.
-            for codec in codecs:
-                charge(len(blob))
-                try:
-                    pending.append((blob.decode(codec), depth + 1))
-                except UnicodeError:
-                    pass
+            # Views are not another encoding layer. Regex searches find wide
+            # runs at every byte alignment, including within invalid wrappers.
+            try:
+                decoded = candidate.decode("utf-8")
+            except UnicodeError:
+                decoded = candidate.decode("latin-1")
+                readable = False
+            else:
+                readable = "\x00" not in decoded
+            enqueue(decoded, depth, metadata and readable)
+            if not key.isascii():
+                # Unicode case folding is also required for non-ASCII keys.
+                for codec in codecs:
+                    width = 4 if "32" in codec else 2 if "16" in codec else 1
+                    for offset in range(width):
+                        decoded = candidate[offset:].decode(codec, errors="replace")
+                        _check(
+                            key.casefold() not in decoded.casefold(),
+                            "credential_echo_rejected",
+                        )
+            for pattern, codec in _WIDE_ASCII:
+                for match in pattern.finditer(candidate):
+                    enqueue(match[0].decode(codec), depth, metadata)
+            continue
+
+        folded = candidate.casefold()
+        _check(
+            not any(fragment in folded for fragment in forbidden),
+            "credential_echo_rejected",
+        )
+        # Auth syntax belongs to actual text, not lossless views of opaque
+        # binary. Both views receive the same key and nested-encoding checks.
+        if text_syntax:
+            _check(
+                "\x00" not in candidate and not _METADATA_ENVELOPE.search(candidate),
+                "credential_echo_rejected",
+            )
+        for decoded in (unquote(candidate), html.unescape(candidate)):
+            if decoded != candidate:
+                enqueue(decoded, depth + 1, text_syntax)
+        # Base64 permits LF/CRLF/space/TAB between symbols. Normalize once,
+        # not in a second traversal. Joining adjacent alphabetic prose only
+        # changes the prefix alignment: all four offsets are inspected, and
+        # explicit padding still terminates a token.
+        compact = re.sub(r"[ \t\r\n]", "", candidate)
+        for match in re.finditer(r"[A-Za-z0-9+/_-]{16,}={0,2}", compact):
+            token = match[0].rstrip("=")
+            for offset in range(4):
+                encoded = token[offset:]
+                if len(encoded) % 4 == 1:
+                    encoded = encoded[:-1]
+                decode_token("base64", encoded, depth)
+        for match in re.finditer(r"[0-9a-fA-F]{16,}", candidate):
+            for offset in range(2):
+                encoded = match[0][offset:]
+                decode_token("hex", encoded[: len(encoded) // 2 * 2], depth)
+
+
+def _identity_credential_scan(value: str, key: str) -> None:
+    _credential_scan(value, key)
 
 
 def _echo_scan(value: object, key: str) -> None:
-    """Scan before hashes/IPC: structured JSON, URL encoding, base64 and hex.
-
-    Only the exact BEA RequestParam UserID slot may hold authentication, and that
-    envelope is removed in memory before this scan. Any other envelope is fatal.
-    """
-    forbidden = _credential_fragments(key)
+    """Scan before hashes/IPC; only the removed Request UserID may hold auth."""
     if isinstance(value, dict):
         for name, item in value.items():
             _check(
@@ -271,85 +344,7 @@ def _echo_scan(value: object, key: str) -> None:
         for item in value:
             _echo_scan(item, key)
     elif isinstance(value, str):
-        pending = [(value, 0)]
-        visited = set()
-        scanned = 0
-        # Finite decoding schema; exhaustion rejects rather than accepting an
-        # incompletely inspected string. The parent also bounds processing time.
-        while pending:
-            candidate, depth = pending.pop()
-            if candidate in visited:
-                continue
-            scanned += len(candidate)
-            _check(
-                depth <= 8 and len(visited) < 128 and scanned <= 4_000_000,
-                "credential_echo_rejected",
-            )
-            visited.add(candidate)
-            folded = candidate.casefold()
-            _check(
-                "\x00" not in candidate
-                and not any(fragment in folded for fragment in forbidden)
-                and not re.search(
-                    r"userid|api.?key|credential|secret|token|https?://|[?&]\w+="
-                    r"|\\[ux][0-9a-f]",
-                    folded,
-                ),
-                "credential_echo_rejected",
-            )
-            decoded = unquote(candidate)
-            if decoded != candidate:
-                pending.append((decoded, depth + 1))
-            decoded = html.unescape(candidate)
-            if decoded != candidate:
-                pending.append((decoded, depth + 1))
-            blobs = []
-            # Decode whole embedded blobs, including prefixed query envelopes;
-            # searching only base64(key) misses alignment-dependent encodings.
-            for blob in re.findall(r"[A-Za-z0-9+/_-]{16,}={0,2}", candidate):
-                try:
-                    blobs.append(
-                        base64.b64decode(
-                            blob + "=" * (-len(blob) % 4), altchars=b"-_", validate=True
-                        )
-                    )
-                except ValueError, UnicodeError, binascii.Error:
-                    pass
-            for blob in re.findall(r"(?:[0-9a-fA-F]{2}){8,}", candidate):
-                try:
-                    blobs.append(bytes.fromhex(blob))
-                except ValueError, UnicodeError:
-                    pass
-            for blob in blobs:
-                # NUL-interleaved encodings must not be treated as harmless
-                # UTF-8 strings. Reject them even when no credential is found.
-                _check(b"\x00" not in blob, "credential_echo_rejected")
-                for codec in (
-                    "utf-8",
-                    "utf-16",
-                    "utf-16-le",
-                    "utf-16-be",
-                    "utf-32",
-                    "utf-32-le",
-                    "utf-32-be",
-                ):
-                    try:
-                        pending.append((blob.decode(codec), depth + 1))
-                    except UnicodeError:
-                        pass
-
-
-def _retained_credential_scan(value: object, key: str) -> None:
-    """Reject encoded credentials only in bytes/metadata that cross the boundary."""
-    if isinstance(value, dict):
-        for name, item in value.items():
-            _retained_credential_scan(name, key)
-            _retained_credential_scan(item, key)
-    elif isinstance(value, (list, tuple)):
-        for item in value:
-            _retained_credential_scan(item, key)
-    elif isinstance(value, str):
-        _identity_credential_scan(value, key)
+        _credential_scan(value, key, metadata=True)
 
 
 def _clean_capture(table: str, raw: bytes, key: str) -> bytes:
@@ -393,10 +388,13 @@ def _clean_capture(table: str, raw: bytes, key: str) -> bytes:
                     actual.casefold() == expected_value.casefold(),
                     "source_shape_rejected",
                 )
-        _echo_scan(envelope["Results"], key)
-        pce.reject_sensitive(envelope["Results"], key)
-        projected = pce.project_provider_results(table, envelope["Results"])
-        _retained_credential_scan(projected, key)
+        # Use the parser's exact field contract before decoding guesses. This
+        # changes only rejection precedence, not projection or parser semantics.
+        results = envelope["Results"]
+        pce.validate_production_time(results["UTCProductionTime"])
+        _echo_scan(results, key)
+        pce.reject_sensitive(results, key)
+        pce.project_provider_results(table, results)
         # No digest or persistence of provider response or authenticated Request.
         return raw
     except EdgeRejected:
@@ -628,7 +626,6 @@ def _worker(pipe, buffer, size, identity, transport, loader):
         projected_document = pce.decode(projection)
         for response in projected_document["responses"]:
             _echo_scan(response["results"], key)
-            _retained_credential_scan(response["results"], key)
         pce.reject_sensitive(projected_document, key)
         _check(len(projection) <= pce.MAX_RESPONSE_BYTES, "size_rejected")
         # Only sanitized bytes are hashed, and only after complete residual scans.

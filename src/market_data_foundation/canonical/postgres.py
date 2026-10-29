@@ -39,6 +39,7 @@ _SCHEMA = re.compile(
     r"mdf_p4_bls_cpi_garage_material_r1|"
     r"mdf_p4_macro_bls_cpi_retained_handoff_r1|"
     r"mdf_local_first_cpi_operable_r1|"
+    r"mdf_b3_cpi_05_dev_r1|"
     r"mdf_p6_consumer_read_r1|"
     r"mdf_p6_real_cognition_data_readiness_r1|"
     r"mdf_macro_bls_ppi_vertical_r1|"
