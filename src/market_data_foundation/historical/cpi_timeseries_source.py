@@ -13,7 +13,8 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from market_data_foundation.historical.bls_cpi_direct import ENDPOINT, SERIES_IDS
+from market_data_foundation.historical.bls_cpi_direct import ENDPOINT
+from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS as SERIES_IDS
 from market_data_foundation.historical.bls_cpi_direct_live import (
     _KEY_SHAPE,
     DEFAULT_SECRET_PATH,
@@ -23,6 +24,10 @@ from market_data_foundation.historical.bls_cpi_direct_live import (
     LiveExecutionError,
     Transport,
     load_registration_key,
+)
+from market_data_foundation.historical.bls_timeseries_profile import (
+    CPI_PROFILE,
+    validate_profile,
 )
 from market_data_foundation.historical.cpi_request_control import (
     CpiRequestControl,
@@ -89,11 +94,15 @@ def validate_month(month: str) -> str:
     return month
 
 
-def _series(series_ids: tuple[str, ...]) -> tuple[str, ...]:
+def _series(series_ids: tuple[str, ...], *, profile=CPI_PROFILE) -> tuple[str, ...]:
+    profile = validate_profile(profile)
     if (
         type(series_ids) is not tuple
         or not series_ids
-        or any(type(item) is not str or item not in SERIES_IDS for item in series_ids)
+        or any(
+            type(item) is not str or item not in profile.series_ids
+            for item in series_ids
+        )
         or len(set(series_ids)) != len(series_ids)
     ):
         raise CpiSourceError("cpi_timeseries_series_invalid")
@@ -179,6 +188,7 @@ def parse_response(
     end_month: str,
     *,
     forbidden_secret: str | None = None,
+    profile=CPI_PROFILE,
 ) -> tuple[SourcePoint, ...]:
     """Preserve original index/calculations and report actual monthly coverage.
 
@@ -186,7 +196,7 @@ def parse_response(
     explicit missing point with index_value=None and original metadata. Neither
     is interpolated or evidence of knowledge before its observation timestamp.
     """
-    _series(series_ids)
+    _series(series_ids, profile=profile)
     validate_month(start_month)
     validate_month(end_month)
     if start_month > end_month:
@@ -303,7 +313,9 @@ class BlsRangeSource:
         max_requests: int = MAX_RANGE_REQUESTS,
         request_control: CpiRequestControl | None = None,
         max_transport_attempts: int = 3,
+        profile=CPI_PROFILE,
     ) -> None:
+        self.profile = validate_profile(profile)
         if not valid_transport_attempts(max_transport_attempts):
             raise CpiSourceError("cpi_timeseries_transport_attempts_invalid")
         self._secret_path = secret_path
@@ -431,7 +443,7 @@ class BlsRangeSource:
         start_month: str,
         end_month: str,
     ) -> tuple[SourceBatch, ...]:
-        _series(series_ids)
+        _series(series_ids, profile=self.profile)
         windows = year_windows(
             start_month,
             end_month,
@@ -501,6 +513,7 @@ class BlsRangeSource:
                     max(start_month, f"{first:04d}-01"),
                     min(end_month, f"{last:04d}-12"),
                     forbidden_secret=key,
+                    profile=self.profile,
                 )
             except CpiSourceError as error:
                 raise CpiSourceError(

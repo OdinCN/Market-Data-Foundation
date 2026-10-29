@@ -14,6 +14,10 @@ from market_data_foundation.historical.bls_cpi_material_store import (
     GARAGE_ENDPOINT,
     GarageCredentials,
 )
+from market_data_foundation.historical.bls_timeseries_profile import (
+    CPI_PROFILE,
+    validate_profile,
+)
 from market_data_foundation.historical.cpi_timeseries_source import (
     MAX_RANGE_REQUESTS,
     BlsRangeSource,
@@ -21,12 +25,15 @@ from market_data_foundation.historical.cpi_timeseries_source import (
     year_windows,
 )
 from market_data_foundation.historical.cpi_timeseries_store import (
-    SERIES_IDS,
+    SERIES_IDS as SERIES_IDS,
+)
+from market_data_foundation.historical.cpi_timeseries_store import (
     CpiStorageError,
     GarageCpiRawStore,
     PostgresTimeSeriesStore,
     _point_document,
     _restoration_expectations,
+    _validate_batches,
     validate_evidence_url,
 )
 from market_data_foundation.storage.market_dataset_postgres import connect_dev
@@ -43,12 +50,8 @@ CALCULATION_METHOD = (
     "yoy_pct=(index[t]/index[t-12]-1)*100; Decimal ROUND_HALF_UP to 2 places. "
     "Provider calculations are retained separately and may use different rounding."
 )
-SERIES_METADATA = {
-    "CUSR0000SA0": {"indicator": "headline", "seasonal_adjustment": "SA"},
-    "CUUR0000SA0": {"indicator": "headline", "seasonal_adjustment": "NSA"},
-    "CUSR0000SA0L1E": {"indicator": "core", "seasonal_adjustment": "SA"},
-    "CUUR0000SA0L1E": {"indicator": "core", "seasonal_adjustment": "NSA"},
-}
+SERIES_METADATA = CPI_PROFILE.series_metadata
+_DEFAULT_SERIES = object()
 
 
 class CpiTimeSeriesError(RuntimeError):
@@ -83,14 +86,19 @@ def month_range(start, end):
     return tuple(month_at(n) for n in range(month_number(start), month_number(end) + 1))
 
 
-def _parameters(start, end, series_ids, as_of):
+def _parameters(start, end, series_ids, as_of, *, profile=CPI_PROFILE):
+    profile = validate_profile(profile)
+    if series_ids is _DEFAULT_SERIES:
+        series_ids = profile.series_ids
     begin, finish = month_number(start), month_number(end)
     if begin > finish or finish - begin >= 2400 or begin < 1901 * 12:
         raise CpiTimeSeriesError("cpi_timeseries_range_invalid")
     if (
         not isinstance(series_ids, (tuple, list))
         or not series_ids
-        or any(not isinstance(s, str) or s not in SERIES_IDS for s in series_ids)
+        or any(
+            not isinstance(s, str) or s not in profile.series_ids for s in series_ids
+        )
         or len(set(series_ids)) != len(series_ids)
     ):
         raise CpiTimeSeriesError("cpi_timeseries_series_invalid")
@@ -151,7 +159,11 @@ def _gap_requests(series, fetch_keys):
 
 
 class CpiTimeSeriesService:
-    def __init__(self, store, source):
+    def __init__(self, store, source, *, profile=CPI_PROFILE):
+        self.profile = validate_profile(profile)
+        for component in (store, source):
+            if getattr(component, "profile", profile) is not profile:
+                raise CpiTimeSeriesError("bls_timeseries_profile_mismatch")
         self.store, self.source = store, source
 
     def query_range(
@@ -159,7 +171,7 @@ class CpiTimeSeriesService:
         start_month,
         end_month,
         *,
-        series_ids=SERIES_IDS,
+        series_ids=_DEFAULT_SERIES,
         allow_upstream=True,
         as_of=None,
         vintage_mode=None,
@@ -217,7 +229,7 @@ class CpiTimeSeriesService:
         result.update(query_mode=mode, as_of_basis=basis)
         return result
 
-    def init_range(self, start_month, end_month, *, series_ids=SERIES_IDS):
+    def init_range(self, start_month, end_month, *, series_ids=_DEFAULT_SERIES):
         """Persist only missing indices; repeated complete initialization is inert."""
         return self._run(
             start_month,
@@ -234,7 +246,7 @@ class CpiTimeSeriesService:
         start_month,
         end_month,
         *,
-        series_ids=SERIES_IDS,
+        series_ids=_DEFAULT_SERIES,
         include_buffer=True,
         restoration_evidence_url=None,
         restoration_expected_points=None,
@@ -254,10 +266,12 @@ class CpiTimeSeriesService:
         )
 
     def confirm_current_availability(
-        self, start_month, end_month, *, series_ids=SERIES_IDS
+        self, start_month, end_month, *, series_ids=_DEFAULT_SERIES
     ):
         """Confirm currently committed latest data now, never its old commit time."""
-        series, _, _ = _parameters(start_month, end_month, series_ids, None)
+        series, _, _ = _parameters(
+            start_month, end_month, series_ids, None, profile=self.profile
+        )
         try:
             return self.store.confirm_current_availability(
                 series, start_month, end_month
@@ -270,9 +284,11 @@ class CpiTimeSeriesService:
             ) from None
 
     def withdraw_range(
-        self, start_month, end_month, *, series_ids=SERIES_IDS, evidence_url
+        self, start_month, end_month, *, series_ids=_DEFAULT_SERIES, evidence_url
     ):
-        series, _, _ = _parameters(start_month, end_month, series_ids, None)
+        series, _, _ = _parameters(
+            start_month, end_month, series_ids, None, profile=self.profile
+        )
         try:
             validate_evidence_url(evidence_url)
             with self.store.operation():
@@ -300,7 +316,9 @@ class CpiTimeSeriesService:
         restoration_evidence_url=None,
         restoration_expected_points=None,
     ):
-        series, buffer_start, as_of = _parameters(start, end, series_ids, as_of)
+        series, buffer_start, as_of = _parameters(
+            start, end, series_ids, as_of, profile=self.profile
+        )
         if vintage_mode == "official":
             raise CpiTimeSeriesError("cpi_timeseries_official_vintage_unsupported")
         if vintage_mode not in ("observed", "available"):
@@ -318,7 +336,9 @@ class CpiTimeSeriesService:
             if restoration_evidence_url is not None:
                 validate_evidence_url(restoration_evidence_url)
             expected = _restoration_expectations(
-                restoration_expected_points, restoration_evidence_url
+                restoration_expected_points,
+                restoration_evidence_url,
+                profile=self.profile,
             )
             if expected is not None and any(
                 s not in series or not start <= month <= end for s, month in expected
@@ -382,6 +402,13 @@ class CpiTimeSeriesService:
                     for selected, first, last in requests:
                         acquired = self.source.fetch(selected, first, last)
                         attempts += sum(batch.attempts for batch in acquired)
+                        _validate_batches(acquired, profile=self.profile)
+                        if any(
+                            p.series_id not in selected
+                            for batch in acquired
+                            for p in batch.points
+                        ):
+                            raise CpiTimeSeriesError("cpi_timeseries_series_invalid")
                         fetched.extend(acquired)
                     batches = tuple(
                         replace(
@@ -425,7 +452,9 @@ class CpiTimeSeriesService:
                 elif batches:
                     for batch in batches:
                         for point in batch.points:
-                            document = _point_document(point, batch, None)
+                            document = _point_document(
+                                point, batch, None, profile=self.profile
+                            )
                             # An unpersisted query must not claim a durable locator.
                             document.update(
                                 raw_locator=None,
@@ -483,8 +512,8 @@ class CpiTimeSeriesService:
                 "cpi_timeseries_operation_failed", attempts
             ) from None
 
-    @staticmethod
     def _result(
+        self,
         start,
         end,
         series,
@@ -588,7 +617,7 @@ class CpiTimeSeriesService:
                                 ),
                             }
                         )
-                point.update(SERIES_METADATA[s])
+                point.update(self.profile.series_metadata[s])
                 points.append(point)
         result = {
             "start_month": start,
@@ -609,6 +638,12 @@ class CpiTimeSeriesService:
             "provider_requests": len(batches),
             "provider_attempts": sum(b.attempts for b in batches),
             "source_request_count": sum(b.attempts for b in batches),
+            "source_returned_series_months": [
+                {"series_id": s, "month": month}
+                for s, month in sorted(
+                    {(p.series_id, p.month) for b in batches for p in b.points}
+                )
+            ],
             "as_of": None if as_of is None else as_of.isoformat(),
             "as_of_semantics": (
                 "mdf_post_commit_confirmation_available_at"
@@ -648,7 +683,9 @@ def build_source(
     secret_path=DEFAULT_SECRET_PATH,
     registered=True,
     max_transport_attempts=1,
+    profile=CPI_PROFILE,
 ):
+    profile = validate_profile(profile)
     if credential_loader is None:
         raise CpiTimeSeriesError("cpi_package_credential_binding_required")
     if request_control is None:
@@ -663,6 +700,7 @@ def build_source(
         credential_loader=credential_loader,
         request_control=request_control,
         max_transport_attempts=max_transport_attempts,
+        profile=profile,
     )
 
 
@@ -674,8 +712,10 @@ def build_service(
     credential_loader=None,
     request_control=None,
     max_transport_attempts=1,
+    profile=CPI_PROFILE,
 ):
     """Use existing MDF DEV configuration; does not create schemas or run requests."""
+    profile = validate_profile(profile)
     connection = None
     try:
         source = build_source(
@@ -684,6 +724,7 @@ def build_service(
             secret_path=secret_path,
             registered=registered,
             max_transport_attempts=max_transport_attempts,
+            profile=profile,
         )
         runtime_path, secret_path = Path(runtime_path), Path(secret_path)
         runtime = tomllib.loads(runtime_path.read_text())
@@ -706,7 +747,13 @@ def build_service(
         )
         connection = connect_dev(password, runtime_path=runtime_path)
         return CpiTimeSeriesService(
-            PostgresTimeSeriesStore(connection, GarageCpiRawStore(credentials)), source
+            PostgresTimeSeriesStore(
+                connection,
+                GarageCpiRawStore(credentials, profile=profile),
+                profile=profile,
+            ),
+            source,
+            profile=profile,
         )
     except CpiTimeSeriesError:
         if connection is not None:

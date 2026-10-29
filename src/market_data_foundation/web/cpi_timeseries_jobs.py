@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID
 
-from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
+from market_data_foundation.historical.bls_timeseries_profile import CPI_PROFILE
 from market_data_foundation.historical.cpi_timeseries import month_number, month_range
 from market_data_foundation.historical.cpi_timeseries_cli import validate_range
 
@@ -43,11 +43,13 @@ def validate_command(command, max_months):
         raise WebError("collection_range_exceeds_host_limit")
 
 
-def verify_readback(written, readback, command):
+def verify_readback(written, readback, command, *, profile=CPI_PROFILE):
     """Coverage includes explicit source nulls; an absent row is a different gap."""
+    if profile.key == "ppi":
+        return verify_ppi_readback(written, readback, command, profile=profile)
     expected = {
         (s, m)
-        for s in SERIES_IDS
+        for s in profile.series_ids
         for m in month_range(command["start"], command["end"])
     }
 
@@ -119,8 +121,88 @@ def verify_readback(written, readback, command):
     return verified, result
 
 
+def verify_ppi_readback(written, readback, command, *, profile):
+    def keys(rows):
+        return {(p["series_id"], p["month"]) for p in rows}
+
+    def index(result):
+        return {
+            (p["series_id"], p["month"]): p
+            for p in result["points"] + result.get("source_unavailable", [])
+        }
+
+    expected = {
+        (s, m)
+        for s in profile.series_ids
+        for m in month_range(command["start"], command["end"])
+    }
+    returned = keys(written.get("source_returned_series_months", []))
+    actual, produced = index(readback), index(written)
+    available = {
+        k
+        for k, p in actual.items()
+        if p.get("origin") == "local"
+        and p.get("availability") in {"available", "source_unavailable"}
+        and p.get("available_at") is not None
+    }
+    source_gaps = keys(written.get("source_missing", [])) - returned
+    missing = expected - available
+    matched = all(
+        key in available
+        and all(
+            actual[key].get(field) == point.get(field)
+            for field in ("index_value", "revision", "raw_sha256")
+        )
+        for key, point in produced.items()
+    )
+    verified = (
+        written.get("persisted") is True
+        and bool(returned)
+        and returned <= available
+        and matched
+        and missing <= source_gaps
+        and readback.get("provider_requests") == 0
+        and readback.get("provider_attempts") == 0
+    )
+
+    def rows(values):
+        return [{"series_id": s, "month": m} for s, m in sorted(values)]
+
+    partial = bool(source_gaps & expected)
+    result = {
+        key: written.get(key, 0)
+        for key in (
+            "provider_requests",
+            "provider_attempts",
+            "saved_points",
+            "saved_revisions",
+        )
+    }
+    nulls = {k for k, p in actual.items() if p["index_value"] is None}
+    result.update(
+        coverage_complete=not missing and not partial,
+        source_missing=rows(source_gaps),
+        readback={
+            "verified": verified,
+            "vintage_mode": "available",
+            "point_count": len(actual),
+            "expected_points": len(expected),
+            "local_coverage_complete": not missing,
+            "refresh_coverage_complete": not partial,
+            "source_missing": rows(source_gaps),
+            "missing": rows(missing),
+            "source_unavailable": rows(nulls),
+            "source_unavailable_count": len(nulls),
+        },
+    )
+    if verified and partial:
+        result["completion"] = "source_coverage_partial"
+    return verified, result
+
+
 class JobJournal:
-    def __init__(self, directory):
+    def __init__(self, directory, *, profile=CPI_PROFILE):
+        self.profile = profile
         self.directory = Path(directory)
         if not self.directory.is_absolute() or ".." in self.directory.parts:
             raise ValueError("absolute_job_directory_required")
@@ -135,7 +217,7 @@ class JobJournal:
             try:
                 fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
-                raise WebError("cpi_jobs_busy", 409) from None
+                raise WebError(self.profile.key + "_jobs_busy", 409) from None
             # With the exclusive lock acquired no earlier execution can still
             # be active. Persist its uncertainty before another job starts.
             for path in self.directory.glob("*.json"):
@@ -165,11 +247,18 @@ class JobJournal:
             result = json.loads(path.read_text())
             if result["request_id"] != request_id:
                 raise ValueError
+            if result.get("asset", "cpi") != self.profile.key:
+                raise WebError(self.profile.key + "_job_journal_asset_mismatch", 503)
             return result
+        except WebError:
+            raise
         except Exception:
-            raise WebError("cpi_job_journal_unavailable", 503) from None
+            raise WebError(self.profile.key + "_job_journal_unavailable", 503) from None
 
     def save(self, record):
+        if "asset" in record and record["asset"] != self.profile.key:
+            raise WebError(self.profile.key + "_job_journal_asset_mismatch", 503)
+        record["asset"] = self.profile.key
         path = self.directory / (record["request_id"] + ".json")
         temporary = path.with_suffix(".tmp")
         descriptor = os.open(temporary, os.O_CREAT | os.O_TRUNC | os.O_WRONLY, 0o600)
