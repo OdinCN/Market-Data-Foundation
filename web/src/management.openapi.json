@@ -1,0 +1,888 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MDF R3 A1 read-only management",
+    "version": "r3-a1-r1"
+  },
+  "paths": {
+    "/management": {
+      "get": {
+        "summary": "Management",
+        "operationId": "management_directory",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagementDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagementErrorDTO"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagementErrorDTO"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BindingContractDTO-Input": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Identity"
+          },
+          "revision": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Revision"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ContractKeyDTO"
+          },
+          "mappings": {
+            "items": {
+              "$ref": "#/components/schemas/MappingDTO"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Mappings"
+          },
+          "compatibility_policy": {
+            "type": "string",
+            "title": "Compatibility Policy"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 32,
+            "title": "Limitations"
+          },
+          "silent_fallback": {
+            "type": "boolean",
+            "const": false,
+            "title": "Silent Fallback",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "revision",
+          "source",
+          "mappings",
+          "compatibility_policy",
+          "limitations"
+        ],
+        "title": "BindingContractDTO"
+      },
+      "BindingContractDTO-Output": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Identity"
+          },
+          "revision": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Revision"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ContractKeyDTO"
+          },
+          "mappings": {
+            "items": {
+              "$ref": "#/components/schemas/MappingDTO"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Mappings"
+          },
+          "compatibility_policy": {
+            "type": "string",
+            "title": "Compatibility Policy"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 32,
+            "title": "Limitations"
+          },
+          "silent_fallback": {
+            "type": "boolean",
+            "const": false,
+            "title": "Silent Fallback",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "revision",
+          "source",
+          "mappings",
+          "compatibility_policy",
+          "limitations"
+        ],
+        "title": "BindingContractDTO"
+      },
+      "ContractKeyDTO": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Identity"
+          },
+          "revision": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["identity", "revision"],
+        "title": "ContractKeyDTO"
+      },
+      "DirectoryEntryDTO-Input": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Identity"
+          },
+          "domain": {
+            "type": "string",
+            "enum": ["Macro", "TDX", "KD"],
+            "title": "Domain"
+          },
+          "source_name": {
+            "type": "string",
+            "title": "Source Name"
+          },
+          "component_identity": {
+            "type": "string",
+            "title": "Component Identity"
+          },
+          "capability_identity": {
+            "type": "string",
+            "title": "Capability Identity"
+          },
+          "operation": {
+            "type": "string",
+            "title": "Operation"
+          },
+          "code_delivery": {
+            "type": "string",
+            "enum": ["DELIVERED", "CONTRACT_ONLY"],
+            "title": "Code Delivery"
+          },
+          "contract_disposition": {
+            "type": "string",
+            "enum": [
+              "BOUNDED_CONTRACT",
+              "CANDIDATE",
+              "NOT_ADMITTED_SELF_BLOCKED"
+            ],
+            "title": "Contract Disposition"
+          },
+          "source_contract": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceContractDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "binding_contract": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BindingContractDTO-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "asset": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContractKeyDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_qualified_contract": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Qualified Contract"
+          },
+          "web_read": {
+            "type": "string",
+            "enum": [
+              "CPI_REQUEST_QUALIFIED",
+              "DOMAIN_SPECIFIC_ONLY",
+              "UNSUPPORTED"
+            ],
+            "title": "Web Read"
+          },
+          "source_qualification": {
+            "type": "string",
+            "const": "UNKNOWN",
+            "title": "Source Qualification",
+            "default": "UNKNOWN"
+          },
+          "current_binding": {
+            "type": "string",
+            "const": "UNKNOWN",
+            "title": "Current Binding",
+            "default": "UNKNOWN"
+          },
+          "runtime_observation": {
+            "type": "string",
+            "const": "UNKNOWN",
+            "title": "Runtime Observation",
+            "default": "UNKNOWN"
+          },
+          "local_holding": {
+            "type": "string",
+            "const": "UNKNOWN",
+            "title": "Local Holding",
+            "default": "UNKNOWN"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 40,
+            "minItems": 1,
+            "title": "Reasons"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Evidence Refs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "domain",
+          "source_name",
+          "component_identity",
+          "capability_identity",
+          "operation",
+          "code_delivery",
+          "contract_disposition",
+          "source_contract",
+          "binding_contract",
+          "asset",
+          "source_qualified_contract",
+          "web_read",
+          "reasons",
+          "evidence_refs"
+        ],
+        "title": "DirectoryEntryDTO"
+      },
+      "DirectoryEntryDTO-Output": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Identity"
+          },
+          "domain": {
+            "type": "string",
+            "enum": ["Macro", "TDX", "KD"],
+            "title": "Domain"
+          },
+          "source_name": {
+            "type": "string",
+            "title": "Source Name"
+          },
+          "component_identity": {
+            "type": "string",
+            "title": "Component Identity"
+          },
+          "capability_identity": {
+            "type": "string",
+            "title": "Capability Identity"
+          },
+          "operation": {
+            "type": "string",
+            "title": "Operation"
+          },
+          "code_delivery": {
+            "type": "string",
+            "enum": ["DELIVERED", "CONTRACT_ONLY"],
+            "title": "Code Delivery"
+          },
+          "contract_disposition": {
+            "type": "string",
+            "enum": [
+              "BOUNDED_CONTRACT",
+              "CANDIDATE",
+              "NOT_ADMITTED_SELF_BLOCKED"
+            ],
+            "title": "Contract Disposition"
+          },
+          "source_contract": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceContractDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "binding_contract": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BindingContractDTO-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "asset": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContractKeyDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_qualified_contract": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Qualified Contract"
+          },
+          "web_read": {
+            "type": "string",
+            "enum": [
+              "CPI_REQUEST_QUALIFIED",
+              "DOMAIN_SPECIFIC_ONLY",
+              "UNSUPPORTED"
+            ],
+            "title": "Web Read"
+          },
+          "source_qualification": {
+            "type": "string",
+            "const": "UNKNOWN",
+            "title": "Source Qualification",
+            "default": "UNKNOWN"
+          },
+          "current_binding": {
+            "type": "string",
+            "const": "UNKNOWN",
+            "title": "Current Binding",
+            "default": "UNKNOWN"
+          },
+          "runtime_observation": {
+            "type": "string",
+            "const": "UNKNOWN",
+            "title": "Runtime Observation",
+            "default": "UNKNOWN"
+          },
+          "local_holding": {
+            "type": "string",
+            "const": "UNKNOWN",
+            "title": "Local Holding",
+            "default": "UNKNOWN"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 40,
+            "minItems": 1,
+            "title": "Reasons"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Evidence Refs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "domain",
+          "source_name",
+          "component_identity",
+          "capability_identity",
+          "operation",
+          "code_delivery",
+          "contract_disposition",
+          "source_contract",
+          "binding_contract",
+          "asset",
+          "source_qualified_contract",
+          "web_read",
+          "reasons",
+          "evidence_refs"
+        ],
+        "title": "DirectoryEntryDTO"
+      },
+      "FamilyDTO": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "title": "Identity"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "catalog_identities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Catalog Identities"
+          },
+          "qualification": {
+            "type": "string",
+            "const": "UNKNOWN",
+            "title": "Qualification",
+            "default": "UNKNOWN"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["identity", "title", "catalog_identities"],
+        "title": "FamilyDTO"
+      },
+      "InstanceDTO": {
+        "properties": {
+          "record": {
+            "$ref": "#/components/schemas/InstanceRecord"
+          },
+          "freshness": {
+            "type": "string",
+            "enum": ["UNKNOWN", "FRESH", "EXPIRED"],
+            "title": "Freshness"
+          },
+          "effective_state": {
+            "type": "string",
+            "enum": ["UNKNOWN", "AVAILABLE", "UNAVAILABLE"],
+            "title": "Effective State"
+          },
+          "classification": {
+            "type": "string",
+            "enum": ["not_observed", "clock_invalid", "expired", "observed"],
+            "title": "Classification"
+          },
+          "valid_for_ms": {
+            "type": "integer",
+            "maximum": 60000.0,
+            "minimum": 0.0,
+            "title": "Valid For Ms",
+            "default": 0
+          },
+          "commands": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 0,
+            "title": "Commands"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "record",
+          "freshness",
+          "effective_state",
+          "classification"
+        ],
+        "title": "InstanceDTO"
+      },
+      "InstanceRecord": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,511}$",
+            "title": "Identity"
+          },
+          "catalog_identity": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,511}$",
+            "title": "Catalog Identity"
+          },
+          "ownership": {
+            "type": "string",
+            "enum": ["MDF_MANAGED", "OWNER_MANAGED", "OBSERVE_ONLY"],
+            "title": "Ownership"
+          },
+          "endpoint_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:@-]{0,511}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint Ref"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["UNKNOWN", "AVAILABLE", "UNAVAILABLE"],
+            "title": "State",
+            "default": "UNKNOWN"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["identity", "catalog_identity", "ownership"],
+        "title": "InstanceRecord",
+        "description": "Only public symbolic references; no URL, DSN, credential or raw message."
+      },
+      "ManagementDTO": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "OK",
+            "title": "Status",
+            "default": "OK"
+          },
+          "evidence_mode": {
+            "type": "string",
+            "enum": [
+              "CODE_CONTRACTS_ONLY",
+              "OFFLINE_FIXTURE",
+              "AUTHORIZED_MANAGEMENT_READ"
+            ],
+            "title": "Evidence Mode"
+          },
+          "instance_scope": {
+            "type": "string",
+            "enum": ["UNCONFIGURED", "TRUSTED_READ"],
+            "title": "Instance Scope"
+          },
+          "persistence": {
+            "type": "string",
+            "const": "DEV_PG_GATE_PENDING",
+            "title": "Persistence",
+            "default": "DEV_PG_GATE_PENDING"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/DirectoryEntryDTO-Output"
+            },
+            "type": "array",
+            "maxItems": 32,
+            "title": "Entries"
+          },
+          "families": {
+            "items": {
+              "$ref": "#/components/schemas/FamilyDTO"
+            },
+            "type": "array",
+            "maxItems": 9,
+            "minItems": 9,
+            "title": "Families"
+          },
+          "instances": {
+            "items": {
+              "$ref": "#/components/schemas/InstanceDTO"
+            },
+            "type": "array",
+            "maxItems": 64,
+            "title": "Instances"
+          },
+          "deferred": {
+            "items": {
+              "type": "string",
+              "const": "QMT"
+            },
+            "type": "array",
+            "title": "Deferred"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "evidence_mode",
+          "instance_scope",
+          "entries",
+          "families",
+          "instances"
+        ],
+        "title": "ManagementDTO"
+      },
+      "ManagementErrorDTO": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["UNKNOWN", "NOT_AVAILABLE"],
+            "title": "Status"
+          },
+          "classification": {
+            "type": "string",
+            "enum": ["invalid_request", "management_read_unavailable"],
+            "title": "Classification"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["status", "classification"],
+        "title": "ManagementErrorDTO"
+      },
+      "MappingDTO": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "title": "Identity"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/ContractKeyDTO"
+          },
+          "semantic_revision": {
+            "type": "string",
+            "title": "Semantic Revision"
+          },
+          "temporal_revision": {
+            "type": "string",
+            "title": "Temporal Revision"
+          },
+          "evidence_grades": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Evidence Grades"
+          },
+          "durable_required": {
+            "type": "boolean",
+            "title": "Durable Required"
+          },
+          "replayable_required": {
+            "type": "boolean",
+            "title": "Replayable Required"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "definition",
+          "semantic_revision",
+          "temporal_revision",
+          "evidence_grades",
+          "durable_required",
+          "replayable_required"
+        ],
+        "title": "MappingDTO"
+      },
+      "SourceContractDTO": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Identity"
+          },
+          "revision": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Revision"
+          },
+          "product": {
+            "type": "string",
+            "title": "Product"
+          },
+          "projection_revision": {
+            "type": "string",
+            "title": "Projection Revision"
+          },
+          "variant": {
+            "type": "string",
+            "title": "Variant"
+          },
+          "build_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Revision"
+          },
+          "registry_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registry Revision"
+          },
+          "provider_app_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider App Revision"
+          },
+          "acquisition_mode": {
+            "type": "string",
+            "title": "Acquisition Mode"
+          },
+          "temporal_contract": {
+            "type": "string",
+            "title": "Temporal Contract"
+          },
+          "completeness_contract": {
+            "type": "string",
+            "title": "Completeness Contract"
+          },
+          "pagination_contract": {
+            "type": "string",
+            "title": "Pagination Contract"
+          },
+          "freshness_contract": {
+            "type": "string",
+            "title": "Freshness Contract"
+          },
+          "evidence_capability": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Evidence Capability"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "revision",
+          "product",
+          "projection_revision",
+          "variant",
+          "build_revision",
+          "registry_revision",
+          "provider_app_revision",
+          "acquisition_mode",
+          "temporal_contract",
+          "completeness_contract",
+          "pagination_contract",
+          "freshness_contract",
+          "evidence_capability"
+        ],
+        "title": "SourceContractDTO"
+      }
+    }
+  }
+}

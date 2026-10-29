@@ -1,3 +1,10 @@
+import {
+  formatBeijingTime,
+  nowBeijingIso,
+  toBeijingInput,
+  beijingInputToIso,
+} from "./beijingTime";
+import { DateField } from "./DateField";
 import { useEffect, useRef, useState } from "react";
 import { ApiFailure, request, type Transport } from "./api";
 import type { components } from "./api.generated";
@@ -34,7 +41,7 @@ export function CpiSchedules({
     timezone: "Asia/Shanghai",
     window_start: "00:00",
     window_end: "23:59",
-    first_due: new Date().toISOString(),
+    first_due: nowBeijingIso(),
     interval_seconds: 86400,
     cycles: 1,
   });
@@ -136,6 +143,7 @@ export function CpiSchedules({
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            if (!e.currentTarget.checkValidity()) return;
             const intent: Intent = {
               ...form,
               cycles: mode === "new" ? 1 : form.cycles,
@@ -163,36 +171,31 @@ export function CpiSchedules({
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
           </label>
+          <DateField
+            label="历史起始月"
+            type="month"
+            required
+            value={form.start}
+            onChange={(value) => setForm({ ...form, start: value })}
+          />
+          <DateField
+            label="历史结束月"
+            type="month"
+            required
+            value={form.end}
+            onChange={(value) => setForm({ ...form, end: value })}
+          />
           <label>
-            历史起始月
-            <input
-              type="month"
-              required
-              value={form.start}
-              onChange={(e) => setForm({ ...form, start: e.target.value })}
-            />
+            执行时区（北京时间）
+            <input required value={form.timezone} readOnly />
           </label>
           <label>
-            历史结束月
+            窗口起始（含，北京时间）
             <input
-              type="month"
-              required
-              value={form.end}
-              onChange={(e) => setForm({ ...form, end: e.target.value })}
-            />
-          </label>
-          <label>
-            IANA 时区
-            <input
-              required
-              value={form.timezone}
-              onChange={(e) => setForm({ ...form, timezone: e.target.value })}
-            />
-          </label>
-          <label>
-            窗口起始（含）
-            <input
-              type="time"
+              type="text"
+              inputMode="numeric"
+              placeholder="HH:mm"
+              pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]"
               required
               value={form.window_start}
               onChange={(e) =>
@@ -201,22 +204,27 @@ export function CpiSchedules({
             />
           </label>
           <label>
-            窗口结束（不含）
+            窗口结束（不含，北京时间）
             <input
-              type="time"
+              type="text"
+              inputMode="numeric"
+              placeholder="HH:mm"
+              pattern="(?:[01][0-9]|2[0-3]):[0-5][0-9]"
               required
               value={form.window_end}
               onChange={(e) => setForm({ ...form, window_end: e.target.value })}
             />
           </label>
-          <label>
-            首次到期（含时区）
-            <input
-              required
-              value={form.first_due}
-              onChange={(e) => setForm({ ...form, first_due: e.target.value })}
-            />
-          </label>
+          <DateField
+            label="首次到期（北京时间）"
+            type="datetime-local"
+            step="1"
+            required
+            value={toBeijingInput(form.first_due)}
+            onChange={(value) =>
+              setForm({ ...form, first_due: beijingInputToIso(value) })
+            }
+          />
           {mode === "periodic" && (
             <>
               <label>
@@ -269,22 +277,18 @@ export function CpiSchedules({
       <button type="button" onClick={() => setRefresh((n) => n + 1)}>
         回查历史计划
       </button>
-      <label>
-        失败回补起始月
-        <input
-          type="month"
-          value={repair.start}
-          onChange={(e) => setRepair({ ...repair, start: e.target.value })}
-        />
-      </label>
-      <label>
-        失败回补结束月
-        <input
-          type="month"
-          value={repair.end}
-          onChange={(e) => setRepair({ ...repair, end: e.target.value })}
-        />
-      </label>
+      <DateField
+        label="失败回补起始月"
+        type="month"
+        value={repair.start}
+        onChange={(value) => setRepair({ ...repair, start: value })}
+      />
+      <DateField
+        label="失败回补结束月"
+        type="month"
+        value={repair.end}
+        onChange={(value) => setRepair({ ...repair, end: value })}
+      />
       {data?.plans?.map((plan) => (
         <article className="version" key={plan.identity}>
           <h3>
@@ -293,7 +297,7 @@ export function CpiSchedules({
           <p>
             {plan.state} · {plan.spec.start} 至 {plan.spec.end} ·{" "}
             {plan.spec.timezone} {plan.spec.window_start}–{plan.spec.window_end}{" "}
-            · 下次到期 {plan.next_due}
+            · 下次到期 {formatBeijingTime(plan.next_due)}
           </p>
           <p>
             已证实完成 {plan.completed_batches} / {plan.total_batches}；扫描断点{" "}

@@ -1,3 +1,4 @@
+import { formatBeijingTime } from "./beijingTime";
 import { useEffect, useState } from "react";
 import { CpiJobAlerts } from "./CpiJobs";
 import {
@@ -19,7 +20,7 @@ function initialTab(): Tab {
   const value = new URLSearchParams(location.hash.slice(1)).get("tab");
   return tabs.some(([key]) => key === value) ? (value as Tab) : "instances";
 }
-type Snapshot = {
+export type Snapshot = {
   data: Observability;
   receivedAt: number;
   checkedAt: number | null;
@@ -32,7 +33,7 @@ export function monotonicNow() {
     return NaN;
   }
 }
-function receive(data: Observability): Snapshot {
+export function receive(data: Observability): Snapshot {
   const receivedAt = monotonicNow();
   const wall = Date.now();
   const completion = Date.parse(data.generated_at);
@@ -78,7 +79,7 @@ function receive(data: Observability): Snapshot {
     lifetimes,
   };
 }
-function current(stamp: Observation, snapshot: Snapshot) {
+export function current(stamp: Observation, snapshot: Snapshot) {
   return (
     snapshot.checkedAt !== null &&
     snapshot.checkedAt - snapshot.receivedAt <=
@@ -92,7 +93,7 @@ function Stamp({ stamp, valid }: { stamp: Observation; valid: boolean }) {
       {stamp.status === "OK" && !valid && " · stale_or_clock_invalid"}
       <br />
       来源 {stamp.source ?? "UNKNOWN"} · {stamp.clock} ·{" "}
-      {stamp.sampled_at ?? "UNKNOWN"}
+      {formatBeijingTime(stamp.sampled_at, "UNKNOWN")}
     </p>
   );
 }
@@ -296,7 +297,8 @@ export function ObservabilityView({
       </p>
       {data && (
         <p className="muted">
-          投影时钟 {data.generated_at} · 有效期 {data.max_age_seconds} 秒 · Host{" "}
+          投影时钟 {formatBeijingTime(data.generated_at)} · 有效期{" "}
+          {data.max_age_seconds} 秒 · Host{" "}
           {data.resources.host_identity ?? "UNKNOWN"}
         </p>
       )}
@@ -547,11 +549,11 @@ export function ObservabilityView({
                     <p>
                       启动{" "}
                       {recordValid(i.observation)
-                        ? (i.started_at ?? "UNKNOWN")
+                        ? formatBeijingTime(i.started_at, "UNKNOWN")
                         : "UNKNOWN"}{" "}
                       / 心跳{" "}
                       {recordValid(i.observation)
-                        ? (i.heartbeat_at ?? "UNKNOWN")
+                        ? formatBeijingTime(i.heartbeat_at, "UNKNOWN")
                         : "UNKNOWN"}
                     </p>
                     <Stamp

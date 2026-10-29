@@ -4,6 +4,58 @@
  */
 
 export interface paths {
+  "/api/r5/packages": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Packages */
+    get: operations["package_directory"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/packages/{package_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Package */
+    get: operations["get_package"];
+    /** Save Package */
+    put: operations["save_package"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/cpi/query": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Query */
+    get: operations["cpi_query"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/r5/observability": {
     parameters: {
       query?: never;
@@ -84,6 +136,23 @@ export interface paths {
     put?: never;
     /** Accept */
     post: operations["cpi_job_accept"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/cpi/jobs/backfill": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Accept Backfill */
+    post: operations["cpi_job_backfill"];
     delete?: never;
     options?: never;
     head?: never;
@@ -210,12 +279,110 @@ export interface components {
       /** Versions */
       versions: components["schemas"]["VersionDTO"][];
     };
+    /** AssetRevision */
+    "AssetRevision-Input": {
+      definition_ref: components["schemas"]["ContractKeyDTO"];
+      /** Capability Enabled */
+      capability_enabled: boolean;
+      /** Visibility Basis */
+      visibility_basis: ("ENABLED_MAPPING" | "RETAINED_HISTORY")[];
+      /** Source Entries */
+      source_entries: components["schemas"]["DirectoryEntryDTO-Input"][];
+      /**
+       * Metadata View Permission
+       * @enum {string}
+       */
+      metadata_view_permission: "allowed" | "denied" | "unknown";
+      /**
+       * Local Holding
+       * @enum {string}
+       */
+      local_holding: "UNKNOWN" | "ABSENT" | "PRESENT";
+      local_read: components["schemas"]["Eligibility"];
+      upstream_read: components["schemas"]["Eligibility"];
+      collect: components["schemas"]["Eligibility"];
+      plan: components["schemas"]["Eligibility"];
+    };
+    /** AssetRevision */
+    "AssetRevision-Output": {
+      definition_ref: components["schemas"]["ContractKeyDTO"];
+      /** Capability Enabled */
+      capability_enabled: boolean;
+      /** Visibility Basis */
+      visibility_basis: ("ENABLED_MAPPING" | "RETAINED_HISTORY")[];
+      /** Source Entries */
+      source_entries: components["schemas"]["DirectoryEntryDTO-Output"][];
+      /**
+       * Metadata View Permission
+       * @enum {string}
+       */
+      metadata_view_permission: "allowed" | "denied" | "unknown";
+      /**
+       * Local Holding
+       * @enum {string}
+       */
+      local_holding: "UNKNOWN" | "ABSENT" | "PRESENT";
+      local_read: components["schemas"]["Eligibility"];
+      upstream_read: components["schemas"]["Eligibility"];
+      collect: components["schemas"]["Eligibility"];
+      plan: components["schemas"]["Eligibility"];
+    };
+    /** AssetView */
+    "AssetView-Input": {
+      /** Identity */
+      identity: string;
+      /** Revisions */
+      revisions: components["schemas"]["AssetRevision-Input"][];
+    };
+    /** AssetView */
+    "AssetView-Output": {
+      /** Identity */
+      identity: string;
+      /** Revisions */
+      revisions: components["schemas"]["AssetRevision-Output"][];
+    };
     /** Backfill */
     Backfill: {
       /** Start */
       start: string;
       /** End */
       end: string;
+    };
+    /** BackfillDTO */
+    BackfillDTO: {
+      /** Eligible */
+      eligible: boolean;
+      /** Reason */
+      reason: string | null;
+      submission: components["schemas"]["BackfillIntent"] | null;
+    };
+    /** BackfillIntent */
+    BackfillIntent: {
+      /** Job Identity */
+      job_identity: string;
+      /** Asset Identity */
+      asset_identity: string;
+      /** Asset Revision */
+      asset_revision: string;
+      /** Reference */
+      reference: string;
+      /** Release Slot */
+      release_slot: string;
+      /**
+       * Mode
+       * @constant
+       */
+      mode: "manual_once";
+      /** Source Operation Ref */
+      source_operation_ref?: string | null;
+      /** Binding Ref */
+      binding_ref?: string | null;
+      /** Target Schema */
+      target_schema?: string | null;
+      /** Confirmed */
+      confirmed?: boolean | null;
+      /** Parent Job Id */
+      parent_job_id: string;
     };
     /** BatchDTO */
     BatchDTO: {
@@ -267,6 +434,16 @@ export interface components {
        * @constant
        */
       silent_fallback: false;
+    };
+    /** CapabilityView */
+    CapabilityView: {
+      /** Capability Id */
+      capability_id: string;
+      /** Title */
+      title: string;
+      definition_ref: components["schemas"]["ContractKeyDTO"];
+      /** Required Sources */
+      required_sources: string[];
     };
     /** CatalogDTO */
     CatalogDTO: {
@@ -328,6 +505,91 @@ export interface components {
       identity: string;
       /** Revision */
       revision: string;
+    };
+    /** CpiQueryFailure */
+    CpiQueryFailure: {
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "UNKNOWN" | "NOT_AVAILABLE" | "REJECTED";
+      /** Classification */
+      classification: string;
+      /** Local Reason */
+      local_reason?: string | null;
+    };
+    /** CpiQueryResult */
+    CpiQueryResult: {
+      /**
+       * Status
+       * @default OK
+       * @constant
+       */
+      status: "OK";
+      /**
+       * Mode
+       * @default ordinary
+       * @constant
+       */
+      mode: "ordinary";
+      definition_ref: components["schemas"]["ContractKeyDTO"];
+      /** Reference */
+      reference: string;
+      /**
+       * Decision At
+       * Format: date-time
+       */
+      decision_at: string;
+      /**
+       * Channel
+       * @enum {string}
+       */
+      channel: "local" | "upstream";
+      /** Durable */
+      durable: boolean;
+      /** Local Reason */
+      local_reason?: string | null;
+      /** Operation Id */
+      operation_id?: string | null;
+      source_ref?: components["schemas"]["ContractKeyDTO"] | null;
+      binding_ref?: components["schemas"]["ContractKeyDTO"] | null;
+      /** Version Identity */
+      version_identity?: string | null;
+      /** Publication Identity */
+      publication_identity?: string | null;
+      /** Obtained At */
+      obtained_at?: string | null;
+      /**
+       * Provider Vintage
+       * @default UNKNOWN
+       * @constant
+       */
+      provider_vintage: "UNKNOWN";
+      /** Evidence Grades */
+      evidence_grades: string[];
+      /** Measurements */
+      measurements: components["schemas"]["MeasurementDTO"][];
+    };
+    /** CredentialState */
+    CredentialState: {
+      /** Source Id */
+      source_id: string;
+      /**
+       * Credential State
+       * @enum {string}
+       */
+      credential_state: "configured" | "missing" | "unknown";
+      /**
+       * Authentication
+       * @default unknown
+       * @constant
+       */
+      authentication: "unknown";
+      /**
+       * Replace Supported
+       * @default false
+       */
+      replace_supported: boolean;
     };
     /** DefinitionDTO */
     DefinitionDTO: {
@@ -629,6 +891,13 @@ export interface components {
        */
       mount: "root";
     };
+    /** Eligibility */
+    Eligibility: {
+      /** Allowed */
+      allowed: boolean | null;
+      /** Reasons */
+      reasons: string[];
+    };
     /** Empty */
     Empty: Record<string, never>;
     /** ErrorDTO */
@@ -810,6 +1079,14 @@ export interface components {
        * @constant
        */
       mode: "manual_once";
+      /** Source Operation Ref */
+      source_operation_ref?: string | null;
+      /** Binding Ref */
+      binding_ref?: string | null;
+      /** Target Schema */
+      target_schema?: string | null;
+      /** Confirmed */
+      confirmed?: boolean | null;
     };
     /** JobDTO */
     "JobDTO-Input": {
@@ -886,6 +1163,8 @@ export interface components {
       cancel_requested: boolean;
       /** Job Identity */
       job_identity: string;
+      /** Parent Job Id */
+      parent_job_id?: string | null;
       /** Asset Identity */
       asset_identity: string;
       /** Asset Revision */
@@ -1014,6 +1293,8 @@ export interface components {
       cancel_requested: boolean;
       /** Job Identity */
       job_identity: string;
+      /** Parent Job Id */
+      parent_job_id?: string | null;
       /** Asset Identity */
       asset_identity: string;
       /** Asset Revision */
@@ -1087,7 +1368,14 @@ export interface components {
         | "job_scope_already_registered"
         | "job_target_unsupported"
         | "job_query_budget_exceeded"
-        | "job_record_invalid";
+        | "job_record_invalid"
+        | "cpi_backfill_parent_mismatch"
+        | "cpi_backfill_parent_not_failed"
+        | "cpi_backfill_original_failure_mismatch"
+        | "cpi_backfill_failed_attempt_required"
+        | "cpi_backfill_parent_effects_unresolved"
+        | "cpi_backfill_parent_missing"
+        | "cpi_backfill_exact_two_scope_migration_required";
     };
     /** JobsDTO */
     JobsDTO: {
@@ -1127,11 +1415,26 @@ export interface components {
       /**
        * Storage Target
        * @default INHERITED_03_04
-       * @constant
+       * @enum {string}
        */
-      storage_target: "INHERITED_03_04";
+      storage_target: "INHERITED_03_04" | "mdf_b3_cpi_05_dev_r1";
+      /** Source Operation Ref */
+      source_operation_ref?: string | null;
+      /** Binding Ref */
+      binding_ref?: string | null;
+      backfill?: components["schemas"]["BackfillDTO"] | null;
       /** Jobs */
       jobs: components["schemas"]["JobDTO-Output"][];
+    };
+    /** KeepChange */
+    KeepChange: {
+      /** Source Id */
+      source_id: string;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      credential_action: "keep";
     };
     /** LoadDTO */
     "LoadDTO-Input": {
@@ -1401,6 +1704,77 @@ export interface components {
        */
       clock: "UTC_REALTIME";
     };
+    /** PackageFailure */
+    PackageFailure: {
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "UNKNOWN" | "UNAVAILABLE" | "REJECTED" | "CONFLICT";
+      /** Classification */
+      classification: string;
+      /**
+       * Effect
+       * @default NONE
+       * @enum {string}
+       */
+      effect: "NONE" | "UNKNOWN";
+    };
+    /** PackageView */
+    PackageView: {
+      /** Environment Id */
+      environment_id: string;
+      /** Package Id */
+      package_id: string;
+      /** Name */
+      name: string;
+      /**
+       * Domain
+       * @enum {string}
+       */
+      domain: "Macro" | "TDX" | "KD";
+      /** Description */
+      description: string;
+      /** Capabilities */
+      capabilities: components["schemas"]["CapabilityView"][];
+      /**
+       * Configuration State
+       * @enum {string}
+       */
+      configuration_state: "PRESENT" | "ABSENT";
+      /** Config Revision */
+      config_revision: string | null;
+      /** Enabled Capability Ids */
+      enabled_capability_ids: string[];
+      /** Required Sources */
+      required_sources: string[];
+      /** Credential States */
+      credential_states: components["schemas"]["CredentialState"][];
+      /**
+       * History Completeness
+       * @enum {string}
+       */
+      history_completeness: "COMPLETE" | "UNKNOWN";
+      /** Assets */
+      assets: components["schemas"]["AssetView-Output"][];
+      /** Write Eligible */
+      write_eligible: boolean | null;
+      /** Write Reasons */
+      write_reasons: string[];
+    };
+    /** PackagesView */
+    PackagesView: {
+      /**
+       * Status
+       * @default OK
+       * @constant
+       */
+      status: "OK";
+      /** Environment Id */
+      environment_id: string;
+      /** Packages */
+      packages: components["schemas"]["PackageView"][];
+    };
     /** PlanAccepted */
     PlanAccepted: {
       /**
@@ -1667,6 +2041,21 @@ export interface components {
       | "lineage_missing_or_mismatched"
       | "invalid_as_of"
       | "storage_unavailable";
+    /** ReplaceChange */
+    ReplaceChange: {
+      /** Source Id */
+      source_id: string;
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      credential_action: "replace";
+      /**
+       * Credential Value
+       * Format: password
+       */
+      credential_value: string;
+    };
     /** ResourcesDTO */
     "ResourcesDTO-Input": {
       /** Host Identity */
@@ -1704,6 +2093,18 @@ export interface components {
        * @constant
        */
       duration_clock: "MONOTONIC";
+    };
+    /** SaveCommand */
+    SaveCommand: {
+      /** Expected Revision */
+      expected_revision: string | null;
+      /** Enabled Capability Ids */
+      enabled_capability_ids: string[];
+      /** Source Changes */
+      source_changes?: (
+        | components["schemas"]["KeepChange"]
+        | components["schemas"]["ReplaceChange"]
+      )[];
     };
     /** ServiceDTO */
     ServiceDTO: {
@@ -1829,6 +2230,268 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  package_directory: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackagesView"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+    };
+  };
+  get_package: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        package_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageView"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+    };
+  };
+  save_package: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        package_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SaveCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageView"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+    };
+  };
+  cpi_query: {
+    parameters: {
+      query: {
+        reference: string;
+        operation_id?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CpiQueryResult"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CpiQueryFailure"];
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CpiQueryFailure"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CpiQueryFailure"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CpiQueryFailure"];
+        };
+      };
+    };
+  };
   runtime_observability: {
     parameters: {
       query?: never;
@@ -2041,6 +2704,66 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["Intent"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AcceptedDTO"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobError"];
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobError"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorDTO"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JobError"];
+        };
+      };
+    };
+  };
+  cpi_job_backfill: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BackfillIntent"];
       };
     };
     responses: {

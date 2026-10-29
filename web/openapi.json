@@ -5,6 +5,329 @@
     "version": "r5-i5"
   },
   "paths": {
+    "/api/r5/packages": {
+      "get": {
+        "summary": "Packages",
+        "operationId": "package_directory",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackagesView"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/packages/{package_id}": {
+      "get": {
+        "summary": "Get Package",
+        "operationId": "get_package",
+        "parameters": [
+          {
+            "name": "package_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Package Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageView"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      },
+      "put": {
+        "summary": "Save Package",
+        "operationId": "save_package",
+        "parameters": [
+          {
+            "name": "package_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Package Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageView"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/api/r5/cpi/query": {
+      "get": {
+        "summary": "Query",
+        "operationId": "cpi_query",
+        "parameters": [
+          {
+            "name": "reference",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 7,
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+              "title": "Reference"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Operation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CpiQueryResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CpiQueryFailure"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CpiQueryFailure"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CpiQueryFailure"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CpiQueryFailure"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/api/r5/observability": {
       "get": {
         "summary": "Observability",
@@ -378,6 +701,74 @@
               }
             },
             "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
+    "/api/r5/cpi/jobs/backfill": {
+      "post": {
+        "summary": "Accept Backfill",
+        "operationId": "cpi_job_backfill",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackfillIntent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDTO"
+                }
+              }
+            }
           }
         }
       }
@@ -870,6 +1261,198 @@
         ],
         "title": "AssetDTO"
       },
+      "AssetRevision-Input": {
+        "properties": {
+          "definition_ref": {
+            "$ref": "#/components/schemas/ContractKeyDTO"
+          },
+          "capability_enabled": {
+            "type": "boolean",
+            "title": "Capability Enabled"
+          },
+          "visibility_basis": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "ENABLED_MAPPING",
+                "RETAINED_HISTORY"
+              ]
+            },
+            "type": "array",
+            "title": "Visibility Basis"
+          },
+          "source_entries": {
+            "items": {
+              "$ref": "#/components/schemas/DirectoryEntryDTO-Input"
+            },
+            "type": "array",
+            "title": "Source Entries"
+          },
+          "metadata_view_permission": {
+            "type": "string",
+            "enum": [
+              "allowed",
+              "denied",
+              "unknown"
+            ],
+            "title": "Metadata View Permission"
+          },
+          "local_holding": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "ABSENT",
+              "PRESENT"
+            ],
+            "title": "Local Holding"
+          },
+          "local_read": {
+            "$ref": "#/components/schemas/Eligibility"
+          },
+          "upstream_read": {
+            "$ref": "#/components/schemas/Eligibility"
+          },
+          "collect": {
+            "$ref": "#/components/schemas/Eligibility"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Eligibility"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "definition_ref",
+          "capability_enabled",
+          "visibility_basis",
+          "source_entries",
+          "metadata_view_permission",
+          "local_holding",
+          "local_read",
+          "upstream_read",
+          "collect",
+          "plan"
+        ],
+        "title": "AssetRevision"
+      },
+      "AssetRevision-Output": {
+        "properties": {
+          "definition_ref": {
+            "$ref": "#/components/schemas/ContractKeyDTO"
+          },
+          "capability_enabled": {
+            "type": "boolean",
+            "title": "Capability Enabled"
+          },
+          "visibility_basis": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "ENABLED_MAPPING",
+                "RETAINED_HISTORY"
+              ]
+            },
+            "type": "array",
+            "title": "Visibility Basis"
+          },
+          "source_entries": {
+            "items": {
+              "$ref": "#/components/schemas/DirectoryEntryDTO-Output"
+            },
+            "type": "array",
+            "title": "Source Entries"
+          },
+          "metadata_view_permission": {
+            "type": "string",
+            "enum": [
+              "allowed",
+              "denied",
+              "unknown"
+            ],
+            "title": "Metadata View Permission"
+          },
+          "local_holding": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "ABSENT",
+              "PRESENT"
+            ],
+            "title": "Local Holding"
+          },
+          "local_read": {
+            "$ref": "#/components/schemas/Eligibility"
+          },
+          "upstream_read": {
+            "$ref": "#/components/schemas/Eligibility"
+          },
+          "collect": {
+            "$ref": "#/components/schemas/Eligibility"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Eligibility"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "definition_ref",
+          "capability_enabled",
+          "visibility_basis",
+          "source_entries",
+          "metadata_view_permission",
+          "local_holding",
+          "local_read",
+          "upstream_read",
+          "collect",
+          "plan"
+        ],
+        "title": "AssetRevision"
+      },
+      "AssetView-Input": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "title": "Identity"
+          },
+          "revisions": {
+            "items": {
+              "$ref": "#/components/schemas/AssetRevision-Input"
+            },
+            "type": "array",
+            "title": "Revisions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "revisions"
+        ],
+        "title": "AssetView"
+      },
+      "AssetView-Output": {
+        "properties": {
+          "identity": {
+            "type": "string",
+            "title": "Identity"
+          },
+          "revisions": {
+            "items": {
+              "$ref": "#/components/schemas/AssetRevision-Output"
+            },
+            "type": "array",
+            "title": "Revisions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identity",
+          "revisions"
+        ],
+        "title": "AssetView"
+      },
       "Backfill": {
         "properties": {
           "start": {
@@ -890,6 +1473,141 @@
           "end"
         ],
         "title": "Backfill"
+      },
+      "BackfillDTO": {
+        "properties": {
+          "eligible": {
+            "type": "boolean",
+            "title": "Eligible"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "submission": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BackfillIntent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "eligible",
+          "reason",
+          "submission"
+        ],
+        "title": "BackfillDTO"
+      },
+      "BackfillIntent": {
+        "properties": {
+          "job_identity": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "title": "Job Identity"
+          },
+          "asset_identity": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9:._-]{1,256}$",
+            "title": "Asset Identity"
+          },
+          "asset_revision": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9:._-]{1,256}$",
+            "title": "Asset Revision"
+          },
+          "reference": {
+            "type": "string",
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "title": "Reference"
+          },
+          "release_slot": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9/:._-]{1,128}$",
+            "title": "Release Slot"
+          },
+          "mode": {
+            "type": "string",
+            "const": "manual_once",
+            "title": "Mode"
+          },
+          "source_operation_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._@-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Operation Ref"
+          },
+          "binding_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._@-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding Ref"
+          },
+          "target_schema": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Schema"
+          },
+          "confirmed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed"
+          },
+          "parent_job_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "title": "Parent Job Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "job_identity",
+          "asset_identity",
+          "asset_revision",
+          "reference",
+          "release_slot",
+          "mode",
+          "parent_job_id"
+        ],
+        "title": "BackfillIntent"
       },
       "BatchDTO": {
         "properties": {
@@ -1037,6 +1755,37 @@
           "limitations"
         ],
         "title": "BindingContractDTO"
+      },
+      "CapabilityView": {
+        "properties": {
+          "capability_id": {
+            "type": "string",
+            "title": "Capability Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "definition_ref": {
+            "$ref": "#/components/schemas/ContractKeyDTO"
+          },
+          "required_sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Required Sources"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "capability_id",
+          "title",
+          "definition_ref",
+          "required_sources"
+        ],
+        "title": "CapabilityView"
       },
       "CatalogDTO": {
         "properties": {
@@ -1248,6 +1997,227 @@
           "revision"
         ],
         "title": "ContractKeyDTO"
+      },
+      "CpiQueryFailure": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "NOT_AVAILABLE",
+              "REJECTED"
+            ],
+            "title": "Status"
+          },
+          "classification": {
+            "type": "string",
+            "pattern": "^[a-z_]{1,80}$",
+            "title": "Classification"
+          },
+          "local_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "classification"
+        ],
+        "title": "CpiQueryFailure"
+      },
+      "CpiQueryResult": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "OK",
+            "title": "Status",
+            "default": "OK"
+          },
+          "mode": {
+            "type": "string",
+            "const": "ordinary",
+            "title": "Mode",
+            "default": "ordinary"
+          },
+          "definition_ref": {
+            "$ref": "#/components/schemas/ContractKeyDTO"
+          },
+          "reference": {
+            "type": "string",
+            "title": "Reference"
+          },
+          "decision_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Decision At"
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "local",
+              "upstream"
+            ],
+            "title": "Channel"
+          },
+          "durable": {
+            "type": "boolean",
+            "title": "Durable"
+          },
+          "local_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Reason"
+          },
+          "operation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Id"
+          },
+          "source_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContractKeyDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "binding_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContractKeyDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version_identity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Identity"
+          },
+          "publication_identity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Identity"
+          },
+          "obtained_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Obtained At"
+          },
+          "provider_vintage": {
+            "type": "string",
+            "const": "UNKNOWN",
+            "title": "Provider Vintage",
+            "default": "UNKNOWN"
+          },
+          "evidence_grades": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Grades"
+          },
+          "measurements": {
+            "items": {
+              "$ref": "#/components/schemas/MeasurementDTO"
+            },
+            "type": "array",
+            "maxItems": 4,
+            "minItems": 4,
+            "title": "Measurements"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "definition_ref",
+          "reference",
+          "decision_at",
+          "channel",
+          "durable",
+          "evidence_grades",
+          "measurements"
+        ],
+        "title": "CpiQueryResult"
+      },
+      "CredentialState": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "credential_state": {
+            "type": "string",
+            "enum": [
+              "configured",
+              "missing",
+              "unknown"
+            ],
+            "title": "Credential State"
+          },
+          "authentication": {
+            "type": "string",
+            "const": "unknown",
+            "title": "Authentication",
+            "default": "unknown"
+          },
+          "replace_supported": {
+            "type": "boolean",
+            "title": "Replace Supported",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_id",
+          "credential_state"
+        ],
+        "title": "CredentialState"
       },
       "DefinitionDTO": {
         "properties": {
@@ -1884,6 +2854,36 @@
         ],
         "title": "DiskDTO"
       },
+      "Eligibility": {
+        "properties": {
+          "allowed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Reasons"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "allowed",
+          "reasons"
+        ],
+        "title": "Eligibility"
+      },
       "Empty": {
         "properties": {},
         "additionalProperties": false,
@@ -2234,6 +3234,53 @@
             "type": "string",
             "const": "manual_once",
             "title": "Mode"
+          },
+          "source_operation_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._@-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Operation Ref"
+          },
+          "binding_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._@-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding Ref"
+          },
+          "target_schema": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Schema"
+          },
+          "confirmed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed"
           }
         },
         "additionalProperties": false,
@@ -2361,6 +3408,18 @@
             "type": "string",
             "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
             "title": "Job Identity"
+          },
+          "parent_job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Job Id"
           },
           "asset_identity": {
             "type": "string",
@@ -2636,6 +3695,18 @@
             "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
             "title": "Job Identity"
           },
+          "parent_job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Job Id"
+          },
           "asset_identity": {
             "type": "string",
             "pattern": "^[a-zA-Z0-9:._-]{1,256}$",
@@ -2817,7 +3888,14 @@
               "job_scope_already_registered",
               "job_target_unsupported",
               "job_query_budget_exceeded",
-              "job_record_invalid"
+              "job_record_invalid",
+              "cpi_backfill_parent_mismatch",
+              "cpi_backfill_parent_not_failed",
+              "cpi_backfill_original_failure_mismatch",
+              "cpi_backfill_failed_attempt_required",
+              "cpi_backfill_parent_effects_unresolved",
+              "cpi_backfill_parent_missing",
+              "cpi_backfill_exact_two_scope_migration_required"
             ],
             "title": "Classification"
           }
@@ -2940,9 +4018,46 @@
           },
           "storage_target": {
             "type": "string",
-            "const": "INHERITED_03_04",
+            "enum": [
+              "INHERITED_03_04",
+              "mdf_b3_cpi_05_dev_r1"
+            ],
             "title": "Storage Target",
             "default": "INHERITED_03_04"
+          },
+          "source_operation_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._@-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Operation Ref"
+          },
+          "binding_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9:._@-]{1,256}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding Ref"
+          },
+          "backfill": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BackfillDTO"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "jobs": {
             "items": {
@@ -2969,6 +4084,28 @@
           "jobs"
         ],
         "title": "JobsDTO"
+      },
+      "KeepChange": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Source Id"
+          },
+          "credential_action": {
+            "type": "string",
+            "const": "keep",
+            "title": "Credential Action"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_id",
+          "credential_action"
+        ],
+        "title": "KeepChange"
       },
       "LoadDTO-Input": {
         "properties": {
@@ -3781,6 +4918,198 @@
         ],
         "title": "Observation"
       },
+      "PackageFailure": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "UNKNOWN",
+              "UNAVAILABLE",
+              "REJECTED",
+              "CONFLICT"
+            ],
+            "title": "Status"
+          },
+          "classification": {
+            "type": "string",
+            "title": "Classification"
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "NONE",
+              "UNKNOWN"
+            ],
+            "title": "Effect",
+            "default": "NONE"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "classification"
+        ],
+        "title": "PackageFailure"
+      },
+      "PackageView": {
+        "properties": {
+          "environment_id": {
+            "type": "string",
+            "title": "Environment Id"
+          },
+          "package_id": {
+            "type": "string",
+            "title": "Package Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "domain": {
+            "type": "string",
+            "enum": [
+              "Macro",
+              "TDX",
+              "KD"
+            ],
+            "title": "Domain"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/CapabilityView"
+            },
+            "type": "array",
+            "title": "Capabilities"
+          },
+          "configuration_state": {
+            "type": "string",
+            "enum": [
+              "PRESENT",
+              "ABSENT"
+            ],
+            "title": "Configuration State"
+          },
+          "config_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Revision"
+          },
+          "enabled_capability_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Enabled Capability Ids"
+          },
+          "required_sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Required Sources"
+          },
+          "credential_states": {
+            "items": {
+              "$ref": "#/components/schemas/CredentialState"
+            },
+            "type": "array",
+            "title": "Credential States"
+          },
+          "history_completeness": {
+            "type": "string",
+            "enum": [
+              "COMPLETE",
+              "UNKNOWN"
+            ],
+            "title": "History Completeness"
+          },
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/AssetView-Output"
+            },
+            "type": "array",
+            "title": "Assets"
+          },
+          "write_eligible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Write Eligible"
+          },
+          "write_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Write Reasons"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "environment_id",
+          "package_id",
+          "name",
+          "domain",
+          "description",
+          "capabilities",
+          "configuration_state",
+          "config_revision",
+          "enabled_capability_ids",
+          "required_sources",
+          "credential_states",
+          "history_completeness",
+          "assets",
+          "write_eligible",
+          "write_reasons"
+        ],
+        "title": "PackageView"
+      },
+      "PackagesView": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "OK",
+            "title": "Status",
+            "default": "OK"
+          },
+          "environment_id": {
+            "type": "string",
+            "title": "Environment Id"
+          },
+          "packages": {
+            "items": {
+              "$ref": "#/components/schemas/PackageView"
+            },
+            "type": "array",
+            "title": "Packages"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "environment_id",
+          "packages"
+        ],
+        "title": "PackagesView"
+      },
       "PlanAccepted": {
         "properties": {
           "status": {
@@ -4462,6 +5791,37 @@
         ],
         "title": "ReadFailure"
       },
+      "ReplaceChange": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Source Id"
+          },
+          "credential_action": {
+            "type": "string",
+            "const": "replace",
+            "title": "Credential Action"
+          },
+          "credential_value": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 1,
+            "format": "password",
+            "title": "Credential Value",
+            "writeOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_id",
+          "credential_action",
+          "credential_value"
+        ],
+        "title": "ReplaceChange"
+      },
       "ResourcesDTO-Input": {
         "properties": {
           "host_identity": {
@@ -4590,6 +5950,60 @@
           "duration_clock"
         ],
         "title": "ResourcesDTO"
+      },
+      "SaveCommand": {
+        "properties": {
+          "expected_revision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32,
+                "pattern": "^r[1-9][0-9]*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Revision"
+          },
+          "enabled_capability_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 32,
+            "title": "Enabled Capability Ids"
+          },
+          "source_changes": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/KeepChange"
+                },
+                {
+                  "$ref": "#/components/schemas/ReplaceChange"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "credential_action",
+                "mapping": {
+                  "keep": "#/components/schemas/KeepChange",
+                  "replace": "#/components/schemas/ReplaceChange"
+                }
+              }
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Source Changes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_revision",
+          "enabled_capability_ids"
+        ],
+        "title": "SaveCommand"
       },
       "ServiceDTO": {
         "properties": {

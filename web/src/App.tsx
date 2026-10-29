@@ -1,86 +1,58 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { beijingToday, nowBeijingIso, toBeijingIso } from "./beijingTime";
+import { useEffect, useMemo, useState } from "react";
 import {
-  ApiFailure,
   request,
   type Catalog,
   type Directory,
+  type Jobs,
+  type Management,
+  type Observability,
   type Query,
-  type ReadMode,
-  type ReadResult,
   type Transport,
 } from "./api";
-import { SourceDirectory } from "./SourceDirectory";
-import { ObservabilityView } from "./Observability";
-import { CpiJobsView } from "./CpiJobs";
+import { InterfacesPage, LocalReader } from "./WorkflowCatalog";
+import { PackageSources } from "./PackageSources";
+import { RuntimeAssets } from "./RuntimeAssets";
+import { CpiOrdinaryQuery } from "./CpiOrdinaryQuery";
+import { CpiTimeSeries } from "./CpiTimeSeries";
+import { useCpiAvailability } from "./cpiTimeSeriesApi";
+import { getPackages, type Packages } from "./packageApi";
+import {
+  pceRequest,
+  readPce,
+  validPceBinding,
+  PCE_REFERENCE,
+  type PceCatalog,
+  type PceAssets,
+  type PceEvidence,
+} from "./pce";
+import { CollectionWorkbench } from "./CollectionWorkbench";
+import { OverviewPage, PlatformPage } from "./WorkflowRuntime";
+import { Technical } from "./WorkflowTable";
+import { useResource } from "./workflowHooks";
+import {
+  CPI,
+  PCE,
+  PCE_OPERATION,
+  catalogForOperation,
+  project,
+  sameKey,
+} from "./workflowModel";
+import { menus, route, type Navigate } from "./workflowRoute";
 import "./style.css";
-
-const menus = [
-  "运行总览",
-  "接入管理",
-  "接口注册",
-  "数据资产",
-  "采集任务",
-  "数据服务",
-  "平台管理",
-];
-const paths = [
+const icons = [
   "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
   "M4 9h16v6H4z M8 5v4 M16 15v4 M5 19h14",
-  "M8 6 3 12l5 6 M16 6l5 6-5 6 M14 3l-4 18",
   "M12 3 21 8l-9 5-9-5 9-5z M3 13l9 5 9-5 M3 18l9 4 9-4",
   "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z M12 7v5l3 2",
-  "M13 2l-3 9h7l-6 11 1-9H5l8-11z",
   "M12 9a3 3 0 1 1 0 6 3 3 0 0 1 0-6z M12 2v3m0 14v3M22 12h-3M5 12H2",
 ];
-const activePages = [1, 2, 3, 5];
-const readLabels: Record<string, string> = {
-  core_mom: "核心 CPI 环比",
-  core_yoy: "核心 CPI 同比",
-  headline_mom: "CPI 环比",
-  headline_yoy: "CPI 同比",
-};
-const defaultQuery = (): Query => ({
-  reference: new Date().toISOString().slice(0, 7),
-  as_of: new Date().toISOString(),
-});
-const errorName = (error: unknown) =>
-  error instanceof ApiFailure ? error.classification : "request_failed";
-function linkedRead() {
-  const hash = new URLSearchParams(location.hash.slice(1));
-  const reference = hash.get("reference");
-  const version = hash.get("version");
-  const as_of = hash.get("as_of");
-  return reference &&
-    /^[0-9]{4}-(0[1-9]|1[0-2])$/.test(reference) &&
-    version &&
-    /^[a-zA-Z0-9:._-]{1,256}$/.test(version) &&
-    as_of &&
-    /(?:Z|[+-][0-9]{2}:[0-9]{2})$/.test(as_of) &&
-    Number.isFinite(Date.parse(as_of))
-    ? { query: { reference, as_of }, version }
-    : null;
+// Query fields form one scope: partial links must never inherit a prior period.
+function appRoute() {
+  const page = route();
+  page.invalid ||= page.fields.has("reference") !== page.fields.has("as_of");
+  return page;
 }
-
-function route() {
-  const hash = new URLSearchParams(location.hash.slice(1));
-  const page = Number(hash.get("page") ?? 2);
-  return {
-    page: Number.isInteger(page) && page >= 0 && page < 7 ? page : 2,
-    identity: hash.get("asset"),
-    revision: hash.get("asset_revision"),
-    operation: hash.get("operation"),
-  };
-}
-function Chip({
-  children,
-  good = false,
-}: {
-  children: React.ReactNode;
-  good?: boolean;
-}) {
-  return <span className={`chip ${good ? "good" : ""}`}>{children}</span>;
-}
-
 export default function App({
   transport = fetch,
   initialQuery,
@@ -88,809 +60,586 @@ export default function App({
   transport?: Transport;
   initialQuery?: Query;
 }) {
-  const [page, setPage] = useState(route);
+  const [page, setPage] = useState(appRoute);
   const [collapsed, setCollapsed] = useState(false);
   const [dark, setDark] = useState(false);
-  const [draft, setDraft] = useState<Query>(
-    linkedRead()?.query ?? initialQuery ?? defaultQuery(),
-  );
-  const [query, setQuery] = useState(draft);
-  const [catalog, setCatalog] = useState<Catalog | null>(null);
-  const [directory, setDirectory] = useState<Directory | null>(null);
-  const [directoryFailure, setDirectoryFailure] = useState<string | null>(null);
-  const [directoryBusy, setDirectoryBusy] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [poll, setPoll] = useState(false);
   const [generation, setGeneration] = useState(0);
-  const [mode, setMode] = useState<ReadMode>(
-    linkedRead() ? "exact_version" : "as_of",
+  const [defaultQuery] = useState<Query>(() => ({
+    reference: initialQuery?.reference ?? beijingToday().slice(0, 7),
+    as_of: initialQuery?.as_of ?? nowBeijingIso(),
+  }));
+  const reference = page.fields.get("reference");
+  const asOf = page.fields.get("as_of");
+  const activeReference =
+    reference ??
+    (page.fields.get("asset") === PCE.identity ||
+    page.fields.get("operation") === PCE_OPERATION
+      ? PCE_REFERENCE
+      : defaultQuery.reference);
+  const sourceAsOf = asOf ?? defaultQuery.as_of;
+  const activeAsOf = toBeijingIso(sourceAsOf ?? "") || sourceAsOf;
+  const query = useMemo<Query>(
+    () => ({ reference: activeReference, as_of: activeAsOf }),
+    [activeReference, activeAsOf],
   );
-  const [version, setVersion] = useState(linkedRead()?.version ?? "");
-  const [exactLink, setExactLink] = useState(linkedRead);
-  const [preview, setPreview] = useState<ReadResult | null>(null);
-  const [readFailure, setReadFailure] = useState<{
-    status: string;
-    classification: string;
-  } | null>(null);
-  const [reading, setReading] = useState(false);
-  const readAbort = useRef<AbortController | null>(null);
-  const mountedQuery = useRef(0);
-  const refresh = useCallback(() => setGeneration((value) => value + 1), []);
-
   useEffect(() => {
-    const onHash = () => {
-      setPage(route());
-      const target = linkedRead();
-      setExactLink(target);
-      if (target) {
-        setDraft(target.query);
-        setQuery(target.query);
-        setMode("exact_version");
-        setVersion(target.version);
-      }
-    };
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
-  useEffect(() => {
-    readAbort.current?.abort();
-    setReading(false);
-    setPreview(null);
-    setReadFailure(null);
-  }, [page.page, page.identity, page.revision, page.operation]);
-  useEffect(() => {
-    const controller = new AbortController();
-    setDirectory(null);
-    setDirectoryFailure(null);
-    setDirectoryBusy(true);
-    request(transport, "/api/r5/sources", {}, controller.signal)
-      .then((data) => {
-        if (!controller.signal.aborted) setDirectory(data);
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) setDirectoryFailure(errorName(error));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setDirectoryBusy(false);
-      });
-    return () => controller.abort();
-  }, [transport, generation]);
-  useEffect(() => {
-    if (!poll) return;
-    const timer = window.setInterval(refresh, 30000);
-    return () => window.clearInterval(timer);
-  }, [poll, refresh]);
-  useEffect(() => {
-    const controller = new AbortController();
-    mountedQuery.current += 1;
-    readAbort.current?.abort();
-    setReading(false);
-    setPreview(null);
-    setReadFailure(null);
-    setCatalog(null);
-    setBusy(true);
-    setFailure(null);
-    request(transport, "/api/r5/cpi", query, controller.signal)
-      .then((data) => {
-        if (!controller.signal.aborted) setCatalog(data);
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) setFailure(errorName(error));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setBusy(false);
-      });
+    const update = () => setPage(appRoute());
+    window.addEventListener("hashchange", update);
+    window.addEventListener("popstate", update);
     return () => {
-      controller.abort();
-      readAbort.current?.abort();
+      window.removeEventListener("hashchange", update);
+      window.removeEventListener("popstate", update);
     };
-  }, [transport, query, generation]);
-
-  function navigate(
-    next: number,
-    identity = page.identity ??
-      (page.operation ? null : (catalog?.definition.identity ?? null)),
-    operation = page.operation,
-    revision = page.revision,
-  ) {
-    readAbort.current?.abort();
-    setReading(false);
-    setPreview(null);
-    setReadFailure(null);
-    const hash = new URLSearchParams({ page: String(next) });
-    if (identity) hash.set("asset", identity);
-    if (operation) hash.set("operation", operation);
-    if (revision) hash.set("asset_revision", revision);
-    location.hash = hash.toString();
-    setPage({ page: next, identity, operation, revision });
-  }
-  async function read() {
-    readAbort.current?.abort();
-    const controller = new AbortController();
-    readAbort.current = controller;
-    const epoch = mountedQuery.current;
-    setReading(true);
-    setPreview(null);
-    setReadFailure(null);
-    try {
-      const data = await request(
-        transport,
-        "/api/r5/cpi/read",
-        {
-          ...query,
-          mode,
-          ...(mode === "exact_version" ? { version_identity: version } : {}),
-        },
-        controller.signal,
-      );
-      if (!controller.signal.aborted && epoch === mountedQuery.current)
-        setPreview(data);
-    } catch (error) {
-      if (!controller.signal.aborted)
-        setReadFailure({
-          classification: errorName(error),
-          status: error instanceof ApiFailure ? error.status : "UNKNOWN",
-        });
-    } finally {
-      if (!controller.signal.aborted) setReading(false);
+  }, []);
+  const navigate: Navigate = (view, fields = {}, preserve = false) => {
+    const hash =
+      preserve && !page.invalid
+        ? new URLSearchParams(page.fields)
+        : new URLSearchParams();
+    if (view === "collection" && page.view === "collection" && !page.invalid) {
+      for (const key of [
+        "execution_asset",
+        "periodic_asset",
+        "execution_schedule",
+      ])
+        if (!hash.has(key) && page.fields.has(key))
+          hash.set(key, page.fields.get(key)!);
     }
-  }
-  function changeRead() {
-    readAbort.current?.abort();
-    setReading(false);
-    setPreview(null);
-    setReadFailure(null);
-  }
-
-  const selected = directory?.entries.find((entry) =>
-    page.operation
-      ? entry.identity === page.operation &&
-        (page.identity === null || entry.asset?.identity === page.identity) &&
-        (page.revision === null || entry.asset?.revision === page.revision)
-      : page.identity !== catalog?.definition.identity &&
-        entry.asset?.identity === page.identity &&
-        (page.revision === null || entry.asset?.revision === page.revision),
+    if (
+      ["assets", "access", "collection", "services", "interfaces"].includes(
+        view,
+      ) &&
+      !hash.has("package") &&
+      page.fields.has("package")
+    )
+      hash.set("package", page.fields.get("package")!);
+    hash.delete("page");
+    hash.set("ui", "r5");
+    hash.set(
+      "view",
+      view === "services"
+        ? "assets"
+        : view === "interfaces"
+          ? "platform"
+          : view,
+    );
+    if (view === "services") hash.set("tab", "local");
+    if (view === "interfaces") hash.set("tab", "diagnostics");
+    if (!hash.has("reference") && query.reference)
+      hash.set("reference", query.reference);
+    if (!hash.has("as_of") && query.as_of) hash.set("as_of", query.as_of);
+    for (const [key, value] of Object.entries(fields))
+      value === null ? hash.delete(key) : hash.set(key, value);
+    if (
+      (fields.asset === PCE.identity || fields.operation === PCE_OPERATION) &&
+      !("reference" in fields)
+    )
+      hash.set("reference", PCE_REFERENCE);
+    location.hash = hash.toString();
+    setPage(appRoute());
+    document.querySelector("main")?.scrollIntoView?.({ block: "start" });
+  };
+  const directory = useResource<Directory>(
+    (signal) => request(transport, "/api/r5/sources", {}, signal),
+    [transport, generation, page.invalid],
+    !page.invalid,
   );
-  const missingOperation = Boolean(directory && page.operation && !selected);
-  const showCpi =
-    page.page !== 1 &&
-    !missingOperation &&
-    ((!page.operation && !selected) ||
-      selected?.web_read === "CPI_REQUEST_QUALIFIED");
-  const matches =
-    !missingOperation &&
-    catalog &&
-    (!page.identity || page.identity === catalog.definition.identity) &&
-    (!page.revision || page.revision === catalog.definition.revision);
-  const implemented = activePages.includes(page.page);
-  const observabilityPage = page.page === 0 || page.page === 6;
-  // Initialization needs an admitted Definition, not an already held Version.
-  const canInitializeCpi = Boolean(
-    page.page === 3 &&
-      showCpi &&
-      matches &&
-      catalog?.definition.identity === "mdf.macro.bls.cpi.headlines" &&
-      catalog.definition.revision === "p3-r1" &&
-      catalog.definition.source_qualified_contract &&
-      (!page.operation ||
-        (selected?.asset?.identity === catalog.definition.identity &&
-          selected.asset.revision === catalog.definition.revision &&
-          selected.source_qualified_contract === true)),
+  const packages = useResource<Packages>(
+    (signal) => getPackages(transport, signal),
+    [transport, generation, page.invalid],
+    !page.invalid && ["access", "assets"].includes(page.view),
   );
-  // A named exact link is an input to the existing Reader, never holding or
-  // as-of service evidence. Catalog enumeration keeps its finite budget.
-  const namedExactRead = Boolean(
-    page.page === 5 &&
-      showCpi &&
-      matches &&
-      page.identity === "mdf.macro.bls.cpi.headlines" &&
-      page.revision === "p3-r1" &&
-      catalog?.definition.source_qualified_contract &&
-      catalog.classification === "operator_query_budget_exceeded" &&
-      exactLink &&
-      query.reference === exactLink.query.reference &&
-      query.as_of === exactLink.query.as_of &&
-      (!page.operation || selected?.source_qualified_contract === true),
+  const management = useResource<Management>(
+    (signal) => request(transport, "/api/r3/management", undefined, signal),
+    [transport, generation, page.invalid],
+    !page.invalid,
   );
-  const showReadControls = Boolean(
-    (page.page === 3 || page.page === 5) &&
-      showCpi &&
-      matches &&
-      (catalog?.asset || namedExactRead),
+  const observes = page.view === "overview" || page.view === "platform";
+  const observation = useResource<Observability>(
+    (signal) => request(transport, "/api/r5/observability", undefined, signal),
+    [transport, generation, observes, page.invalid],
+    observes && !page.invalid,
   );
-  const canRead = Boolean(
-    showReadControls &&
-      (page.page === 3 ||
-        (mode === "as_of"
-          ? catalog?.service
-          : catalog?.asset?.versions.some(
-              (item) => item.identity === version,
-            ) ||
-            (namedExactRead && version === exactLink?.version))),
+  const summaryJobs = useResource<Jobs>(
+    (signal) =>
+      request(
+        transport,
+        "/api/r5/cpi/jobs",
+        page.fields.get("job") ? { job_identity: page.fields.get("job")! } : {},
+        signal,
+      ),
+    [
+      transport,
+      generation,
+      page.view === "overview",
+      page.invalid,
+      page.fields.get("job"),
+    ],
+    page.view === "overview" && !page.invalid,
   );
+  const identity = page.fields.get("asset");
+  const revision = page.fields.get("asset_revision");
+  const operation = page.fields.get("operation");
+  const operationEntry = directory.data?.entries.find(
+    (e) => e.identity === operation,
+  );
+  const key =
+    identity && revision ? { identity, revision } : operationEntry?.asset;
+  const wantsCatalog =
+    (page.view === "collection" ||
+      (page.view === "assets" && !!(identity || operation))) &&
+    (!operation || sameKey(operationEntry?.asset, CPI)) &&
+    ((!identity && !operation) || sameKey(key, CPI));
+  const cpiAvailability = useCpiAvailability(
+    transport,
+    generation,
+    !page.invalid &&
+      ["assets", "collection"].includes(page.view) &&
+      (!operation ||
+        (!!operationEntry?.asset &&
+          (!identity || identity === operationEntry.asset.identity) &&
+          (!revision || revision === operationEntry.asset.revision))),
+    page.view === "collection",
+  );
+  const catalog = useResource<Catalog>(
+    (signal) => request(transport, "/api/r5/cpi", query, signal),
+    [transport, generation, query, wantsCatalog, page.view, page.invalid],
+    wantsCatalog && !page.invalid && cpiAvailability.legacy,
+  );
+  const readCatalog = operation
+    ? catalogForOperation(catalog.data, operationEntry)
+    : catalog.data;
+  const pceCatalog = useResource<PceCatalog>(
+    async (signal) => {
+      const c = await pceRequest<PceCatalog>(transport, "/api/pce/catalog", {
+        signal,
+      });
+      if (
+        c.source_qualified !== false ||
+        !validPceBinding(c.binding) ||
+        !validPceBinding(c.submission?.binding)
+      )
+        throw new Error("pce_binding_mismatch");
+      return c;
+    },
+    [transport, generation, page.invalid],
+    !page.invalid,
+  );
+  const wantsPce =
+    ["assets", "services"].includes(page.view) &&
+    sameKey(key, PCE) &&
+    (!operation || operation === PCE_OPERATION);
+  const pceEvidence = useResource<PceEvidence>(
+    async (signal) => {
+      const inventory = await pceRequest<PceAssets>(
+        transport,
+        "/api/pce/assets",
+        { signal },
+      );
+      if (
+        !validPceBinding(inventory.binding) ||
+        !Array.isArray(inventory.versions)
+      )
+        throw new Error("pce_inventory_mismatch");
+      let reading = null;
+      try {
+        reading = await readPce(
+          transport,
+          key ? query.reference! : PCE_REFERENCE,
+          query.as_of!,
+          undefined,
+          signal,
+        );
+      } catch {
+        /* Inventory is not proof of readability. */
+      }
+      return { catalog: pceCatalog.data!, assets: inventory, reading };
+    },
+    [transport, generation, query, wantsPce, pceCatalog.data, page.view],
+    wantsPce && !!pceCatalog.data && !page.invalid,
+  );
+  const model = project(
+    directory.data,
+    readCatalog,
+    management.data,
+    pceCatalog.data,
+    pceEvidence.data,
+  );
+  const source = model.interfaces.find((i) => i.id === operation);
+  const asset = model.assets.find((a) => sameKey(a.key, key));
+  const invalidIdentity = !!(
+    directory.data &&
+    ((operation && !source) ||
+      (identity &&
+        ((revision && !asset) ||
+          (!revision &&
+            (page.view !== "assets" ||
+              !!operation ||
+              page.fields.has("version"))))) ||
+      (revision && !identity) ||
+      (source &&
+        identity &&
+        (!source.asset ||
+          !sameKey(source.asset, { identity, revision: revision! }))) ||
+      (page.fields.has("component") &&
+        !model.components.some((c) => c.id === page.fields.get("component"))))
+  );
+  const missingMapping =
+    !!source &&
+    !source.asset &&
+    ["assets", "collection", "services"].includes(page.view);
+  const selectedAsset =
+    invalidIdentity || missingMapping || (operation && !source)
+      ? undefined
+      : asset;
+  const menu = menus.find((m) => m[0] === page.view)!;
+  const busy =
+    cpiAvailability.busy ||
+    packages.busy ||
+    directory.busy ||
+    catalog.busy ||
+    pceEvidence.busy ||
+    management.busy ||
+    observation.busy;
+  const localReader =
+    selectedAsset &&
+    (!sameKey(selectedAsset.key, CPI) || cpiAvailability.legacy) &&
+    (sameKey(selectedAsset.key, CPI) || sameKey(selectedAsset.key, PCE)) ? (
+      <LocalReader
+        key={`${identity}:${revision}:${operation}`}
+        catalog={readCatalog}
+        pce={selectedAsset.pce}
+        route={page}
+        query={query}
+        transport={transport}
+        generation={generation}
+        selectCpiVersion={(version) => navigate("assets", { version }, true)}
+        selectPceVersion={(version) =>
+          navigate(
+            "assets",
+            {
+              version,
+              reference: PCE_REFERENCE,
+              as_of: selectedAsset.pce!.assets.as_of,
+            },
+            true,
+          )
+        }
+        setQuery={(q, version) => {
+          const hash = new URLSearchParams(page.fields);
+          if (version) hash.set("version", version);
+          else hash.delete("version");
+          hash.set("reference", q.reference!);
+          hash.set("as_of", q.as_of!);
+          history.replaceState(null, "", `#${hash}`);
+          setPage(appRoute());
+        }}
+      />
+    ) : null;
+  const ordinaryQuery =
+    selectedAsset &&
+    sameKey(selectedAsset.key, CPI) &&
+    cpiAvailability.legacy ? (
+      <CpiOrdinaryQuery
+        key={`ordinary:${identity}:${revision}:${operation ?? ""}:${query.reference ?? ""}`}
+        transport={transport}
+        initialReference={query.reference ?? ""}
+        operationId={operation ?? null}
+        entries={selectedAsset.interfaces.map((entry) => entry.dto)}
+        readExact={(result) =>
+          navigate(
+            "assets",
+            {
+              asset: result.definition_ref.identity,
+              asset_revision: result.definition_ref.revision,
+              operation: result.operation_id ?? null,
+              version: result.version_identity ?? null,
+              reference: result.reference,
+              as_of: result.decision_at,
+              tab: "local",
+            },
+            true,
+          )
+        }
+      />
+    ) : null;
   return (
     <div
       className={`shell ${dark ? "dark" : ""} ${collapsed ? "collapsed" : ""}`}
     >
-      <aside>
-        <a className="brand" href="#page=2" aria-label="Market Data Foundation">
+      <aside className="sidebar">
+        <a
+          className="brand"
+          href="#ui=r5&view=overview"
+          aria-label="Market Data Foundation"
+        >
           <img src="/mdf-data-hub.png" alt="" />
-          {!collapsed && (
-            <span>
-              Market Data
-              <br />
-              Foundation
-            </span>
-          )}
+          <span>
+            Market Data
+            <br />
+            Foundation
+          </span>
         </a>
         <nav aria-label="一级导航">
-          {menus.map((name, index) => (
+          {menus.map(([view, name], index) => (
             <button
               type="button"
-              key={name}
+              key={view}
               title={name}
               aria-label={name}
-              aria-current={page.page === index ? "page" : undefined}
-              onClick={() => navigate(index)}
+              aria-current={page.view === view ? "page" : undefined}
+              onClick={() =>
+                navigate(view, {
+                  asset: identity,
+                  asset_revision: revision,
+                  operation,
+                  version: page.fields.get("version"),
+                  package: page.fields.get("package"),
+                })
+              }
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d={paths[index]} />
+                <path d={icons[index]} />
               </svg>
-              {!collapsed && (
-                <>
-                  <span>{name}</span>
-                  <small>{String(index + 1).padStart(2, "0")}</small>
-                </>
-              )}
+              <span className="nav-label">{name}</span>
             </button>
           ))}
         </nav>
         <button
-          type="button"
           className="collapse"
-          onClick={() => setCollapsed(!collapsed)}
           aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+          onClick={() => setCollapsed(!collapsed)}
         >
           {collapsed ? "»" : "« 收起侧栏"}
         </button>
+        <small className="scope-indicator">R5 · 开发候选</small>
       </aside>
       <div className="workspace">
         <header>
-          <span>
-            Market Data Foundation{" "}
-            <span className="muted"> / {menus[page.page]}</span>
+          <span className="header-context">
+            MDF 控制台 <span className="muted"> / {menu[1]}</span>
           </span>
-          <div className="actions">
-            <Chip>{page.page === 4 ? "有界人工意图" : "只读"}</Chip>
+          <div className="header-actions">
             <button
-              type="button"
-              onClick={() => setDark(!dark)}
               aria-label="切换主题"
+              aria-pressed={dark}
+              onClick={() => setDark(!dark)}
             >
-              {dark ? "浅色" : "深色"}
+              {dark ? "☀ 亮色" : "☾ 深色"}
             </button>
-            <button
-              type="button"
-              onClick={refresh}
-              disabled={busy || directoryBusy}
-            >
-              刷新
-            </button>
+            {(page.view !== "collection" ||
+              cpiAvailability.legacy ||
+              invalidIdentity ||
+              (!cpiAvailability.data && !cpiAvailability.failure) ||
+              ((page.fields.get("tab") ?? "new") === "new" &&
+                !sameKey(key, CPI))) && (
+              <button
+                aria-label="刷新"
+                disabled={page.invalid || busy}
+                onClick={() => setGeneration((g) => g + 1)}
+              >
+                ↻ 刷新
+              </button>
+            )}
           </div>
         </header>
         <main>
           <div className="heading">
-            <div>
-              <p className="eyebrow">MARKET DATA FOUNDATION</p>
-              <h1>{menus[page.page]}</h1>
-              <p className="muted">
-                {observabilityPage
-                  ? "受信 Host 只读观测 · 来源 / 时钟 / UNKNOWN"
-                  : page.page === 4
-                    ? "CPI 人工一次性初始化 · 持久 Job / Attempt · 独立 Worker"
-                    : implemented
-                      ? "具名来源合同目录 · Definition / Version / Publication · CPI 本地读取"
-                      : "设计入口已保留，业务能力尚未实现"}
-              </p>
-            </div>
-            <Chip>
-              {observabilityPage
-                ? "只读观测"
-                : page.page === 4
-                  ? "2026-09 CPI"
-                  : implemented
-                    ? "具名只读目录"
-                    : "未实现"}
-            </Chip>
+            <h1>{menu[1]}</h1>
+            <p>{menu[2]}</p>
           </div>
-          {observabilityPage ? (
-            <ObservabilityView
-              includeJobs
-              transport={transport}
-              generation={generation}
-              page={page.page}
-              onNavigate={(next, ref) =>
-                navigate(
-                  next,
-                  ref.asset_identity ?? null,
-                  ref.operation_identity ?? null,
-                  ref.asset_revision ?? null,
-                )
-              }
-            />
-          ) : page.page === 4 ? (
-            <CpiJobsView
-              key={`${page.identity}:${page.revision}`}
-              transport={transport}
-              generation={generation}
-              asset={page.identity}
-              revision={page.revision}
-            />
-          ) : !implemented ? (
-            <section className="panel placeholder">
-              <h2>本模块尚未实现</h2>
-              {page.page === 6 && (
-                <div className="tabs">运行实例 / 数据库与存储 / 日志与诊断</div>
-              )}
-              <p>运行状态 UNKNOWN。当前开放来源合同目录与 CPI 本地只读流程。</p>
-            </section>
+          {page.invalid ? (
+            <p role="alert" className="inline-notice">
+              无法定位此链接：路由或关联参数无效。请选择一级导航继续。
+            </p>
           ) : (
             <>
-              <SourceDirectory
-                directory={directory}
-                failure={directoryFailure}
-                busy={directoryBusy}
-                page={page.page}
-                selected={selected}
-                missing={missingOperation}
-                onSelect={(entry) =>
-                  navigate(
-                    page.page,
-                    entry.asset?.identity ?? null,
-                    entry.identity,
-                    entry.asset?.revision ?? null,
-                  )
-                }
-                onNavigate={(next, entry) =>
-                  navigate(
-                    next,
-                    entry.asset?.identity ?? null,
-                    entry.identity,
-                    entry.asset?.revision ?? null,
-                  )
-                }
-              />
-              {page.operation && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    navigate(
-                      page.page,
-                      catalog?.definition.identity ?? null,
-                      null,
-                      catalog?.definition.revision ?? null,
-                    )
-                  }
-                >
-                  {page.page === 1 ? "清除目录选择" : "返回 CPI 本地读取"}
-                </button>
+              {directory.failure && (
+                <div role="alert">
+                  目录暂不可读取。<Technical>{directory.failure}</Technical>
+                </div>
               )}
-              {showCpi && (
-                <>
-                  {selected && (
-                    <p className="notice">
-                      以下为 CPI 资产的独立请求级核验，Version
-                      血缘为准；不证明上方来源当前绑定。
+              {invalidIdentity && (
+                <p role="alert">
+                  关联对象缺失或身份冲突：资产、修订与来源必须精确匹配，未改选其他对象。
+                </p>
+              )}
+              {missingMapping && (
+                <p role="status">
+                  该接口无已准入
+                  Definition，关联资产映射不可用，未创建虚构资产。
+                </p>
+              )}
+              {page.view === "overview" && (
+                <OverviewPage
+                  data={observation.data}
+                  jobs={summaryJobs.data}
+                  failure={observation.failure}
+                  navigate={navigate}
+                />
+              )}
+              {page.view !== "overview" && (
+                <section className="content-panel">
+                  {page.view === "access" && (
+                    <PackageSources
+                      data={packages.data}
+                      busy={packages.busy}
+                      failure={packages.failure}
+                      route={page}
+                      navigate={navigate}
+                      transport={transport}
+                      changed={() => setGeneration((g) => g + 1)}
+                    />
+                  )}
+                  {page.view === "assets" && (
+                    <RuntimeAssets
+                      data={packages.data}
+                      busy={packages.busy}
+                      failure={packages.failure}
+                      route={page}
+                      navigate={navigate}
+                      cpi={
+                        !cpiAvailability.legacy &&
+                        (!!cpiAvailability.data || !!cpiAvailability.failure) &&
+                        !invalidIdentity &&
+                        !missingMapping &&
+                        identity === CPI.identity &&
+                        (!revision || revision === CPI.revision) &&
+                        (!operation || sameKey(selectedAsset?.key, CPI)) ? (
+                          <>
+                            <CpiTimeSeries
+                              transport={transport}
+                              availability={cpiAvailability}
+                            />
+                          </>
+                        ) : undefined
+                      }
+                      cpiAction={
+                        <button
+                          onClick={() =>
+                            navigate("collection", {
+                              asset: CPI.identity,
+                              asset_revision: CPI.revision,
+                              operation: null,
+                              tab: "new",
+                            })
+                          }
+                        >
+                          采集数据
+                        </button>
+                      }
+                      reference={
+                        selectedAsset ? (
+                          <>
+                            <h3>{selectedAsset.label}</h3>
+                            <p>
+                              代码合同参考；运行接入与资产可见性以上方目录为准。
+                            </p>
+                            <div className="linked-interfaces">
+                              {selectedAsset.interfaces.map((entry) => (
+                                <button
+                                  key={entry.id}
+                                  aria-pressed={source?.id === entry.id}
+                                  onClick={() =>
+                                    navigate(
+                                      "assets",
+                                      { operation: entry.id, version: null },
+                                      true,
+                                    )
+                                  }
+                                >
+                                  {entry.source} · {entry.variant}
+                                </button>
+                              ))}
+                            </div>
+                            {ordinaryQuery}
+                            <button
+                              onClick={() =>
+                                navigate("collection", {
+                                  asset: selectedAsset.key.identity,
+                                  asset_revision: selectedAsset.key.revision,
+                                  operation,
+                                  tab: "new",
+                                })
+                              }
+                            >
+                              采集任务 →
+                            </button>
+                            {!localReader && (
+                              <p>
+                                {selectedAsset.catalog?.classification ===
+                                "capability_not_configured"
+                                  ? "未绑定本地读取范围，持有与发布状态待确认"
+                                  : "该资产尚无通用 Web Reader 绑定或当前读取范围不可核实。"}
+                              </p>
+                            )}
+                            {localReader}
+                          </>
+                        ) : null
+                      }
+                      reader={localReader}
+                      ordinary={ordinaryQuery}
+                    />
+                  )}
+                  {page.view === "collection" && (
+                    <CollectionWorkbench
+                      key={`${identity}:${revision}:${operation}`}
+                      assets={model.assets}
+                      asset={selectedAsset}
+                      source={invalidIdentity ? undefined : source}
+                      invalidIdentity={invalidIdentity || missingMapping}
+                      route={page}
+                      navigate={navigate}
+                      transport={transport}
+                      generation={generation}
+                      cpiAvailability={cpiAvailability}
+                    />
+                  )}
+                  {page.view === "platform" && (
+                    <PlatformPage
+                      data={observation.data}
+                      management={management.data}
+                      requestedAt={management.startedAt}
+                      instances={model.instances}
+                      route={page}
+                      navigate={navigate}
+                      failure={management.failure ?? observation.failure}
+                    />
+                  )}
+                  {page.view === "platform" &&
+                    page.fields.get("tab") === "diagnostics" &&
+                    !page.fields.has("diagnostic") &&
+                    !page.fields.has("job") && (
+                      <details className="technical" open>
+                        <summary>接口实现目录（开发诊断）</summary>
+                        <p>此目录记录代码合同，不代表来源已经接通。</p>
+                        <InterfacesPage
+                          interfaces={model.interfaces}
+                          selected={invalidIdentity ? undefined : source}
+                          route={page}
+                          navigate={navigate}
+                        />
+                      </details>
+                    )}
+                  {(directory.busy || catalog.busy) && (
+                    <p className="small" role="status">
+                      正在读取当前范围…
                     </p>
                   )}
-                  <section className="panel filters">
-                    <form
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        setQuery({ ...draft });
-                      }}
-                    >
-                      <label>
-                        报告月份
-                        <input
-                          aria-label="报告月份"
-                          type="month"
-                          required
-                          value={draft.reference}
-                          onChange={(e) =>
-                            setDraft({ ...draft, reference: e.target.value })
-                          }
-                        />
-                      </label>
-                      <label className="instant">
-                        读取时点（含时区）
-                        <input
-                          aria-label="读取时点"
-                          required
-                          value={draft.as_of}
-                          onChange={(e) =>
-                            setDraft({ ...draft, as_of: e.target.value })
-                          }
-                        />
-                      </label>
-                      <button type="submit" className="primary">
-                        应用读取条件
-                      </button>
-                    </form>
-                    <label className="poll">
-                      <input
-                        type="checkbox"
-                        checked={poll}
-                        onChange={(e) => setPoll(e.target.checked)}
-                      />
-                      自动刷新（30秒）
-                    </label>
-                  </section>
-                  <div className="notice" role="status">
-                    {busy
-                      ? "正在核实本地只读证据…"
-                      : failure
-                        ? `UNKNOWN · ${failure}`
-                        : catalog?.evidence_mode === "OFFLINE_FIXTURE"
-                          ? "离线合成 fixture · 仅用于验证读取流程，不代表当前持有"
-                          : catalog?.evidence_mode === "UNCONFIGURED"
-                            ? "UNKNOWN · 未配置当前只读数据能力"
-                            : "已授权只读范围 · 状态仅对本次读取条件有效"}
-                  </div>
-                  {catalog && (
-                    <>
-                      <section className="panel">
-                        <div className="panel-title">
-                          <h2>
-                            {page.page === 2
-                              ? "API / 查询接口"
-                              : page.page === 3
-                                ? "逻辑资产目录"
-                                : "统一读取服务"}
-                          </h2>
-                          <Chip good={catalog.status === "OK"}>
-                            {catalog.status}
-                          </Chip>
-                        </div>
-                        {page.page === 2 && (
-                          <p className="muted">
-                            实时 / Socket / WS 尚未实现。登记合同不等于当前
-                            Source 激活或持有。
-                          </p>
-                        )}
-                        {!matches ? (
-                          <p role="alert">
-                            关联对象缺失：未找到请求的具名资产。
-                          </p>
-                        ) : page.page === 3 && !catalog.asset ? (
-                          <p>关联资产不可核实 · {catalog.classification}</p>
-                        ) : page.page === 5 && !catalog.service ? (
-                          <p>
-                            没有满足当前条件的数据服务 ·{" "}
-                            {catalog.classification}
-                          </p>
-                        ) : (
-                          <div className="table-wrap">
-                            <table>
-                              <thead>
-                                <tr>
-                                  <th>名称</th>
-                                  <th>稳定标识</th>
-                                  <th>
-                                    {page.page === 2
-                                      ? "合同登记"
-                                      : "当前条件资格"}
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr className="selected">
-                                  <td>{catalog.definition.title}</td>
-                                  <td>
-                                    <code>
-                                      {page.page === 5
-                                        ? catalog.service?.identity
-                                        : catalog.definition.identity}
-                                    </code>
-                                  </td>
-                                  <td>
-                                    <Chip good={catalog.status === "OK"}>
-                                      {page.page === 2
-                                        ? "CANONICAL_CONTRACT"
-                                        : catalog.asset?.local_holding}
-                                    </Chip>
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                        {canInitializeCpi && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              navigate(
-                                4,
-                                catalog.definition.identity,
-                                null,
-                                catalog.definition.revision,
-                              )
-                            }
-                          >
-                            新建 CPI 一次性采集
-                          </button>
-                        )}
-                      </section>
-                      {matches && (
-                        <div className="detail-grid">
-                          <section className="panel">
-                            <div className="panel-title">
-                              <h2>CPI 详情</h2>
-                              <span className="muted">
-                                {catalog.definition.revision}
-                              </span>
-                            </div>
-                            <dl>
-                              <dt>资产标识</dt>
-                              <dd data-testid="asset-identity">
-                                <code>{catalog.definition.identity}</code>
-                              </dd>
-                              <dt>报告月份</dt>
-                              <dd>{catalog.reference}</dd>
-                              <dt>读取时点</dt>
-                              <dd>{catalog.as_of}</dd>
-                              <dt>Source 健康 / Binding 激活</dt>
-                              <dd>UNKNOWN / UNKNOWN</dd>
-                              <dt>本地持有</dt>
-                              <dd>
-                                {catalog.asset?.local_holding ?? "UNKNOWN"}
-                              </dd>
-                              <dt>读取分类</dt>
-                              <dd>
-                                {catalog.classification ?? "当前条件已核验"}
-                              </dd>
-                            </dl>
-                            <div className="actions">
-                              {page.page === 2 && (
-                                <button
-                                  type="button"
-                                  disabled={!catalog.asset}
-                                  onClick={() =>
-                                    navigate(3, catalog.asset!.identity)
-                                  }
-                                >
-                                  查看关联资产
-                                </button>
-                              )}
-                              {page.page === 3 && (
-                                <button
-                                  type="button"
-                                  disabled={!catalog.service}
-                                  onClick={() =>
-                                    navigate(5, catalog.service!.asset_identity)
-                                  }
-                                >
-                                  查看数据服务
-                                </button>
-                              )}
-                              {page.page === 5 && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    navigate(3, catalog.service?.asset_identity)
-                                  }
-                                >
-                                  查看关联资产
-                                </button>
-                              )}
-                            </div>
-                            {page.page === 2 && !catalog.asset && (
-                              <p className="muted">
-                                当前证据不足，无法定位关联资产。
-                              </p>
-                            )}
-                            {page.page === 3 && !catalog.service && (
-                              <p className="muted">
-                                未满足当前读取资格，数据服务不可用。
-                              </p>
-                            )}
-                          </section>
-                          {page.page !== 2 && (
-                            <section className="panel">
-                              <h2>Version / Publication</h2>
-                              {catalog.asset?.versions.length ? (
-                                catalog.asset.versions.map((item) => (
-                                  <div className="version" key={item.identity}>
-                                    <code>{item.identity}</code>
-                                    <p>
-                                      <Chip>{item.selection_state}</Chip>
-                                    </p>
-                                    <p className="muted">
-                                      冻结：{item.frozen_at}
-                                    </p>
-                                    <p className="muted">
-                                      覆盖：{item.completeness}
-                                    </p>
-                                    <p className="muted">
-                                      版本血缘 Binding：
-                                      {item.binding_identity ?? "UNKNOWN"}{" "}
-                                      {item.binding_revision}
-                                    </p>
-                                    {item.publications.map((pub) => (
-                                      <div key={pub.identity}>
-                                        <code>{pub.identity}</code> ·{" "}
-                                        {pub.decision}
-                                        <p className="muted">
-                                          决策：{pub.decision_at}
-                                          <br />
-                                          可用：{pub.usable_at}
-                                          {pub.effective_at && (
-                                            <>
-                                              <br />
-                                              生效：{pub.effective_at}
-                                            </>
-                                          )}
-                                        </p>
-                                        {pub.pending_clocks.length > 0 && (
-                                          <p>
-                                            尚未满足时钟：
-                                            {pub.pending_clocks.join(", ")}
-                                          </p>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                ))
-                              ) : (
-                                <p className="muted">没有可核实的版本</p>
-                              )}
-                            </section>
-                          )}
-                        </div>
-                      )}
-                    </>
+                  {pceEvidence.failure && (
+                    <p role="status">PCE 持有与读取范围暂不可核实。</p>
                   )}
-                  {showReadControls && (
-                    <section className="panel">
-                      <div className="panel-title">
-                        <h2>
-                          {page.page === 3 ? "本地数据预览" : "本地服务读取"}
-                        </h2>
-                        <Chip>whole_version</Chip>
-                      </div>
-                      {namedExactRead && (
-                        <p className="muted">
-                          目录预算已达上限。具名版本须经本地 Reader 独立核验；
-                          当前持有与按时点服务资格仍为 UNKNOWN。
-                        </p>
-                      )}
-                      <div className="read-controls">
-                        <label>
-                          读取方式
-                          <select
-                            aria-label="读取方式"
-                            value={mode}
-                            onChange={(e) => {
-                              changeRead();
-                              setMode(e.target.value as ReadMode);
-                              setVersion(
-                                catalog?.service?.version_identity ??
-                                  catalog?.asset?.versions[0]?.identity ??
-                                  exactLink?.version ??
-                                  "",
-                              );
-                            }}
-                          >
-                            <option value="as_of">as-of · 按时点</option>
-                            <option value="exact_version">
-                              exact · 精确版本
-                            </option>
-                          </select>
-                        </label>
-                        {mode === "exact_version" && (
-                          <label className="instant">
-                            版本标识
-                            <input
-                              aria-label="版本标识"
-                              value={version}
-                              onChange={(e) => {
-                                changeRead();
-                                setVersion(e.target.value);
-                              }}
-                            />
-                          </label>
-                        )}
-                        <button
-                          type="button"
-                          className="primary"
-                          disabled={
-                            !canRead ||
-                            reading ||
-                            (mode === "exact_version" && !version)
-                          }
-                          onClick={read}
-                        >
-                          {reading ? "读取中…" : "读取本地数据"}
-                        </button>
-                      </div>
-                      <p className="muted">
-                        预览和刷新仅核实本地材料，不触发采集。读取使用已应用条件：
-                        {query.reference} / {query.as_of}
-                      </p>
-                      {readFailure && (
-                        <p role="alert">
-                          {readFailure.status} · {readFailure.classification}
-                        </p>
-                      )}
-                      {preview && (
-                        <>
-                          <p role="status">
-                            读取成功 · {preview.evidence_mode} ·{" "}
-                            {preview.content_mode}
-                          </p>
-                          <p>
-                            取得时刻 {preview.obtained_at ?? "UNKNOWN"} ·
-                            Provider vintage UNKNOWN ·
-                            {preview.measurements[0]?.classification ===
-                            "mdf_index_derived_change"
-                              ? "MDF 从原始指数计算；不是 Provider pct_changes"
-                              : "Provider 返回的 pct_changes"}
-                          </p>
-                          <p>
-                            <code>{preview.version_identity}</code> /{" "}
-                            <code>{preview.publication_identity}</code>
-                          </p>
-                          <div className="table-wrap">
-                            <table>
-                              <thead>
-                                <tr>
-                                  <th>指标</th>
-                                  <th>系列</th>
-                                  <th>报告期 / 比较期</th>
-                                  <th>值</th>
-                                  <th>单位</th>
-                                  <th>可用性</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {preview.measurements.map((item) => (
-                                  <tr key={item.measure_identity}>
-                                    <td>
-                                      {readLabels[item.name] ?? item.name}
-                                    </td>
-                                    <td>
-                                      <code>{item.series_id}</code>
-                                      <br />
-                                      {item.seasonal_adjustment}
-                                    </td>
-                                    <td>
-                                      {item.reference_period} /{" "}
-                                      {item.comparison_period}
-                                    </td>
-                                    <td>{item.value ?? "NOT_AVAILABLE"}</td>
-                                    <td>{item.unit}</td>
-                                    <td>
-                                      {item.availability}
-                                      <br />
-                                      {item.unavailable_reason}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                          <p className="muted digest">
-                            内容 SHA-256：{preview.content_sha256}
-                          </p>
-                        </>
-                      )}
-                    </section>
+                  {catalog.failure && (
+                    <div role="status">
+                      持有与读取范围暂不可核实。
+                      <Technical>{catalog.failure}</Technical>
+                    </div>
                   )}
-                </>
+                </section>
               )}
             </>
           )}
+          <footer>MDF 统一平台 · R5 产品流程审核候选</footer>
         </main>
       </div>
     </div>

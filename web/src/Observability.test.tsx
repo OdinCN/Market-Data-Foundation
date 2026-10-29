@@ -1,3 +1,4 @@
+import "./offlineTestSetup";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   act,
@@ -24,7 +25,10 @@ function bridge(scenario = "observability") {
     ["-u", "tests/r5_ui_exchange.py", scenario],
     {
       cwd: root,
-      env: { ...process.env, PYTHONPATH: `${root}/src:${root}` },
+      env: {
+        ...process.env,
+        PYTHONPATH: `${root}/src:${root}:${process.env.PYTHONPATH ?? ""}`,
+      },
     },
   );
   children.push(child);
@@ -73,41 +77,26 @@ afterEach(() => {
 });
 const query = { reference: "2026-08", as_of: "2026-10-06T00:00:10+00:00" };
 
-it("projects real contract fixtures, seven menus, alarm → same diagnostic → I1/I2 identity", async () => {
+it("projects resource fixtures and preserves alarm → diagnostic → same asset identities without reading Source", async () => {
   const api = bridge();
-  location.hash = "page=0";
   render(<App transport={api.transport} initialQuery={query} />);
   await screen.findByText("0.25 / 0.5 / 0.75");
-  expect(
-    screen.getByText(/接收 123456 \/ 发送 654321 cumulative bytes/),
-  ).toBeTruthy();
+  expect(screen.getByText(/接收 123456 \/ 发送 654321/)).toBeTruthy();
   expect(
     within(screen.getByRole("navigation")).getAllByRole("button"),
-  ).toHaveLength(7);
+  ).toHaveLength(5);
   fireEvent.click(
     screen.getByRole("button", { name: "查看同一诊断 fixture.diagnostic.1" }),
   );
-  await screen.findByRole("heading", { name: "受信结构化诊断" });
-  await screen.findByRole("button", {
-    name: /清除诊断定位 fixture.diagnostic.1/,
-  });
+  await screen.findByRole("heading", { name: "诊断详情" });
   expect(location.hash).toContain("job=fixture.job.1");
   expect(screen.queryByText("fixture.diagnostic.2")).toBeNull();
-  expect(screen.getByText("fixture.diagnostic.1")).toBeTruthy();
-  expect(screen.getByText("fixture.attempt.1")).toBeTruthy();
-  fireEvent.click(
-    screen.getByRole("button", {
-      name: /查看关联资产 mdf.macro.bls.cpi.headlines/,
-    }),
-  );
-  await screen.findByRole("heading", { name: "本地数据预览" });
+  expect(screen.getByText(/fixture.job.1 \/ fixture.attempt.1/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "查看关联资产 →" }));
+  await screen.findByRole("heading", { name: "CPI · 四项核心指标" });
   expect(location.hash).toContain("asset=mdf.macro.bls.cpi.headlines");
   expect(location.hash).toContain("asset_revision=p3-r1");
-  expect(
-    api.requests.every(
-      (path) => path.startsWith("/api/r5/") && !path.includes("/read?"),
-    ),
-  ).toBe(true);
+  expect(api.requests.every((p) => !p.includes("/read?"))).toBe(true);
 });
 
 it("keeps three tabs, filters instances, stores and structured diagnostics without requests", async () => {
