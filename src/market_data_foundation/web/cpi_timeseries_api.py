@@ -109,6 +109,10 @@ class TimeSeriesHost:
         ):
             raise ValueError("invalid_collection_limit")
         self.profile = validate_profile(profile)
+        self.source_id = "BEA" if profile.key == "pce" else "BLS"
+        self.official_origin = (
+            "https://www.bea.gov/" if profile.key == "pce" else "https://www.bls.gov/"
+        )
         if getattr(scheduler, "profile", CPI_PROFILE) is not profile:
             raise ValueError("bls_timeseries_profile_mismatch")
         self.prefix = f"/api/r5/{profile.key}/timeseries"
@@ -182,12 +186,15 @@ class TimeSeriesHost:
     def source(self, record=None):
         if record is None:
             record = self.packages.store.read(self.packages.environment_id, "macro")
-        states = self.packages.credential_states("macro", record, source_ids={"BLS"})
+        states = self.packages.credential_states(
+            "macro", record, source_ids={self.source_id}
+        )
         state = next(
-            (s.credential_state for s in states if s.source_id == "BLS"), "unknown"
+            (s.credential_state for s in states if s.source_id == self.source_id),
+            "unknown",
         )
         return {
-            "source_id": "BLS",
+            "source_id": self.source_id,
             "capability_enabled": bool(
                 record and self.profile.key in record.enabled_capability_ids
             ),
@@ -202,7 +209,7 @@ class TimeSeriesHost:
             if self.write_factory is None
             else self.profile.key + "_capability_disabled"
             if not source["capability_enabled"]
-            else "bls_credential_" + source["credential_state"]
+            else self.source_id.lower() + "_credential_" + source["credential_state"]
             if source["credential_state"] != "configured"
             else "local_read_not_authorized"
             if not self.query_allowed
@@ -222,7 +229,7 @@ class TimeSeriesHost:
             if self.query_factory is None
             else self.profile.key + "_capability_disabled"
             if not source["capability_enabled"]
-            else "bls_credential_" + source["credential_state"]
+            else self.source_id.lower() + "_credential_" + source["credential_state"]
             if source["credential_state"] != "configured"
             else None
         )
@@ -302,14 +309,18 @@ class TimeSeriesHost:
         source = self.source(record)
         if not source["capability_enabled"]:
             raise WebError(self.profile.key + "_capability_disabled", 403)
-        value = self.packages.load_credential("macro", "BLS", record=record)
+        value = self.packages.load_credential("macro", self.source_id, record=record)
         if value is None:
-            raise WebError("bls_credential_missing", 403)
+            raise WebError(self.source_id.lower() + "_credential_missing", 403)
         return value
 
     def publication_metadata(self, result):
         events = {}
-        for target in self.scheduler.status().get("targets", []):
+        snapshot = self.scheduler.status()
+        for target in [
+            *snapshot.get("targets", []),
+            *snapshot.get("calendar_publications", []),
+        ]:
             evidence = target.get("reference_month_evidence") or {}
             month, at = target.get("reference_month"), target.get("release_at")
             source = evidence.get("source") or evidence.get("evidence_url")
@@ -317,7 +328,7 @@ class TimeSeriesHost:
                 not month
                 or not at
                 or not isinstance(source, str)
-                or not source.startswith("https://www.bls.gov/")
+                or not source.startswith(self.official_origin)
                 or evidence.get("reference_month", month) != month
             ):
                 continue
@@ -437,9 +448,11 @@ class TimeSeriesHost:
             current = self.packages.store.read(self.packages.environment_id, "macro")
             if current != record:
                 raise WebError("package_configuration_changed", 409)
-            value = self.packages.load_credential("macro", "BLS", record=record)
+            value = self.packages.load_credential(
+                "macro", self.source_id, record=record
+            )
             if value is None:
-                raise WebError("bls_credential_missing", 403)
+                raise WebError(self.source_id.lower() + "_credential_missing", 403)
             return value
 
         with self.journal.execution():
@@ -474,7 +487,7 @@ class TimeSeriesHost:
                         profile=self.profile,
                     )
                 read_start, read_end = command["start"], command["end"]
-                if self.profile.key == "ppi":
+                if self.profile.key in {"ppi", "pce"}:
                     months = [
                         p["month"]
                         for p in written.get("source_returned_series_months", [])

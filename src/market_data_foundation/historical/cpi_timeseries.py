@@ -16,6 +16,7 @@ from market_data_foundation.historical.bls_cpi_material_store import (
 )
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
+    PCE_PROFILE,
     validate_profile,
 )
 from market_data_foundation.historical.cpi_timeseries_source import (
@@ -49,6 +50,12 @@ CALCULATION_METHOD = (
     "Same BLS series index ratio: mom_pct=(index[t]/index[t-1]-1)*100; "
     "yoy_pct=(index[t]/index[t-12]-1)*100; Decimal ROUND_HALF_UP to 2 places. "
     "Provider calculations are retained separately and may use different rounding."
+)
+PCE_CALCULATION_METHOD = (
+    "change_km_ratio=index[t]/index[t-k]-1 for k=1,3,6,12; "
+    "same-cutoff BEA T20804 monthly SA index endpoints; cumulative, "
+    "not annualized; Decimal ROUND_HALF_UP to 4 ratio places. "
+    "0.0312 means 3.12%; mom_pct/yoy_pct are derived percent changes."
 )
 SERIES_METADATA = CPI_PROFILE.series_metadata
 _DEFAULT_SERIES = object()
@@ -290,7 +297,7 @@ class CpiTimeSeriesService:
             start_month, end_month, series_ids, None, profile=self.profile
         )
         try:
-            validate_evidence_url(evidence_url)
+            validate_evidence_url(evidence_url, profile=self.profile)
             with self.store.operation():
                 return self.store.withdraw_range(
                     series, start_month, end_month, evidence_url=evidence_url
@@ -334,7 +341,7 @@ class CpiTimeSeriesService:
         attempts = 0
         try:
             if restoration_evidence_url is not None:
-                validate_evidence_url(restoration_evidence_url)
+                validate_evidence_url(restoration_evidence_url, profile=self.profile)
             expected = _restoration_expectations(
                 restoration_expected_points,
                 restoration_evidence_url,
@@ -384,9 +391,12 @@ class CpiTimeSeriesService:
                 batches = ()
                 if allow_upstream and fetch_keys:
                     requests = _gap_requests(series, fetch_keys)
+                    planner = getattr(self.source, "plan_windows", None)
                     count = sum(
                         len(
-                            year_windows(
+                            planner(first, last)
+                            if planner is not None
+                            else year_windows(
                                 first,
                                 last,
                                 registered=getattr(self.source, "registered", True),
@@ -394,7 +404,9 @@ class CpiTimeSeriesService:
                         )
                         for _, first, last in requests
                     )
-                    if count > MAX_RANGE_REQUESTS:
+                    if count > getattr(
+                        self.source, "max_range_requests", MAX_RANGE_REQUESTS
+                    ):
                         raise CpiTimeSeriesError(
                             "cpi_timeseries_request_budget_exceeded"
                         )
@@ -659,6 +671,16 @@ class CpiTimeSeriesService:
             },
             "calculation_method": CALCULATION_METHOD,
         }
+        if self.profile is PCE_PROFILE:
+            result.update(
+                provider="BEA",
+                calculation_method=PCE_CALCULATION_METHOD,
+                retention_class="credential_free_bea_results_projection",
+                exact_original_retained=False,
+            )
+            result["units"] = {
+                k: v for k, v in result["units"].items() if not k.startswith("bls_")
+            }
         if persist:
             result.update(saved)
         return result
@@ -680,12 +702,27 @@ def build_source(
     *,
     credential_loader,
     request_control=None,
+    request_control_path=None,
     secret_path=DEFAULT_SECRET_PATH,
     registered=True,
     max_transport_attempts=1,
     profile=CPI_PROFILE,
 ):
     profile = validate_profile(profile)
+    if profile is PCE_PROFILE:
+        from market_data_foundation.historical.pce_timeseries_source import (
+            BeaRangeSource,
+        )
+
+        return BeaRangeSource(
+            credential_loader=credential_loader,
+            request_control=request_control,
+            request_control_path=request_control_path,
+            max_transport_attempts=max_transport_attempts,
+            profile=profile,
+        )
+    if request_control_path is not None:
+        raise CpiTimeSeriesError("cpi_timeseries_request_control_binding_invalid")
     if credential_loader is None:
         raise CpiTimeSeriesError("cpi_package_credential_binding_required")
     if request_control is None:
@@ -711,6 +748,7 @@ def build_service(
     registered=True,
     credential_loader=None,
     request_control=None,
+    request_control_path=None,
     max_transport_attempts=1,
     profile=CPI_PROFILE,
 ):
@@ -721,6 +759,7 @@ def build_service(
         source = build_source(
             credential_loader=credential_loader,
             request_control=request_control,
+            request_control_path=request_control_path,
             secret_path=secret_path,
             registered=registered,
             max_transport_attempts=max_transport_attempts,

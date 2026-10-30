@@ -77,6 +77,67 @@ def test_worker_selects_only_asset_and_scopes_collect(monkeypatch, asset):
     assert options["ppi_allow_collect"] is (asset == "ppi")
 
 
+@pytest.mark.parametrize("asset", ["cpi", "ppi", "pce"])
+@pytest.mark.parametrize("allow_collect", [False, True])
+def test_worker_never_reads_unselected_hosts(monkeypatch, asset, allow_collect):
+    module = worker_module()
+    host = Mock()
+    accesses = []
+    selected = {
+        "cpi": "timeseries",
+        "ppi": "ppi_timeseries",
+        "pce": "pce_timeseries",
+    }[asset]
+
+    class Runtime:
+        def __getattr__(self, name):
+            accesses.append(name)
+            if name != selected:
+                raise AssertionError(f"unselected host accessed: {name}")
+            return host
+
+    constructor = Mock(return_value=Runtime())
+    worker = Mock()
+    monkeypatch.setattr(module, "TimeSeriesRuntime", constructor)
+    monkeypatch.setattr(module.sys, "version_info", (3, 14, 8))
+    monkeypatch.setattr(module.os, "umask", lambda _: None)
+    monkeypatch.setattr(module, "run_worker", worker)
+    argv = arguments(asset) + [
+        "--pce-schedule-path",
+        "/tmp/pce/schedule.json",
+        "--pce-job-directory",
+        "/tmp/pce/jobs",
+    ]
+    if not allow_collect:
+        argv.remove("--allow-collect")
+    assert module.main(argv) == 0
+    assert accesses == [selected]
+    worker.assert_called_once_with(
+        host.auto_strategy, poll_seconds=5, sleep=module.worker_sleep
+    )
+    options = constructor.call_args.kwargs
+    assert options["allow_collect"] is (allow_collect and asset == "cpi")
+    assert options["ppi_allow_collect"] is (allow_collect and asset == "ppi")
+    assert options["pce_allow_collect"] is (allow_collect and asset == "pce")
+    assert options["ppi_enabled"] is (asset == "ppi")
+    assert options["pce_enabled"] is (asset == "pce")
+
+
+@pytest.mark.parametrize("asset", ["cpi", "ppi", "pce"])
+def test_worker_requires_selected_asset_optin(monkeypatch, asset):
+    module = worker_module()
+    argv = [arg for arg in arguments(asset) if arg != f"--opt-in-{asset}-worker"]
+    argv += [
+        f"--opt-in-{other}-worker" for other in ("cpi", "ppi", "pce") if other != asset
+    ]
+    args = module.build_parser().parse_args(argv)
+    constructor = Mock()
+    monkeypatch.setattr(module, "TimeSeriesRuntime", constructor)
+    with pytest.raises(ValueError, match=f"^explicit_{asset}_worker_opt_in_required$"):
+        module.build_runtime(args)
+    constructor.assert_not_called()
+
+
 @pytest.mark.parametrize("fault", ["optin", "history", "same", "relative"])
 def test_worker_rejects_invalid_binding_before_construction(monkeypatch, fault):
     module = worker_module()

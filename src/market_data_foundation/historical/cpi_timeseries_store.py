@@ -28,6 +28,7 @@ from market_data_foundation.historical.bls_cpi_material_store import (
 )
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
+    PCE_PROFILE,
     validate_profile,
 )
 from market_data_foundation.storage.market_dataset_garage import _transport
@@ -245,13 +246,19 @@ def _rates_view_sql(*, profile=CPI_PROFILE):
         FROM {profile.schema}.latest c {joins} WHERE c.version_status='active'"""
 
 
-def validate_evidence_url(value):
+def validate_evidence_url(value, *, profile=CPI_PROFILE):
+    profile = validate_profile(profile)
     try:
         url = urlsplit(value)
         valid = (
             isinstance(value, str)
             and url.scheme == "https"
-            and url.hostname in ("bls.gov", "www.bls.gov")
+            and url.hostname
+            in (
+                ("bea.gov", "www.bea.gov", "apps.bea.gov")
+                if profile is PCE_PROFILE
+                else ("bls.gov", "www.bls.gov")
+            )
             and url.username is None
             and url.password is None
             and url.port in (None, 443)
@@ -344,7 +351,7 @@ def _withdraw(store, series_ids, start_month, end_month, evidence_url):
     )
 
     _validate_series(series_ids, profile=store.profile)
-    validate_evidence_url(evidence_url)
+    validate_evidence_url(evidence_url, profile=store.profile)
     first, last = _month_date(start_month), _month_date(end_month)
     months = []
     current = first
@@ -714,7 +721,7 @@ class PostgresTimeSeriesStore:
     ):
         evidence = _withdrawal_evidence_url or restoration_evidence_url
         if evidence is not None:
-            validate_evidence_url(evidence)
+            validate_evidence_url(evidence, profile=self.profile)
         state = "withdrawn" if _withdrawal_evidence_url else "active"
         expected = _restoration_expectations(
             restoration_expected_points, restoration_evidence_url, profile=self.profile
@@ -934,7 +941,7 @@ class InMemoryTimeSeriesStore:
     ):
         evidence = _withdrawal_evidence_url or restoration_evidence_url
         if evidence is not None:
-            validate_evidence_url(evidence)
+            validate_evidence_url(evidence, profile=self.profile)
         state = "withdrawn" if _withdrawal_evidence_url else "active"
         expected = _restoration_expectations(
             restoration_expected_points, restoration_evidence_url, profile=self.profile

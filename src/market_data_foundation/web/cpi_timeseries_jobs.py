@@ -45,7 +45,7 @@ def validate_command(command, max_months):
 
 def verify_readback(written, readback, command, *, profile=CPI_PROFILE):
     """Coverage includes explicit source nulls; an absent row is a different gap."""
-    if profile.key == "ppi":
+    if profile.key in {"ppi", "pce"}:
         return verify_ppi_readback(written, readback, command, profile=profile)
     expected = {
         (s, m)

@@ -1,4 +1,4 @@
-"""Immutable, allowlisted namespaces for the shared BLS time-series core."""
+"""Immutable, allowlisted namespaces for the shared monthly index core."""
 
 from dataclasses import dataclass
 
@@ -13,9 +13,15 @@ class BlsTimeSeriesProfile:
     earliest_month: str | None
     lock_id: int
     rates_view: str
+    provider: str = "BLS"
+    explicit_series_metadata: tuple = ()
 
     @property
     def series_metadata(self):
+        if self.explicit_series_metadata:
+            return {
+                series: dict(values) for series, values in self.explicit_series_metadata
+            }
         return {
             series: {
                 "indicator": "headline" if position < 2 else "core",
@@ -45,10 +51,50 @@ PPI_PROFILE = BlsTimeSeriesProfile(
     lock_id=78328741642028102,
     rates_view="ppi_timeseries_rates",
 )
+PCE_PROFILE = BlsTimeSeriesProfile(
+    key="pce",
+    label="PCE price indexes; core excludes food and energy; seasonally adjusted",
+    series_ids=("DPCERG", "DPCCRG"),
+    schema="mdf_pce_timeseries_dev_r1",
+    raw_prefix="pce-timeseries/dev-r1/sha256/",
+    earliest_month=None,
+    lock_id=78328741642028103,
+    rates_view="pce_timeseries_rates",
+    provider="BEA",
+    explicit_series_metadata=(
+        (
+            "DPCERG",
+            (
+                ("indicator", "headline"),
+                ("seasonal_adjustment", "SA"),
+                ("provider", "BEA"),
+                ("table_name", "T20804"),
+                ("line_number", "1"),
+                (
+                    "reference_index_name",
+                    "Personal consumption expenditures price index",
+                ),
+            ),
+        ),
+        (
+            "DPCCRG",
+            (
+                ("indicator", "core"),
+                ("seasonal_adjustment", "SA"),
+                ("provider", "BEA"),
+                ("table_name", "T20804"),
+                ("line_number", "25"),
+                ("reference_index_name", "PCE excluding food and energy price index"),
+            ),
+        ),
+    ),
+)
 
 
 def validate_profile(profile):
     """Only builtins may supply SQL identifiers, series and raw namespaces."""
-    if profile is not CPI_PROFILE and profile is not PPI_PROFILE:
+    if all(
+        profile is not builtin for builtin in (CPI_PROFILE, PPI_PROFILE, PCE_PROFILE)
+    ):
         raise ValueError("bls_timeseries_profile_invalid")
     return profile

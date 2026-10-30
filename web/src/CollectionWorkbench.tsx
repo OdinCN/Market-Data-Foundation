@@ -1,4 +1,8 @@
-import { CPI_PROFILE, PPI_PROFILE } from "./macroTimeSeriesProfile";
+import {
+  CPI_PROFILE,
+  PPI_PROFILE,
+  PCE_PROFILE,
+} from "./macroTimeSeriesProfile";
 import { formatBeijingTime } from "./beijingTime";
 import { DateField } from "./DateField";
 import {
@@ -22,6 +26,7 @@ import {
   PPI,
   PCE,
   MANUAL_OPERATION,
+  PCE_OPERATION,
   HISTORY_OPERATION,
   assetTitle,
   executions,
@@ -70,6 +75,7 @@ export function CollectionWorkbench({
   invalidIdentity,
   cpiAvailability,
   ppiAvailability,
+  pceAvailability,
 }: {
   assets: Asset[];
   asset: Asset | undefined;
@@ -81,10 +87,19 @@ export function CollectionWorkbench({
   invalidIdentity: boolean;
   cpiAvailability?: CpiAvailability;
   ppiAvailability?: CpiAvailability;
+  pceAvailability?: CpiAvailability;
 }) {
   const tab = tabs.some((t) => t[0] === route.fields.get("tab"))
     ? route.fields.get("tab")!
     : "new";
+  // The route owns the creation target, even while its directory is loading.
+  const selectedTarget = invalidIdentity
+    ? ""
+    : route.fields.has("asset") && route.fields.has("asset_revision")
+      ? `${route.fields.get("asset")}@${route.fields.get("asset_revision")}`
+      : asset
+        ? keyOf(asset.key)
+        : "";
   const [mode, setMode] = useState<string>(
     route.fields.get("mode") === "backfill" ? "指定范围回补" : "一次性初始化",
   );
@@ -139,15 +154,41 @@ export function CollectionWorkbench({
     (sameKey(asset?.key, PPI) ||
       (route.fields.get("asset") === PPI.identity &&
         route.fields.get("asset_revision") === PPI.revision));
-  const macroProfile = isPpi ? PPI_PROFILE : CPI_PROFILE;
-  const macroAvailability = isPpi ? ppiAvailability : cpiAvailability;
+  const pceTarget =
+    !invalidIdentity &&
+    (isPce ||
+      (route.fields.get("asset") === PCE.identity &&
+        route.fields.get("asset_revision") === PCE.revision)) &&
+    (!route.fields.has("operation") ||
+      route.fields.get("operation") === PCE_OPERATION);
+  const macroProfile = pceTarget
+    ? PCE_PROFILE
+    : isPpi
+      ? PPI_PROFILE
+      : CPI_PROFILE;
+  const macroAvailability = pceTarget
+    ? pceAvailability
+    : isPpi
+      ? ppiAvailability
+      : cpiAvailability;
   const newPpi =
     !!ppiAvailability && !ppiAvailability.legacy && !!ppiAvailability.data;
-  const newMacro = isPpi
-    ? !!ppiAvailability
-    : !!cpiAvailability &&
-      !cpiAvailability.legacy &&
-      (!!cpiAvailability.data || !!cpiAvailability.failure);
+  const newPce =
+    !!pceAvailability && !pceAvailability.legacy && !!pceAvailability.data;
+  const newMacro = pceTarget
+    ? !!pceAvailability &&
+      !pceAvailability.legacy &&
+      (!!pceAvailability.data || !!pceAvailability.failure)
+    : isPpi
+      ? !!ppiAvailability
+      : !!cpiAvailability &&
+        !cpiAvailability.legacy &&
+        (!!cpiAvailability.data || !!cpiAvailability.failure);
+  const macroPending =
+    !!macroAvailability &&
+    !macroAvailability.legacy &&
+    !macroAvailability.data &&
+    !macroAvailability.failure;
   const newCpi =
     !!cpiAvailability &&
     !cpiAvailability.legacy &&
@@ -164,6 +205,7 @@ export function CollectionWorkbench({
   const executionSchedule = route.fields.get("execution_schedule") ?? "all";
   const readRecords =
     !isPpi &&
+    (!pceTarget || (tab !== "new" && filter !== keyOf(PCE))) &&
     (!cpiAvailability || cpiAvailability.legacy) &&
     (tab === "new"
       ? isCpi
@@ -180,6 +222,7 @@ export function CollectionWorkbench({
           a.interfaces.some((i) => validPceBinding(i.pce?.binding))),
     );
   const readPceRecords =
+    (!pceAvailability || pceAvailability.legacy) &&
     pceReadBound &&
     (isPce ||
       (tab === "executions" &&
@@ -272,7 +315,7 @@ export function CollectionWorkbench({
       !invalidIdentity &&
       (filter === "all" ||
         filter === keyOf(CPI) ||
-        (!!route.fields.get("job") && !isPpi)),
+        (!!route.fields.get("job") && !isPpi && !pceTarget)),
   );
   const ppiRecords = useVisiblePolling(
     (signal) => readCpiExecutions(transport, signal, PPI_PROFILE),
@@ -282,6 +325,14 @@ export function CollectionWorkbench({
       !invalidIdentity &&
       (filter === "all" || filter === keyOf(PPI)),
   );
+  const pceRecords = useVisiblePolling(
+    (signal) => readCpiExecutions(transport, signal, PCE_PROFILE),
+    [transport, generation, PCE_PROFILE.id],
+    newPce &&
+      tab === "executions" &&
+      !invalidIdentity &&
+      (filter === "all" || filter === keyOf(PCE) || pceTarget),
+  );
   const macroRecords = [
     ...(executionSchedule === "all" &&
     (filter === "all" || filter === keyOf(CPI))
@@ -289,6 +340,14 @@ export function CollectionWorkbench({
           ...e,
           profile: CPI_PROFILE,
           rowId: e.id,
+        }))
+      : []),
+    ...(executionSchedule === "all" &&
+    (filter === "all" || filter === keyOf(PCE))
+      ? (pceRecords.data?.executions ?? []).map((e) => ({
+          ...e,
+          profile: PCE_PROFILE,
+          rowId: `pce:${e.id}`,
         }))
       : []),
     ...(executionSchedule === "all" &&
@@ -323,6 +382,14 @@ export function CollectionWorkbench({
   };
   function recordState(kind: "plans" | "jobs") {
     if (filter === keyOf(PCE)) {
+      if (pceAvailability && !pceAvailability.legacy) {
+        if (!newPce) return "PCE 服务状态尚未核实，执行记录尚未查询。";
+        if (pceRecords.busy) return "正在读取 PCE 执行记录…";
+        if (pceRecords.failure)
+          return "PCE 执行记录读取失败，当前记录尚未核实。";
+        if (!pceRecords.data) return "PCE 执行记录尚未查询。";
+        return "当前已查询范围没有执行记录。";
+      }
       if (kind === "plans") return "PCE 开发测试只支持单次采集。";
       if (pceJobs.busy) return "正在回查采集记录…";
       return pceJobs.failure
@@ -797,6 +864,9 @@ export function CollectionWorkbench({
               {!assets.some((a) => sameKey(a.key, PPI)) && (
                 <option value={keyOf(PPI)}>美国 PPI</option>
               )}
+              {!assets.some((a) => sameKey(a.key, PCE)) && (
+                <option value={keyOf(PCE)}>美国 PCE</option>
+              )}
               {assets.map((a) => (
                 <option key={keyOf(a.key)} value={keyOf(a.key)}>
                   {a.label}
@@ -804,7 +874,8 @@ export function CollectionWorkbench({
               ))}
               {filter !== "all" &&
                 !assets.some((a) => keyOf(a.key) === filter) &&
-                filter !== keyOf(PPI) && (
+                filter !== keyOf(PPI) &&
+                filter !== keyOf(PCE) && (
                   <option value={filter}>{filter}（不可核实）</option>
                 )}
             </select>
@@ -838,11 +909,15 @@ export function CollectionWorkbench({
       {((readRecords && (jobs.failure || plans.failure)) ||
         (readPceRecords && pceJobs.failure) ||
         cpiRecords.failure ||
-        ppiRecords.failure) && (
+        ppiRecords.failure ||
+        pceRecords.failure) && (
         <div role="alert">
           采集记录已陈旧，保留上次数据并自动重读。
           {ppiRecords.failure && (
             <p>PPI 执行记录读取失败，当前记录尚未核实。</p>
+          )}
+          {pceRecords.failure && (
+            <p>PCE 执行记录读取失败，当前结果尚未核实。</p>
           )}
           {cpiRecords.failure && (
             <p>CPI 执行记录读取失败，当前结果尚未核实。</p>
@@ -855,18 +930,26 @@ export function CollectionWorkbench({
           )}
         </div>
       )}
-      {tab === "new" && newMacro && (cpiTarget || isPpi) ? (
+      {tab === "new" &&
+      (newMacro || macroPending) &&
+      (cpiTarget || isPpi || pceTarget) ? (
         <>
           <label>
             采集目标
             <select
-              value={keyOf(macroProfile.asset)}
+              value={selectedTarget}
               onChange={(e) => {
                 const selected = assets.find(
                   (a) => keyOf(a.key) === e.target.value,
                 );
                 const selectedKey =
-                  e.target.value === keyOf(PPI) ? PPI : selected?.key;
+                  e.target.value === keyOf(PCE)
+                    ? PCE
+                    : e.target.value === keyOf(PPI)
+                      ? PPI
+                      : e.target.value === keyOf(CPI)
+                        ? CPI
+                        : selected?.key;
                 navigate("collection", {
                   asset: selectedKey?.identity ?? null,
                   asset_revision: selectedKey?.revision ?? null,
@@ -880,9 +963,17 @@ export function CollectionWorkbench({
                   美国 {macroProfile.label}
                 </option>
               )}
+              {!assets.some((a) => sameKey(a.key, CPI)) &&
+                macroProfile.id !== "cpi" && (
+                  <option value={keyOf(CPI)}>美国 CPI</option>
+                )}
               {!assets.some((a) => sameKey(a.key, PPI)) &&
                 macroProfile.id !== "ppi" && (
                   <option value={keyOf(PPI)}>美国 PPI</option>
+                )}
+              {!assets.some((a) => sameKey(a.key, PCE)) &&
+                macroProfile.id !== "pce" && (
+                  <option value={keyOf(PCE)}>美国 PCE</option>
                 )}
               {assets.map((a) => (
                 <option key={keyOf(a.key)} value={keyOf(a.key)}>
@@ -891,27 +982,31 @@ export function CollectionWorkbench({
               ))}
             </select>
           </label>
-          <CpiTimeSeriesCollection
-            profile={macroProfile}
-            transport={transport}
-            availability={macroAvailability!}
-            tab={tab}
-            generation={generation}
-            onExecution={(job) => {
-              setBriefTarget(job);
-              navigate("collection", {
-                tab: "executions",
-                asset: macroProfile.asset.identity,
-                asset_revision: macroProfile.asset.revision,
-                operation: null,
-                execution_asset: keyOf(macroProfile.asset),
-                execution_schedule: "all",
-                schedule: null,
-                mode: null,
-                job,
-              });
-            }}
-          />
+          {macroPending ? (
+            <p role="status">正在核实 {macroProfile.label} 采集服务…</p>
+          ) : (
+            <CpiTimeSeriesCollection
+              profile={macroProfile}
+              transport={transport}
+              availability={macroAvailability!}
+              tab={tab}
+              generation={generation}
+              onExecution={(job) => {
+                setBriefTarget(job);
+                navigate("collection", {
+                  tab: "executions",
+                  asset: macroProfile.asset.identity,
+                  asset_revision: macroProfile.asset.revision,
+                  operation: null,
+                  execution_asset: keyOf(macroProfile.asset),
+                  execution_schedule: "all",
+                  schedule: null,
+                  mode: null,
+                  job,
+                });
+              }}
+            />
+          )}
         </>
       ) : tab === "new" ? (
         <div className="workbench collection-form">
@@ -932,13 +1027,19 @@ export function CollectionWorkbench({
               <label>
                 采集目标
                 <select
-                  value={asset ? keyOf(asset.key) : ""}
+                  value={selectedTarget}
                   onChange={(e) => {
                     const a = assets.find(
                       (a) => keyOf(a.key) === e.target.value,
                     );
                     const selectedKey =
-                      e.target.value === keyOf(PPI) ? PPI : a?.key;
+                      e.target.value === keyOf(PCE)
+                        ? PCE
+                        : e.target.value === keyOf(PPI)
+                          ? PPI
+                          : e.target.value === keyOf(CPI)
+                            ? CPI
+                            : a?.key;
                     navigate("collection", {
                       asset: selectedKey?.identity ?? null,
                       asset_revision: selectedKey?.revision ?? null,
@@ -948,8 +1049,14 @@ export function CollectionWorkbench({
                   }}
                 >
                   <option value="">选择一个已登记资产</option>
+                  {!assets.some((a) => sameKey(a.key, CPI)) && (
+                    <option value={keyOf(CPI)}>美国 CPI</option>
+                  )}
                   {!assets.some((a) => sameKey(a.key, PPI)) && (
                     <option value={keyOf(PPI)}>美国 PPI</option>
+                  )}
+                  {!assets.some((a) => sameKey(a.key, PCE)) && (
+                    <option value={keyOf(PCE)}>美国 PCE</option>
                   )}
                   {assets.map((a) => (
                     <option key={keyOf(a.key)} value={keyOf(a.key)}>
@@ -1260,7 +1367,7 @@ export function CollectionWorkbench({
             </Technical>
           </aside>
         </div>
-      ) : tab === "periodic" && (newCpi || newPpi) ? (
+      ) : tab === "periodic" && (newCpi || newPpi || newPce) ? (
         <CpiStrategyWorkbench
           transport={transport}
           availability={
@@ -1275,6 +1382,13 @@ export function CollectionWorkbench({
           additionalAvailability={ppiAvailability}
           additionalVisible={
             !invalidIdentity && (filter === "all" || filter === keyOf(PPI))
+          }
+          thirdProfile={
+            pceAvailability && !pceAvailability.legacy ? PCE_PROFILE : undefined
+          }
+          thirdAvailability={pceAvailability}
+          thirdVisible={
+            !invalidIdentity && (filter === "all" || filter === keyOf(PCE))
           }
           selectedId={scheduleId}
           generation={generation}
@@ -1361,7 +1475,7 @@ export function CollectionWorkbench({
         <>
           <div className="toolbar">
             <h2>采集执行记录</h2>
-            {!newCpi && !newPpi && (
+            {!newCpi && !newPpi && !newPce && (
               <button onClick={() => setRefresh((n) => n + 1)}>
                 回查执行记录
               </button>
@@ -1382,8 +1496,8 @@ export function CollectionWorkbench({
             columns={["任务名称", "创建时间（北京时间）", "采集范围", "结果"]}
             pageSize={20}
             locateId={
-              isPpi && (briefTarget || jobId)
-                ? `ppi:${briefTarget || jobId}`
+              (isPpi || (pceTarget && newPce)) && (briefTarget || jobId)
+                ? `${macroProfile.id}:${briefTarget || jobId}`
                 : briefTarget
             }
             selected={cpiExecution?.rowId ?? execution?.id}
@@ -1393,7 +1507,7 @@ export function CollectionWorkbench({
               const macro = macroRecords.find((e) => e.rowId === job);
               navigate(
                 "collection",
-                macro && (macro.profile.id === "ppi" || isPpi)
+                macro && (macro.profile.id !== "cpi" || isPpi || pceTarget)
                   ? {
                       job: macro.id,
                       asset: macro.profile.asset.identity,

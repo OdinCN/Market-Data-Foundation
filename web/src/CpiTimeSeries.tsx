@@ -134,11 +134,16 @@ function CpiTimeSeriesContent({
   availability: CpiAvailability;
 }) {
   const cpiSeries = profile.series;
+  const availableAdjustments = adjustments.filter((item) =>
+    profile.series.some((s) => s[3] === item.value),
+  );
   const latest = latestMonth(availability.data);
   const [start, setStart] = useState(latest ? shiftMonth(latest, -11) : "");
   const [end, setEnd] = useState(latest);
   const [basket, setBasket] = useState(["headline", "core"]);
-  const [adjustment, setAdjustment] = useState(["sa", "nsa"]);
+  const [adjustment, setAdjustment] = useState(
+    availableAdjustments.map((item) => item.value),
+  );
   const [measure, setMeasure] = useState<string[]>(
     measures.map((item) => item.value),
   );
@@ -285,7 +290,7 @@ function CpiTimeSeriesContent({
       </div>
       <div hidden={tab !== "query"}>
         <p className="muted">
-          当前查询优先读取本地，缺口可向 BLS
+          当前查询优先读取本地，缺口可向 {profile.provider}
           查询，不保存。历史截止查询只读已入库记录。
         </p>
         <CpiAvailabilityNotice profile={profile} availability={availability} />
@@ -341,7 +346,7 @@ function CpiTimeSeriesContent({
             />
             <MultiSelect
               label="季节调整"
-              options={adjustments}
+              options={availableAdjustments}
               value={adjustment}
               onChange={(value) => change(() => setAdjustment(value))}
             />
@@ -531,8 +536,8 @@ function CpiTimeSeriesContent({
               <details>
                 <summary>来源与时间详情</summary>
                 <p>
-                  来源：BLS；本次未保存。来源请求 {result.provider_requests}{" "}
-                  次。
+                  来源：{profile.provider}；本次未保存。来源请求{" "}
+                  {result.provider_requests} 次。
                   {history
                     ? `入库截止：${formatBeijingTime(result.as_of)}。`
                     : "展示当前查询值。"}

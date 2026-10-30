@@ -259,7 +259,11 @@ export function CpiQueryApiHelp({
             "否 / headline",
             "headline（overall 为别名）、core、all；本表单默认 all",
           ],
-          ["adjustment", "否 / sa", "sa、nsa、all；本表单默认 all"],
+          [
+            "adjustment",
+            "否 / sa",
+            `${[...new Set(profile.series.map((s) => s[3]))].join("、")}、all；仅包含本资产支持的口径`,
+          ],
           [
             "measure",
             "否 / index",
@@ -288,7 +292,7 @@ export function CpiQueryApiHelp({
         ]}
       />
       <details>
-        <summary>四个统计序列</summary>
+        <summary>{profile.series.length}个统计序列</summary>
         <CompactTable
           label="统计序列"
           headers={["series_id", "篮子 / 季调"]}
@@ -338,7 +342,7 @@ export function CpiQueryApiHelp({
             [
               "points[].origin / availability / revision",
               "string / string / integer|null",
-              "来源、可用状态与本地修订编号（不是 BLS 官方版本）；临时上游点无本地修订序号。仅 availability=unpersisted 表示临时补源",
+              `来源、可用状态与本地修订编号（不是 ${profile.provider} 官方版本）；临时上游点无本地修订序号。仅 availability=unpersisted 表示临时补源`,
             ],
             [
               "points[].observed_at / available_at",
@@ -408,7 +412,7 @@ export function CpiQueryApiHelp({
       <details>
         <summary>成功示例（字段节选，非本次响应）</summary>
         <pre>
-          <code>{`{"start_month":"2026-05","end_month":"2026-05","measure":"index","unit":"index","points":[{"series_id":"${profile.series[2][0]}","month":"2026-05","index_value":"320.125","value":"320.125","change_1m_ratio":"0.0024","mom_pct":"0.24","available_at":null,"availability":"unpersisted"}],"missing":[],"calculation_missing":[],"persisted":false,"query_mode":"current"}`}</code>
+          <code>{`{"start_month":"2026-05","end_month":"2026-05","measure":"index","unit":"index","points":[{"series_id":"${profile.series.find((s) => s[2] === "core")![0]}","month":"2026-05","index_value":"320.125","value":"320.125","change_1m_ratio":"0.0024","mom_pct":"0.24","available_at":null,"availability":"unpersisted"}],"missing":[],"calculation_missing":[],"persisted":false,"query_mode":"current"}`}</code>
         </pre>
       </details>
       <details>

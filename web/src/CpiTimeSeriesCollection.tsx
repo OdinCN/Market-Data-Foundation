@@ -1,4 +1,8 @@
-import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
+import {
+  CPI_PROFILE,
+  profileScopeText,
+  type MacroProfile,
+} from "./macroTimeSeriesProfile";
 import { DateField } from "./DateField";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
@@ -350,7 +354,10 @@ function CpiTimeSeriesCollectionContent({
       {profile.historyNotice && (
         <p className="small">{profile.historyNotice}</p>
       )}
-      <p>四种口径一起采集。长范围由后端自动分批，无需手动拆分。</p>
+      <p>
+        {profileScopeText(profile)}
+        一起采集。长范围由后端自动分批，无需手动拆分。
+      </p>
       {maxMonths != null && (
         <p className="small">当前主机每次允许最多 {maxMonths} 个月。</p>
       )}

@@ -196,6 +196,8 @@ def parse_response(
     explicit missing point with index_value=None and original metadata. Neither
     is interpolated or evidence of knowledge before its observation timestamp.
     """
+    if validate_profile(profile).provider != "BLS":
+        raise CpiSourceError("bls_timeseries_provider_binding_invalid")
     _series(series_ids, profile=profile)
     validate_month(start_month)
     validate_month(end_month)
@@ -316,6 +318,8 @@ class BlsRangeSource:
         profile=CPI_PROFILE,
     ) -> None:
         self.profile = validate_profile(profile)
+        if self.profile.provider != "BLS":
+            raise CpiSourceError("bls_timeseries_provider_binding_invalid")
         if not valid_transport_attempts(max_transport_attempts):
             raise CpiSourceError("cpi_timeseries_transport_attempts_invalid")
         self._secret_path = secret_path
