@@ -16,7 +16,7 @@ import {
   CPI_PROFILE,
   PPI_PROFILE,
 } from "./macroTimeSeriesProfile";
-import { PCE, PCE_OPERATION, keyOf } from "./workflowModel";
+import { CPI, PCE, PCE_OPERATION, keyOf } from "./workflowModel";
 import { pceLabels, type PceBinding } from "./pce";
 import {
   buildCpiQueryRequest,
@@ -314,6 +314,169 @@ it("opens PCE in the shared asset query with two rows, ratios and working exchan
   expect(help.textContent).not.toContain("BLS");
 });
 
+async function queryPceSeptember() {
+  expect(
+    screen.getByRole("heading", { name: "美国 PCE · 范围查询" }),
+  ).toBeTruthy();
+  expect((screen.getByLabelText("结束月份") as HTMLInputElement).value).toBe(
+    "2026-09",
+  );
+  expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
+  fireEvent.change(screen.getByLabelText("开始月份"), {
+    target: { value: "2026-09" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
+  await flush();
+  const table = screen.getByRole("table", { name: "PCE 范围数据" });
+  expect(table.textContent).toContain("2026-09");
+  expect(within(table).getAllByText("123.456789")).toHaveLength(2);
+}
+
+function expectOnlyPceRange(calls: ReturnType<typeof fixture>["calls"]) {
+  const query = calls.find((c) =>
+    c.path.startsWith(`${PCE_PROFILE.basePath}/query?`),
+  );
+  expect(query?.method).toBe("GET");
+  expect(
+    Object.fromEntries(
+      new URL(query!.path, "http://synthetic.invalid").searchParams,
+    ),
+  ).toMatchObject({ start: "2026-09", end: "2026-09" });
+  expect(
+    calls.some((c) =>
+      /\/api\/pce\/(read|assets)|\/api\/r5\/(cpi|ppi)\/timeseries/.test(c.path),
+    ),
+  ).toBe(false);
+}
+
+it("uses PCE range queries after actual CPI asset navigation, refresh and history restoration", async () => {
+  const h = fixture();
+  const transport: Transport = async (input, init) => {
+    const url = new URL(String(input), "http://synthetic.invalid");
+    if (url.pathname === "/api/r5/sources")
+      return response({
+        status: "OK",
+        entries: [CPI, PCE].map((asset) => ({
+          identity: asset === PCE ? PCE_OPERATION : "synthetic-cpi",
+          domain: "Macro",
+          source_name: asset === PCE ? "BEA" : "BLS",
+          component_identity: "synthetic-macro",
+          capability_identity: "synthetic",
+          operation: "synthetic",
+          asset,
+          code_delivery: "DELIVERED",
+          source_contract: null,
+          binding_contract: null,
+        })),
+      });
+    if (url.pathname === "/api/r5/packages")
+      return response({
+        status: "OK",
+        packages: [
+          {
+            package_id: "macro",
+            name: "宏观",
+            history_completeness: "COMPLETE",
+            capabilities: [CPI, PCE].map((asset) => ({
+              title: asset === PCE ? "美国 PCE" : "美国 CPI",
+              definition_ref: asset,
+            })),
+            assets: [CPI, PCE].map((asset) => ({
+              identity: asset.identity,
+              revisions: [
+                {
+                  definition_ref: asset,
+                  capability_enabled: true,
+                  metadata_view_permission: "allowed",
+                  local_holding: "PRESENT",
+                  source_entries: [],
+                  local_read: { allowed: true },
+                  upstream_read: { allowed: true },
+                  collect: { allowed: true },
+                },
+              ],
+            })),
+          },
+        ],
+      });
+    return h.transport(input, init);
+  };
+  location.hash = new URLSearchParams({
+    ui: "r5",
+    view: "assets",
+    asset: CPI.identity,
+    asset_revision: CPI.revision,
+    reference: "2026-08",
+    as_of: "2026-10-30T01:00:00Z",
+  }).toString();
+  const cpiHash = location.hash;
+  let view = render(<App transport={transport} />);
+  await flush();
+  expect(
+    screen.getByRole("heading", { name: "美国 CPI · 范围查询" }),
+  ).toBeTruthy();
+  h.calls.length = 0;
+  fireEvent.click(
+    within(screen.getByRole("region", { name: "数据资产" })).getByRole(
+      "button",
+      { name: /^选择 美国 PCE / },
+    ),
+  );
+  await flush();
+  const pceHash = location.hash;
+  const fields = new URLSearchParams(pceHash.slice(1));
+  expect(fields.get("asset")).toBe(PCE.identity);
+  expect(fields.get("reference")).toBe("2026-07");
+  expect(fields.has("as_of")).toBe(true);
+  expect(fields.has("version")).toBe(false);
+  await queryPceSeptember();
+  expectOnlyPceRange(h.calls);
+
+  // A fresh App reads the same carried fields, as on browser refresh.
+  view.unmount();
+  h.calls.length = 0;
+  view = render(<App transport={transport} />);
+  await flush();
+  await queryPceSeptember();
+  expectOnlyPceRange(h.calls);
+
+  // Replay recorded Back/Forward entries through App's browser event handlers.
+  act(() => {
+    history.replaceState(null, "", cpiHash);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await flush();
+  expect(
+    screen.getByRole("heading", { name: "美国 CPI · 范围查询" }),
+  ).toBeTruthy();
+  h.calls.length = 0;
+  act(() => {
+    history.replaceState(null, "", pceHash);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  });
+  await flush();
+  await queryPceSeptember();
+  expectOnlyPceRange(h.calls);
+  view.unmount();
+});
+
+it("queries September from a direct PCE reference/as_of link without the legacy reader", async () => {
+  const h = fixture();
+  location.hash = new URLSearchParams({
+    ui: "r5",
+    view: "assets",
+    asset: PCE.identity,
+    asset_revision: PCE.revision,
+    reference: "2026-09",
+    as_of: "2026-10-30T01:00:00Z",
+  }).toString();
+  render(<App transport={h.transport} />);
+  await flush();
+  await queryPceSeptember();
+  expectOnlyPceRange(h.calls);
+});
+
 it("uses basket multiselect and an available-time Beijing cutoff without upstream access", async () => {
   const h = fixture();
   render(
@@ -564,16 +727,19 @@ it("uses legacy PCE only for a missing timeseries host and rejects foreign statu
   expect(screen.getByRole("status").textContent).toContain('"data":null');
 });
 
-it.each([
+it.each<[boolean, number, string?]>([
   [false, 404],
   [true, 404],
   [false, 503],
   [true, 503],
   [false, 200],
   [true, 200],
+  [false, 403],
+  [false, 503, "capability_disabled"],
+  [false, 503, ""],
 ])(
-  "preserves the legacy PCE local history/exact deep link (exact=%s, status=%s)",
-  async (exact, statusCode) => {
+  "routes PCE reference/as_of links by availability, retaining explicit versions (exact=%s, status=%s, classification=%s)",
+  async (exact, statusCode, failureClass = "pce_timeseries_not_enabled") => {
     const h = fixture();
     // This constant matches the retained DTO binding; all requests remain in this function.
     const binding: PceBinding = {
@@ -595,13 +761,16 @@ it.each([
     };
     const at = "2026-10-30T01:00:00Z";
     const reads: URL[] = [];
+    const legacyPaths: string[] = [];
     const transport: Transport = async (input, init) => {
       const url = new URL(String(input), "http://synthetic.invalid");
+      if (/^\/api\/pce\/(read|assets)$/.test(url.pathname))
+        legacyPaths.push(url.pathname);
       if (url.pathname === `${PCE_PROFILE.basePath}/status`)
         return statusCode === 200
           ? response(status)
           : response(
-              { classification: "pce_timeseries_not_enabled" },
+              failureClass ? { classification: failureClass } : {},
               statusCode,
             );
       if (url.pathname === "/api/r5/sources")
@@ -682,6 +851,42 @@ it.each([
     }).toString();
     render(<App transport={transport} />);
     await flush();
+    if (
+      !exact &&
+      (statusCode === 403 ||
+        (statusCode === 503 && failureClass !== "pce_timeseries_not_enabled"))
+    ) {
+      expect(
+        screen.getByRole("heading", { name: "美国 PCE · 范围查询" }),
+      ).toBeTruthy();
+      expect(
+        (screen.getByRole("button", { name: "查询数据" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+      expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
+      expect(legacyPaths).toHaveLength(0);
+      expect(h.calls.some((c) => /\/(cpi|ppi)\//.test(c.path))).toBe(false);
+      return;
+    }
+    if (!exact && statusCode === 200) {
+      expect(
+        screen.getByRole("heading", { name: "美国 PCE · 范围查询" }),
+      ).toBeTruthy();
+      expect(reads).toHaveLength(0);
+      expect(legacyPaths).toHaveLength(0);
+      expect(screen.queryByRole("button", { name: "读取本地数据" })).toBeNull();
+      fireEvent.change(screen.getByLabelText("开始月份"), {
+        target: { value: "2026-09" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
+      await flush();
+      expect(
+        screen.getByRole("table", { name: "PCE 范围数据" }).textContent,
+      ).toContain("2026-09");
+      expect(reads).toHaveLength(0);
+      expect(h.calls.some((c) => /\/(cpi|ppi)\//.test(c.path))).toBe(false);
+      return;
+    }
     expect(
       screen.queryByRole("heading", { name: "美国 PCE · 范围查询" }),
     ).toBeNull();

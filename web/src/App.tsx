@@ -292,10 +292,9 @@ export default function App({
     ["assets", "services"].includes(page.view) &&
     sameKey(key, PCE) &&
     (!operation || operation === PCE_OPERATION);
-  const pceLegacyDeepLink =
-    wantsPce &&
-    (page.fields.has("version") ||
-      (page.fields.has("reference") && page.fields.has("as_of")));
+  // Navigation also carries reference/as_of; only an explicit version pins
+  // the compatibility reader when the PCE time-series service is available.
+  const pceExactVersion = wantsPce && page.fields.has("version");
   const pceEvidence = useResource<PceEvidence>(
     async (signal) => {
       const inventory = await pceRequest<PceAssets>(
@@ -324,7 +323,7 @@ export default function App({
     },
     [transport, generation, query, wantsPce, pceCatalog.data, page.view],
     wantsPce &&
-      (pceAvailability.legacy || pceLegacyDeepLink) &&
+      (pceAvailability.legacy || pceExactVersion) &&
       !!pceCatalog.data &&
       !page.invalid,
   );
@@ -378,7 +377,7 @@ export default function App({
     (!sameKey(selectedAsset.key, CPI) || cpiAvailability.legacy) &&
     (sameKey(selectedAsset.key, CPI) ||
       (sameKey(selectedAsset.key, PCE) &&
-        (pceAvailability.legacy || pceLegacyDeepLink))) ? (
+        (pceAvailability.legacy || pceExactVersion))) ? (
       <LocalReader
         key={`${identity}:${revision}:${operation}`}
         catalog={readCatalog}
@@ -575,7 +574,7 @@ export default function App({
                       navigate={navigate}
                       cpi={
                         !macroAvailability.legacy &&
-                        !pceLegacyDeepLink &&
+                        !pceExactVersion &&
                         (!!macroAvailability.data ||
                           !!macroAvailability.failure) &&
                         !invalidIdentity &&
