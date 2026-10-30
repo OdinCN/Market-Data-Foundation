@@ -1,4 +1,4 @@
-"""BEA monthly index ranges; only credential-free Results projections leave here."""
+"""BEA monthly indexes and official changes; credential-free projections only."""
 
 from __future__ import annotations
 
@@ -42,22 +42,31 @@ MAX_RANGE_REQUESTS = 48
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 DEFAULT_REQUEST_CONTROL_PATH = Path("artifacts/pce-timeseries/bea-request-control.json")
 _LINES = {"1": "DPCERG", "25": "DPCCRG"}
+_MOM_LINES = {"1": "DPCERGM", "25": "DPCCRGM"}
+_TABLES = ("T20804", "T20807")
 _SENSITIVE = re.compile(
     r"userid|api.?key|registration.?key|credential|secret|token", re.I
 )
 
 
-def year_windows(start_month, end_month, *, max_requests=MAX_RANGE_REQUESTS):
-    """Conservative five-year BEA batches; not the BLS twenty-year rule."""
+def _validate_range(start_month, end_month):
     validate_month(start_month)
     validate_month(end_month)
     if start_month > end_month:
         raise PceSourceError("pce_timeseries_range_invalid")
+
+
+def year_windows(start_month, end_month, *, max_requests=MAX_RANGE_REQUESTS):
+    """Five-year batches, budgeted as two table requests each, before retries.
+
+    Each table request has its own bounded transport retry allowance.
+    """
+    _validate_range(start_month, end_month)
     if type(max_requests) is not int or not 1 <= max_requests <= MAX_RANGE_REQUESTS:
         raise PceSourceError("pce_timeseries_request_budget_invalid")
     first, last = int(start_month[:4]), int(end_month[:4])
     windows = tuple((year, min(year + 4, last)) for year in range(first, last + 1, 5))
-    if len(windows) > max_requests:
+    if 2 * len(windows) > max_requests:
         raise PceSourceError("pce_timeseries_request_budget_exceeded")
     return windows
 
@@ -100,7 +109,10 @@ def _results(raw, forbidden_secret=None):
     while pending:
         value = pending.pop()
         if isinstance(value, dict):
-            if any(_SENSITIVE.search(k) for k in value):
+            if any(
+                _SENSITIVE.search(k) or k.casefold() in {"request", "requestparam"}
+                for k in value
+            ):
                 raise PceSourceError("pce_timeseries_credential_echo_forbidden")
             pending.extend(value.keys())
             pending.extend(value.values())
@@ -123,16 +135,18 @@ def _results(raw, forbidden_secret=None):
     return results
 
 
-def _parse_results(results, series_ids, start_month, end_month):
-    points, seen = [], set()
+def _parse_rows(results, start_month, end_month, *, table):
+    selected, seen = {}, set()
+    lines = _LINES if table == "T20804" else _MOM_LINES
     for row in results["Data"]:
-        if type(row) is not dict or row.get("TableName") != "T20804":
+        if type(row) is not dict or row.get("TableName") != table:
             raise PceSourceError("pce_timeseries_table_invalid")
         line, series = row.get("LineNumber"), row.get("SeriesCode")
         if type(line) is not str or not line.isdigit() or type(series) is not str:
             raise PceSourceError("pce_timeseries_series_invalid")
-        if (line in _LINES and series != _LINES[line]) or (
-            series in SERIES_IDS and _LINES.get(line) != series
+        if (line in lines and series != lines[line]) or (
+            series in (*_LINES.values(), *_MOM_LINES.values())
+            and lines.get(line) != series
         ):
             raise PceSourceError("pce_timeseries_series_mapping_invalid")
         period = row.get("TimePeriod")
@@ -148,10 +162,10 @@ def _parse_results(results, series_ids, start_month, end_month):
         if key in seen:
             raise PceSourceError("pce_timeseries_duplicate_point")
         seen.add(key)
-        if line not in _LINES:
+        if line not in lines:
             continue  # BEA returns the full NIPA table, including unrelated rows.
         if (
-            row.get("CL_UNIT") != "Level"
+            row.get("CL_UNIT") != ("Level" if table == "T20804" else "Percent change")
             or row.get("UNIT_MULT") != "0"
             or row.get("METRIC_NAME") != "Fisher Price Index"
         ):
@@ -162,38 +176,65 @@ def _parse_results(results, series_ids, start_month, end_month):
         if isinstance(value, str):
             value = value.strip()
         if value in (None, "", "(NA)", "NA", "---", "--", "..."):
-            index = None
+            number = None
         else:
+            classification = (
+                "pce_timeseries_index_invalid"
+                if table == "T20804"
+                else "pce_timeseries_pct_1m_invalid"
+            )
+            sign = "" if table == "T20804" else r"[+-]?"
             if (
                 type(value) is not str
                 or re.fullmatch(
-                    r"(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)(?:\.[0-9]+)?", value
+                    sign + r"(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)(?:\.[0-9]+)?",
+                    value,
                 )
                 is None
             ):
-                raise PceSourceError("pce_timeseries_index_invalid")
+                raise PceSourceError(classification)
             try:
-                index = Decimal(value.replace(",", ""))
+                number = Decimal(value.replace(",", ""))
             except InvalidOperation:
-                raise PceSourceError("pce_timeseries_index_invalid") from None
-            if not index.is_finite() or index <= 0:
-                raise PceSourceError("pce_timeseries_index_invalid")
-        if series in series_ids and start_month <= month <= end_month:
-            metadata = {
-                k: row[k]
-                for k in (
-                    "TableName",
-                    "LineNumber",
-                    "SeriesCode",
-                    "CL_UNIT",
-                    "UNIT_MULT",
-                    "METRIC_NAME",
-                    "LineDescription",
-                    "NoteRef",
-                )
-                if k in row
-            }
-            points.append(SourcePoint(series, month, index, {"bea": metadata}, ()))
+                raise PceSourceError(classification) from None
+            if not number.is_finite() or (table == "T20804" and number <= 0):
+                raise PceSourceError(classification)
+        if start_month <= month <= end_month:
+            selected[(_LINES[line], month)] = (number, row)
+    return selected
+
+
+def _decimal_string(value):
+    # Avoid Decimal.normalize(), which can round to the ambient context precision.
+    if value == 0:
+        return "0"
+    text = format(value, "f")
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def _parse_results(results, series_ids, start_month, end_month, official_results=None):
+    indexes = _parse_rows(results, start_month, end_month, table="T20804")
+    official = (
+        _parse_rows(official_results, start_month, end_month, table="T20807")
+        if official_results is not None
+        else {}
+    )
+    points = []
+    for (series, month), (index, row) in indexes.items():
+        if series not in series_ids:
+            continue
+        calculations, notes = {}, {}
+        if row.get("NoteRef"):
+            notes["NoteRef"] = row["NoteRef"]
+        if (series, month) in official:
+            change, official_row = official[(series, month)]
+            if change is not None:
+                calculations["bea_pct_1m"] = _decimal_string(change)
+            if official_row.get("NoteRef"):
+                notes["pct_1m"] = {"NoteRef": official_row["NoteRef"]}
+        if notes:
+            calculations["bea"] = notes
+        points.append(SourcePoint(series, month, index, calculations, ()))
     return tuple(sorted(points, key=lambda p: (p.series_id, p.month)))
 
 
@@ -203,16 +244,20 @@ def parse_response(
     start_month,
     end_month,
     *,
+    official_raw=None,
     forbidden_secret=None,
     profile=PCE_PROFILE,
 ):
     if profile is not PCE_PROFILE:
         raise PceSourceError("pce_timeseries_profile_mismatch")
     _series(series_ids, profile=profile)
-    year_windows(start_month, end_month)
-    return _parse_results(
-        _results(raw, forbidden_secret), series_ids, start_month, end_month
+    # Retained parsing consumes no request budget, including index-only callers.
+    _validate_range(start_month, end_month)
+    results = _results(raw, forbidden_secret)
+    official_results = (
+        _results(official_raw, forbidden_secret) if official_raw is not None else None
     )
+    return _parse_results(results, series_ids, start_month, end_month, official_results)
 
 
 class BeaRequestControl:
@@ -379,6 +424,7 @@ class BeaRangeSource:
         )
 
     def plan_windows(self, start_month, end_month):
+        """Return logical windows within the budget of two table reads per window."""
         return year_windows(start_month, end_month, max_requests=self._max_requests)
 
     def _request(self, body):
@@ -452,21 +498,34 @@ class BeaRangeSource:
                 "ResultFormat": "JSON",
             }
             try:
-                response, attempts = self._request(
-                    urlencode({**params, "UserID": key}).encode("ascii")
-                )
-                total_attempts += attempts
-                if any(
-                    k.lower() == "content-encoding" and v.lower() != "identity"
-                    for k, v in response.headers.items()
-                ):
-                    raise PceSourceError("pce_timeseries_content_encoding_rejected")
-                results = _results(response.body, key)
+                requests, table_results, batch_attempts = [], [], 0
+                for table in _TABLES:
+                    safe_params = {**params, "TableName": table}
+                    requests.append(safe_params)
+                    try:
+                        response, attempts = self._request(
+                            urlencode({**safe_params, "UserID": key}).encode("ascii")
+                        )
+                    except PceSourceError as error:
+                        # Failed requests report only their own wire attempts;
+                        # successful requests have already been counted below.
+                        total_attempts += error.attempts
+                        raise
+                    total_attempts += attempts
+                    batch_attempts += attempts
+                    if any(
+                        k.lower() == "content-encoding" and v.lower() != "identity"
+                        for k, v in response.headers.items()
+                    ):
+                        raise PceSourceError("pce_timeseries_content_encoding_rejected")
+                    table_results.append(_results(response.body, key))
+                results, official_results = table_results
                 points = _parse_results(
                     results,
                     series_ids,
                     max(start_month, f"{first:04d}-01"),
                     min(end_month, f"{last:04d}-12"),
+                    official_results,
                 )
                 observed = self._clock()
                 if not isinstance(observed, datetime) or observed.utcoffset() is None:
@@ -476,6 +535,10 @@ class BeaRangeSource:
                         "retention_class": "credential_free_bea_results_projection",
                         "exact_original_retained": False,
                         "Results": results,
+                        "official_mom": {
+                            "TableName": "T20807",
+                            "Results": official_results,
+                        },
                     },
                     sort_keys=True,
                     separators=(",", ":"),
@@ -483,18 +546,20 @@ class BeaRangeSource:
                 ).encode()
                 request = {
                     **params,
+                    "requests": requests,
+                    "request_count": 2,
                     "provider": "BEA",
                     "seriesid": list(series_ids),
                     "retention_class": "credential_free_bea_results_projection",
                     "exact_original_retained": False,
                 }
                 batches.append(
-                    SourceBatch(points, projection, request, observed, attempts)
+                    SourceBatch(points, projection, request, observed, batch_attempts)
                 )
             except PceSourceError as error:
                 raise PceSourceError(
                     error.classification,
-                    total_attempts + (error.attempts if error.attempts else 0),
+                    total_attempts,
                     http_status=error.http_status,
                     retry_at=error.retry_at,
                 ) from None

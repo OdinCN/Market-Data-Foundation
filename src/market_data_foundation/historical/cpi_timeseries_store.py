@@ -31,6 +31,9 @@ from market_data_foundation.historical.bls_timeseries_profile import (
     PCE_PROFILE,
     validate_profile,
 )
+from market_data_foundation.historical.pce_timeseries_metadata import (
+    compact_pce_metadata,
+)
 from market_data_foundation.storage.market_dataset_garage import _transport
 
 SCHEMA = CPI_PROFILE.schema
@@ -84,7 +87,7 @@ def batch_identity(batch):
 
 def _point_document(point, batch, revision, *, profile=CPI_PROFILE):
     profile = validate_profile(profile)
-    return {
+    document = {
         "series_id": point.series_id,
         "month": point.month,
         **_content(point),
@@ -96,6 +99,13 @@ def _point_document(point, batch, revision, *, profile=CPI_PROFILE):
         "version_status": "active",
         "evidence_url": None,
     }
+    if profile is PCE_PROFILE:
+        values = _relational_content(point, profile=profile)
+        document["bea_pct_1m"] = None if values[1] is None else str(values[1])
+        document["provider_calculations"] = _provider_calculations(
+            values[1:2], values[2], profile=profile
+        )
+    return document
 
 
 PCT_PERIODS = ("1", "3", "6", "12")
@@ -104,6 +114,56 @@ VALUE_COLUMNS = (
 )
 EVENT_COLUMNS = "available_at,version_status,evidence_url"
 REVISION_COLUMNS = "series_id,month,revision,observed_at,batch_id," + VALUE_COLUMNS
+
+
+def _percent_columns(profile=CPI_PROFILE):
+    profile = validate_profile(profile)
+    return (
+        ("bea_pct_1m",)
+        if profile is PCE_PROFILE
+        else tuple(f"bls_pct_{k}m" for k in PCT_PERIODS)
+    )
+
+
+def _value_columns(profile=CPI_PROFILE):
+    return ",".join(
+        ("index_value", *_percent_columns(profile), "provider_extra", "footnotes")
+    )
+
+
+def _revision_columns(profile=CPI_PROFILE):
+    return "series_id,month,revision,observed_at,batch_id," + _value_columns(profile)
+
+
+def _revision_shape(profile=CPI_PROFILE):
+    return {
+        "series_id": "text",
+        "month": "date",
+        "revision": "integer",
+        "observed_at": "timestamp with time zone",
+        "batch_id": "text",
+        "index_value": "numeric",
+        **dict.fromkeys(_percent_columns(profile), "numeric"),
+        "provider_extra": "jsonb",
+        "footnotes": "jsonb",
+        "available_at": "timestamp with time zone",
+        "version_status": "text",
+        "evidence_url": "text",
+    }
+
+
+def _check_pce_partial(old_values, values, *, profile, state):
+    # Reject an ambiguous partial refresh instead of attributing an old official
+    # value to a new response. Changed indices and explicit withdrawals may be NULL.
+    if (
+        profile is PCE_PROFILE
+        and state == "active"
+        and old_values is not None
+        and old_values[0] == values[0]
+        and old_values[1] is not None
+        and values[1] is None
+    ):
+        raise CpiStorageError("pce_timeseries_official_percent_missing_unchanged_index")
 
 
 def _month_date(month):
@@ -122,10 +182,22 @@ def _numeric(value):
     return number
 
 
-def _relational_content(point):
+def _relational_content(point, *, profile=CPI_PROFILE):
     # Only fixed CPI percent changes become numeric columns. Any other provider
     # attributes remain losslessly in the optional, nonduplicating supplement.
     extra = copy.deepcopy(point.provider_calculations)
+    if validate_profile(profile) is PCE_PROFILE:
+        value = extra.pop("bea_pct_1m", None)
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal))
+        ):
+            raise CpiStorageError("pce_timeseries_official_percent_invalid")
+        return (
+            point.index_value,
+            _numeric(value),
+            compact_pce_metadata(extra, series_id=point.series_id),
+            list(point.footnotes),
+        )
     changes = extra.get("pct_changes", {})
     values = []
     for period in PCT_PERIODS:
@@ -148,7 +220,12 @@ def _relational_content(point):
     return (point.index_value, *values, extra or None, list(point.footnotes))
 
 
-def _provider_calculations(values, extra):
+def _provider_calculations(values, extra, *, profile=CPI_PROFILE):
+    if validate_profile(profile) is PCE_PROFILE:
+        result = copy.deepcopy(extra or {})
+        if values[0] is not None:
+            result["bea_pct_1m"] = str(values[0])
+        return result
     if not extra and all(value is None for value in values):
         return {}
     result = {"net_changes": {}, "pct_changes": {}}
@@ -166,11 +243,14 @@ def _provider_calculations(values, extra):
 def _row_document(row, *, profile=CPI_PROFILE):
     profile = validate_profile(profile)
     series, month, revision, observed_at, batch_id, index, *rest = row
-    pcts, extra, footnotes, raw_sha = rest[:4], rest[4], rest[5], rest[6]
+    count = len(_percent_columns(profile))
+    pcts, extra, footnotes, raw_sha = rest[:count], *rest[count : count + 3]
     available_at, version_status, evidence_url = (
-        rest[7:10] if len(rest) >= 10 else (None, "active", None)
+        rest[count + 3 : count + 6]
+        if len(rest) >= count + 6
+        else (None, "active", None)
     )
-    return {
+    document = {
         "available_at": None if available_at is None else available_at.isoformat(),
         "version_status": version_status,
         "evidence_url": evidence_url,
@@ -186,16 +266,21 @@ def _row_document(row, *, profile=CPI_PROFILE):
             if index is None
             else "available"
         ),
-        "provider_calculations": _provider_calculations(pcts, extra),
+        "provider_calculations": _provider_calculations(pcts, extra, profile=profile),
         "footnotes": footnotes,
         "raw_sha256": raw_sha,
         "raw_locator": raw_locator(raw_sha, profile=profile),
     }
+    if profile is PCE_PROFILE:
+        document["bea_pct_1m"] = None if pcts[0] is None else str(pcts[0])
+    return document
 
 
 def _latest_view_sql(*, event_columns=False, profile=CPI_PROFILE):
     profile = validate_profile(profile)
-    columns = REVISION_COLUMNS + ("," + EVENT_COLUMNS if event_columns else "")
+    columns = _revision_columns(profile) + (
+        "," + EVENT_COLUMNS if event_columns else ""
+    )
     return f"""CREATE OR REPLACE VIEW {profile.schema}.latest AS
         SELECT DISTINCT ON (series_id,month) {columns}
         FROM {profile.schema}.revisions
@@ -205,6 +290,9 @@ def _latest_view_sql(*, event_columns=False, profile=CPI_PROFILE):
 def _revision_ddl(*, profile=CPI_PROFILE):
     profile = validate_profile(profile)
     admitted = ",".join("'" + series + "'" for series in profile.series_ids)
+    percents = ",\n        ".join(
+        name + " numeric" for name in _percent_columns(profile)
+    )
     return f"""CREATE TABLE IF NOT EXISTS {profile.schema}.revisions (
         series_id text NOT NULL CHECK(series_id IN ({admitted})),
         month date NOT NULL CHECK(EXTRACT(DAY FROM month)=1),
@@ -213,10 +301,7 @@ def _revision_ddl(*, profile=CPI_PROFILE):
         batch_id text NOT NULL REFERENCES {profile.schema}.batches(batch_id),
         index_value numeric CHECK(index_value > 0 AND index_value != 'NaN'::numeric
             AND index_value != 'Infinity'::numeric),
-        bls_pct_1m numeric,
-        bls_pct_3m numeric,
-        bls_pct_6m numeric,
-        bls_pct_12m numeric,
+        {percents},
         provider_extra jsonb,
         footnotes jsonb NOT NULL CHECK(jsonb_typeof(footnotes)='array'),
         available_at timestamptz,
@@ -547,7 +632,6 @@ class PostgresTimeSeriesStore:
                     )
                 elif kind != ("v",):
                     raise CpiStorageError("cpi_timeseries_schema_migration_required")
-                self.connection.execute(_rates_view_sql(profile=self.profile))
                 rows = self.connection.execute(
                     "SELECT table_name,column_name,data_type "
                     "FROM information_schema.columns "
@@ -555,23 +639,7 @@ class PostgresTimeSeriesStore:
                     "AND table_name IN ('batches','revisions','latest')",
                     (self.profile.schema,),
                 ).fetchall()
-                revisions = {
-                    "series_id": "text",
-                    "month": "date",
-                    "revision": "integer",
-                    "observed_at": "timestamp with time zone",
-                    "batch_id": "text",
-                    "index_value": "numeric",
-                    "bls_pct_1m": "numeric",
-                    "bls_pct_3m": "numeric",
-                    "bls_pct_6m": "numeric",
-                    "bls_pct_12m": "numeric",
-                    "provider_extra": "jsonb",
-                    "footnotes": "jsonb",
-                    "available_at": "timestamp with time zone",
-                    "version_status": "text",
-                    "evidence_url": "text",
-                }
+                revisions = _revision_shape(self.profile)
                 expected = {
                     "batches": {
                         "batch_id": "text",
@@ -588,6 +656,7 @@ class PostgresTimeSeriesStore:
                     actual[table][column] = data_type
                 if actual != expected:
                     raise CpiStorageError("cpi_timeseries_schema_shape_mismatch")
+                self.connection.execute(_rates_view_sql(profile=self.profile))
         except CpiStorageError:
             raise
         except Exception:
@@ -598,7 +667,9 @@ class PostgresTimeSeriesStore:
     ):
         _validate_series(series_ids, profile=self.profile)
         try:
-            fields = ",".join("r." + name for name in REVISION_COLUMNS.split(","))
+            fields = ",".join(
+                "r." + name for name in _revision_columns(self.profile).split(",")
+            )
             params = (
                 list(series_ids),
                 _month_date(start_month),
@@ -752,9 +823,10 @@ class PostgresTimeSeriesStore:
                         ),
                     )
                     for point in batch.points:
-                        values = _relational_content(point)
+                        values = _relational_content(point, profile=self.profile)
                         old = self.connection.execute(
-                            f"SELECT revision,observed_at,{VALUE_COLUMNS},"
+                            "SELECT revision,observed_at,"
+                            f"{_value_columns(self.profile)},"
                             "version_status "
                             f"FROM {self.profile.schema}.revisions "
                             "WHERE series_id=%s AND month=%s "
@@ -768,6 +840,12 @@ class PostgresTimeSeriesStore:
                             or not _restoration_matches(point, expected)
                         ):
                             continue
+                        _check_pce_partial(
+                            None if old is None else old[2:-1],
+                            values,
+                            profile=self.profile,
+                            state=state,
+                        )
                         if (
                             old is not None
                             and old_state == state
@@ -785,16 +863,17 @@ class PostgresTimeSeriesStore:
                             revision,
                             batch.observed_at,
                             bid,
-                            *values[:5],
-                            Jsonb(values[5]) if values[5] is not None else None,
-                            Jsonb(values[6]),
+                            *values[:-2],
+                            Jsonb(values[-2]) if values[-2] is not None else None,
+                            Jsonb(values[-1]),
                             state,
                             evidence,
                         )
                         self.connection.execute(
                             f"INSERT INTO {self.profile.schema}.revisions "
-                            f"({REVISION_COLUMNS},version_status,evidence_url) "
-                            "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                            f"({_revision_columns(self.profile)},"
+                            "version_status,evidence_url) "
+                            f"VALUES({','.join(['%s'] * len(parameters))})",
                             parameters,
                         )
                         inserted.append(
@@ -966,18 +1045,24 @@ class InMemoryTimeSeriesStore:
                     or not _restoration_matches(point, expected)
                 ):
                     continue
-                if (
-                    rows
-                    and old_state == state
-                    and _relational_content(
+                values = _relational_content(point, profile=self.profile)
+                old_values = (
+                    _relational_content(
                         SimpleNamespace(
+                            series_id=point.series_id,
                             index_value=_numeric(rows[-1]["index_value"]),
                             provider_calculations=rows[-1]["provider_calculations"],
                             footnotes=rows[-1]["footnotes"],
-                        )
+                        ),
+                        profile=self.profile,
                     )
-                    == _relational_content(point)
-                ):
+                    if rows
+                    else None
+                )
+                _check_pce_partial(
+                    old_values, values, profile=self.profile, state=state
+                )
+                if rows and old_state == state and old_values == values:
                     continue
                 if rows and batch.observed_at <= datetime.fromisoformat(
                     rows[-1]["observed_at"]

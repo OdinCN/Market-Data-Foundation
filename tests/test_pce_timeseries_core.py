@@ -28,12 +28,13 @@ def test_twenty_year_init_with_buffer_and_idempotence():
     service = PceTimeSeriesService(store, source(wire))
     result = service.init_range("2006-10", "2026-09")
     assert result["complete"] and result["saved_points"] == 504
-    assert len(result["points"]) == 480 and len(wire.calls) == 5
+    assert len(result["points"]) == 480 and len(wire.calls) == 10
+    assert result["provider_requests"] == result["provider_attempts"] == 10
     assert not result["calculation_missing"]
     assert store.status()["schema"] == "mdf_pce_timeseries_dev_r1"
     assert set(store.status()["latest_months"]) == {"DPCERG", "DPCCRG"}
     repeated = service.init_range("2006-10", "2026-09")
-    assert repeated["saved_points"] == 0 and len(wire.calls) == 5
+    assert repeated["saved_points"] == 0 and len(wire.calls) == 10
     assert {p["indicator"] for p in result["points"]} == {"headline", "core"}
     assert all(
         p["seasonal_adjustment"] == "SA" and p["provider"] == "BEA"

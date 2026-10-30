@@ -403,7 +403,7 @@ class CpiTimeSeriesService:
                             )
                         )
                         for _, first, last in requests
-                    )
+                    ) * (2 if self.profile is PCE_PROFILE else 1)
                     if count > getattr(
                         self.source, "max_range_requests", MAX_RANGE_REQUESTS
                     ):
@@ -647,7 +647,9 @@ class CpiTimeSeriesService:
             "withdrawn": withdrawn,
             "calculation_missing": calculation_missing,
             "persisted": persist,
-            "provider_requests": len(batches),
+            "provider_requests": sum(
+                b.request.get("request_count", 1) for b in batches
+            ),
             "provider_attempts": sum(b.attempts for b in batches),
             "source_request_count": sum(b.attempts for b in batches),
             "source_returned_series_months": [
@@ -681,6 +683,15 @@ class CpiTimeSeriesService:
             result["units"] = {
                 k: v for k, v in result["units"].items() if not k.startswith("bls_")
             }
+            result["units"]["bea_pct_1m"] = "percent"
+            result["official_calculation_method"] = (
+                "bea_pct_1m is the BEA T20807 published monthly percent change; "
+                "0.3 means 0.3%; nullable when BEA did not supply a value or the "
+                "historical official value has not yet been collected. NULL never "
+                "means 0. coverage_complete describes index coverage only and "
+                "does not assert complete official monthly percent coverage. "
+                "mom_pct/yoy_pct and change_km_ratio remain derived from T20804."
+            )
         if persist:
             result.update(saved)
         return result
