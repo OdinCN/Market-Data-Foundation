@@ -517,7 +517,12 @@ function CpiTimeSeriesCollectionContent({
                     <div>
                       <dt>结果</dt>
                       <dd>
-                        {cpiExecutionStateText(job.state, job.result, profile)}
+                        {cpiExecutionStateText(
+                          job.state,
+                          job.result,
+                          profile,
+                          job,
+                        )}
                         {job.classification ? ` · ${job.classification}` : ""}
                       </dd>
                     </div>

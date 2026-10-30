@@ -1,3 +1,4 @@
+import { MacroSourceCoverage, coverageEvidence } from "./MacroSourceCoverage";
 import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
@@ -5,6 +6,7 @@ import { formatBeijingTime } from "./beijingTime";
 import { Fact, WorkflowTable } from "./WorkflowTable";
 import { useVisiblePolling } from "./useVisiblePolling";
 import {
+  monthValid,
   cpiRequest,
   readCpiStrategy,
   saveCpiStrategy,
@@ -47,57 +49,40 @@ export const cpiStateText = (value?: string | null) =>
 export function cpiExecutionStateText(
   state: string | undefined,
   result: Record<string, unknown> | null | undefined,
-  profile: MacroProfile = CPI_PROFILE,
+  _profile: MacroProfile = CPI_PROFILE,
+  scope: { start?: string | null; end?: string | null } = {},
 ) {
-  return profile.id === "ppi" &&
-    state === "complete" &&
-    (result?.coverage_complete === false ||
-      result?.completion === "source_coverage_partial")
-    ? "已完成（来源有缺口）"
-    : cpiStateText(state);
-}
-function SourceCoverage({
-  result,
-}: {
-  result: CpiExecution["result"] | undefined;
-}) {
-  const readback = result?.readback;
-  if (!result) return null;
-  const data =
-    readback && typeof readback === "object"
-      ? { ...(readback as Record<string, unknown>), ...result }
-      : result;
-  const groups = [
-    ["missing", "回读缺口"],
-    ["source_missing", "来源未提供"],
-    ["source_unavailable", "官方 null"],
-  ] as const;
-  return (
-    <>
-      {typeof data.source_unavailable_count === "number" && (
-        <p>官方 null 总数：{data.source_unavailable_count}</p>
-      )}
-      {groups.map(([key, label]) => {
-        const points = data[key];
-        if (!Array.isArray(points)) return null;
-        return (
-          <details key={key}>
-            <summary>
-              {label}：{points.length} 个（最多展示 50 个）
-            </summary>
-            <ul>
-              {points.slice(0, 50).map((point, index) => (
-                <li key={index}>
-                  {point.series_id} · {point.month}
-                </li>
-              ))}
-            </ul>
-          </details>
-        );
-      })}
-    </>
+  const { data, missing, absent, nulls } = coverageEvidence(result);
+  if (!["complete", "succeeded"].includes(state ?? ""))
+    return cpiStateText(state);
+  const rangeKnown =
+    monthValid(scope.start) &&
+    monthValid(scope.end) &&
+    scope.start <= scope.end;
+  const inScope = (p: { month: string }) =>
+    !rangeKnown || (p.month >= scope.start! && p.month <= scope.end!);
+  const nullKeys = new Set(nulls.map((p) => `${p.series_id}:${p.month}`));
+  const sourceKeys = new Set(
+    absent
+      .filter(inScope)
+      .filter((p) => !nullKeys.has(`${p.series_id}:${p.month}`))
+      .map((p) => `${p.series_id}:${p.month}`),
   );
+  if (
+    missing
+      .filter(inScope)
+      .some((p) => !sourceKeys.has(`${p.series_id}:${p.month}`))
+  )
+    return "已完成（存在缺口）";
+  // Explicit nulls count as covered; retain actual readback gaps as evidence.
+  if (data.coverage_complete === true && !missing.some(inScope))
+    return cpiStateText(state);
+  if (sourceKeys.size > 0 || data.completion === "source_coverage_partial")
+    return "已完成（来源有缺口）";
+  if (data.coverage_complete === false) return "已完成（存在缺口）";
+  return cpiStateText(state);
 }
+
 export const cpiActionText = (value: string) =>
   ({
     initialize: "初始化采集",
@@ -111,6 +96,8 @@ export const cpiActionText = (value: string) =>
   })[value.startsWith("signal:") ? "signal" : value] ?? "尚未核实";
 type Stage = {
   state?: string;
+  update_start?: string;
+  update_end?: string;
   coverage_complete?: boolean;
   source_missing?: { series_id: string; month: string; reason?: string }[];
   next_attempt_at?: string | null;
@@ -159,7 +146,6 @@ function ResultFacts({
     provider_attempts: "来源尝试",
     scheduler_attempts_total: "累计调度尝试",
     actual_http_total: "累计实际请求",
-    coverage_complete: "范围覆盖",
   };
   const entries = Object.entries(labels).filter(
     ([key]) => result[key] !== undefined,
@@ -178,9 +164,7 @@ function ResultFacts({
         </Fact>
       ))}
     </dl>
-  ) : (
-    <p>无已记录的结果摘要</p>
-  );
+  ) : null;
 }
 export function CpiExecutionDetail({
   execution: e,
@@ -222,12 +206,17 @@ export function CpiExecutionDetail({
           {formatBeijingTime(e.finished_at, "未记录")}
         </Fact>
         <Fact name="执行结果">
-          {cpiExecutionStateText(e.state, e.result, profile)}
+          {cpiExecutionStateText(e.state, e.result, profile, e)}
         </Fact>
         {e.classification && <Fact name="结果分类">{e.classification}</Fact>}
       </dl>
       <ResultFacts result={e.result} />
-      {profile.id === "ppi" && <SourceCoverage result={e.result} />}
+      <MacroSourceCoverage
+        key={e.id}
+        result={e.result}
+        start={e.start}
+        end={e.end}
+      />
     </>
   );
 }
@@ -561,6 +550,7 @@ function CpiStrategyWorkbenchContent({
               </dl>
             )}
             <ResultFacts result={data.last_result} />
+            <MacroSourceCoverage result={data.last_result} />
             <h4>月份计划与执行结果</h4>
             <p className="small">
               时间基准：北京时间（UTC+08:00）。计划时间不代表已经执行。
@@ -614,6 +604,11 @@ function CpiStrategyWorkbenchContent({
                       <ResultFacts
                         result={target.target?.result ?? target.result}
                       />
+                      <MacroSourceCoverage
+                        result={target.target?.result ?? target.result}
+                        start={target.reference_month}
+                        end={target.reference_month}
+                      />
                       {(target.auto?.classification ??
                         target.target?.classification) && (
                         <p>
@@ -638,6 +633,10 @@ function CpiStrategyWorkbenchContent({
                               target.history?.state,
                               target.history,
                               profile,
+                              {
+                                start: target.history?.update_start,
+                                end: target.history?.update_end,
+                              },
                             )}
                       </span>
                     </div>
@@ -654,10 +653,14 @@ function CpiStrategyWorkbenchContent({
                           {calendarTime(target.history?.next_attempt_at)}
                         </time>
                       </p>
-                      <ResultFacts result={target.history?.result} />
-                      {profile.id === "ppi" && (
-                        <SourceCoverage result={target.history} />
-                      )}
+                      <ResultFacts
+                        result={target.history?.result ?? target.history}
+                      />
+                      <MacroSourceCoverage
+                        result={target.history}
+                        start={target.history?.update_start}
+                        end={target.history?.update_end}
+                      />
                       {target.history?.classification && (
                         <p>{target.history.classification}</p>
                       )}

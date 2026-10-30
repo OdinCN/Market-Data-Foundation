@@ -1419,7 +1419,7 @@ export function CollectionWorkbench({
               })),
               ...macroRecords.map((e) => ({
                 id: e.rowId,
-                search: `${e.id} 美国 ${e.profile.label} ${e.origin === "automatic" ? "自动策略" : "手动采集"} ${cpiActionText(e.origin === "automatic" ? (e.stage ?? e.action) : e.action)} ${e.start ?? ""} ${e.end ?? ""} ${cpiExecutionStateText(e.state, e.result, e.profile)}`,
+                search: `${e.id} 美国 ${e.profile.label} ${e.origin === "automatic" ? "自动策略" : "手动采集"} ${cpiActionText(e.origin === "automatic" ? (e.stage ?? e.action) : e.action)} ${e.start ?? ""} ${e.end ?? ""} ${cpiExecutionStateText(e.state, e.result, e.profile, e)}`,
                 cells: [
                   `${e.profile.label} · ${e.origin === "automatic" ? "自动阶段 · " : ""}${cpiActionText(e.origin === "automatic" ? (e.stage ?? e.action) : e.action)}`,
                   <ExecutionCreatedAt value={e.created_at} />,
@@ -1429,7 +1429,7 @@ export function CollectionWorkbench({
                     <span>{e.end ?? "未记录"}</span>
                   </span>,
                   <span className="execution-result">
-                    {cpiExecutionStateText(e.state, e.result, e.profile)}
+                    {cpiExecutionStateText(e.state, e.result, e.profile, e)}
                   </span>,
                 ],
               })),

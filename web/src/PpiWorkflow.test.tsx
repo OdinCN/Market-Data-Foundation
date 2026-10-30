@@ -832,10 +832,13 @@ it("renders a complete PPI collection with source gaps in brief, row and detail"
     screen.getByRole("complementary", { name: "执行记录详情" }),
   );
   expect(detail.getByText("已完成（来源有缺口）")).toBeTruthy();
-  expect(detail.getByText("存在缺口")).toBeTruthy();
-  expect(detail.getByText("来源未提供：1 个（最多展示 50 个）")).toBeTruthy();
-  expect(detail.getByText("官方 null 总数：1")).toBeTruthy();
-  expect(detail.getAllByText("WPSFD4 · 2026-09")).toHaveLength(2);
+  expect(
+    detail.getByText("范围覆盖：3 / 4 条，来源未返回 1 条，来源空值 1 条。"),
+  ).toBeTruthy();
+  expect(detail.getByText("查看缺口明细").closest("details")?.open).toBe(false);
+  expect(detail.getByText("请求范围：2 条")).toBeTruthy();
+  expect(detail.queryByText(/官方 null/)).toBeNull();
+  expect(detail.getAllByText("WPSFD4 · 2026-09")).toHaveLength(1);
   expect(detail.getByText("WPUFD4 · 2026-09")).toBeTruthy();
   expect(detail.queryByText("完整")).toBeNull();
 });
@@ -901,96 +904,201 @@ for (const assetKey of [CPI, PPI, null]) {
   }
 }
 
-it("shows automatic PPI history source gaps in the calendar and execution without readback", async () => {
-  const h = fixture();
-  const partial = {
-    coverage_complete: false,
-    source_missing: [
-      { series_id: "WPSFD4", month: "2026-09", reason: "not_provided" },
-      { series_id: "WPUFD4", month: "2026-08" },
-    ],
-  };
-  const transport: Transport = async (input, init) => {
-    if (String(input) === `${PPI_PROFILE.basePath}/schedule`)
-      return response({
-        calendar_status: "fresh",
-        targets: [
-          {
-            reference_month: "2026-09",
-            release_at: "2026-10-14T12:30:00Z",
-            target: { state: "complete" },
-            history: { state: "complete", ...partial },
-          },
-        ],
-      });
-    if (String(input) === `${PPI_PROFILE.basePath}/executions`)
-      return response({
-        executions: [
-          {
-            id: "ppi-auto-partial",
-            origin: "automatic",
-            action: "update",
-            stage: "history",
-            reference_month: "2026-09",
-            start: "2009-11",
-            end: "2026-09",
-            created_at: null,
-            started_at: "2026-10-14T13:00:00Z",
-            finished_at: "2026-10-14T13:01:00Z",
-            state: "complete",
-            classification: null,
-            result: {
-              summary_scope: "latest_stage_attempt",
-              scheduler_attempts_total: 1,
-              ...partial,
+it.each([CPI_PROFILE, PPI_PROFILE])(
+  "shows automatic $label history source gaps in the calendar and execution without readback",
+  async (profile) => {
+    const h = fixture();
+    const partial = {
+      coverage_complete: false,
+      source_missing: [
+        {
+          series_id: profile.series[0][0],
+          month: "2026-09",
+          reason: "not_provided",
+        },
+        { series_id: profile.series[1][0], month: "2026-08" },
+      ],
+    };
+    const transport: Transport = async (input, init) => {
+      if (String(input) === `${profile.basePath}/schedule`)
+        return response({
+          calendar_status: "fresh",
+          targets: [
+            {
+              reference_month: "2026-09",
+              release_at: "2026-10-14T12:30:00Z",
+              target: { state: "complete" },
+              history: { state: "complete", ...partial },
             },
-          },
-        ],
-      });
-    return h.transport(input, init);
-  };
-  const strategy = render(
-    <CpiStrategyWorkbench
-      transport={transport}
-      availability={availability(CPI_PROFILE)}
-      additionalProfile={PPI_PROFILE}
-      additionalAvailability={availability()}
-    />,
-  );
-  await flush();
-  fireEvent.click(
-    within(screen.getByText("美国 PPI").closest("tr")!).getByRole("button", {
-      name: /^选择/,
-    }),
-  );
-  await flush();
-  const calendar = within(screen.getByRole("list", { name: "PPI 月份计划" }));
-  expect(calendar.getByText("已完成（来源有缺口）")).toBeTruthy();
-  expect(calendar.getByText("来源未提供：2 个（最多展示 50 个）")).toBeTruthy();
-  expect(calendar.getByText("WPSFD4 · 2026-09")).toBeTruthy();
-  expect(calendar.getByText("WPUFD4 · 2026-08")).toBeTruthy();
-  expect(calendar.queryByText("完整")).toBeNull();
-  strategy.unmount();
-  render(<Workbench transport={transport} tab="executions" />);
-  await flush();
-  const list = within(screen.getByRole("region", { name: "执行记录" }));
-  expect(list.getByText("已完成（来源有缺口）")).toBeTruthy();
-  fireEvent.click(
-    list.getByRole("button", { name: /选择 ppi-auto-partial 美国 PPI/ }),
-  );
-  await flush();
-  const detail = within(
-    screen.getByRole("complementary", { name: "执行记录详情" }),
-  );
-  expect(detail.getByText("已完成（来源有缺口）")).toBeTruthy();
-  expect(detail.getByText("存在缺口")).toBeTruthy();
-  expect(detail.getByText("来源未提供：2 个（最多展示 50 个）")).toBeTruthy();
-  expect(detail.getByText("WPSFD4 · 2026-09")).toBeTruthy();
-  expect(detail.getByText("WPUFD4 · 2026-08")).toBeTruthy();
-  expect(detail.queryByText("完整")).toBeNull();
-  expect(detail.queryByText(/回读缺口/)).toBeNull();
-  expect(detail.queryByText(/官方 null/)).toBeNull();
-});
+          ],
+        });
+      if (String(input) === `${profile.basePath}/executions`)
+        return response({
+          executions: [
+            {
+              id: "ppi-auto-partial",
+              origin: "automatic",
+              action: "update",
+              stage: "history",
+              reference_month: "2026-09",
+              start: "2009-11",
+              end: "2026-09",
+              created_at: null,
+              started_at: "2026-10-14T13:00:00Z",
+              finished_at: "2026-10-14T13:01:00Z",
+              state: "complete",
+              classification: null,
+              result: {
+                summary_scope: "latest_stage_attempt",
+                scheduler_attempts_total: 1,
+                ...partial,
+              },
+            },
+          ],
+        });
+      return h.transport(input, init);
+    };
+    const strategy = render(
+      <CpiStrategyWorkbench
+        transport={transport}
+        availability={availability(CPI_PROFILE)}
+        additionalProfile={PPI_PROFILE}
+        additionalAvailability={availability()}
+      />,
+    );
+    await flush();
+    fireEvent.click(
+      within(
+        screen.getByText(`美国 ${profile.label}`).closest("tr")!,
+      ).getByRole("button", {
+        name: /^选择/,
+      }),
+    );
+    await flush();
+    const calendar = within(
+      screen.getByRole("list", { name: `${profile.label} 月份计划` }),
+    );
+    expect(calendar.getByText("已完成（来源有缺口）")).toBeTruthy();
+    expect(
+      calendar.getByText("范围未记录，无法区分请求范围与计算缓冲期：2 条"),
+    ).toBeTruthy();
+    expect(calendar.getByText("范围覆盖：有缺口（数量未记录）。")).toBeTruthy();
+    expect(
+      calendar.getByText(`${profile.series[0][0]} · 2026-09`),
+    ).toBeTruthy();
+    expect(
+      calendar.getByText(`${profile.series[1][0]} · 2026-08`),
+    ).toBeTruthy();
+    expect(calendar.queryByText("完整")).toBeNull();
+    strategy.unmount();
+    render(
+      <Workbench
+        transport={transport}
+        tab="executions"
+        assetKey={profile.asset}
+      />,
+    );
+    await flush();
+    const list = within(screen.getByRole("region", { name: "执行记录" }));
+    expect(list.getByText("已完成（来源有缺口）")).toBeTruthy();
+    fireEvent.click(
+      list.getByRole("button", {
+        name: new RegExp(`选择 ppi-auto-partial 美国 ${profile.label}`),
+      }),
+    );
+    await flush();
+    const detail = within(
+      screen.getByRole("complementary", { name: "执行记录详情" }),
+    );
+    expect(detail.getByText("已完成（来源有缺口）")).toBeTruthy();
+    expect(
+      detail.getByText("范围覆盖：有缺口（数量未记录），来源未返回 2 条。"),
+    ).toBeTruthy();
+    expect(detail.getByText("请求范围：2 条")).toBeTruthy();
+    expect(detail.getByText(`${profile.series[0][0]} · 2026-09`)).toBeTruthy();
+    expect(detail.getByText(`${profile.series[1][0]} · 2026-08`)).toBeTruthy();
+    expect(detail.queryByText("完整")).toBeNull();
+    expect(detail.queryByText(/回读缺口/)).toBeNull();
+    expect(detail.queryByText(/官方 null/)).toBeNull();
+  },
+);
+
+it.each([CPI_PROFILE, PPI_PROFILE])(
+  "uses known $label history scope for nested readback without inventing coverage",
+  async (profile) => {
+    const h = fixture();
+    const gap = { series_id: profile.series[0][0], month: "2026-09" };
+    const buffer = { series_id: profile.series[0][0], month: "2026-07" };
+    const nullPoint = { series_id: profile.series[1][0], month: "2026-08" };
+    const transport: Transport = (input, init) =>
+      String(input) === `${profile.basePath}/schedule`
+        ? Promise.resolve(
+            response({
+              calendar_status: "fresh",
+              targets: [
+                {
+                  reference_month: "2026-09",
+                  release_at: null,
+                  history: {
+                    state: "complete",
+                    update_start: "2026-08",
+                    update_end: "2026-09",
+                    coverage_complete: false,
+                    source_missing: [gap, buffer],
+                    result: {
+                      coverage_complete: false,
+                      readback: {
+                        expected_points: 8,
+                        point_count: 55,
+                        missing: [gap],
+                        source_missing: [gap, buffer],
+                        source_unavailable: [nullPoint],
+                        source_unavailable_count: 1,
+                      },
+                    },
+                  },
+                },
+              ],
+            }),
+          )
+        : h.transport(input, init);
+    render(
+      <CpiStrategyWorkbench
+        transport={transport}
+        availability={availability(CPI_PROFILE)}
+        additionalProfile={PPI_PROFILE}
+        additionalAvailability={availability()}
+      />,
+    );
+    await flush();
+    fireEvent.click(
+      within(
+        screen.getByText(`美国 ${profile.label}`).closest("tr")!,
+      ).getByRole("button", { name: /^选择/ }),
+    );
+    await flush();
+    const calendar = within(
+      screen.getByRole("list", { name: `${profile.label} 月份计划` }),
+    );
+    expect(
+      calendar.getByText(
+        "范围覆盖：7 / 8 条，来源未返回 1 条，来源空值 1 条。",
+      ),
+    ).toBeTruthy();
+    expect(calendar.getByText("请求范围：2 条")).toBeTruthy();
+    expect(
+      calendar.getByText("计算缓冲期（请求前 12 个月，不计入范围覆盖）：1 条"),
+    ).toBeTruthy();
+    expect(
+      calendar.getAllByText(`${gap.series_id} · ${gap.month}`),
+    ).toHaveLength(1);
+    expect(calendar.getByText("查看缺口明细").closest("details")?.open).toBe(
+      false,
+    );
+    expect(calendar.queryByText(/官方 null/)).toBeNull();
+    expect(h.calls.every((c) => c.method === "GET")).toBe(true);
+  },
+);
 
 for (const tab of ["periodic", "executions"] as const) {
   it.each([404, 503, "transport"])(
