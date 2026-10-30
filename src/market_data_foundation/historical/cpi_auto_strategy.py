@@ -55,14 +55,19 @@ class CpiAutoStrategy:
             return None
         try:
             value = json.loads(self.strategy_path.read_text())
+            self.scheduler._validate_asset(value, "schedule_strategy_asset_mismatch")
             if value.get("version") != 1 or type(value.get("enabled")) is not bool:
                 raise ValueError
             validate_month(value["history_start"])
+            self._validate_history_floor(value["history_start"])
             return value
+        except CpiScheduleError:
+            raise
         except OSError, ValueError, TypeError, KeyError:
             raise CpiScheduleError("schedule_strategy_state_invalid") from None
 
     def _save(self, value):
+        value["asset"] = self.scheduler.asset_key
         _write_atomic(self.strategy_path, json.dumps(value, sort_keys=True).encode())
 
     def _bind_history(self, value):
@@ -70,7 +75,13 @@ class CpiAutoStrategy:
         if self.scheduler.state_path.exists():
             try:
                 persisted = json.loads(self.scheduler.state_path.read_text())
-                baseline = validate_month(persisted.get("history_start", "1999-01"))
+                self.scheduler._validate_asset(persisted)
+                baseline = validate_month(
+                    persisted.get("history_start", self.scheduler.history_start)
+                )
+                self._validate_history_floor(baseline)
+            except CpiScheduleError:
+                raise
             except OSError, ValueError, TypeError, AttributeError:
                 raise CpiScheduleError("schedule_state_invalid") from None
             if created and value["history_start"] != baseline:
@@ -79,9 +90,14 @@ class CpiAutoStrategy:
             # restarted scheduler was constructed with its default baseline.
             self.scheduler.history_start = baseline
             return baseline, True
-        baseline = value["history_start"] if created else "1999-01"
+        baseline = value["history_start"] if created else self.scheduler.history_start
         self.scheduler.history_start = baseline
         return baseline, bool(created)
+
+    def _validate_history_floor(self, month):
+        earliest = self.scheduler.profile.earliest_month
+        if earliest and month < earliest:
+            raise CpiScheduleError("schedule_history_start_before_profile")
 
     def _view(self, value):
         baseline, locked = self._bind_history(value)
@@ -113,6 +129,7 @@ class CpiAutoStrategy:
         if type(enabled) is not bool:
             raise CpiScheduleError("schedule_strategy_enabled_invalid")
         validate_month(history_start)
+        self._validate_history_floor(history_start)
         with self._locked():
             value = self._read()
             baseline, locked = self._bind_history(value)
@@ -143,13 +160,14 @@ class CpiAutoStrategy:
             raise CpiScheduleError("schedule_worker_state_invalid")
         with self._locked():
             value = self._read()
+            baseline, _ = self._bind_history(value)
             # An uncreated strategy remains uncreated; status reads never invent
             # liveness. A real worker can persist a separate heartbeat envelope.
             if value is None:
                 value = {
                     "version": 1,
                     "enabled": False,
-                    "history_start": self._bind_history(None)[0],
+                    "history_start": baseline,
                     "created": False,
                 }
             value["worker"] = {

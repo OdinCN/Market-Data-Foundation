@@ -10,15 +10,17 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
+from market_data_foundation.historical.bls_timeseries_profile import (
+    CPI_PROFILE,
+    validate_profile,
+)
 
 DEFAULT_CONFIG = Path("/srv/market-data-foundation/config/local")
 DEFAULT_STATE = Path("artifacts/cpi-timeseries/schedule.json")
+SERIES_IDS = CPI_PROFILE.series_ids
 SERIES = {
-    ("headline", "sa"): "CUSR0000SA0",
-    ("headline", "nsa"): "CUUR0000SA0",
-    ("core", "sa"): "CUSR0000SA0L1E",
-    ("core", "nsa"): "CUUR0000SA0L1E",
+    (metadata["indicator"], metadata["seasonal_adjustment"].lower()): series
+    for series, metadata in CPI_PROFILE.series_metadata.items()
 }
 MEASURES = {
     "index": ("index_value", "index"),
@@ -44,7 +46,8 @@ class JsonParser(argparse.ArgumentParser):
         raise InterfaceError("invalid_arguments")
 
 
-def selected_series(params, *, query=False):
+def selected_series(params, *, query=False, profile=CPI_PROFILE):
+    profile = validate_profile(profile)
     explicit = params.get("series")
     basket = params.get("basket")
     adjustment = params.get("adjustment")
@@ -61,7 +64,7 @@ def selected_series(params, *, query=False):
                 raise InterfaceError("invalid_series")
             values.extend(item.split(","))
         values = tuple(dict.fromkeys(value.strip() for value in values))
-        if not values or not set(values) <= set(SERIES_IDS):
+        if not values or not set(values) <= set(profile.series_ids):
             raise InterfaceError("unsupported_series")
         return values
     basket = ("headline" if query else "all") if basket is None else basket
@@ -76,9 +79,10 @@ def selected_series(params, *, query=False):
     if adjustment not in {"sa", "nsa", "all"}:
         raise InterfaceError("invalid_adjustment")
     return tuple(
-        value
-        for (part, seasonal), value in SERIES.items()
-        if basket in {"all", part} and adjustment in {"all", seasonal}
+        series
+        for series, metadata in profile.series_metadata.items()
+        if basket in {"all", metadata["indicator"]}
+        and adjustment in {"all", metadata["seasonal_adjustment"].lower()}
     )
 
 
@@ -264,7 +268,11 @@ def execute(service, action, params=None, *, scheduler=None):
             raise InterfaceError("scheduled_update_does_not_accept_series_filter")
         return execute(service, "schedule/due", scheduler=scheduler)
     validate_range(start, end)
-    selected = selected_series(params, query=action == "query")
+    selected = selected_series(
+        params,
+        query=action == "query",
+        profile=getattr(service, "profile", CPI_PROFILE),
+    )
     if action == "init":
         return service.init_range(start, end, series_ids=selected)
     if action == "update":
@@ -328,16 +336,37 @@ def error_document(error):
     }
 
 
-def build_parser():
+def build_parser(*, profile=CPI_PROFILE):
+    profile = validate_profile(profile)
     parser = JsonParser(
-        description="MDF-DEV CPI time series: direct service and loopback HTTP"
+        description=(
+            "MDF-DEV CPI time series: direct service and loopback HTTP"
+            if profile is CPI_PROFILE
+            else "MDF-DEV PPI time series: "
+            "init/update/query/status/confirm-availability; "
+            "serve/schedule/signals unsupported"
+        )
     )
     parser.add_argument("--runtime", type=Path, default=DEFAULT_CONFIG / "runtime.toml")
     parser.add_argument("--secret", type=Path, default=DEFAULT_CONFIG / "secret.toml")
-    parser.add_argument("--schedule-state", type=Path, default=DEFAULT_STATE)
+    parser.add_argument(
+        "--schedule-state",
+        type=Path,
+        default=Path(f"artifacts/{profile.key}-timeseries/schedule.json"),
+    )
     parser.add_argument("--package-store-directory", type=Path)
     parser.add_argument("--environment-id")
-    parser.add_argument("--history-start", default="1999-01")
+    now = datetime.now()
+    first_month = now.year * 12 + now.month - 1 - 239
+    parser.add_argument(
+        "--history-start",
+        default=(
+            "1999-01"
+            if profile is CPI_PROFILE
+            else f"{first_month // 12:04d}-{first_month % 12 + 1:02d}"
+        ),
+        help="Requested history start; PPI defaults to a 240-month request window",
+    )
     parser.add_argument("--signal-poll-seconds", type=int, default=3600)
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("init", "update", "query", "confirm-availability"):
@@ -391,12 +420,19 @@ def emit(document, stream=None):
 class WorkerService:
     """Open a fresh service only for actual work; recover from idle PG disconnects."""
 
-    def __init__(self, factory):
+    def __init__(self, factory, *, profile=CPI_PROFILE):
         self.factory = factory
+        self.profile = validate_profile(profile)
 
     def _call(self, operation, *args, **kwargs):
         service = self.factory()
         try:
+            if getattr(service, "profile", CPI_PROFILE) is not self.profile:
+                from market_data_foundation.historical.cpi_timeseries import (
+                    CpiTimeSeriesError,
+                )
+
+                raise CpiTimeSeriesError("bls_timeseries_profile_mismatch")
             return getattr(service, operation)(*args, **kwargs)
         finally:
             service.close()
@@ -499,8 +535,10 @@ def package_credential_loader(
     *,
     secret_path=DEFAULT_CONFIG / "secret.toml",
     credential_loader=None,
+    profile=CPI_PROFILE,
 ):
     """Reload the binding each fetch; explicit refs precede inherited keys."""
+    profile = validate_profile(profile)
     from market_data_foundation.historical.bls_cpi_direct_live import (
         load_registration_key,
     )
@@ -509,7 +547,7 @@ def package_credential_loader(
     from market_data_foundation.web.packages import PackageHost
 
     if directory is None or not environment_id:
-        raise InterfaceError("cpi_package_credential_binding_required")
+        raise InterfaceError(f"{profile.key}_package_credential_binding_required")
 
     def inherited_key(current_environment, package_id, source_id):
         if (
@@ -530,8 +568,8 @@ def package_credential_loader(
 
     def load():
         record = packages.store.read(environment_id, "macro")
-        if record is None or "cpi" not in record.enabled_capability_ids:
-            raise InterfaceError("cpi_capability_disabled")
+        if record is None or profile.key not in record.enabled_capability_ids:
+            raise InterfaceError(f"{profile.key}_capability_disabled")
         value = packages.load_credential("macro", "BLS", record=record)
         if value is None:
             raise InterfaceError("bls_credential_missing")
@@ -553,10 +591,20 @@ def persisted_history_start(schedule_path, default="1999-01"):
         raise InterfaceError("schedule_state_invalid") from None
 
 
-def main(argv=None, *, service_factory=None, scheduler_factory=None):
+def main(
+    argv=None, *, service_factory=None, scheduler_factory=None, profile=CPI_PROFILE
+):
     service = None
     try:
-        args = build_parser().parse_args(argv)
+        profile = validate_profile(profile)
+        args = build_parser(profile=profile).parse_args(argv)
+        if profile is not CPI_PROFILE:
+            if args.command in {"serve", "schedule", "signals"} or (
+                args.command == "update" and args.start is None and args.end is None
+            ):
+                raise InterfaceError("ppi_command_unsupported")
+            if args.schedule_state.resolve() == DEFAULT_STATE.resolve():
+                raise InterfaceError("ppi_schedule_state_conflicts_with_cpi")
         validate_range(args.history_start, args.history_start)
         if not 60 <= args.signal_poll_seconds <= 86400:
             raise InterfaceError("signal_poll_seconds_out_of_range")
@@ -567,7 +615,7 @@ def main(argv=None, *, service_factory=None, scheduler_factory=None):
                 or args.end is not None
             ):
                 validate_range(args.start, args.end)
-            selected_series(vars(args), query=args.command == "query")
+            selected_series(vars(args), query=args.command == "query", profile=profile)
             if args.command == "update" and args.start is None and args.end is None:
                 if any(
                     getattr(args, key) is not None
@@ -592,15 +640,18 @@ def main(argv=None, *, service_factory=None, scheduler_factory=None):
                         args.package_store_directory,
                         args.environment_id,
                         secret_path=args.secret,
+                        profile=profile,
                     )()
 
+                options.setdefault("profile", profile)
                 return build_service(
                     **options,
                     credential_loader=load_key,
                     max_transport_attempts=1,
                 )
 
-        if scheduler_factory is None:
+        default_scheduler = scheduler_factory is None
+        if default_scheduler:
             from market_data_foundation.historical.cpi_release_schedule import (
                 CpiReleaseScheduler,
             )
@@ -617,27 +668,36 @@ def main(argv=None, *, service_factory=None, scheduler_factory=None):
             }
         )
         worker_mode = args.command == "schedule" and args.schedule_command == "worker"
+        service_options = {"runtime_path": args.runtime, "secret_path": args.secret}
+        if profile is not CPI_PROFILE:
+            service_options["profile"] = profile
         if not calendar_only and not worker_mode:
-            service = service_factory(
-                runtime_path=args.runtime, secret_path=args.secret
-            )
+            service = service_factory(**service_options)
+            if (
+                profile is not CPI_PROFILE
+                and getattr(service, "profile", None) is not profile
+            ):
+                raise InterfaceError("bls_timeseries_profile_mismatch")
         scheduler_service = (
-            WorkerService(
-                lambda: service_factory(
-                    runtime_path=args.runtime, secret_path=args.secret
-                )
-            )
+            WorkerService(lambda: service_factory(**service_options), profile=profile)
             if worker_mode
             else service
         )
         scheduler = scheduler_factory(
             scheduler_service,
             args.schedule_state,
-            history_start=persisted_history_start(
-                args.schedule_state, args.history_start
+            history_start=(
+                persisted_history_start(args.schedule_state, args.history_start)
+                if profile is CPI_PROFILE
+                else args.history_start
             ),
             signal_poll_seconds=args.signal_poll_seconds,
             **({"auto_mode": True} if worker_mode else {}),
+            **(
+                {"profile": profile}
+                if default_scheduler or profile is not CPI_PROFILE
+                else {}
+            ),
         )
         if args.command == "serve":
             from market_data_foundation.historical.cpi_timeseries_http import serve

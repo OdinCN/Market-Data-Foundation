@@ -1,13 +1,9 @@
+import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import type { Transport } from "./api";
 import { useVisiblePolling } from "./useVisiblePolling";
 
-export const CPI_TIMESERIES = "/api/r5/cpi/timeseries";
-export const cpiSeries = [
-  ["CUSR0000SA0", "总体 · 季调", "headline", "sa"],
-  ["CUUR0000SA0", "总体 · 未季调", "headline", "nsa"],
-  ["CUSR0000SA0L1E", "核心 · 季调", "core", "sa"],
-  ["CUUR0000SA0L1E", "核心 · 未季调", "core", "nsa"],
-] as const;
+export const CPI_TIMESERIES = CPI_PROFILE.basePath;
+export const cpiSeries = CPI_PROFILE.series;
 export const monthValid = (value: unknown): value is string =>
   typeof value === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 export const uuidValid = (value: unknown): value is string =>
@@ -81,10 +77,11 @@ export async function cpiRequest<T>(
   path: string,
   init: RequestInit = {},
   timeoutMs = 20000,
+  profile: MacroProfile = CPI_PROFILE,
 ): Promise<T> {
   return requestCpiJson<T>(
     transport,
-    `${CPI_TIMESERIES}${path}`,
+    `${profile.basePath}${path}`,
     init,
     timeoutMs,
   );
@@ -158,14 +155,25 @@ export function useCpiAvailability(
   generation: number,
   enabled = true,
   polling = true,
+  profile: MacroProfile = CPI_PROFILE,
 ): CpiAvailability {
   const resource = useVisiblePolling<CpiStatus | "legacy">(
     async (signal) => {
       let value: CpiStatus;
       try {
-        value = await cpiRequest<CpiStatus>(transport, "/status", { signal });
+        value = await cpiRequest<CpiStatus>(
+          transport,
+          "/status",
+          { signal },
+          20000,
+          profile,
+        );
       } catch (error) {
-        if (error instanceof CpiServiceFailure && error.status === 404)
+        if (
+          profile.id === "cpi" &&
+          error instanceof CpiServiceFailure &&
+          error.status === 404
+        )
           return "legacy";
         throw error;
       }
@@ -175,6 +183,9 @@ export function useCpiAvailability(
         typeof value.web_capabilities?.collect !== "boolean" ||
         !value.latest_months ||
         typeof value.latest_months !== "object" ||
+        !Object.keys(value.latest_months).every((id) =>
+          profile.series.some((s) => s[0] === id),
+        ) ||
         !Object.values(value.latest_months).every(
           (m) => m === null || monthValid(m),
         ) ||
@@ -194,7 +205,7 @@ export function useCpiAvailability(
         throw new CpiServiceFailure("cpi_status_unknown");
       return value;
     },
-    [transport, generation, enabled],
+    [transport, generation, enabled, profile.id],
     enabled,
     undefined,
     polling,
@@ -268,7 +279,10 @@ export type CpiResult = {
   as_of_basis?: string;
   publication_events?: CpiPublicationEvent[];
 };
-export function buildCpiQueryRequest(scope: CpiScope): {
+export function buildCpiQueryRequest(
+  scope: CpiScope,
+  profile: MacroProfile = CPI_PROFILE,
+): {
   method: "GET";
   path: string;
 } {
@@ -289,17 +303,18 @@ export function buildCpiQueryRequest(scope: CpiScope): {
         }
       : {}),
   });
-  return { method: "GET", path: `${CPI_TIMESERIES}/query?${parameters}` };
+  return { method: "GET", path: `${profile.basePath}/query?${parameters}` };
 }
 export async function queryCpiRange(
   transport: Transport,
   scope: CpiScope,
   signal: AbortSignal,
   onExchange?: (exchange: CpiHttpExchange) => void,
+  profile: MacroProfile = CPI_PROFILE,
 ) {
   const history = scope.query_mode === "history" || !!scope.as_of;
   const basis = history ? "available" : "observed";
-  const request = buildCpiQueryRequest(scope);
+  const request = buildCpiQueryRequest(scope, profile);
   const result = await requestCpiJson<CpiResult>(
     transport,
     request.path,
@@ -307,7 +322,7 @@ export async function queryCpiRange(
     history ? 20000 : 180000,
     onExchange,
   );
-  const selected = cpiSeries
+  const selected = profile.series
     .filter(
       (s) =>
         ["all", s[2]].includes(scope.basket) &&
@@ -403,11 +418,15 @@ export type CpiJob = CpiJobIntent & {
     saved_points?: number;
     saved_revisions?: number;
     coverage_complete?: boolean;
+    completion?: string;
     readback?: {
       verified: boolean;
       point_count: number;
       expected_points: number;
       source_unavailable_count: number;
+      missing?: { series_id: string; month: string }[];
+      source_missing?: { series_id: string; month: string; reason?: string }[];
+      source_unavailable?: { series_id: string; month: string }[];
     };
   } | null;
 };
@@ -438,8 +457,29 @@ export function validJob(job: CpiJob): boolean {
         ].every((v) => v === undefined || (Number.isInteger(v) && v! >= 0)) &&
         (job.result.coverage_complete === undefined ||
           typeof job.result.coverage_complete === "boolean") &&
+        (job.result.completion === undefined ||
+          typeof job.result.completion === "string") &&
         (job.result.readback === undefined ||
-          (typeof job.result.readback.verified === "boolean" &&
+          (!!job.result.readback &&
+            [
+              job.result.readback.missing,
+              job.result.readback.source_missing,
+              job.result.readback.source_unavailable,
+            ].every(
+              (points) =>
+                points === undefined ||
+                (Array.isArray(points) &&
+                  points.every(
+                    (point) =>
+                      !!point &&
+                      typeof point.series_id === "string" &&
+                      monthValid(point.month) &&
+                      (!("reason" in point) ||
+                        point.reason === undefined ||
+                        typeof point.reason === "string"),
+                  )),
+            ) &&
+            typeof job.result.readback.verified === "boolean" &&
             [
               job.result.readback.point_count,
               job.result.readback.expected_points,
@@ -447,10 +487,20 @@ export function validJob(job: CpiJob): boolean {
             ].every((v) => Number.isInteger(v) && v >= 0)))))
   );
 }
-export async function readCpiJobs(transport: Transport, signal?: AbortSignal) {
-  const result = await cpiRequest<{ jobs: CpiJob[] }>(transport, "/jobs", {
-    signal,
-  });
+export async function readCpiJobs(
+  transport: Transport,
+  signal?: AbortSignal,
+  profile: MacroProfile = CPI_PROFILE,
+) {
+  const result = await cpiRequest<{ jobs: CpiJob[] }>(
+    transport,
+    "/jobs",
+    {
+      signal,
+    },
+    20000,
+    profile,
+  );
   if (!Array.isArray(result?.jobs) || !result.jobs.every(validJob))
     throw new CpiServiceFailure("cpi_jobs_unknown");
   return result;
@@ -494,10 +544,17 @@ export function validStrategy(value: CpiStrategy): boolean {
 export async function readCpiStrategy(
   transport: Transport,
   signal?: AbortSignal,
+  profile: MacroProfile = CPI_PROFILE,
 ) {
-  const value = await cpiRequest<CpiStrategy>(transport, "/strategy", {
-    signal,
-  });
+  const value = await cpiRequest<CpiStrategy>(
+    transport,
+    "/strategy",
+    {
+      signal,
+    },
+    20000,
+    profile,
+  );
   if (!validStrategy(value))
     throw new CpiServiceFailure("cpi_strategy_unknown");
   return value;
@@ -506,13 +563,20 @@ export async function saveCpiStrategy(
   transport: Transport,
   enabled: boolean,
   signal?: AbortSignal,
+  profile: MacroProfile = CPI_PROFILE,
 ) {
-  const value = await cpiRequest<CpiStrategy>(transport, "/strategy", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ enabled }),
-    signal,
-  });
+  const value = await cpiRequest<CpiStrategy>(
+    transport,
+    "/strategy",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+      signal,
+    },
+    20000,
+    profile,
+  );
   if (!validStrategy(value) || !value.exists || value.enabled !== enabled)
     throw new CpiServiceFailure("cpi_strategy_unknown");
   return value;
@@ -535,11 +599,14 @@ export type CpiExecution = {
 export async function readCpiExecutions(
   transport: Transport,
   signal?: AbortSignal,
+  profile: MacroProfile = CPI_PROFILE,
 ) {
   const value = await cpiRequest<{ executions: CpiExecution[] }>(
     transport,
     "/executions",
     { signal },
+    20000,
+    profile,
   );
   const instant = (v: unknown) =>
     v === null || (typeof v === "string" && Number.isFinite(Date.parse(v)));

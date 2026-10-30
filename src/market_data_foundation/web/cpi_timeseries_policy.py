@@ -3,8 +3,9 @@
 from datetime import datetime
 from uuid import UUID, uuid5
 
+from market_data_foundation.historical.bls_timeseries_profile import CPI_PROFILE
 from market_data_foundation.historical.cpi_timeseries import month_number
-from market_data_foundation.historical.cpi_timeseries_cli import execute
+from market_data_foundation.web.ppi_timeseries import execute_profile
 
 PRESET_ID = "cpi_latest_20y_v1"
 PRESET_MONTHS = 240
@@ -55,7 +56,9 @@ def official_releases(snapshot, *, exclude_absent=False):
             yield month, at
 
 
-def initialization_preset(service, status, snapshot, now):
+def initialization_preset(service, status, snapshot, now, *, profile=CPI_PROFILE):
+    earliest = profile.earliest_month
+    boundary = month_number(earliest) if earliest else 1901 * 12
     candidates = [
         (month, "official_elapsed_release/reference_month")
         for month, at in official_releases(snapshot)
@@ -67,8 +70,10 @@ def initialization_preset(service, status, snapshot, now):
         default=None,
     )
     while upper is not None:
-        floor = max(1901 * 12, month_number(upper) - 239)
-        readback = execute(
+        floor = max(boundary, month_number(upper) - 239)
+        if floor > month_number(upper):
+            break
+        readback = execute_profile(
             service,
             "query",
             {
@@ -80,6 +85,7 @@ def initialization_preset(service, status, snapshot, now):
                 "vintage_mode": "available",
                 "query_mode": "history",
             },
+            profile=profile,
         )
         confirmed = [
             point["month"]
@@ -92,20 +98,44 @@ def initialization_preset(service, status, snapshot, now):
         if confirmed:
             candidates.append((max(confirmed), "confirmed_local_available"))
             break
-        if floor == 1901 * 12:
+        if floor == boundary:
             break
         upper = month_text(floor - 1)
     anchor, basis = max(candidates, default=(None, "unavailable"))
-    available = anchor is not None and month_number(anchor) - 239 >= 1901 * 12
-    return {
-        "preset_id": PRESET_ID,
+    if anchor is None and profile.key == "ppi":
+        anchor = month_text(now.year * 12 + now.month - 2)
+        basis = "request_calendar_month"
+    available = (
+        anchor is not None
+        and month_number(anchor) >= boundary
+        and (profile is not CPI_PROFILE or month_number(anchor) - 239 >= boundary)
+    )
+    start = month_text(max(boundary, month_number(anchor) - 239)) if available else None
+    actual_months = month_number(anchor) - month_number(start) + 1 if available else 0
+    result = {
+        "preset_id": profile.key + "_latest_20y_v1",
         "months": PRESET_MONTHS,
-        "start": month_text(month_number(anchor) - 239) if available else None,
+        "start": start,
         "end": anchor if available else None,
         "available": available,
-        "reason": None if available else "initialization_anchor_unavailable",
+        "reason": (
+            None
+            if available
+            else "initialization_profile_boundary_unavailable"
+            if profile is not CPI_PROFILE and earliest is None
+            else "initialization_anchor_unavailable"
+        ),
         "anchor_basis": basis,
     }
+    if profile is not CPI_PROFILE:
+        result.update(
+            editable=True,
+            earliest_month=earliest,
+            actual_months=actual_months,
+            coverage_truncated=available and actual_months < PRESET_MONTHS,
+            coverage_basis="profile_boundary_and_anchor_not_complete_holdings",
+        )
+    return result
 
 
 def next_release_at(snapshot, now):
@@ -129,7 +159,7 @@ def next_release_at(snapshot, now):
     return min(dates).isoformat() if dates else None
 
 
-def automatic_executions(snapshot):
+def automatic_executions(snapshot, *, profile=CPI_PROFILE):
     records = []
 
     def add(month, name, stage, *, start=None, end=None, action="update"):
@@ -147,9 +177,23 @@ def automatic_executions(snapshot):
         }
         if "actual_http" in stage:
             result["actual_http_total"] = stage["actual_http"]
+        if profile.key == "ppi":
+            if isinstance(stage.get("coverage_complete"), bool):
+                result["coverage_complete"] = stage["coverage_complete"]
+                if stage["coverage_complete"] is False:
+                    result["completion"] = "source_coverage_partial"
+            if isinstance(stage.get("source_missing"), list):
+                result["source_missing"] = stage["source_missing"]
         records.append(
             {
-                "id": str(uuid5(EXECUTION_NAMESPACE, f"{month}:{name}")),
+                "id": str(
+                    uuid5(
+                        EXECUTION_NAMESPACE,
+                        f"{month}:{name}"
+                        if profile is CPI_PROFILE
+                        else f"{profile.key}:{month}:{name}",
+                    )
+                ),
                 "origin": "automatic",
                 "action": action,
                 "stage": name,
@@ -205,8 +249,8 @@ def automatic_executions(snapshot):
     return records
 
 
-def strategy_projection(value, snapshot, now):
-    executions = automatic_executions(snapshot)
+def strategy_projection(value, snapshot, now, *, profile=CPI_PROFILE):
+    executions = automatic_executions(snapshot, profile=profile)
     latest = max(executions, key=lambda r: instant(r["started_at"]), default=None)
     return {
         **value,

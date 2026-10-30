@@ -26,18 +26,17 @@ from market_data_foundation.historical.bls_cpi_material_store import (
     GARAGE_ENDPOINT,
     _signed_headers,
 )
+from market_data_foundation.historical.bls_timeseries_profile import (
+    CPI_PROFILE,
+    validate_profile,
+)
 from market_data_foundation.storage.market_dataset_garage import _transport
 
-SCHEMA = "mdf_cpi_timeseries_dev_r1"
-RAW_PREFIX = "cpi-timeseries/dev-r1/sha256/"
+SCHEMA = CPI_PROFILE.schema
+RAW_PREFIX = CPI_PROFILE.raw_prefix
 MAX_RAW_BYTES = 8 * 1024 * 1024
-LOCK_ID = 78328741642028101
-SERIES_IDS = (
-    "CUSR0000SA0",
-    "CUUR0000SA0",
-    "CUSR0000SA0L1E",
-    "CUUR0000SA0L1E",
-)
+LOCK_ID = CPI_PROFILE.lock_id
+SERIES_IDS = CPI_PROFILE.series_ids
 
 
 class CpiStorageError(RuntimeError):
@@ -54,8 +53,9 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
-def raw_locator(sha):
-    return f"mdf-s3://{BUCKET}/{RAW_PREFIX}{sha}/raw-response.bin"
+def raw_locator(sha, *, profile=CPI_PROFILE):
+    profile = validate_profile(profile)
+    return f"mdf-s3://{BUCKET}/{profile.raw_prefix}{sha}/raw-response.bin"
 
 
 def _content(point):
@@ -81,14 +81,15 @@ def batch_identity(batch):
     )
 
 
-def _point_document(point, batch, revision):
+def _point_document(point, batch, revision, *, profile=CPI_PROFILE):
+    profile = validate_profile(profile)
     return {
         "series_id": point.series_id,
         "month": point.month,
         **_content(point),
         "observed_at": batch.observed_at.astimezone(UTC).isoformat(),
         "raw_sha256": digest(batch.raw),
-        "raw_locator": raw_locator(digest(batch.raw)),
+        "raw_locator": raw_locator(digest(batch.raw), profile=profile),
         "revision": revision,
         "available_at": None,
         "version_status": "active",
@@ -161,7 +162,8 @@ def _provider_calculations(values, extra):
     return result
 
 
-def _row_document(row):
+def _row_document(row, *, profile=CPI_PROFILE):
+    profile = validate_profile(profile)
     series, month, revision, observed_at, batch_id, index, *rest = row
     pcts, extra, footnotes, raw_sha = rest[:4], rest[4], rest[5], rest[6]
     available_at, version_status, evidence_url = (
@@ -186,26 +188,28 @@ def _row_document(row):
         "provider_calculations": _provider_calculations(pcts, extra),
         "footnotes": footnotes,
         "raw_sha256": raw_sha,
-        "raw_locator": raw_locator(raw_sha),
+        "raw_locator": raw_locator(raw_sha, profile=profile),
     }
 
 
-def _latest_view_sql(*, event_columns=False):
+def _latest_view_sql(*, event_columns=False, profile=CPI_PROFILE):
+    profile = validate_profile(profile)
     columns = REVISION_COLUMNS + ("," + EVENT_COLUMNS if event_columns else "")
-    return f"""CREATE OR REPLACE VIEW {SCHEMA}.latest AS
+    return f"""CREATE OR REPLACE VIEW {profile.schema}.latest AS
         SELECT DISTINCT ON (series_id,month) {columns}
-        FROM {SCHEMA}.revisions
+        FROM {profile.schema}.revisions
         ORDER BY series_id,month,revision DESC"""
 
 
-def _revision_ddl():
-    admitted = ",".join("'" + series + "'" for series in SERIES_IDS)
-    return f"""CREATE TABLE IF NOT EXISTS {SCHEMA}.revisions (
+def _revision_ddl(*, profile=CPI_PROFILE):
+    profile = validate_profile(profile)
+    admitted = ",".join("'" + series + "'" for series in profile.series_ids)
+    return f"""CREATE TABLE IF NOT EXISTS {profile.schema}.revisions (
         series_id text NOT NULL CHECK(series_id IN ({admitted})),
         month date NOT NULL CHECK(EXTRACT(DAY FROM month)=1),
         revision integer NOT NULL CHECK(revision > 0),
         observed_at timestamptz NOT NULL,
-        batch_id text NOT NULL REFERENCES {SCHEMA}.batches(batch_id),
+        batch_id text NOT NULL REFERENCES {profile.schema}.batches(batch_id),
         index_value numeric CHECK(index_value > 0 AND index_value != 'NaN'::numeric
             AND index_value != 'Infinity'::numeric),
         bls_pct_1m numeric,
@@ -224,20 +228,21 @@ def _revision_ddl():
     )"""
 
 
-def _rates_view_sql():
+def _rates_view_sql(*, profile=CPI_PROFILE):
+    profile = validate_profile(profile)
     rates = ",".join(
         f"round(c.index_value / nullif(p{k}.index_value,0) - 1,4) AS change_{k}m_ratio"
         for k in (1, 3, 6, 12)
     )
     joins = " ".join(
-        f"LEFT JOIN {SCHEMA}.latest p{k} ON p{k}.series_id=c.series_id "
+        f"LEFT JOIN {profile.schema}.latest p{k} ON p{k}.series_id=c.series_id "
         f"AND p{k}.month=(c.month - interval '{k} months')::date "
         f"AND p{k}.version_status='active'"
         for k in (1, 3, 6, 12)
     )
-    return f"""CREATE OR REPLACE VIEW {SCHEMA}.cpi_timeseries_rates AS
+    return f"""CREATE OR REPLACE VIEW {profile.schema}.{profile.rates_view} AS
         SELECT c.*,to_char(c.month,'YYYY-MM') AS month_label,{rates}
-        FROM {SCHEMA}.latest c {joins} WHERE c.version_status='active'"""
+        FROM {profile.schema}.latest c {joins} WHERE c.version_status='active'"""
 
 
 def validate_evidence_url(value):
@@ -261,7 +266,8 @@ def validate_evidence_url(value):
         raise CpiStorageError("cpi_timeseries_evidence_url_invalid")
 
 
-def _restoration_expectations(points, evidence_url):
+def _restoration_expectations(points, evidence_url, *, profile=CPI_PROFILE):
+    profile = validate_profile(profile)
     if points is None:
         return None
     try:
@@ -278,7 +284,7 @@ def _restoration_expectations(points, evidence_url):
             series, month, value = (
                 point[k] for k in ("series_id", "month", "index_value")
             )
-            if series not in SERIES_IDS or not isinstance(month, str):
+            if series not in profile.series_ids or not isinstance(month, str):
                 raise ValueError
             _month_date(month)
             if isinstance(value, bool) or not isinstance(
@@ -303,6 +309,32 @@ def _restoration_matches(point, expected):
     )
 
 
+def _validate_series(series_ids, *, profile=CPI_PROFILE):
+    profile = validate_profile(profile)
+    if (
+        not isinstance(series_ids, (tuple, list))
+        or not series_ids
+        or any(
+            not isinstance(s, str) or s not in profile.series_ids for s in series_ids
+        )
+        or len(set(series_ids)) != len(series_ids)
+    ):
+        raise CpiStorageError("cpi_timeseries_series_invalid")
+
+
+def _validate_batches(batches, *, profile=CPI_PROFILE):
+    profile = validate_profile(profile)
+    for batch in batches:
+        requested = batch.request.get("seriesid")
+        if requested is not None:
+            _validate_series(requested, profile=profile)
+        for point in batch.points:
+            if point.series_id not in profile.series_ids or (
+                requested is not None and point.series_id not in requested
+            ):
+                raise CpiStorageError("cpi_timeseries_series_invalid")
+
+
 def _withdraw(store, series_ids, start_month, end_month, evidence_url):
     # Evidence is a caller-validated official notice reference, not an invented
     # archived provider response. The batch request labels this material clearly.
@@ -311,6 +343,7 @@ def _withdraw(store, series_ids, start_month, end_month, evidence_url):
         SourcePoint,
     )
 
+    _validate_series(series_ids, profile=store.profile)
     validate_evidence_url(evidence_url)
     first, last = _month_date(start_month), _month_date(end_month)
     months = []
@@ -347,6 +380,11 @@ def _withdraw(store, series_ids, start_month, end_month, evidence_url):
     return store.save_batches((batch,), _withdrawal_evidence_url=evidence_url)
 
 
+def _validate_raw_store(raw_store, profile):
+    if getattr(raw_store, "profile", profile) is not profile:
+        raise CpiStorageError("bls_timeseries_profile_mismatch")
+
+
 class GarageCpiRawStore:
     """Reuse MDF's fixed Garage signing/transport, with a separate raw prefix.
 
@@ -355,13 +393,16 @@ class GarageCpiRawStore:
     one GET; no provider re-fetch or blind write retry is performed.
     """
 
-    def __init__(self, credentials, *, transport=None, clock=None):
+    def __init__(self, credentials, *, transport=None, clock=None, profile=CPI_PROFILE):
+        self.profile = validate_profile(profile)
         self._credentials = credentials
         self._transport = transport or _transport
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def _send(self, method, sha, raw=b"", maximum=MAX_RAW_BYTES):
-        path = "/" + quote(f"{BUCKET}/{RAW_PREFIX}{sha}/raw-response.bin", safe="/-_.~")
+        path = "/" + quote(
+            f"{BUCKET}/{self.profile.raw_prefix}{sha}/raw-response.bin", safe="/-_.~"
+        )
         headers = _signed_headers(
             method,
             path,
@@ -392,7 +433,7 @@ class GarageCpiRawStore:
             raise CpiStorageError("cpi_timeseries_raw_invalid")
         sha = digest(raw)
         if self._read(sha, raw):
-            return raw_locator(sha)
+            return raw_locator(sha, profile=self.profile)
         write_unknown = False
         try:
             status, _ = self._send("PUT", sha, raw, maximum=1024)
@@ -413,13 +454,15 @@ class GarageCpiRawStore:
                 else "cpi_timeseries_raw_readback_missing"
             )
             raise CpiStorageError(classification)
-        return raw_locator(sha)
+        return raw_locator(sha, profile=self.profile)
 
 
 class PostgresTimeSeriesStore:
     """Two tables with numeric observations and a derived latest view."""
 
-    def __init__(self, connection, raw_store, *, clock=None):
+    def __init__(self, connection, raw_store, *, clock=None, profile=CPI_PROFILE):
+        self.profile = validate_profile(profile)
+        _validate_raw_store(raw_store, self.profile)
         self._clock = clock or (lambda: datetime.now(UTC))
         self.connection = connection
         self.raw_store = raw_store
@@ -435,7 +478,7 @@ class PostgresTimeSeriesStore:
             try:
                 acquired = bool(
                     self.connection.execute(
-                        "SELECT pg_try_advisory_lock(%s)", (LOCK_ID,)
+                        "SELECT pg_try_advisory_lock(%s)", (self.profile.lock_id,)
                     ).fetchone()[0]
                 )
             except Exception:
@@ -451,7 +494,7 @@ class PostgresTimeSeriesStore:
                 if acquired:
                     try:
                         released = self.connection.execute(
-                            "SELECT pg_advisory_unlock(%s)", (LOCK_ID,)
+                            "SELECT pg_advisory_unlock(%s)", (self.profile.lock_id,)
                         ).fetchone()[0]
                         if not released:
                             raise CpiStorageError("cpi_timeseries_lock_lost")
@@ -466,40 +509,44 @@ class PostgresTimeSeriesStore:
         """Create a new relational schema; an old schema needs explicit migration."""
         try:
             with self.connection.transaction():
-                self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")
+                self.connection.execute(
+                    f"CREATE SCHEMA IF NOT EXISTS {self.profile.schema}"
+                )
                 owner = self.connection.execute(
                     "SELECT pg_get_userbyid(nspowner)=current_user "
                     "FROM pg_namespace WHERE nspname=%s",
-                    (SCHEMA,),
+                    (self.profile.schema,),
                 ).fetchone()
                 if owner != (True,):
                     raise CpiStorageError("cpi_timeseries_schema_owner_mismatch")
                 self.connection.execute(f"""
-                CREATE TABLE IF NOT EXISTS {SCHEMA}.batches (
+                CREATE TABLE IF NOT EXISTS {self.profile.schema}.batches (
                     batch_id text PRIMARY KEY,
                     raw_sha256 text NOT NULL,
                     observed_at timestamptz NOT NULL,
                     request jsonb NOT NULL,
                     provider_attempts integer NOT NULL CHECK(provider_attempts >= 0)
                 )""")
-                self.connection.execute(_revision_ddl())
+                self.connection.execute(_revision_ddl(profile=self.profile))
                 kind = self.connection.execute(
                     "SELECT relkind FROM pg_class c "
                     "JOIN pg_namespace n ON n.oid=c.relnamespace "
                     "WHERE n.nspname=%s AND c.relname='latest'",
-                    (SCHEMA,),
+                    (self.profile.schema,),
                 ).fetchone()
                 if kind is None:
-                    self.connection.execute(_latest_view_sql(event_columns=True))
+                    self.connection.execute(
+                        _latest_view_sql(event_columns=True, profile=self.profile)
+                    )
                 elif kind != ("v",):
                     raise CpiStorageError("cpi_timeseries_schema_migration_required")
-                self.connection.execute(_rates_view_sql())
+                self.connection.execute(_rates_view_sql(profile=self.profile))
                 rows = self.connection.execute(
                     "SELECT table_name,column_name,data_type "
                     "FROM information_schema.columns "
                     "WHERE table_schema=%s "
                     "AND table_name IN ('batches','revisions','latest')",
-                    (SCHEMA,),
+                    (self.profile.schema,),
                 ).fetchall()
                 revisions = {
                     "series_id": "text",
@@ -542,6 +589,7 @@ class PostgresTimeSeriesStore:
     def read_range(
         self, series_ids, start_month, end_month, as_of=None, vintage_mode="observed"
     ):
+        _validate_series(series_ids, profile=self.profile)
         try:
             fields = ",".join("r." + name for name in REVISION_COLUMNS.split(","))
             params = (
@@ -562,7 +610,8 @@ class PostgresTimeSeriesStore:
                 if vintage_mode == "available":
                     condition = (
                         "AND r.available_at IS NOT NULL "
-                        f"AND NOT EXISTS (SELECT 1 FROM {SCHEMA}.revisions unconfirmed "
+                        "AND NOT EXISTS (SELECT 1 FROM "
+                        f"{self.profile.schema}.revisions unconfirmed "
                         "WHERE unconfirmed.series_id=r.series_id "
                         "AND unconfirmed.month=r.month "
                         "AND unconfirmed.revision > r.revision "
@@ -585,15 +634,15 @@ class PostgresTimeSeriesStore:
             rows = self.connection.execute(
                 f"SELECT {distinct}{fields},b.raw_sha256,"
                 "r.available_at,r.version_status,r.evidence_url "
-                f"FROM {SCHEMA}.{source} r "
-                f"JOIN {SCHEMA}.batches b USING(batch_id) "
+                f"FROM {self.profile.schema}.{source} r "
+                f"JOIN {self.profile.schema}.batches b USING(batch_id) "
                 "WHERE r.series_id=ANY(%s) AND r.month BETWEEN %s AND %s "
                 + condition
                 + "ORDER BY "
                 + order,
                 params,
             ).fetchall()
-            return [_row_document(row) for row in rows]
+            return [_row_document(row, profile=self.profile) for row in rows]
         except Exception:
             raise CpiStorageError("cpi_timeseries_storage_read_failed") from None
 
@@ -615,15 +664,18 @@ class PostgresTimeSeriesStore:
         prevents any writer replacing selected latest rows before confirmation.
         No historical timestamp or statistical version is manufactured.
         """
+        _validate_series(series_ids, profile=self.profile)
         self._require_top_level_transaction()
         try:
             with self.operation():
                 with self.connection.transaction():
                     self.connection.execute(
-                        f"LOCK TABLE {SCHEMA}.revisions IN SHARE ROW EXCLUSIVE MODE"
+                        f"LOCK TABLE {self.profile.schema}.revisions "
+                        "IN SHARE ROW EXCLUSIVE MODE"
                     )
                     rows = self.connection.execute(
-                        f"SELECT series_id,month,revision FROM {SCHEMA}.latest "
+                        f"SELECT series_id,month,revision "
+                        f"FROM {self.profile.schema}.latest "
                         "WHERE series_id=ANY(%s) AND month BETWEEN %s AND %s "
                         "AND available_at IS NULL ORDER BY series_id,month",
                         (
@@ -635,7 +687,8 @@ class PostgresTimeSeriesStore:
                     at = self._clock() if rows else None
                     for series, month, revision in rows:
                         self.connection.execute(
-                            f"UPDATE {SCHEMA}.revisions SET available_at=%s "
+                            f"UPDATE {self.profile.schema}.revisions "
+                            "SET available_at=%s "
                             "WHERE series_id=%s AND month=%s AND revision=%s "
                             "AND available_at IS NULL",
                             (at, series, month, revision),
@@ -664,13 +717,14 @@ class PostgresTimeSeriesStore:
             validate_evidence_url(evidence)
         state = "withdrawn" if _withdrawal_evidence_url else "active"
         expected = _restoration_expectations(
-            restoration_expected_points, restoration_evidence_url
+            restoration_expected_points, restoration_evidence_url, profile=self.profile
         )
         self._require_top_level_transaction()
         batches = tuple(batches)
+        _validate_batches(batches, profile=self.profile)
         for batch in batches:
             locator = self.raw_store.put_verified(batch.raw)
-            if locator != raw_locator(digest(batch.raw)):
+            if locator != raw_locator(digest(batch.raw), profile=self.profile):
                 raise CpiStorageError("cpi_timeseries_raw_locator_mismatch")
         points = revisions = 0
         inserted = []
@@ -679,7 +733,7 @@ class PostgresTimeSeriesStore:
                 for batch in sorted(batches, key=lambda b: b.observed_at):
                     bid = batch_identity(batch)
                     self.connection.execute(
-                        f"INSERT INTO {SCHEMA}.batches "
+                        f"INSERT INTO {self.profile.schema}.batches "
                         "(batch_id,raw_sha256,observed_at,request,provider_attempts) "
                         "VALUES(%s,%s,%s,%s,%s) ON CONFLICT(batch_id) DO NOTHING",
                         (
@@ -695,7 +749,7 @@ class PostgresTimeSeriesStore:
                         old = self.connection.execute(
                             f"SELECT revision,observed_at,{VALUE_COLUMNS},"
                             "version_status "
-                            f"FROM {SCHEMA}.revisions "
+                            f"FROM {self.profile.schema}.revisions "
                             "WHERE series_id=%s AND month=%s "
                             "ORDER BY revision DESC LIMIT 1",
                             (point.series_id, _month_date(point.month)),
@@ -731,7 +785,7 @@ class PostgresTimeSeriesStore:
                             evidence,
                         )
                         self.connection.execute(
-                            f"INSERT INTO {SCHEMA}.revisions "
+                            f"INSERT INTO {self.profile.schema}.revisions "
                             f"({REVISION_COLUMNS},version_status,evidence_url) "
                             "VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                             parameters,
@@ -757,7 +811,8 @@ class PostgresTimeSeriesStore:
                 with self.connection.transaction():
                     for series, month, revision in inserted:
                         self.connection.execute(
-                            f"UPDATE {SCHEMA}.revisions SET available_at=%s "
+                            f"UPDATE {self.profile.schema}.revisions "
+                            "SET available_at=%s "
                             "WHERE series_id=%s AND month=%s AND revision=%s "
                             "AND available_at IS NULL",
                             (confirmed_at, series, month, revision),
@@ -771,22 +826,23 @@ class PostgresTimeSeriesStore:
     def status(self):
         try:
             latest = self.connection.execute(
-                f"SELECT series_id,to_char(max(month),'YYYY-MM') FROM {SCHEMA}.latest "
+                "SELECT series_id,to_char(max(month),'YYYY-MM') "
+                f"FROM {self.profile.schema}.latest "
                 "WHERE index_value IS NOT NULL AND version_status='active' "
                 "GROUP BY series_id"
             ).fetchall()
             count = self.connection.execute(
                 "SELECT count(*),count(*)-count(DISTINCT(series_id,month)) "
-                f"FROM {SCHEMA}.revisions"
+                f"FROM {self.profile.schema}.revisions"
             ).fetchone()
             batches = self.connection.execute(
-                f"SELECT count(*) FROM {SCHEMA}.batches"
+                f"SELECT count(*) FROM {self.profile.schema}.batches"
             ).fetchone()[0]
         except Exception:
             raise CpiStorageError("cpi_timeseries_storage_read_failed") from None
         return {
-            "schema": SCHEMA,
-            "latest_months": {s: dict(latest).get(s) for s in SERIES_IDS},
+            "schema": self.profile.schema,
+            "latest_months": {s: dict(latest).get(s) for s in self.profile.series_ids},
             "observation_count": count[0],
             "revision_count": count[1],
             "batch_count": batches,
@@ -799,7 +855,9 @@ class PostgresTimeSeriesStore:
 class InMemoryTimeSeriesStore:
     """Deterministic test port; runtime build_service always uses PostgreSQL."""
 
-    def __init__(self, raw_store=None, *, clock=None):
+    def __init__(self, raw_store=None, *, clock=None, profile=CPI_PROFILE):
+        self.profile = validate_profile(profile)
+        _validate_raw_store(raw_store, self.profile)
         self.raw_store = raw_store
         self._clock = clock or (lambda: datetime.now(UTC))
         self._history = {}
@@ -814,6 +872,7 @@ class InMemoryTimeSeriesStore:
     def read_range(
         self, series_ids, start_month, end_month, as_of=None, vintage_mode="observed"
     ):
+        _validate_series(series_ids, profile=self.profile)
         result = []
         for (series, month), history in sorted(self._history.items()):
             if series not in series_ids or not start_month <= month <= end_month:
@@ -851,6 +910,7 @@ class InMemoryTimeSeriesStore:
         return _withdraw(self, series_ids, start_month, end_month, evidence_url)
 
     def confirm_current_availability(self, series_ids, start_month, end_month):
+        _validate_series(series_ids, profile=self.profile)
         with self.operation():
             rows = [
                 history[-1]
@@ -877,13 +937,14 @@ class InMemoryTimeSeriesStore:
             validate_evidence_url(evidence)
         state = "withdrawn" if _withdrawal_evidence_url else "active"
         expected = _restoration_expectations(
-            restoration_expected_points, restoration_evidence_url
+            restoration_expected_points, restoration_evidence_url, profile=self.profile
         )
         batches = tuple(batches)
+        _validate_batches(batches, profile=self.profile)
         for batch in batches:
             if self.raw_store is not None:
                 locator = self.raw_store.put_verified(batch.raw)
-                if locator != raw_locator(digest(batch.raw)):
+                if locator != raw_locator(digest(batch.raw), profile=self.profile):
                     raise CpiStorageError("cpi_timeseries_raw_locator_mismatch")
         history = copy.deepcopy(self._history)
         saved = revised = 0
@@ -915,7 +976,9 @@ class InMemoryTimeSeriesStore:
                     rows[-1]["observed_at"]
                 ):
                     raise CpiStorageError("cpi_timeseries_observation_order_conflict")
-                document = _point_document(point, batch, len(rows) + 1)
+                document = _point_document(
+                    point, batch, len(rows) + 1, profile=self.profile
+                )
                 document.update(version_status=state, evidence_url=evidence)
                 if state == "withdrawn":
                     document["availability"] = "withdrawn"
@@ -932,7 +995,7 @@ class InMemoryTimeSeriesStore:
         return {"saved_points": saved, "saved_revisions": revised}
 
     def status(self):
-        latest = {s: None for s in SERIES_IDS}
+        latest = {s: None for s in self.profile.series_ids}
         for (s, month), rows in self._history.items():
             if (
                 rows[-1].get("version_status") != "withdrawn"
@@ -941,7 +1004,7 @@ class InMemoryTimeSeriesStore:
             ):
                 latest[s] = month
         return {
-            "schema": SCHEMA,
+            "schema": self.profile.schema,
             "latest_months": latest,
             "observation_count": sum(map(len, self._history.values())),
             "revision_count": sum(len(v) - 1 for v in self._history.values()),

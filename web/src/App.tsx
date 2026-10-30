@@ -1,3 +1,4 @@
+import { CPI_PROFILE, PPI_PROFILE } from "./macroTimeSeriesProfile";
 import { beijingToday, nowBeijingIso, toBeijingIso } from "./beijingTime";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -32,10 +33,12 @@ import { Technical } from "./WorkflowTable";
 import { useResource } from "./workflowHooks";
 import {
   CPI,
+  PPI,
   PCE,
   PCE_OPERATION,
   catalogForOperation,
   project,
+  keyOf,
   sameKey,
 } from "./workflowModel";
 import { menus, route, type Navigate } from "./workflowRoute";
@@ -190,17 +193,47 @@ export default function App({
       (page.view === "assets" && !!(identity || operation))) &&
     (!operation || sameKey(operationEntry?.asset, CPI)) &&
     ((!identity && !operation) || sameKey(key, CPI));
+  const macroProfile = identity === PPI.identity ? PPI_PROFILE : CPI_PROFILE;
+  const collectionList =
+    page.view === "collection" &&
+    ["periodic", "executions"].includes(page.fields.get("tab") ?? "new");
+  const collectionFilter =
+    page.fields.get(
+      page.fields.get("tab") === "periodic"
+        ? "periodic_asset"
+        : "execution_asset",
+    ) ?? "all";
   const cpiAvailability = useCpiAvailability(
     transport,
     generation,
     !page.invalid &&
+      (identity !== PPI.identity ||
+        (collectionList && collectionFilter !== keyOf(PPI))) &&
       ["assets", "collection"].includes(page.view) &&
+      operationEntry?.asset?.identity !== PPI.identity &&
       (!operation ||
         (!!operationEntry?.asset &&
           (!identity || identity === operationEntry.asset.identity) &&
           (!revision || revision === operationEntry.asset.revision))),
     page.view === "collection",
   );
+  const ppiAvailability = useCpiAvailability(
+    transport,
+    generation,
+    !page.invalid &&
+      ["assets", "collection"].includes(page.view) &&
+      ((identity === PPI.identity &&
+        (!revision || revision === PPI.revision) &&
+        !operation) ||
+        (page.view === "collection" &&
+          !operation &&
+          collectionList &&
+          (collectionFilter === "all" || collectionFilter === keyOf(PPI)))),
+    page.view === "collection",
+    PPI_PROFILE,
+  );
+  const macroAvailability =
+    macroProfile.id === "ppi" ? ppiAvailability : cpiAvailability;
   const catalog = useResource<Catalog>(
     (signal) => request(transport, "/api/r5/cpi", query, signal),
     [transport, generation, query, wantsCatalog, page.view, page.invalid],
@@ -271,7 +304,7 @@ export default function App({
     directory.data &&
     ((operation && !source) ||
       (identity &&
-        ((revision && !asset) ||
+        ((revision && !asset && !sameKey(key, PPI)) ||
           (!revision &&
             (page.view !== "assets" ||
               !!operation ||
@@ -295,6 +328,7 @@ export default function App({
   const menu = menus.find((m) => m[0] === page.view)!;
   const busy =
     cpiAvailability.busy ||
+    ppiAvailability.busy ||
     packages.busy ||
     directory.busy ||
     catalog.busy ||
@@ -493,23 +527,28 @@ export default function App({
                   )}
                   {page.view === "assets" && (
                     <RuntimeAssets
+                      profile={macroProfile}
                       data={packages.data}
                       busy={packages.busy}
                       failure={packages.failure}
                       route={page}
                       navigate={navigate}
                       cpi={
-                        !cpiAvailability.legacy &&
-                        (!!cpiAvailability.data || !!cpiAvailability.failure) &&
+                        !macroAvailability.legacy &&
+                        (!!macroAvailability.data ||
+                          !!macroAvailability.failure) &&
                         !invalidIdentity &&
                         !missingMapping &&
-                        identity === CPI.identity &&
-                        (!revision || revision === CPI.revision) &&
-                        (!operation || sameKey(selectedAsset?.key, CPI)) ? (
+                        identity === macroProfile.asset.identity &&
+                        (!revision ||
+                          revision === macroProfile.asset.revision) &&
+                        (!operation ||
+                          sameKey(selectedAsset?.key, macroProfile.asset)) ? (
                           <>
                             <CpiTimeSeries
+                              profile={macroProfile}
                               transport={transport}
-                              availability={cpiAvailability}
+                              availability={macroAvailability}
                             />
                           </>
                         ) : undefined
@@ -518,8 +557,8 @@ export default function App({
                         <button
                           onClick={() =>
                             navigate("collection", {
-                              asset: CPI.identity,
-                              asset_revision: CPI.revision,
+                              asset: macroProfile.asset.identity,
+                              asset_revision: macroProfile.asset.revision,
                               operation: null,
                               tab: "new",
                             })
@@ -593,6 +632,7 @@ export default function App({
                       transport={transport}
                       generation={generation}
                       cpiAvailability={cpiAvailability}
+                      ppiAvailability={ppiAvailability}
                     />
                   )}
                   {page.view === "platform" && (

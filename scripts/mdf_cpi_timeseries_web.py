@@ -55,9 +55,15 @@ class TimeSeriesHandler(CandidateHandler):
 
     def request_admitted(self, request):
         if request.method == "POST":
-            return admitted_job(request)
+            return admitted_job(
+                request, prefix="/api/r5/cpi/timeseries"
+            ) or admitted_job(request, prefix="/api/r5/ppi/timeseries")
         if request.method == "PUT":
-            return admitted_package_save(request) or admitted_strategy(request)
+            return (
+                admitted_package_save(request)
+                or admitted_strategy(request, prefix="/api/r5/cpi/timeseries")
+                or admitted_strategy(request, prefix="/api/r5/ppi/timeseries")
+            )
         return super().request_admitted(request)
 
     do_POST = PreviewHandler.dispatch
@@ -94,7 +100,26 @@ def main():
             "core range and request budgets, without manual splitting"
         ),
     )
+    parser.add_argument("--enable-ppi-timeseries", action="store_true")
+    parser.add_argument("--ppi-schedule-path", type=Path)
+    parser.add_argument("--ppi-job-directory", type=Path)
+    parser.add_argument("--ppi-history-start")
+    parser.add_argument("--allow-ppi-local-read", action="store_true")
+    parser.add_argument("--allow-ppi-collect", action="store_true")
     args = parser.parse_args()
+    if args.enable_ppi_timeseries:
+        if not args.ppi_history_start:
+            parser.error("--enable-ppi-timeseries requires --ppi-history-start")
+        if not all(
+            p is not None and p.is_absolute() and ".." not in p.parts
+            for p in (args.ppi_schedule_path, args.ppi_job_directory)
+        ):
+            parser.error("PPI requires independent absolute schedule and job paths")
+        if (
+            args.ppi_schedule_path.resolve() == args.schedule_path.resolve()
+            or args.ppi_job_directory.resolve() == args.job_directory.resolve()
+        ):
+            parser.error("PPI requires independent schedule and job paths")
     require(sys.version_info[:3] == (3, 14, 8), "python_baseline_mismatch")
     require(Path.cwd().resolve() == ROOT, "timeseries_worktree_cwd_required")
     ui = ROOT / "web/dist"
@@ -129,6 +154,12 @@ def main():
         pce_access=access(args.allow_pce_local_read),
         allow_collect=args.allow_collect,
         max_collect_months=args.max_collect_months,
+        ppi_enabled=args.enable_ppi_timeseries,
+        ppi_schedule_path=args.ppi_schedule_path,
+        ppi_job_directory=args.ppi_job_directory,
+        ppi_history_start=args.ppi_history_start,
+        ppi_access=access(args.allow_ppi_local_read),
+        ppi_allow_collect=args.allow_ppi_collect,
     )
     # Jobs own independent services and a nonblocking execution lock. Readers
     # can inspect the durable running record while one POST waits on a provider.

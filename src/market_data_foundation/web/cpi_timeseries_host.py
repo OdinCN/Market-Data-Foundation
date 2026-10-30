@@ -5,6 +5,10 @@ from pathlib import Path
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from market_data_foundation.historical.bls_timeseries_profile import (
+    CPI_PROFILE,
+    PPI_PROFILE,
+)
 from market_data_foundation.historical.cpi_release_schedule import CpiReleaseScheduler
 from market_data_foundation.historical.cpi_timeseries import (
     DEFAULT_REQUEST_CONTROL_PATH,
@@ -23,7 +27,7 @@ from market_data_foundation.storage.postgres_runtime_config import load_pg_confi
 from market_data_foundation.web.cpi_api import create_app
 from market_data_foundation.web.cpi_query import CpiQueryAccess
 from market_data_foundation.web.cpi_timeseries_api import (
-    PREFIX,
+    PREFIXES,
     TimeSeriesHost,
     admitted_job,
     admitted_strategy,
@@ -53,17 +57,25 @@ class TimeSeriesPackages(PackageHost):
         view = super().project(package_id, record, access)
         if package_id != "macro":
             return view
-        definition = next(
-            c.definition_ref for c in view.capabilities if c.capability_id == "cpi"
-        )
-        source = self.timeseries.source(record)
-        capabilities = self.timeseries.capabilities(source)
-        upstream = self.timeseries.upstream_access(source)
+        hosts = self.timeseries_hosts
+        definitions = {
+            (c.definition_ref.identity, c.definition_ref.revision): hosts[
+                c.capability_id
+            ]
+            for c in view.capabilities
+            if c.capability_id in hosts
+        }
         assets = []
         for asset in view.assets:
             revisions = []
             for revision in asset.revisions:
-                if revision.definition_ref == definition:
+                host = definitions.get(
+                    (revision.definition_ref.identity, revision.definition_ref.revision)
+                )
+                if host is not None:
+                    source = host.source(record)
+                    capabilities = host.capabilities(source)
+                    upstream = host.upstream_access(source)
                     readable = (
                         revision.local_holding == "PRESENT"
                         and revision.metadata_view_permission == "allowed"
@@ -74,16 +86,17 @@ class TimeSeriesPackages(PackageHost):
                             "local_read": Eligibility(
                                 allowed=readable,
                                 reasons=[
-                                    "cpi_timeseries_local_coverage"
+                                    host.profile.key + "_timeseries_local_coverage"
                                     if readable
-                                    else "cpi_timeseries_read_unavailable"
+                                    else host.profile.key
+                                    + "_timeseries_read_unavailable"
                                 ],
                             ),
                             "upstream_read": Eligibility(
                                 allowed=upstream["allowed"],
                                 reasons=[
                                     upstream["reason"]
-                                    or "cpi_local_first_gap_passthrough"
+                                    or host.profile.key + "_local_first_gap_passthrough"
                                 ],
                             ),
                             "collect": Eligibility(
@@ -120,6 +133,15 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         max_collect_months=None,
         history_start="1999-01",
         query_service_factory=None,
+        ppi_enabled=False,
+        ppi_read_service_factory=None,
+        ppi_write_service_factory=None,
+        ppi_query_service_factory=None,
+        ppi_schedule_path=None,
+        ppi_job_directory=None,
+        ppi_access=CpiQueryAccess(),
+        ppi_allow_collect=False,
+        ppi_history_start=None,
     ):
         super().__init__(
             settings,
@@ -128,6 +150,12 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             cpi_access=cpi_access,
             pce_access=pce_access,
         )
+        if not isinstance(ppi_access, CpiQueryAccess):
+            raise ValueError("readonly_explicit_access_required")
+        if type(ppi_enabled) is not bool or type(ppi_allow_collect) is not bool:
+            raise ValueError("explicit_timeseries_permissions_required")
+        self.accesses["ppi"] = ppi_access
+        self.ppi_timeseries = None
         self.packages = TimeSeriesPackages(
             self.packages.store,
             settings.environment_id,
@@ -166,6 +194,55 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             clock=clock,
         )
         self.packages.timeseries = self.timeseries
+        self.packages.timeseries_hosts = {"cpi": self.timeseries}
+        configured = ppi_enabled or any(
+            factory is not None
+            for factory in (
+                ppi_read_service_factory,
+                ppi_write_service_factory,
+                ppi_query_service_factory,
+            )
+        )
+        if configured:
+            if ppi_schedule_path is None or ppi_job_directory is None:
+                raise ValueError("ppi_independent_paths_required")
+            if not all(
+                Path(p).is_absolute() and ".." not in Path(p).parts
+                for p in (ppi_schedule_path, ppi_job_directory)
+            ):
+                raise ValueError("ppi_independent_absolute_paths_required")
+            if (
+                Path(ppi_schedule_path).resolve() == Path(schedule_path).resolve()
+                or Path(ppi_job_directory).resolve() == Path(job_directory).resolve()
+            ):
+                raise ValueError("ppi_independent_paths_required")
+            baseline = ppi_history_start
+            if baseline is None:
+                raise ValueError("ppi_history_start_evidence_required")
+            self.ppi_timeseries = TimeSeriesHost(
+                profile=PPI_PROFILE,
+                packages=self.packages,
+                read_service_factory=ppi_read_service_factory or self.ppi_read_service,
+                write_service_factory=ppi_write_service_factory
+                or (self.ppi_write_service if ppi_enabled else None),
+                query_service_factory=ppi_query_service_factory
+                or (self.ppi_query_service if ppi_enabled else None),
+                scheduler=CpiReleaseScheduler(
+                    WorkerService(self.ppi_worker_service, profile=PPI_PROFILE),
+                    ppi_schedule_path,
+                    profile=PPI_PROFILE,
+                    clock=clock,
+                    history_start=persisted_history_start(ppi_schedule_path, baseline),
+                    auto_mode=True,
+                ),
+                job_directory=ppi_job_directory,
+                allow_collect=ppi_allow_collect,
+                query_allowed=ppi_access.metadata_permission == "allowed"
+                and ppi_access.read_permission == "allowed",
+                max_collect_months=max_collect_months,
+                clock=clock,
+            )
+            self.packages.timeseries_hosts["ppi"] = self.ppi_timeseries
 
     def worker_service(self):
         capabilities = self.timeseries.capabilities(self.timeseries.source())
@@ -175,20 +252,45 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             credential_loader=self.timeseries.effective_credential
         )
 
-    def query_service(self, *, credential_loader):
-        service = self.read_service()
+    def ppi_worker_service(self):
+        host = self.ppi_timeseries
+        capabilities = host.capabilities(host.source())
+        if not capabilities["collect"]:
+            raise WebError(capabilities["reason"], 403)
+        return host.write_factory(credential_loader=host.effective_credential)
+
+    def ppi_query_service(self, *, credential_loader):
+        return self.query_service(
+            credential_loader=credential_loader, profile=PPI_PROFILE
+        )
+
+    def ppi_write_service(self, *, credential_loader):
+        return self.write_service(
+            credential_loader=credential_loader, profile=PPI_PROFILE
+        )
+
+    def ppi_read_service(self):
+        return self.read_service(profile=PPI_PROFILE)
+
+    def query_service(self, *, credential_loader, profile=CPI_PROFILE):
+        service = (
+            self.read_service()
+            if profile is CPI_PROFILE
+            else self.read_service(profile=profile)
+        )
         try:
             service.source = build_source(
                 credential_loader=credential_loader,
                 request_control=self.request_control,
                 max_transport_attempts=1,
+                profile=profile,
             )
             return service
         except BaseException:
             service.close()
             raise
 
-    def write_service(self, *, credential_loader):
+    def write_service(self, *, credential_loader, profile=CPI_PROFILE):
         config = self.settings.config_directory
         if load_pg_config(config / "runtime.toml") != self.profile:
             raise WebError("postgres_profile_changed", 503)
@@ -202,9 +304,10 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             credential_loader=credential_loader,
             request_control=self.request_control,
             max_transport_attempts=1,
+            profile=profile,
         )
 
-    def read_service(self):
+    def read_service(self, *, profile=CPI_PROFILE):
         # Dedicated connection with server-enforced session READ ONLY. Never call
         # build_service: GET does not require Garage/BLS credentials or clients.
         connection = self.connect(
@@ -216,20 +319,23 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         try:
             connection.execute("SET TIME ZONE 'UTC'")
             return CpiTimeSeriesService(
-                PostgresTimeSeriesStore(connection, None), LocalOnlySource()
+                PostgresTimeSeriesStore(connection, None, profile=profile),
+                LocalOnlySource(),
+                profile=profile,
             )
         except BaseException:
             connection.close()
             raise
 
     def _history(self, capability, definition, at):
-        if capability != "cpi":
+        if capability not in {"cpi", "ppi"}:
             return super()._history(capability, definition, at)
-        access = self.accesses["cpi"]
+        access = self.accesses[capability]
+        host = self.timeseries if capability == "cpi" else self.ppi_timeseries
         holding = "unknown"
-        if access.metadata_permission == "allowed":
+        if access.metadata_permission == "allowed" and host is not None:
             try:
-                with self.timeseries.service() as service:
+                with host.service() as service:
                     holding = (
                         "present" if service.status()["observation_count"] else "absent"
                     )
@@ -240,6 +346,26 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             holding=holding,
             metadata_view_permission=access.metadata_permission,
             read_permission=access.read_permission,
+        )
+
+    def history(self, environment_id, package_id, record):
+        result = super().history(environment_id, package_id, record)
+        if package_id != "macro":
+            return result
+        ppi = next(
+            c
+            for c in self.packages.catalog.package("macro").capabilities
+            if c.capability_id == "ppi"
+        )
+        return result.model_copy(
+            update={
+                "history": [
+                    self._history("ppi", ppi.definition_ref, self.clock())
+                    if evidence.definition_ref == ppi.definition_ref
+                    else evidence
+                    for evidence in result.history
+                ]
+            }
         )
 
 
@@ -272,13 +398,17 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
 
     prune(app)
     app.include_router(timeseries_router(runtime.timeseries))
+    app.include_router(timeseries_router(runtime.ppi_timeseries, profile=PPI_PROFILE))
     app.state.timeseries_runtime = runtime
 
     @app.middleware("http")
     async def boundary(request, call_next):
         config_put = settings.package_config_save and admitted_package_save(request)
-        job_post = admitted_job(request)
-        strategy_put = admitted_strategy(request)
+        prefixes = PREFIXES
+        job_post = any(admitted_job(request, prefix=prefix) for prefix in prefixes)
+        strategy_put = any(
+            admitted_strategy(request, prefix=prefix) for prefix in prefixes
+        )
         error = None
         if request.method not in {"GET", "HEAD"} and not (
             config_put or job_post or strategy_put
@@ -290,7 +420,9 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
             error = (403, "operator_not_authorized")
         else:
             capability = (
-                "cpi"
+                "ppi"
+                if request.url.path.startswith("/api/r5/ppi/")
+                else "cpi"
                 if request.url.path.startswith("/api/r5/cpi")
                 else (
                     "pce"
@@ -308,7 +440,7 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
                 ):
                     error = (403, "read_permission_" + access.read_permission)
             if request.method in {"GET", "HEAD"} and request.url.path.startswith(
-                PREFIX
+                prefixes
             ):
                 if (
                     request.headers.get("content-length", "0") != "0"

@@ -22,6 +22,10 @@ from urllib.error import HTTPError, URLError
 from zoneinfo import ZoneInfo
 
 from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
+from market_data_foundation.historical.bls_timeseries_profile import (
+    CPI_PROFILE,
+    validate_profile,
+)
 from market_data_foundation.historical.bls_web_transport import (
     BlsWebError,
     fetch_bls_page,
@@ -36,6 +40,7 @@ from market_data_foundation.historical.cpi_timeseries_source import validate_mon
 
 CALENDAR_URL = "https://www.bls.gov/schedule/news_release/cpi.htm"
 ICS_URL = "https://www.bls.gov/schedule/news_release/bls.ics"
+_DEFAULT_FETCHER = object()
 NEW_YORK = ZoneInfo("America/New_York")
 MAX_CALENDAR_BYTES = 2_000_000
 CALENDAR_MAX_AGE = timedelta(hours=24)
@@ -247,12 +252,18 @@ def _ics_choose(old, event):
     return old
 
 
-def parse_official_ics(raw):
-    """Parse bounded BLS CPI events, without inventing a reference month.
+def parse_official_ics(raw, *, profile=CPI_PROFILE, known_uids=()):
+    """Parse bounded BLS profile events, without inventing a reference month.
 
     US-Eastern is the feed's alias for America/New_York. Recurrences and
     ambiguous/nonexistent wall times require review rather than approximation.
     """
+    profile = validate_profile(profile)
+    titles = (
+        {"consumer price index"}
+        if profile.key == "cpi"
+        else {"producer price index", "producer price indexes"}
+    )
     if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_CALENDAR_BYTES:
         raise CpiScheduleError("calendar_payload_invalid")
     try:
@@ -327,12 +338,15 @@ def parse_official_ics(raw):
         status = fields.get("STATUS", ("CONFIRMED", {}))[0].upper()
         if method == "CANCEL":
             status = "CANCELLED"
-        # A summary-less cancellation may identify an already bound CPI UID.
-        if summary.casefold() != "consumer price index" and not (
+        # A summary-less cancellation may identify an already bound profile UID.
+        if summary.casefold() not in titles and not (
             not summary and status == "CANCELLED"
         ):
             continue
         uid = _ics_text(fields.get("UID", ("", {}))[0])
+        if profile.key != "cpi" and not summary and uid not in known_uids:
+            # An unknown summary-less cancellation cannot establish its asset.
+            continue
         sequence = fields.get("SEQUENCE", ("0", {}))[0]
         if (
             not uid
@@ -359,12 +373,12 @@ def parse_official_ics(raw):
     return sorted(events.values(), key=lambda event: event["uid"])
 
 
-def _fetch_calendar(url, accept):
+def _fetch_calendar(url, accept, *, title="CPI"):
     try:
         return fetch_bls_page(
             url,
             headers={
-                "User-Agent": "Market-Data-Foundation CPI calendar/1.0",
+                "User-Agent": f"Market-Data-Foundation {title} calendar/1.0",
                 "Accept": accept,
             },
             max_bytes=MAX_CALENDAR_BYTES,
@@ -465,7 +479,7 @@ def _due(stage, at):
     )
 
 
-def _target_present(result, reference_month):
+def _target_present(result, reference_month, series_ids=SERIES_IDS):
     if not isinstance(result, dict):
         return False
     present = {
@@ -475,18 +489,18 @@ def _target_present(result, reference_month):
         and point.get("index_value") is not None
         and point.get("availability", "available") == "available"
     }
-    return set(SERIES_IDS) <= present
+    return set(series_ids) <= present
 
 
-def _fresh_target(result, reference_month):
-    if not _target_present(result, reference_month):
+def _fresh_target(result, reference_month, series_ids=SERIES_IDS):
+    if not _target_present(result, reference_month, series_ids):
         return False
-    if set(result.get("series_ids", [])) != set(SERIES_IDS):
+    if set(result.get("series_ids", [])) != set(series_ids):
         return False
     refreshed = result.get("refreshed_series_months")
     if isinstance(refreshed, list):
         return {(item.get("series_id"), item.get("month")) for item in refreshed} >= {
-            (series, reference_month) for series in SERIES_IDS
+            (series, reference_month) for series in series_ids
         }
     if result.get("refresh_complete") is True:
         return True
@@ -496,7 +510,7 @@ def _fresh_target(result, reference_month):
         and bool(missing)
         and all(
             isinstance(item, dict)
-            and item.get("series_id") in SERIES_IDS
+            and item.get("series_id") in series_ids
             and isinstance(item.get("month"), str)
             and item["month"] != reference_month
             for item in missing
@@ -511,20 +525,57 @@ class CpiReleaseScheduler:
         state_path,
         *,
         clock=now_utc,
-        calendar_fetcher=fetch_official_calendar,
-        reference_fetcher=fetch_reference_calendar,
-        history_start="1999-01",
-        signal_fetcher=fetch_official_errata,
+        calendar_fetcher=_DEFAULT_FETCHER,
+        reference_fetcher=_DEFAULT_FETCHER,
+        history_start=None,
+        signal_fetcher=_DEFAULT_FETCHER,
         signal_poll_seconds=3600,
         max_attempts=5,
         auto_mode=False,
+        profile=CPI_PROFILE,
     ):
+        self.profile = validate_profile(profile)
+        self.asset_key = profile.key
+        self.series_ids = profile.series_ids
+        self.calendar_title = (
+            "Consumer Price Index" if profile.key == "cpi" else "Producer Price Index"
+        )
+        self.calendar_url = (
+            f"https://www.bls.gov/schedule/news_release/{profile.key}.htm"
+        )
+        self.ics_url = ICS_URL
+        if getattr(service, "profile", profile) is not profile:
+            raise CpiScheduleError("schedule_service_profile_mismatch")
         self.service = service
         self.state_path = Path(state_path).expanduser().resolve()
         self.clock = clock
-        self.calendar_fetcher = calendar_fetcher
-        self.reference_fetcher = reference_fetcher
+        self.calendar_fetcher = (
+            (
+                fetch_official_calendar
+                if profile.key == "cpi"
+                else lambda: _fetch_calendar(self.ics_url, "text/calendar", title="PPI")
+            )
+            if calendar_fetcher is _DEFAULT_FETCHER
+            else calendar_fetcher
+        )
+        self.reference_fetcher = (
+            (
+                lambda: _fetch_calendar(
+                    self.calendar_url, "text/html", title=profile.key.upper()
+                )
+            )
+            if reference_fetcher is _DEFAULT_FETCHER
+            else reference_fetcher
+        )
+        if history_start is None:
+            history_start = profile.earliest_month
+            if history_start is None and profile.key == "cpi":
+                history_start = "1999-01"
+        if history_start is None:
+            raise CpiScheduleError("schedule_history_start_required")
         validate_month(history_start)
+        if profile.earliest_month and history_start < profile.earliest_month:
+            raise CpiScheduleError("schedule_history_start_before_profile")
         if type(max_attempts) is not int or not 1 <= max_attempts <= 20:
             raise CpiScheduleError("schedule_attempt_budget_invalid")
         if (
@@ -533,7 +584,15 @@ class CpiReleaseScheduler:
         ):
             raise CpiScheduleError("schedule_signal_interval_invalid")
         self.history_start = history_start
-        self.signal_fetcher = signal_fetcher
+        self.signal_fetcher = (
+            fetch_official_errata
+            if signal_fetcher is _DEFAULT_FETCHER and profile.key == "cpi"
+            else None
+            if signal_fetcher is _DEFAULT_FETCHER
+            else signal_fetcher
+        )
+        if profile.key != "cpi" and self.signal_fetcher is not None:
+            raise CpiScheduleError("schedule_signals_unsupported")
         self.signal_poll_seconds = signal_poll_seconds
         self.max_attempts = max_attempts
         if type(auto_mode) is not bool:
@@ -558,13 +617,15 @@ class CpiReleaseScheduler:
         if not self.state_path.exists():
             return {
                 "version": 2,
+                "asset": self.asset_key,
                 "calendar": {},
                 "targets": {},
-                "signals": {"state": "unknown", "events": {}},
+                "signals": self._initial_signals(),
                 "history_start": self.history_start,
             }
         try:
             state = json.loads(self.state_path.read_text())
+            self._validate_asset(state)
             if (
                 state.get("version") not in {1, 2}
                 or not isinstance(state.get("calendar"), dict)
@@ -588,15 +649,41 @@ class CpiReleaseScheduler:
                     )
                     target["target_available"] = complete
                     target["legacy_completion_unverified"] = complete
-            state.update(version=2, history_start=self.history_start)
-            state.setdefault("signals", {"state": "unknown", "events": {}})
+            state.update(
+                version=2, asset=self.asset_key, history_start=self.history_start
+            )
+            state.setdefault("signals", self._initial_signals())
+            if self.profile.key != "cpi":
+                if state["signals"].get("events") or state["signals"].get("recovery"):
+                    raise CpiScheduleError("schedule_signals_unsupported")
+                state["signals"] = self._initial_signals()
             return state
         except CpiScheduleError:
             raise
         except ValueError, OSError, TypeError, KeyError, AttributeError:
             raise CpiScheduleError("schedule_state_invalid") from None
 
+    def _validate_asset(self, value, classification="schedule_asset_mismatch"):
+        if not isinstance(value, dict):
+            raise CpiScheduleError(classification)
+        # Only historical CPI files predate the explicit asset envelope.
+        asset = value.get("asset", "cpi" if self.profile.key == "cpi" else None)
+        if asset != self.asset_key:
+            raise CpiScheduleError(classification)
+
+    def _initial_signals(self):
+        return {
+            "state": "unsupported"
+            if self.profile.key != "cpi"
+            else "unknown"
+            if self.signal_fetcher is not None
+            else "disabled",
+            "events": {},
+        }
+
     def _save(self, state):
+        self._validate_asset(state)
+        state["asset"] = self.asset_key
         encoded = json.dumps(state, sort_keys=True, ensure_ascii=False).encode()
         _write_atomic(self.state_path, encoded)
 
@@ -724,7 +811,9 @@ class CpiReleaseScheduler:
             "history_start": state["history_start"],
             "signals": signals,
             "revision_status": (
-                "pending"
+                "unsupported"
+                if self.profile.key != "cpi"
+                else "pending"
                 if any(
                     e["state"] not in {"complete", "dismissed"}
                     for e in signals["events"].values()
@@ -792,7 +881,9 @@ class CpiReleaseScheduler:
         fetch_reference=False,
     ):
         acquired_at = acquired_at or at
-        incoming = parse_official_ics(raw)
+        incoming = parse_official_ics(
+            raw, profile=self.profile, known_uids=state["calendar"].get("events", {})
+        )
         reference_meta = None
         metadata = self._cache_calendar(raw, ".ics")
         self._reference_evidence(state)
@@ -817,7 +908,7 @@ class CpiReleaseScheduler:
             evidence = target["reference_month_evidence"]
             if (
                 not target.get("ics_uid")
-                and evidence.get("source") == CALENDAR_URL
+                and evidence.get("source") == self.calendar_url
                 and evidence.get("reference_month") == month
                 and evidence.get("release_at") == target["release_at"]
                 and re.fullmatch(r"[0-9a-f]{64}", evidence.get("sha256") or "")
@@ -826,7 +917,7 @@ class CpiReleaseScheduler:
                 candidates.setdefault(target["release_at"], {})[month] = evidence
         cached_reference = previous.get("reference_calendar") or {}
         if (
-            cached_reference.get("source") == CALENDAR_URL
+            cached_reference.get("source") == self.calendar_url
             and re.fullmatch(r"[0-9a-f]{64}", cached_reference.get("sha256") or "")
             and cached_reference.get("raw_path")
         ):
@@ -862,7 +953,7 @@ class CpiReleaseScheduler:
             and uid not in bindable
             and events[uid]["status"] != "CANCELLED"
             and events[uid].get("release_at")
-            and _instant(events[uid]["release_at"]) > at
+            and (self.profile.key != "cpi" or _instant(events[uid]["release_at"]) > at)
             for uid in latest_uids
         )
         if reference_raw is not None or (
@@ -876,7 +967,7 @@ class CpiReleaseScheduler:
                     reference_raw = self.reference_fetcher()
                 references = parse_official_calendar(reference_raw)
                 reference_meta = {
-                    "source": CALENDAR_URL,
+                    "source": self.calendar_url,
                     **self._cache_calendar(reference_raw, ".html"),
                     "acquired_at": acquired_at.isoformat(),
                     "releases": references,
@@ -938,7 +1029,7 @@ class CpiReleaseScheduler:
                         ics_uid=uid,
                         ics_sequence=event["sequence"],
                         cancellation_evidence={
-                            "source": ICS_URL,
+                            "source": self.ics_url,
                             "uid": uid,
                             "sequence": event["sequence"],
                             "revision_at": event["revision_at"],
@@ -1020,7 +1111,7 @@ class CpiReleaseScheduler:
             if events[uid].get("release_at")
         ]
         state["calendar"] = {
-            "source": ICS_URL,
+            "source": self.ics_url,
             "format": "ics",
             **metadata,
             "fetched_at": acquired_at.isoformat(),
@@ -1078,7 +1169,7 @@ class CpiReleaseScheduler:
                     "history": _stage(None, state="blocked"),
                     "target_available": False,
                     "reference_month_evidence": {
-                        "source": CALENDAR_URL,
+                        "source": self.calendar_url,
                         "sha256": sha256,
                         "raw_path": str(raw_path),
                         **release,
@@ -1105,7 +1196,7 @@ class CpiReleaseScheduler:
             existing.update(release)
             existing["calendar_sha256"] = sha256
             existing["reference_month_evidence"] = {
-                "source": CALENDAR_URL,
+                "source": self.calendar_url,
                 "sha256": sha256,
                 "raw_path": str(raw_path),
                 **release,
@@ -1136,7 +1227,7 @@ class CpiReleaseScheduler:
                 )
                 if key in state["calendar"]
             },
-            "source": CALENDAR_URL,
+            "source": self.calendar_url,
             "format": "html",
             "fetched_at": acquired_at.isoformat(),
             "acquired_at": acquired_at.isoformat(),
@@ -1251,28 +1342,45 @@ class CpiReleaseScheduler:
             "classification"
         )
 
-    def _available_readback(self, start, end, series, persisted):
+    def _available_readback(self, start, end, series, persisted, *, scope=None):
         """Finish scheduled writes only after current availability is confirmed.
 
         The refresh result is a persisted snapshot, not a query-time upstream
         overlay. Only a fully verified scope may be explicitly confirmed now.
         Ordinary queries and unchanged updates never acquire this side effect.
         """
-        scope = {(s, m) for s in series for m in _months(start, end)}
+        explicit_scope = scope is not None
+        scope = (
+            {(s, m) for s in series for m in _months(start, end)}
+            if scope is None
+            else scope
+        )
 
         def rows(result):
-            return {
-                (p["series_id"], p["month"]): p
+            selected = [
+                p
                 for field in ("points", "source_unavailable", "withdrawn")
                 for p in result.get(field, [])
                 if (p["series_id"], p["month"]) in scope
-            }
+            ]
+            indexed = {(p["series_id"], p["month"]): p for p in selected}
+            if explicit_scope and len(indexed) != len(selected):
+                raise CpiScheduleError("schedule_local_readback_incomplete")
+            return indexed
 
         verified = rows(persisted)
         if not scope <= verified.keys():
             raise CpiScheduleError("schedule_local_readback_incomplete")
         if any(p.get("available_at") is None for p in verified.values()):
-            self.service.confirm_current_availability(start, end, series_ids=series)
+            if explicit_scope:
+                # Never confirm local rows the current source request did not return.
+                for month in sorted({m for _, m in scope}):
+                    selected = tuple(s for s in series if (s, month) in scope)
+                    self.service.confirm_current_availability(
+                        month, month, series_ids=selected
+                    )
+            else:
+                self.service.confirm_current_availability(start, end, series_ids=series)
         readback = self.service.query_range(
             start,
             end,
@@ -1296,6 +1404,56 @@ class CpiReleaseScheduler:
             raise CpiScheduleError("schedule_local_readback_incomplete")
         return readback
 
+    def _history_readback(self, start, end, result, stage):
+        """PPI source gaps are reconciled only against successful request batches.
+
+        An explicit empty key list requires positive completed batch and HTTP
+        counts too; an absent field never proves an empty successful response.
+        """
+        if self.profile.key != "ppi":
+            if result.get("persisted") is not True or not (
+                result.get("refresh_complete") is True
+                or result.get("refresh_coverage_complete") is True
+            ):
+                raise CpiScheduleError("history_refresh_incomplete")
+            return self._available_readback(start, end, self.series_ids, result)
+        keys = result.get("source_returned_series_months")
+        requests = result.get("provider_requests")
+        if (
+            result.get("persisted") is not True
+            or not isinstance(keys, list)
+            or type(requests) is not int
+            or requests <= 0
+            or (self._actual_http(result) or 0) <= 0
+        ):
+            raise CpiScheduleError("history_source_return_evidence_required")
+        full = {(s, m) for s in self.series_ids for m in _months(start, end)}
+        scope = set()
+        for key in keys:
+            if (
+                not isinstance(key, dict)
+                or set(key) != {"series_id", "month"}
+                or not isinstance(key["series_id"], str)
+                or not isinstance(key["month"], str)
+            ):
+                raise CpiScheduleError("history_source_return_keys_invalid")
+            pair = (key["series_id"], key["month"])
+            if pair not in full or pair in scope:
+                raise CpiScheduleError("history_source_return_keys_invalid")
+            scope.add(pair)
+        readback = self._available_readback(
+            start, end, self.series_ids, result, scope=scope
+        )
+        missing = {
+            (p["series_id"], p["month"])
+            for p in stage.get("source_missing", []) + result.get("source_missing", [])
+        } | (full - scope)
+        stage["source_missing"] = [
+            {"series_id": s, "month": m} for s, m in sorted(missing)
+        ]
+        stage["coverage_complete"] = not missing
+        return readback
+
     def _verify_target_availability(self, state, start, end, readback=None):
         # A later history/recovery/signal write can invalidate a previously
         # completed target's current availability. Keep its completed work, but
@@ -1312,7 +1470,7 @@ class CpiReleaseScheduler:
                 readback = self.service.query_range(
                     min(targets),
                     max(targets),
-                    series_ids=SERIES_IDS,
+                    series_ids=self.series_ids,
                     allow_upstream=False,
                     vintage_mode="available",
                 )
@@ -1320,7 +1478,7 @@ class CpiReleaseScheduler:
                 readback = {}
         for month, target in targets.items():
             target["target"]["availability_verified"] = _target_present(
-                readback, month
+                readback, month, self.series_ids
             ) and all(
                 p.get("available_at") is not None
                 for p in readback.get("points", [])
@@ -1336,7 +1494,7 @@ class CpiReleaseScheduler:
             return "interrupted"
         try:
             result = self.service.update_range(
-                month, month, series_ids=SERIES_IDS, include_buffer=False
+                month, month, series_ids=self.series_ids, include_buffer=False
             )
             target.update(
                 last_provider_requests=result.get("provider_requests", 0),
@@ -1345,9 +1503,9 @@ class CpiReleaseScheduler:
                 last_refresh_complete=result.get("refresh_complete") is True,
                 source_missing=result.get("source_missing", []),
                 source_unavailable=result.get("source_unavailable", []),
-                target_refreshed=_fresh_target(result, month),
+                target_refreshed=_fresh_target(result, month, self.series_ids),
             )
-            expected = {(s, month) for s in SERIES_IDS}
+            expected = {(s, month) for s in self.series_ids}
             unavailable = _keys(result.get("source_unavailable", []))
             covered = _keys(result.get("refreshed_series_months", [])) | unavailable
             explicit_missing = bool(expected & unavailable) and expected <= covered
@@ -1358,7 +1516,7 @@ class CpiReleaseScheduler:
                 )
             ):
                 raise CpiScheduleError("target_month_not_available")
-            readback = self._available_readback(month, month, SERIES_IDS, result)
+            readback = self._available_readback(month, month, self.series_ids, result)
             if explicit_missing:
                 if not expected <= (
                     _keys(readback.get("points", []))
@@ -1369,12 +1527,12 @@ class CpiReleaseScheduler:
                 stage.update(
                     state="source_unavailable", classification="source_unavailable"
                 )
-            elif not _target_present(readback, month):
+            elif not _target_present(readback, month, self.series_ids):
                 raise CpiScheduleError("schedule_local_readback_incomplete")
             else:
                 stage["availability_verified"] = True
                 self._finish(stage, _aware(self.clock()))
-                target["verified_target_series"] = list(SERIES_IDS)
+                target["verified_target_series"] = list(self.series_ids)
             target["history"] = _stage(at.isoformat())
             action = "updated" if not explicit_missing else "source_unavailable"
         except Exception as error:
@@ -1395,15 +1553,10 @@ class CpiReleaseScheduler:
             start, end, policy = update_window(end, self.history_start)
             stage.update(update_start=start, update_end=end, refresh_policy=policy)
             result = self.service.update_range(
-                start, end, series_ids=SERIES_IDS, include_buffer=False
+                start, end, series_ids=self.series_ids, include_buffer=False
             )
             stage["source_missing"] = result.get("source_missing", [])
-            if result.get("persisted") is not True or not (
-                result.get("refresh_complete") is True
-                or result.get("refresh_coverage_complete") is True
-            ):
-                raise CpiScheduleError("history_refresh_incomplete")
-            readback = self._available_readback(start, end, SERIES_IDS, result)
+            readback = self._history_readback(start, end, result, stage)
             self._finish(stage, _aware(self.clock()))
             if stage["source_missing"]:
                 stage["classification"] = "historical_source_gaps"
@@ -1462,6 +1615,8 @@ class CpiReleaseScheduler:
                 events[identity].update(_stage(notice["effective_at"]))
 
     def import_signals(self, notices):
+        if self.profile.key != "cpi":
+            raise CpiScheduleError("schedule_signals_unsupported")
         if not isinstance(notices, (list, tuple)) or len(notices) > 1000:
             raise CpiScheduleError("signal_import_invalid")
         try:
@@ -1516,6 +1671,13 @@ class CpiReleaseScheduler:
             return self._snapshot(state, at)
 
     def _refresh_signals(self, state, at):
+        if self.signal_fetcher is None:
+            state["signals"].update(
+                state="unsupported" if self.profile.key != "cpi" else "disabled",
+                next_refresh_at=None,
+            )
+            self._save(state)
+            return self._snapshot(state, at)
         channel = state["signals"]
         previous = channel.get("fetched_at")
         if previous and _instant(previous) > at:
@@ -1671,7 +1833,7 @@ class CpiReleaseScheduler:
         ]
         try:
             latest = self.service.status().get("latest_months", {})
-            known = [latest.get(s) for s in SERIES_IDS]
+            known = [latest.get(s) for s in self.series_ids]
             if all(isinstance(m, str) for m in known):
                 for month in known:
                     validate_month(month)
@@ -1850,7 +2012,7 @@ class CpiReleaseScheduler:
             classification=None,
         )
         self._finish(stage, completed_at, availability_verified=True)
-        target["verified_target_series"] = list(SERIES_IDS)
+        target["verified_target_series"] = list(self.series_ids)
         target["collection_kind"] = (
             "catch_up" if auto["catch_up"] else "release_observation"
         )
@@ -1873,11 +2035,11 @@ class CpiReleaseScheduler:
                 readback = self.service.query_range(
                     month,
                     month,
-                    series_ids=SERIES_IDS,
+                    series_ids=self.series_ids,
                     allow_upstream=False,
                     vintage_mode="available",
                 )
-                available = _target_present(readback, month) and all(
+                available = _target_present(readback, month, self.series_ids) and all(
                     point.get("available_at") is not None
                     for point in readback.get("points", [])
                     if point.get("month") == month
@@ -1909,7 +2071,7 @@ class CpiReleaseScheduler:
         counted = False
         try:
             result = self.service.update_range(
-                month, month, series_ids=SERIES_IDS, include_buffer=False
+                month, month, series_ids=self.series_ids, include_buffer=False
             )
             count = self._actual_http(result)
             if count is None:
@@ -1924,7 +2086,7 @@ class CpiReleaseScheduler:
                 auto.pop("rate_limited_since", None)
             target.update(
                 last_provider_attempts=count,
-                target_refreshed=_fresh_target(result, month),
+                target_refreshed=_fresh_target(result, month, self.series_ids),
             )
             if (
                 count == 0
@@ -1934,8 +2096,10 @@ class CpiReleaseScheduler:
                 self._auto_retry(target, at, missing=True)
                 action = "awaiting_provider"
             else:
-                readback = self._available_readback(month, month, SERIES_IDS, result)
-                if not _target_present(readback, month):
+                readback = self._available_readback(
+                    month, month, self.series_ids, result
+                )
+                if not _target_present(readback, month, self.series_ids):
                     raise CpiScheduleError("schedule_local_readback_incomplete")
                 action = self._auto_accept_local(target, at, at)
         except Exception as error:
@@ -1977,7 +2141,7 @@ class CpiReleaseScheduler:
         readback = None
         try:
             result = self.service.update_range(
-                start, batch_end, series_ids=SERIES_IDS, include_buffer=False
+                start, batch_end, series_ids=self.series_ids, include_buffer=False
             )
             count = self._actual_http(result)
             if count is None:
@@ -1985,12 +2149,7 @@ class CpiReleaseScheduler:
             if count == 0:
                 stage["attempts"] = previous_attempts
                 raise CpiScheduleError("schedule_history_actual_http_required")
-            if result.get("persisted") is not True or not (
-                result.get("refresh_complete") is True
-                or result.get("refresh_coverage_complete") is True
-            ):
-                raise CpiScheduleError("history_refresh_incomplete")
-            readback = self._available_readback(start, batch_end, SERIES_IDS, result)
+            readback = self._history_readback(start, batch_end, result, stage)
             stage.setdefault("completed_batches", []).append(
                 {
                     "start": start,
@@ -2000,6 +2159,8 @@ class CpiReleaseScheduler:
             )
             if batch_end == end:
                 self._finish(stage, _aware(self.clock()))
+                if self.profile.key == "ppi" and stage.get("source_missing"):
+                    stage["classification"] = "historical_source_gaps"
                 action = "history_updated"
             else:
                 stage.update(
@@ -2119,8 +2280,10 @@ class CpiReleaseScheduler:
             dense_until = self._dense_until(state, at)
             channel = state["signals"]
             next_refresh = channel.get("next_refresh_at")
-            if dense_until is None and (
-                next_refresh is None or _instant(next_refresh) <= at
+            if (
+                self.signal_fetcher is not None
+                and dense_until is None
+                and (next_refresh is None or _instant(next_refresh) <= at)
             ):
                 self._refresh_signals(state, at)
             events = [
@@ -2249,7 +2412,9 @@ class CpiReleaseScheduler:
                 )
             channel = state["signals"]
             next_refresh = channel.get("next_refresh_at")
-            if next_refresh is None or _instant(next_refresh) <= at:
+            if self.signal_fetcher is not None and (
+                next_refresh is None or _instant(next_refresh) <= at
+            ):
                 self._refresh_signals(state, at)
             events = [e for e in channel["events"].values() if _due(e, at)]
             if events:
