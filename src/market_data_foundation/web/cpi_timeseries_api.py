@@ -42,7 +42,7 @@ from market_data_foundation.web.pce_dev_host import CANDIDATE_ORIGIN, admitted
 from market_data_foundation.web.ppi_timeseries import execute_profile
 
 PREFIX = "/api/r5/cpi/timeseries"
-PREFIXES = (PREFIX, "/api/r5/ppi/timeseries")
+PREFIXES = (PREFIX, "/api/r5/ppi/timeseries", "/api/r5/employment/timeseries")
 
 
 def admitted_job(request, *, prefix=None):
@@ -126,7 +126,9 @@ class TimeSeriesHost:
         self.auto_strategy = strategy or CpiAutoStrategy(
             scheduler,
             scheduler.state_path.with_name(
-                "strategy.json" if profile is CPI_PROFILE else "ppi-strategy.json"
+                "strategy.json"
+                if profile is CPI_PROFILE
+                else f"{profile.key}-strategy.json"
             ),
             clock=clock,
         )
@@ -182,6 +184,20 @@ class TimeSeriesHost:
             },
             "history_local_only": True,
             "query_persists": False,
+            "as_of_basis_semantics": {
+                "observed": (
+                    "source_response_observed_at_not_mdf_commit_or_historical_vintage"
+                ),
+                "available": "mdf_post_commit_confirmation_available_at",
+            },
+            "availability_is_query_parameter": False,
+            "point_availability_values": [
+                "available",
+                "unpersisted",
+                "source_unavailable",
+                "withdrawn",
+                "unknown",
+            ],
         }
 
     def source(self, record=None):
@@ -272,10 +288,17 @@ class TimeSeriesHost:
                 "local_only",
                 "query_mode",
                 "as_of_basis",
-            },
+            }
+            | ({"series"} if self.profile.key == "employment" else set()),
         )
         if not self.query_allowed:
             raise WebError("local_read_not_authorized", 403)
+        if self.profile.key == "employment" and (
+            "basket" in params
+            or "adjustment" in params
+            or params.get("measure", "index") != "index"
+        ):
+            raise WebError("employment_series_filter_required")
         local_only = params.get(
             "local_only", "true" if self.profile is CPI_PROFILE else "false"
         )
@@ -326,7 +349,8 @@ class TimeSeriesHost:
             "publication_event": {
                 "label": "官方日历时间",
                 "description": (
-                    "来自官方日历，不代表当前修订值当时已知；历史截止按入库时间。"
+                    "来自官方日历，不代表当前修订值当时已知；"
+                    "历史默认按入库可用时间，显式 observed 按来源响应观察时间。"
                 ),
                 "semantics": "official_month_event_not_current_value_revision_time",
                 "binds_current_revision": False,
@@ -398,13 +422,13 @@ class TimeSeriesHost:
         }
 
     def submit(self, command, *, on_started=None):
-        validate_command(command, None)
+        validate_command(command, None, profile=self.profile)
         # Replay is read-only and remains available if source access is revoked.
         existing = self.journal.read(command["request_id"])
         if existing is not None:
             return self.replay(existing, command)
         # Initialization is a suggested range, not an execution constraint.
-        validate_command(command, self.max_collect_months)
+        validate_command(command, self.max_collect_months, profile=self.profile)
         record = self.packages.store.read(self.packages.environment_id, "macro")
         capabilities = self.capabilities(self.source(record))
         if not capabilities["collect"]:
@@ -449,11 +473,19 @@ class TimeSeriesHost:
                         "update"
                         if command["action"] == "initialize"
                         else command["action"],
-                        {"start": command["start"], "end": command["end"]},
+                        {
+                            "start": command["start"],
+                            "end": command["end"],
+                            **(
+                                {"series": command["series"]}
+                                if "series" in command
+                                else {}
+                            ),
+                        },
                         profile=self.profile,
                     )
                 read_start, read_end = command["start"], command["end"]
-                if self.profile.key in {"ppi", "pce"}:
+                if self.profile.key in {"ppi", "pce", "employment"}:
                     months = [
                         p["month"]
                         for p in written.get("source_returned_series_months", [])
@@ -471,6 +503,15 @@ class TimeSeriesHost:
                             "adjustment": "all",
                             "local_only": True,
                             "vintage_mode": "available",
+                            **(
+                                {
+                                    "series": command["series"],
+                                    "basket": None,
+                                    "adjustment": None,
+                                }
+                                if "series" in command
+                                else {}
+                            ),
                         },
                         profile=self.profile,
                     )
@@ -506,7 +547,9 @@ class TimeSeriesHost:
             return job
 
     def replay(self, record, command):
-        if any(record[key] != value for key, value in command.items()):
+        if record.get("series") != command.get("series") or any(
+            record.get(key) != value for key, value in command.items()
+        ):
             raise WebError("request_id_conflict", 409)
         if record["state"] == "running":
             return next(

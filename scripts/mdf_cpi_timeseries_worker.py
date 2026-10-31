@@ -1,4 +1,4 @@
-"""Explicit CPI, PPI or PCE worker using the exact Web runtime bindings."""
+"""Explicit macro worker using the selected capability's Web runtime binding."""
 
 import argparse
 import os
@@ -20,10 +20,16 @@ from market_data_foundation.web.readonly_host import ReadonlySettings
 
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--asset", choices=("cpi", "ppi", "pce"), default="cpi")
+    parser.add_argument(
+        "--asset", choices=("cpi", "ppi", "pce", "employment"), default="cpi"
+    )
     parser.add_argument("--opt-in-cpi-worker", action="store_true")
     parser.add_argument("--opt-in-ppi-worker", action="store_true")
     parser.add_argument("--opt-in-pce-worker", action="store_true")
+    parser.add_argument("--opt-in-employment-worker", action="store_true")
+    parser.add_argument("--employment-schedule-path", type=Path)
+    parser.add_argument("--employment-job-directory", type=Path)
+    parser.add_argument("--employment-history-start")
     parser.add_argument("--config-directory", type=Path, required=True)
     parser.add_argument("--package-store-directory", type=Path, required=True)
     parser.add_argument("--environment-id", required=True)
@@ -82,6 +88,15 @@ def build_runtime(args):
             metadata_permission="allowed", read_permission="allowed"
         ),
         allow_collect=args.allow_collect and args.asset == "cpi",
+        employment_enabled=args.asset == "employment",
+        employment_schedule_path=args.employment_schedule_path,
+        employment_job_directory=args.employment_job_directory,
+        employment_history_start=args.employment_history_start,
+        employment_access=CpiQueryAccess(
+            metadata_permission="allowed" if args.asset == "employment" else "denied",
+            read_permission="allowed" if args.asset == "employment" else "denied",
+        ),
+        employment_allow_collect=args.allow_collect and args.asset == "employment",
         ppi_enabled=ppi,
         ppi_schedule_path=args.ppi_schedule_path if ppi else None,
         ppi_job_directory=args.ppi_job_directory if ppi else None,
@@ -124,6 +139,8 @@ def main(argv=None):
             host = runtime.timeseries
         elif args.asset == "ppi":
             host = runtime.ppi_timeseries
+        elif args.asset == "employment":
+            host = runtime.employment_timeseries
         else:
             host = runtime.pce_timeseries
         run_worker(

@@ -9,7 +9,10 @@ from uuid import UUID
 
 from market_data_foundation.historical.bls_timeseries_profile import CPI_PROFILE
 from market_data_foundation.historical.cpi_timeseries import month_number, month_range
-from market_data_foundation.historical.cpi_timeseries_cli import validate_range
+from market_data_foundation.historical.cpi_timeseries_cli import (
+    selected_series,
+    validate_range,
+)
 
 
 class WebError(ValueError):
@@ -18,8 +21,10 @@ class WebError(ValueError):
         super().__init__(classification)
 
 
-def validate_command(command, max_months):
-    if not isinstance(command, dict) or set(command) != {
+def validate_command(command, max_months, *, profile=CPI_PROFILE):
+    if not isinstance(command, dict) or set(command) - (
+        {"series"} if profile.key == "employment" else set()
+    ) != {
         "request_id",
         "action",
         "start",
@@ -28,6 +33,8 @@ def validate_command(command, max_months):
         raise WebError("invalid_job_request")
     if any(type(v) is not str for v in command.values()):
         raise WebError("invalid_job_request")
+    if "series" in command:
+        selected_series({"series": command["series"]}, profile=profile)
     try:
         request_id = str(UUID(command["request_id"]))
     except ValueError:
@@ -45,11 +52,14 @@ def validate_command(command, max_months):
 
 def verify_readback(written, readback, command, *, profile=CPI_PROFILE):
     """Coverage includes explicit source nulls; an absent row is a different gap."""
-    if profile.key in {"ppi", "pce"}:
+    if profile.key in {"ppi", "pce", "employment"}:
         return verify_ppi_readback(written, readback, command, profile=profile)
     expected = {
         (s, m)
-        for s in profile.series_ids
+        for s in selected_series(
+            {"series": command["series"]} if "series" in command else {},
+            profile=profile,
+        )
         for m in month_range(command["start"], command["end"])
     }
 
@@ -63,7 +73,11 @@ def verify_readback(written, readback, command, *, profile=CPI_PROFILE):
         key in actual
         and all(
             actual[key].get(field) == point.get(field)
-            for field in ("index_value", "revision", "raw_sha256")
+            for field in (
+                ("value" if profile.key == "employment" else "index_value"),
+                "revision",
+                "raw_sha256",
+            )
         )
         for key, point in produced.items()
     )
@@ -83,7 +97,11 @@ def verify_readback(written, readback, command, *, profile=CPI_PROFILE):
         and refresh
         and expected <= produced.keys()
     )
-    unavailable = sorted(k for k, p in actual.items() if p["index_value"] is None)
+    unavailable = sorted(
+        k
+        for k, p in actual.items()
+        if p.get("value" if profile.key == "employment" else "index_value") is None
+    )
     source_nulls = {
         (p["series_id"], p["month"]) for p in written.get("source_unavailable", [])
     }
@@ -133,7 +151,10 @@ def verify_ppi_readback(written, readback, command, *, profile):
 
     expected = {
         (s, m)
-        for s in profile.series_ids
+        for s in selected_series(
+            {"series": command["series"]} if "series" in command else {},
+            profile=profile,
+        )
         for m in month_range(command["start"], command["end"])
     }
     returned = keys(written.get("source_returned_series_months", []))
@@ -151,7 +172,11 @@ def verify_ppi_readback(written, readback, command, *, profile):
         key in available
         and all(
             actual[key].get(field) == point.get(field)
-            for field in ("index_value", "revision", "raw_sha256")
+            for field in (
+                ("value" if profile.key == "employment" else "index_value"),
+                "revision",
+                "raw_sha256",
+            )
         )
         for key, point in produced.items()
     )
@@ -178,7 +203,11 @@ def verify_ppi_readback(written, readback, command, *, profile):
             "saved_revisions",
         )
     }
-    nulls = {k for k, p in actual.items() if p["index_value"] is None}
+    nulls = {
+        k
+        for k, p in actual.items()
+        if p.get("value" if profile.key == "employment" else "index_value") is None
+    }
     result.update(
         coverage_complete=not missing and not partial,
         source_missing=rows(source_gaps),

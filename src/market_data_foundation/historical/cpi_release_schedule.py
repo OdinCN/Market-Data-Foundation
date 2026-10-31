@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
+    EMPLOYMENT_PROFILE,
     validate_profile,
 )
 from market_data_foundation.historical.bls_web_transport import (
@@ -222,14 +223,22 @@ def parse_official_history(raw, *, profile=CPI_PROFILE):
         parser.feed(raw.decode("utf-8"))
     except UnicodeError, ValueError:
         raise CpiScheduleError("calendar_payload_invalid") from None
-    title = "Consumer Price Index" if profile.key == "cpi" else "Producer Price Index"
+    title = (
+        "Employment Situation"
+        if profile is EMPLOYMENT_PROFILE
+        else "Consumer Price Index"
+        if profile.key == "cpi"
+        else "Producer Price Index"
+    )
     rows = []
     for row in parser.rows:
         if not row or len(row) < 3:
             continue
         match = re.fullmatch(re.escape(title) + r" for ([A-Za-z]+ \d{4})", row[2])
         if match:
-            rows.append((match[1], row[0].split(", ", 1)[-1], row[1]))
+            rows.append(
+                (match[1], re.sub(r"^[A-Za-z]+,\s+(?=[A-Za-z])", "", row[0]), row[1])
+            )
     html = (
         "<table><tr><th>Reference Month</th><th>Release Date</th>"
         "<th>Release Time</th></tr>"
@@ -292,6 +301,8 @@ def parse_official_ics(raw, *, profile=CPI_PROFILE, known_uids=()):
     titles = (
         {"consumer price index"}
         if profile.key == "cpi"
+        else {"employment situation"}
+        if profile is EMPLOYMENT_PROFILE
         else {"producer price index", "producer price indexes"}
     )
     if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_CALENDAR_BYTES:
@@ -516,7 +527,7 @@ def _target_present(result, reference_month, series_ids=SERIES_IDS):
         point.get("series_id")
         for point in result.get("points", [])
         if point.get("month") == reference_month
-        and point.get("index_value") is not None
+        and point.get("value" if "value" in point else "index_value") is not None
         and point.get("availability", "available") == "available"
     }
     return set(series_ids) <= present
@@ -568,10 +579,16 @@ class CpiReleaseScheduler:
         self.asset_key = profile.key
         self.series_ids = profile.series_ids
         self.calendar_title = (
-            "Consumer Price Index" if profile.key == "cpi" else "Producer Price Index"
+            "Employment Situation"
+            if profile is EMPLOYMENT_PROFILE
+            else "Consumer Price Index"
+            if profile.key == "cpi"
+            else "Producer Price Index"
         )
         self.calendar_url = (
-            f"https://www.bls.gov/schedule/news_release/{profile.key}.htm"
+            "https://www.bls.gov/schedule/news_release/empSit.htm"
+            if profile is EMPLOYMENT_PROFILE
+            else f"https://www.bls.gov/schedule/news_release/{profile.key}.htm"
         )
         self.ics_url = ICS_URL
         if getattr(service, "profile", profile) is not profile:
@@ -583,7 +600,9 @@ class CpiReleaseScheduler:
             (
                 fetch_official_calendar
                 if profile.key == "cpi"
-                else lambda: _fetch_calendar(self.ics_url, "text/calendar", title="PPI")
+                else lambda: _fetch_calendar(
+                    self.ics_url, "text/calendar", title=profile.key.upper()
+                )
             )
             if calendar_fetcher is _DEFAULT_FETCHER
             else calendar_fetcher
@@ -1471,7 +1490,7 @@ class CpiReleaseScheduler:
         identity = (
             "revision",
             "observed_at",
-            "index_value",
+            "value" if self.profile is EMPLOYMENT_PROFILE else "index_value",
             "availability",
             "version_status",
         )
@@ -1489,7 +1508,7 @@ class CpiReleaseScheduler:
         An explicit empty key list requires positive completed batch and HTTP
         counts too; an absent field never proves an empty successful response.
         """
-        if self.profile.key != "ppi":
+        if self.profile.key not in {"ppi", "employment"}:
             if result.get("persisted") is not True or not (
                 result.get("refresh_complete") is True
                 or result.get("refresh_coverage_complete") is True
@@ -2238,7 +2257,9 @@ class CpiReleaseScheduler:
             )
             if batch_end == end:
                 self._finish(stage, _aware(self.clock()))
-                if self.profile.key == "ppi" and stage.get("source_missing"):
+                if self.profile.key in {"ppi", "employment"} and stage.get(
+                    "source_missing"
+                ):
                     stage["classification"] = "historical_source_gaps"
                 action = "history_updated"
             else:

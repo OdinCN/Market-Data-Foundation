@@ -28,6 +28,7 @@ from market_data_foundation.historical.bls_cpi_material_store import (
 )
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
+    EMPLOYMENT_PROFILE,
     PCE_PROFILE,
     validate_profile,
 )
@@ -293,13 +294,21 @@ def _revision_ddl(*, profile=CPI_PROFILE):
     percents = ",\n        ".join(
         name + " numeric" for name in _percent_columns(profile)
     )
+    comparison = ">=" if profile is EMPLOYMENT_PROFILE else ">"
+    zero_guard = (
+        "AND (index_value > 0 OR series_id IN ('LNS14000000','LNS11300000'))"
+        if profile is EMPLOYMENT_PROFILE
+        else ""
+    )
     return f"""CREATE TABLE IF NOT EXISTS {profile.schema}.revisions (
         series_id text NOT NULL CHECK(series_id IN ({admitted})),
         month date NOT NULL CHECK(EXTRACT(DAY FROM month)=1),
         revision integer NOT NULL CHECK(revision > 0),
         observed_at timestamptz NOT NULL,
         batch_id text NOT NULL REFERENCES {profile.schema}.batches(batch_id),
-        index_value numeric CHECK(index_value > 0 AND index_value != 'NaN'::numeric
+        index_value numeric CHECK(index_value {comparison} 0
+            {zero_guard}
+            AND index_value != 'NaN'::numeric
             AND index_value != 'Infinity'::numeric),
         {percents},
         provider_extra jsonb,
@@ -316,6 +325,12 @@ def _revision_ddl(*, profile=CPI_PROFILE):
 
 def _rates_view_sql(*, profile=CPI_PROFILE):
     profile = validate_profile(profile)
+    if profile is EMPLOYMENT_PROFILE:
+        from market_data_foundation.historical.employment_timeseries import (
+            rates_view_sql,
+        )
+
+        return rates_view_sql()
     rates = ",".join(
         f"round(c.index_value / nullif(p{k}.index_value,0) - 1,4) AS change_{k}m_ratio"
         for k in (1, 3, 6, 12)
@@ -657,6 +672,12 @@ class PostgresTimeSeriesStore:
                 if actual != expected:
                     raise CpiStorageError("cpi_timeseries_schema_shape_mismatch")
                 self.connection.execute(_rates_view_sql(profile=self.profile))
+                if self.profile is EMPLOYMENT_PROFILE:
+                    from market_data_foundation.historical import (
+                        employment_timeseries,
+                    )
+
+                    self.connection.execute(employment_timeseries.latest_view_sql())
         except CpiStorageError:
             raise
         except Exception:

@@ -1,4 +1,4 @@
-"""Opt-in DEV composition: new CPI storage, existing packages and read-only PCE."""
+"""Opt-in DEV composition of capability-specific monthly time-series Hosts."""
 
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
+    EMPLOYMENT_PROFILE,
     PCE_PROFILE,
     PPI_PROFILE,
 )
@@ -97,6 +98,25 @@ class TimeSeriesPackages(PackageHost):
                 host = definitions.get(
                     (revision.definition_ref.identity, revision.definition_ref.revision)
                 )
+                if (
+                    host is None
+                    and revision.definition_ref.identity
+                    == "mdf.macro.bls.employment.ces-cps"
+                ):
+                    unavailable = Eligibility(
+                        allowed=False, reasons=["employment_timeseries_not_enabled"]
+                    )
+                    revision = revision.model_copy(
+                        update={
+                            key: unavailable
+                            for key in (
+                                "local_read",
+                                "upstream_read",
+                                "collect",
+                                "plan",
+                            )
+                        }
+                    )
                 if host is not None:
                     source = host.source(record)
                     capabilities = host.capabilities(source)
@@ -177,6 +197,17 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         pce_history_start=None,
         pce_calendar_fetcher=None,
         pce_request_control_path=None,
+        employment_enabled=False,
+        employment_read_service_factory=None,
+        employment_write_service_factory=None,
+        employment_query_service_factory=None,
+        employment_schedule_path=None,
+        employment_job_directory=None,
+        employment_history_start=None,
+        employment_access=CpiQueryAccess(),
+        employment_allow_collect=False,
+        employment_calendar_fetcher=None,
+        employment_reference_fetcher=None,
     ):
         super().__init__(
             settings,
@@ -190,6 +221,14 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         if type(ppi_enabled) is not bool or type(ppi_allow_collect) is not bool:
             raise ValueError("explicit_timeseries_permissions_required")
         self.accesses["ppi"] = ppi_access
+        self.employment_timeseries = None
+        self.accesses["employment"] = employment_access
+        if (
+            not isinstance(employment_access, CpiQueryAccess)
+            or type(employment_enabled) is not bool
+            or type(employment_allow_collect) is not bool
+        ):
+            raise ValueError("explicit_timeseries_permissions_required")
         self.ppi_timeseries = None
         self.pce_timeseries = None
         if type(pce_enabled) is not bool or type(pce_allow_collect) is not bool:
@@ -358,6 +397,98 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             )
             self.packages.timeseries_hosts["pce"] = self.pce_timeseries
 
+        if employment_enabled:
+            paths = (employment_schedule_path, employment_job_directory)
+            existing = [
+                schedule_path,
+                job_directory,
+                ppi_schedule_path,
+                ppi_job_directory,
+                pce_schedule_path,
+                pce_job_directory,
+            ]
+            if any(
+                p is None or not Path(p).is_absolute() or ".." in Path(p).parts
+                for p in paths
+            ):
+                raise ValueError("employment_independent_absolute_paths_required")
+            resolved = [Path(p).resolve() for p in paths]
+            prior = [Path(p).resolve() for p in existing if p is not None]
+            if any(
+                a == b or a in b.parents or b in a.parents
+                for a, b in [
+                    (resolved[0], resolved[1]),
+                    *((a, b) for a in resolved for b in prior),
+                ]
+            ):
+                raise ValueError("employment_independent_paths_required")
+            from market_data_foundation.historical.cpi_timeseries import month_at
+
+            now = clock().astimezone(ZoneInfo("Asia/Shanghai"))
+            baseline = employment_history_start or month_at(
+                now.year * 12 + now.month - 2 - 239
+            )
+            scheduler_options = {}
+            if employment_calendar_fetcher is not None:
+                scheduler_options["calendar_fetcher"] = employment_calendar_fetcher
+            if employment_reference_fetcher is not None:
+                scheduler_options["reference_fetcher"] = employment_reference_fetcher
+            from market_data_foundation.historical.employment_release_schedule import (
+                EmploymentReleaseScheduler,
+            )
+            from market_data_foundation.web.employment_timeseries import (
+                EmploymentTimeSeriesHost,
+            )
+
+            self.employment_timeseries = EmploymentTimeSeriesHost(
+                packages=self.packages,
+                read_service_factory=employment_read_service_factory
+                or self.employment_read_service,
+                write_service_factory=employment_write_service_factory
+                or self.employment_write_service,
+                query_service_factory=employment_query_service_factory
+                or self.employment_query_service,
+                scheduler=EmploymentReleaseScheduler(
+                    WorkerService(
+                        self.employment_worker_service, profile=EMPLOYMENT_PROFILE
+                    ),
+                    employment_schedule_path,
+                    clock=clock,
+                    history_start=persisted_history_start(
+                        employment_schedule_path, baseline
+                    ),
+                    auto_mode=True,
+                    **scheduler_options,
+                ),
+                job_directory=employment_job_directory,
+                allow_collect=employment_allow_collect,
+                query_allowed=employment_access.metadata_permission == "allowed"
+                and employment_access.read_permission == "allowed",
+                max_collect_months=max_collect_months,
+                clock=clock,
+            )
+            self.packages.timeseries_hosts["employment"] = self.employment_timeseries
+
+    def employment_read_service(self):
+        return self.read_service(profile=EMPLOYMENT_PROFILE)
+
+    def employment_query_service(self, *, credential_loader):
+        return self.query_service(
+            credential_loader=credential_loader, profile=EMPLOYMENT_PROFILE
+        )
+
+    def employment_write_service(self, *, credential_loader):
+        return self.write_service(
+            credential_loader=credential_loader, profile=EMPLOYMENT_PROFILE
+        )
+
+    def employment_worker_service(self):
+        host = self.employment_timeseries
+        capabilities = host.capabilities(host.source())
+        if not capabilities["collect"]:
+            raise WebError(capabilities["reason"], 403)
+        return host.write_factory(credential_loader=host.effective_credential)
+
     def pce_worker_service(self):
         host = self.pce_timeseries
         capabilities = host.capabilities(host.source())
@@ -499,7 +630,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             raise
 
     def _history(self, capability, definition, at):
-        if capability not in {"cpi", "ppi", "pce"} or (
+        if capability not in {"cpi", "ppi", "pce", "employment"} or (
             capability == "pce" and self.pce_timeseries is None
         ):
             return super()._history(capability, definition, at)
@@ -508,6 +639,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             "cpi": self.timeseries,
             "ppi": self.ppi_timeseries,
             "pce": self.pce_timeseries,
+            "employment": self.employment_timeseries,
         }[capability]
         holding = "unknown"
         if access.metadata_permission == "allowed" and host is not None:
@@ -533,18 +665,25 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         result = super().history(environment_id, package_id, record)
         if package_id != "macro":
             return result
-        ppi = next(
-            c
+        capabilities = {
+            (c.definition_ref.identity, c.definition_ref.revision): c
             for c in self.packages.catalog.package("macro").capabilities
-            if c.capability_id == "ppi"
-        )
+            if c.capability_id in {"ppi", "employment"}
+        }
         return result.model_copy(
             update={
                 "history": [
-                    self._history("ppi", ppi.definition_ref, self.clock())
-                    if evidence.definition_ref == ppi.definition_ref
-                    else evidence
-                    for evidence in result.history
+                    self._history(
+                        capabilities[
+                            (e.definition_ref.identity, e.definition_ref.revision)
+                        ].capability_id,
+                        e.definition_ref,
+                        self.clock(),
+                    )
+                    if (e.definition_ref.identity, e.definition_ref.revision)
+                    in capabilities
+                    else e
+                    for e in result.history
                 ]
             }
         )
@@ -581,6 +720,9 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
     app.include_router(timeseries_router(runtime.timeseries))
     app.include_router(timeseries_router(runtime.ppi_timeseries, profile=PPI_PROFILE))
     app.include_router(timeseries_router(runtime.pce_timeseries, profile=PCE_PROFILE))
+    app.include_router(
+        timeseries_router(runtime.employment_timeseries, profile=EMPLOYMENT_PROFILE)
+    )
     app.state.timeseries_runtime = runtime
 
     @app.middleware("http")

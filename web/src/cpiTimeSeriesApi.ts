@@ -230,6 +230,7 @@ export function latestMonth(status: CpiStatus | null) {
 export type CpiScope = {
   start: string;
   end: string;
+  series?: string;
   basket: string;
   adjustment: string;
   measure: string;
@@ -249,13 +250,20 @@ export type CpiPublicationEvent = {
 export type CpiPoint = {
   series_id: string;
   month: string;
-  index_value: string | number | null;
-  mom_pct: string | number | null;
-  yoy_pct: string | number | null;
-  change_1m_ratio: string | number | null;
-  change_3m_ratio: string | number | null;
-  change_6m_ratio: string | number | null;
-  change_12m_ratio: string | number | null;
+  value?: string | number | null;
+  net_change_1m_thousand_jobs?: string | number | null;
+  change_1m_percentage_points?: string | number | null;
+  change_1m_hours?: string | number | null;
+  value_unit?: string;
+  // Employment omits index_value; only AHE carries ratios and percent changes.
+  // Inflation response validation below still requires its complete field set.
+  index_value?: string | number | null;
+  mom_pct?: string | number | null;
+  yoy_pct?: string | number | null;
+  change_1m_ratio?: string | number | null;
+  change_3m_ratio?: string | number | null;
+  change_6m_ratio?: string | number | null;
+  change_12m_ratio?: string | number | null;
   observed_at?: string;
   available_at?: string | null;
   origin?: string;
@@ -293,8 +301,9 @@ export function buildCpiQueryRequest(
   const parameters = new URLSearchParams({
     start: scope.start,
     end: scope.end,
-    basket: scope.basket,
-    adjustment: scope.adjustment,
+    ...(profile.id === "employment"
+      ? { series: scope.series ?? profile.series.map((s) => s[0]).join(",") }
+      : { basket: scope.basket, adjustment: scope.adjustment }),
     measure: scope.measure,
     query_mode: history ? "history" : "current",
     local_only: history ? "true" : "false",
@@ -326,10 +335,13 @@ export async function queryCpiRange(
     onExchange,
   );
   const selected = profile.series
-    .filter(
-      (s) =>
-        ["all", s[2]].includes(scope.basket) &&
-        ["all", s[3]].includes(scope.adjustment),
+    .filter((s) =>
+      profile.id === "employment"
+        ? (
+            scope.series?.split(",") ?? profile.series.map((item) => item[0])
+          ).includes(s[0])
+        : ["all", s[2]].includes(scope.basket) &&
+          ["all", s[3]].includes(scope.adjustment),
     )
     .map((s) => s[0] as string);
   const inScope = (p: CpiGap) =>
@@ -380,15 +392,25 @@ export async function queryCpiRange(
         monthValid(gap.required_month),
     ) ||
     !result.points.every((p) =>
-      [
-        p.index_value,
-        p.mom_pct,
-        p.yoy_pct,
-        p.change_1m_ratio,
-        p.change_3m_ratio,
-        p.change_6m_ratio,
-        p.change_12m_ratio,
-      ].every(numeric),
+      (profile.id === "employment"
+        ? [
+            p.value,
+            p.net_change_1m_thousand_jobs ?? null,
+            p.change_1m_percentage_points ?? null,
+            p.change_1m_hours ?? null,
+            p.mom_pct ?? null,
+            p.yoy_pct ?? null,
+          ]
+        : [
+            p.index_value,
+            p.mom_pct,
+            p.yoy_pct,
+            p.change_1m_ratio,
+            p.change_3m_ratio,
+            p.change_6m_ratio,
+            p.change_12m_ratio,
+          ]
+      ).every(numeric),
     )
   )
     throw new CpiServiceFailure("cpi_result_scope_unknown");
@@ -403,6 +425,7 @@ export async function queryCpiRange(
   return result;
 }
 export type CpiJobIntent = {
+  series?: string;
   request_id: string;
   action: "init" | "initialize" | "update";
   start: string;

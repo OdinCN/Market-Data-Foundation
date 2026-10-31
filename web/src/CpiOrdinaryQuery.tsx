@@ -11,6 +11,7 @@ import {
 import type { RuntimeRevision } from "./packageApi";
 import { sourceVariantLabel } from "./workflowModel";
 import { Fact } from "./WorkflowTable";
+import { newestMonthFirst } from "./queryTableOrder";
 
 const failureText = (failure: CpiOrdinaryFailure) => {
   const messages: Record<string, string> = {
@@ -215,7 +216,10 @@ export function CpiOrdinaryQuery({
                 </tr>
               </thead>
               <tbody>
-                {result.measurements.map((measurement) => (
+                {newestMonthFirst(
+                  result.measurements,
+                  (m) => m.reference_period,
+                ).map((measurement) => (
                   <tr key={measurement.measure_identity}>
                     <td>{measurement.name}</td>
                     <td>{measurement.reference_period}</td>

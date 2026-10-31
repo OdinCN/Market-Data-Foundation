@@ -23,6 +23,7 @@ import {
   RequestPreview,
 } from "./CpiQueryDetails";
 import { Tabs } from "./WorkflowTable";
+import { newestMonthFirst } from "./queryTableOrder";
 
 export function CpiAvailabilityNotice({
   availability,
@@ -134,6 +135,8 @@ function CpiTimeSeriesContent({
   profile?: MacroProfile;
   availability: CpiAvailability;
 }) {
+  const employment = profile.id === "employment";
+  const [series, setSeries] = useState(profile.series.map((s) => s[0]));
   const cpiSeries = profile.series;
   const availableAdjustments = adjustments.filter((item) =>
     profile.series.some((s) => s[3] === item.value),
@@ -189,10 +192,12 @@ function CpiTimeSeriesContent({
     basket.length > 0 &&
     adjustment.length > 0 &&
     measure.length > 0 &&
+    (!employment || series.length > 0) &&
     (!history || !!beijingInputToIso(asOf));
   const scope: CpiScope = {
     start,
     end,
+    ...(employment ? { series: series.join(",") } : {}),
     basket: basket.length === baskets.length ? "all" : (basket[0] ?? ""),
     adjustment:
       adjustment.length === adjustments.length ? "all" : (adjustment[0] ?? ""),
@@ -239,21 +244,35 @@ function CpiTimeSeriesContent({
     }
   }
   const rows = result
-    ? [
-        ...result.points.map((point) => ({
-          ...point,
-          point,
-          reason: undefined as string | undefined,
-        })),
-        ...result.missing.map((gap) => ({ ...gap, point: null })),
-      ].sort(
-        (a, b) =>
-          a.month.localeCompare(b.month) ||
-          cpiSeries.findIndex((s) => s[0] === a.series_id) -
+    ? newestMonthFirst(
+        [
+          ...result.points.map((point) => ({
+            ...point,
+            point,
+            reason: undefined as string | undefined,
+          })),
+          ...result.missing.map((gap) => ({ ...gap, point: null })),
+        ].sort(
+          (a, b) =>
+            cpiSeries.findIndex((s) => s[0] === a.series_id) -
             cpiSeries.findIndex((s) => s[0] === b.series_id),
+        ),
+        (row) => row.month,
       )
     : [];
-  const columns = measures.filter((item) => measure.includes(item.value));
+  const columns = employment
+    ? ([
+        { value: "value", label: "数值（单位见指标）" },
+        { value: "net_change_1m_thousand_jobs", label: "非农月净增（千岗位）" },
+        {
+          value: "change_1m_percentage_points",
+          label: "失业率 / 劳动参与率月变化（百分点）",
+        },
+        { value: "change_1m_hours", label: "周工时月变化（小时）" },
+        { value: "mom_pct", label: "时薪环比（%）" },
+        { value: "yoy_pct", label: "时薪同比（%）" },
+      ] as const)
+    : measures.filter((item) => measure.includes(item.value));
   const selectedCalculationMissing =
     result?.calculation_missing.filter((gap) =>
       columns.some((column) => column.value === gap.metric),
@@ -339,24 +358,38 @@ function CpiTimeSeriesContent({
               value={end}
               onChange={(value) => change(() => setEnd(value))}
             />
-            <MultiSelect
-              label="统计篮子"
-              options={baskets}
-              value={basket}
-              onChange={(value) => change(() => setBasket(value))}
-            />
-            <MultiSelect
-              label="季节调整"
-              options={availableAdjustments}
-              value={adjustment}
-              onChange={(value) => change(() => setAdjustment(value))}
-            />
-            <MultiSelect
-              label="显示指标"
-              options={measures}
-              value={measure}
-              onChange={setMeasure}
-            />
+            {employment ? (
+              <MultiSelect
+                label="就业指标"
+                options={profile.series.map((s) => ({
+                  value: s[0],
+                  label: s[1],
+                }))}
+                value={series}
+                onChange={(value) => change(() => setSeries(value))}
+              />
+            ) : (
+              <>
+                <MultiSelect
+                  label="统计篮子"
+                  options={baskets}
+                  value={basket}
+                  onChange={(value) => change(() => setBasket(value))}
+                />
+                <MultiSelect
+                  label="季节调整"
+                  options={availableAdjustments}
+                  value={adjustment}
+                  onChange={(value) => change(() => setAdjustment(value))}
+                />
+                <MultiSelect
+                  label="显示指标"
+                  options={measures}
+                  value={measure}
+                  onChange={setMeasure}
+                />
+              </>
+            )}
           </div>
           <label className="cpi-history-toggle">
             <input
@@ -400,7 +433,9 @@ function CpiTimeSeriesContent({
           </button>
         </form>
         <p className="small">
-          显示指标只控制表格列；实际请求固定 measure=index，不发送列选择参数。
+          {employment
+            ? "就业指标选择直接限定请求系列；缺值不补零。"
+            : "显示指标只控制表格列；实际请求固定 measure=index，不发送列选择参数。"}
         </p>
         <RequestPreview request={request} />
         {pending && <p role="status">正在查询 {profile.label}…</p>}
@@ -443,7 +478,9 @@ function CpiTimeSeriesContent({
                   : "所选指标存在缺值。"}
               </p>
               <p className="small">
-                变化率以百分比显示；3月、6月为相隔对应月数的累计变化，未经年化。
+                {employment
+                  ? "CES 千岗位及月净增；失业率、劳动参与率为百分数及百分点变化；时薪为美元/小时及环同比；平均每周工时为小时及小时变化。"
+                  : "变化率以百分比显示；3月、6月为相隔对应月数的累计变化，未经年化。"}
               </p>
               <div className="table-wrap">
                 <table aria-label={`${profile.label} 范围数据`}>
@@ -489,7 +526,13 @@ function CpiTimeSeriesContent({
                                 {valueText(
                                   row.point?.[field],
                                   field.endsWith("ratio"),
-                                  field === "index_value" ? "" : "%",
+                                  employment
+                                    ? field === "mom_pct" || field === "yoy_pct"
+                                      ? "%"
+                                      : ""
+                                    : field === "index_value"
+                                      ? ""
+                                      : "%",
                                 )}
                               </td>
                             ))}
