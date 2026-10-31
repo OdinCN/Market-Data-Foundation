@@ -29,12 +29,14 @@ BLS 请求控制仍与 CPI/PPI 共享；保持既有发布快采、请求上限�
 ICS 仅筛选 Employment Situation；没有明确 Reference Month 证据时只显示未绑定事件，
 不从发布日期推算月份，不借 PPI 计划。改期、取消、历史展示沿用共享事件规则。
 月历历史接受明确 `Employment Situation for October 2026` 一类文本。
-本轮 root 日历抓取回执为 HTTP 403，没有真实正文；解析和 worker 验证使用明确合成材料。
+DEV 直连 BLS 日历返回 HTTP 403。root 通过另一检索通道取得官方页面原始 HTML，
+验证并显式导入14个未来事件及2026年度10条历史展示事件。状态保留 operator_import
+与来源哈希；没有伪装为 worker 直连成功。worker 单元测试另使用明确合成材料。
 
 ## root 的实际 DEV 操作
 
-以下由 root 在完成有界真实资格、数据库权限及部署决策后执行；实现代理未执行。
-现有18761服务仍在旧工作树。此启动器沿用 `192.168.10.20:18761` 与原有访问边界，
+以下为 root 已验证的操作方式；实际采集通过公共 jobs API 完成。
+18761已切换至本工作树，以下示例不可与现服务并启。此启动器沿用 `192.168.10.20:18761` 与原有访问边界，
 仅在 root 安排部署切换、端口可用后启动，不能与现服务并启。不得把测试 shim 带入服务。
 `MDF_CONFIG`、`MDF_PACKAGE_STORE`、`MDF_ENV`、PCE 的 owner/OID 使用 root 已核实的
 现有路径/身份；程序不改写 runtime/secret。读身份必须与 runtime 的 PG user 一致。
@@ -59,7 +61,8 @@ GRANT SELECT ON ALL TABLES IN SCHEMA mdf_employment_timeseries_dev_r1 TO odin_db
 ```
 
 `prepare-schema` 需要写身份，不能以只读连接执行。后续对象的默认权限由 root 按
-实际 schema owner 设置；本轮没有数据库连接或 DDL 实证。
+实际 schema owner 设置。DEV 已核实5个关系的 SELECT 与 schema USAGE，
+无 INSERT/UPDATE/DELETE，并配置了未来表的默认 SELECT 权限。
 
 ```sh
 uv run --no-sync python scripts/mdf_cpi_timeseries_web.py \
@@ -84,7 +87,8 @@ curl 'http://192.168.10.20:18761/api/r5/employment/timeseries/query?start=2025-0
 curl 'http://192.168.10.20:18761/api/r5/employment/timeseries/query?start=2025-01&end=2026-09&series=LNS14000000&query_mode=history&local_only=true&as_of_basis=available&as_of=2026-10-31T00%3A00%3A00Z'
 ```
 
-独立 worker 的 root 前台启动参数（本轮没有启动或创建长期任务）：
+独立 worker 的前台启动参数如下。实际 worker 已随有期限的 DEV 预览启动；
+就业策略仍为暂停，CPI/PPI/PCE原启用状态保持不变：
 
 ```sh
 uv run --no-sync python scripts/mdf_cpi_timeseries_worker.py \
@@ -103,5 +107,19 @@ uv run --no-sync python scripts/mdf_cpi_timeseries_worker.py \
 `scripts/import_official_calendar_history.py --asset employment`，必须指定就业现有 state、
 本地 HTML、官方 source URL、start/end 和带时区 acquired-at，不联网、不生成采集任务。
 
-待 root 验证：真实日历正文离线回放、DEV schema/只读授权、真实240月初始化、PG/Garage
-回读、浏览器整体效果、实际有界 worker 资格和部署。以上均未宣称 live 通过。
+## 2026-10-31 DEV 验证结果
+
+公共 jobs API 的初始化范围为2006-10至2026-09，2次BLS请求、2次实际尝试，
+保存751条观测（含计算前置月份），新增修订0；独立入库回读通过。
+751条中750条有值，2025-10失业率为官方空值，未补零。时薪在2005-10至2006-02
+未由来源提供，属于计算前置范围；所选240个月的记录覆盖720条。
+PG视图与公共API的2026-09数据及单位一致：非农159044千岗位、月净增29千岗位；
+失业率4.2%、月差0.1个百分点；时薪37.81 USD/hour、环比0.13%、同比3.02%。
+历史入库截止在本次采集之前返回0条，之后返回3条，两者上游请求均为0。
+原三族行数及汇总未改变，原策略启用状态保持；服务与四个worker均有有效心跳。
+服务实际返回的前端构建字节与工作树产物一致。
+
+事务证据保存在控制目录 MDF-EMPLOYMENT-WEB-20261031-R1：SCHEMA_PREPARE、
+CALENDAR_IMPORT、LIVE_INIT_JOB、LIVE_QUERY、FINAL_VERIFY、RUNTIME_WINDOW。
+前后端定向回归、构建、类型及静态检查通过。全套pytest在本地限时中止，不能宣称
+全套通过；完整CI与用户浏览器视觉验收仍待后续。预览期限不因本轮切换延长。
