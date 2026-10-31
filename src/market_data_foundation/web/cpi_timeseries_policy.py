@@ -102,7 +102,8 @@ def initialization_preset(service, status, snapshot, now, *, profile=CPI_PROFILE
             if point.get("origin") == "local"
             and point.get("availability") == "available"
             and point.get("available_at") is not None
-            and point.get("index_value") is not None
+            and point.get("value" if profile.key == "employment" else "index_value")
+            is not None
         ]
         if confirmed:
             candidates.append((max(confirmed), "confirmed_local_available"))
@@ -114,7 +115,7 @@ def initialization_preset(service, status, snapshot, now, *, profile=CPI_PROFILE
     if anchor is None and profile.key == "ppi":
         anchor = month_text(now.year * 12 + now.month - 2)
         basis = "request_calendar_month"
-    if anchor is None and profile.key == "pce":
+    if anchor is None and profile.key in {"pce", "employment"}:
         local_now = now.astimezone(ZoneInfo("Asia/Shanghai"))
         anchor = month_text(local_now.year * 12 + local_now.month - 2)
         basis = "request_calendar_month_no_release_claim"

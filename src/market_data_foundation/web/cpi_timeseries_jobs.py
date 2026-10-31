@@ -45,7 +45,7 @@ def validate_command(command, max_months):
 
 def verify_readback(written, readback, command, *, profile=CPI_PROFILE):
     """Coverage includes explicit source nulls; an absent row is a different gap."""
-    if profile.key in {"ppi", "pce"}:
+    if profile.key in {"ppi", "pce", "employment"}:
         return verify_ppi_readback(written, readback, command, profile=profile)
     expected = {
         (s, m)
@@ -63,7 +63,11 @@ def verify_readback(written, readback, command, *, profile=CPI_PROFILE):
         key in actual
         and all(
             actual[key].get(field) == point.get(field)
-            for field in ("index_value", "revision", "raw_sha256")
+            for field in (
+                ("value" if profile.key == "employment" else "index_value"),
+                "revision",
+                "raw_sha256",
+            )
         )
         for key, point in produced.items()
     )
@@ -83,7 +87,11 @@ def verify_readback(written, readback, command, *, profile=CPI_PROFILE):
         and refresh
         and expected <= produced.keys()
     )
-    unavailable = sorted(k for k, p in actual.items() if p["index_value"] is None)
+    unavailable = sorted(
+        k
+        for k, p in actual.items()
+        if p.get("value" if profile.key == "employment" else "index_value") is None
+    )
     source_nulls = {
         (p["series_id"], p["month"]) for p in written.get("source_unavailable", [])
     }
@@ -151,7 +159,11 @@ def verify_ppi_readback(written, readback, command, *, profile):
         key in available
         and all(
             actual[key].get(field) == point.get(field)
-            for field in ("index_value", "revision", "raw_sha256")
+            for field in (
+                ("value" if profile.key == "employment" else "index_value"),
+                "revision",
+                "raw_sha256",
+            )
         )
         for key, point in produced.items()
     )
@@ -178,7 +190,11 @@ def verify_ppi_readback(written, readback, command, *, profile):
             "saved_revisions",
         )
     }
-    nulls = {k for k, p in actual.items() if p["index_value"] is None}
+    nulls = {
+        k
+        for k, p in actual.items()
+        if p.get("value" if profile.key == "employment" else "index_value") is None
+    }
     result.update(
         coverage_complete=not missing and not partial,
         source_missing=rows(source_gaps),

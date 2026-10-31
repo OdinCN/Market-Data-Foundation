@@ -3,6 +3,7 @@
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from market_data_foundation.historical.bls_cpi_direct_live import load_registration_key
 from market_data_foundation.historical.bls_timeseries_profile import EMPLOYMENT_PROFILE
@@ -54,7 +55,8 @@ def main(argv=None, *, service_factory=build_service, clock=lambda: datetime.now
                     raise InterfaceError("employment_initialization_months_invalid")
                 if start is not None and end is None:
                     raise InterfaceError("start_and_end_required")
-                end = end or clock().strftime("%Y-%m")
+                now = clock().astimezone(ZoneInfo("Asia/Shanghai"))
+                end = end or month_at(now.year * 12 + now.month - 2)
                 start = start or month_at(month_number(end) - args.months + 1)
             validate_range(start, end)
             if getattr(args, "as_of", None) is not None:
@@ -65,8 +67,8 @@ def main(argv=None, *, service_factory=build_service, clock=lambda: datetime.now
                     raise InterfaceError("invalid_as_of") from None
 
         def credential_loader():
-            # Standalone employment CLI binding. The public package capability
-            # is deliberately not enrolled until its Host and UI are connected.
+            # Standalone CLI opt-in is independent of the public Host package
+            # binding; neither silently grants authorization to the other.
             if not args.live_provider:
                 raise InterfaceError("employment_live_opt_in_required")
             return load_registration_key(args.secret)

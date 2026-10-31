@@ -243,19 +243,32 @@ def test_cli_source_credential_binding_requires_explicit_live_opt_in(capsys):
     )
 
 
-def test_employment_cannot_accidentally_reuse_cpi_or_ppi_calendar(tmp_path):
-    from market_data_foundation.historical.cpi_release_schedule import (
-        CpiReleaseScheduler,
-        CpiScheduleError,
-        parse_official_history,
-        parse_official_ics,
+def test_employment_calendar_has_explicit_binding(tmp_path):
+    from market_data_foundation.historical.employment_release_schedule import (
+        CALENDAR_URL,
+        EmploymentReleaseScheduler,
     )
 
-    for parser in (parse_official_history, parse_official_ics):
-        with pytest.raises(CpiScheduleError, match="employment_schedule_not_connected"):
-            parser(b"", profile=EMPLOYMENT_PROFILE)
-    with pytest.raises(CpiScheduleError, match="employment_schedule_not_connected"):
-        CpiReleaseScheduler(
-            None, tmp_path / "schedule.json", profile=EMPLOYMENT_PROFILE
-        )
+    scheduler = EmploymentReleaseScheduler(
+        None, tmp_path / "schedule.json", history_start="2006-10"
+    )
+    assert scheduler.calendar_url == CALENDAR_URL
+    assert scheduler.calendar_title == "Employment Situation"
+    assert scheduler.asset_key == "employment"
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "at,end,start",
+    [
+        (datetime(2026, 10, 31, tzinfo=UTC), "2026-09", "2006-10"),
+        (datetime(2026, 1, 1, tzinfo=UTC), "2025-12", "2006-01"),
+    ],
+)
+def test_cli_omitted_end_uses_previous_complete_beijing_month(
+    setup, capsys, at, end, start
+):
+    service, _, _ = setup
+    assert main(["init"], service_factory=lambda **_: service, clock=lambda: at) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert (result["start_month"], result["end_month"]) == (start, end)

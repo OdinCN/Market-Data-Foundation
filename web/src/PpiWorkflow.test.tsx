@@ -120,7 +120,7 @@ function fixture() {
     body?: Record<string, unknown>;
   }[] = [];
   const jobs: CpiJob[] = [];
-  const enabled = { cpi: false, ppi: false, pce: false };
+  const enabled = { cpi: false, ppi: false, pce: false, employment: false };
   const transport: Transport = async (input, init) => {
     const url = new URL(String(input), "http://fixture.invalid");
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;

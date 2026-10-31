@@ -2,6 +2,7 @@ import {
   CPI_PROFILE,
   PPI_PROFILE,
   PCE_PROFILE,
+  EMPLOYMENT_PROFILE,
 } from "./macroTimeSeriesProfile";
 import { formatBeijingTime } from "./beijingTime";
 import { DateField } from "./DateField";
@@ -25,6 +26,7 @@ import {
   CPI,
   PPI,
   PCE,
+  EMPLOYMENT,
   MANUAL_OPERATION,
   PCE_OPERATION,
   HISTORY_OPERATION,
@@ -76,6 +78,7 @@ export function CollectionWorkbench({
   cpiAvailability,
   ppiAvailability,
   pceAvailability,
+  employmentAvailability,
 }: {
   assets: Asset[];
   asset: Asset | undefined;
@@ -88,6 +91,7 @@ export function CollectionWorkbench({
   cpiAvailability?: CpiAvailability;
   ppiAvailability?: CpiAvailability;
   pceAvailability?: CpiAvailability;
+  employmentAvailability?: CpiAvailability;
 }) {
   const tab = tabs.some((t) => t[0] === route.fields.get("tab"))
     ? route.fields.get("tab")!
@@ -161,29 +165,42 @@ export function CollectionWorkbench({
         route.fields.get("asset_revision") === PCE.revision)) &&
     (!route.fields.has("operation") ||
       route.fields.get("operation") === PCE_OPERATION);
-  const macroProfile = pceTarget
-    ? PCE_PROFILE
-    : isPpi
-      ? PPI_PROFILE
-      : CPI_PROFILE;
-  const macroAvailability = pceTarget
-    ? pceAvailability
-    : isPpi
-      ? ppiAvailability
-      : cpiAvailability;
+  const employmentTarget =
+    !invalidIdentity &&
+    !route.fields.has("operation") &&
+    route.fields.get("asset") === EMPLOYMENT.identity &&
+    route.fields.get("asset_revision") === EMPLOYMENT.revision;
+  const newEmployment =
+    !!employmentAvailability?.data && !employmentAvailability.legacy;
+  const macroProfile = employmentTarget
+    ? EMPLOYMENT_PROFILE
+    : pceTarget
+      ? PCE_PROFILE
+      : isPpi
+        ? PPI_PROFILE
+        : CPI_PROFILE;
+  const macroAvailability = employmentTarget
+    ? employmentAvailability
+    : pceTarget
+      ? pceAvailability
+      : isPpi
+        ? ppiAvailability
+        : cpiAvailability;
   const newPpi =
     !!ppiAvailability && !ppiAvailability.legacy && !!ppiAvailability.data;
   const newPce =
     !!pceAvailability && !pceAvailability.legacy && !!pceAvailability.data;
-  const newMacro = pceTarget
-    ? !!pceAvailability &&
-      !pceAvailability.legacy &&
-      (!!pceAvailability.data || !!pceAvailability.failure)
-    : isPpi
-      ? !!ppiAvailability
-      : !!cpiAvailability &&
-        !cpiAvailability.legacy &&
-        (!!cpiAvailability.data || !!cpiAvailability.failure);
+  const newMacro = employmentTarget
+    ? !!employmentAvailability && !employmentAvailability.legacy
+    : pceTarget
+      ? !!pceAvailability &&
+        !pceAvailability.legacy &&
+        (!!pceAvailability.data || !!pceAvailability.failure)
+      : isPpi
+        ? !!ppiAvailability
+        : !!cpiAvailability &&
+          !cpiAvailability.legacy &&
+          (!!cpiAvailability.data || !!cpiAvailability.failure);
   const macroPending =
     !!macroAvailability &&
     !macroAvailability.legacy &&
@@ -333,7 +350,23 @@ export function CollectionWorkbench({
       !invalidIdentity &&
       (filter === "all" || filter === keyOf(PCE) || pceTarget),
   );
+  const employmentRecords = useVisiblePolling(
+    (signal) => readCpiExecutions(transport, signal, EMPLOYMENT_PROFILE),
+    [transport, generation, EMPLOYMENT_PROFILE.id],
+    newEmployment &&
+      tab === "executions" &&
+      !invalidIdentity &&
+      (filter === "all" || filter === keyOf(EMPLOYMENT)),
+  );
   const macroRecords = [
+    ...(executionSchedule === "all" &&
+    (filter === "all" || filter === keyOf(EMPLOYMENT))
+      ? (employmentRecords.data?.executions ?? []).map((e) => ({
+          ...e,
+          profile: EMPLOYMENT_PROFILE,
+          rowId: `employment:${e.id}`,
+        }))
+      : []),
     ...(executionSchedule === "all" &&
     (filter === "all" || filter === keyOf(CPI))
       ? (cpiRecords.data?.executions ?? []).map((e) => ({
@@ -381,6 +414,12 @@ export function CollectionWorkbench({
     operation: HISTORY_OPERATION,
   };
   function recordState(kind: "plans" | "jobs") {
+    if (filter === keyOf(EMPLOYMENT))
+      return employmentRecords.failure
+        ? "就业执行记录读取失败。"
+        : employmentRecords.busy
+          ? "正在读取就业执行记录…"
+          : "当前范围没有就业执行记录。";
     if (filter === keyOf(PCE)) {
       if (pceAvailability && !pceAvailability.legacy) {
         if (!newPce) return "PCE 服务状态尚未核实，执行记录尚未查询。";
@@ -861,6 +900,10 @@ export function CollectionWorkbench({
               }
             >
               <option value="all">全部资产</option>
+              {!assets.some((a) => sameKey(a.key, EMPLOYMENT)) &&
+                newEmployment && (
+                  <option value={keyOf(EMPLOYMENT)}>美国就业</option>
+                )}
               {!assets.some((a) => sameKey(a.key, PPI)) && (
                 <option value={keyOf(PPI)}>美国 PPI</option>
               )}
@@ -875,7 +918,8 @@ export function CollectionWorkbench({
               {filter !== "all" &&
                 !assets.some((a) => keyOf(a.key) === filter) &&
                 filter !== keyOf(PPI) &&
-                filter !== keyOf(PCE) && (
+                filter !== keyOf(PCE) &&
+                !(filter === keyOf(EMPLOYMENT) && newEmployment) && (
                   <option value={filter}>{filter}（不可核实）</option>
                 )}
             </select>
@@ -910,7 +954,8 @@ export function CollectionWorkbench({
         (readPceRecords && pceJobs.failure) ||
         cpiRecords.failure ||
         ppiRecords.failure ||
-        pceRecords.failure) && (
+        pceRecords.failure ||
+        employmentRecords.failure) && (
         <div role="alert">
           采集记录已陈旧，保留上次数据并自动重读。
           {ppiRecords.failure && (
@@ -963,6 +1008,11 @@ export function CollectionWorkbench({
                   美国 {macroProfile.label}
                 </option>
               )}
+              {!assets.some((a) => sameKey(a.key, EMPLOYMENT)) &&
+                macroProfile.id !== "employment" &&
+                newEmployment && (
+                  <option value={keyOf(EMPLOYMENT)}>美国就业</option>
+                )}
               {!assets.some((a) => sameKey(a.key, CPI)) &&
                 macroProfile.id !== "cpi" && (
                   <option value={keyOf(CPI)}>美国 CPI</option>
@@ -1367,7 +1417,8 @@ export function CollectionWorkbench({
             </Technical>
           </aside>
         </div>
-      ) : tab === "periodic" && (newCpi || newPpi || newPce) ? (
+      ) : tab === "periodic" &&
+        (newCpi || newPpi || newPce || newEmployment) ? (
         <CpiStrategyWorkbench
           transport={transport}
           availability={
@@ -1389,6 +1440,12 @@ export function CollectionWorkbench({
           thirdAvailability={pceAvailability}
           thirdVisible={
             !invalidIdentity && (filter === "all" || filter === keyOf(PCE))
+          }
+          fourthProfile={newEmployment ? EMPLOYMENT_PROFILE : undefined}
+          fourthAvailability={employmentAvailability}
+          fourthVisible={
+            !invalidIdentity &&
+            (filter === "all" || filter === keyOf(EMPLOYMENT))
           }
           selectedId={scheduleId}
           generation={generation}
@@ -1475,7 +1532,7 @@ export function CollectionWorkbench({
         <>
           <div className="toolbar">
             <h2>采集执行记录</h2>
-            {!newCpi && !newPpi && !newPce && (
+            {!newCpi && !newPpi && !newPce && !newEmployment && (
               <button onClick={() => setRefresh((n) => n + 1)}>
                 回查执行记录
               </button>
@@ -1496,7 +1553,8 @@ export function CollectionWorkbench({
             columns={["任务名称", "创建时间（北京时间）", "采集范围", "结果"]}
             pageSize={20}
             locateId={
-              (isPpi || (pceTarget && newPce)) && (briefTarget || jobId)
+              (employmentTarget || isPpi || (pceTarget && newPce)) &&
+              (briefTarget || jobId)
                 ? `${macroProfile.id}:${briefTarget || jobId}`
                 : briefTarget
             }
@@ -1583,6 +1641,8 @@ export function CollectionWorkbench({
             !jobs.busy &&
             !cpiRecords.busy &&
             !ppiRecords.busy &&
+            !pceRecords.busy &&
+            !employmentRecords.busy &&
             !execution &&
             !cpiExecution && (
               <p role="status">

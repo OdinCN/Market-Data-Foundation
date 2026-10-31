@@ -59,6 +59,7 @@ class TimeSeriesHandler(CandidateHandler):
                 admitted_job(request, prefix="/api/r5/cpi/timeseries")
                 or admitted_job(request, prefix="/api/r5/ppi/timeseries")
                 or admitted_job(request, prefix="/api/r5/pce/timeseries")
+                or admitted_job(request, prefix="/api/r5/employment/timeseries")
             )
         if request.method == "PUT":
             return (
@@ -66,6 +67,7 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_strategy(request, prefix="/api/r5/cpi/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/ppi/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/pce/timeseries")
+                or admitted_strategy(request, prefix="/api/r5/employment/timeseries")
             )
         return super().request_admitted(request)
 
@@ -115,6 +117,12 @@ def main():
     parser.add_argument("--pce-history-start")
     parser.add_argument("--bea-request-control-path", type=Path)
     parser.add_argument("--allow-pce-collect", action="store_true")
+    parser.add_argument("--enable-employment-timeseries", action="store_true")
+    parser.add_argument("--employment-schedule-path", type=Path)
+    parser.add_argument("--employment-job-directory", type=Path)
+    parser.add_argument("--employment-history-start")
+    parser.add_argument("--allow-employment-local-read", action="store_true")
+    parser.add_argument("--allow-employment-collect", action="store_true")
     args = parser.parse_args()
     if args.enable_ppi_timeseries:
         if not args.ppi_history_start:
@@ -163,6 +171,12 @@ def main():
         pce_access=access(args.allow_pce_local_read),
         allow_collect=args.allow_collect,
         max_collect_months=args.max_collect_months,
+        employment_enabled=args.enable_employment_timeseries,
+        employment_schedule_path=args.employment_schedule_path,
+        employment_job_directory=args.employment_job_directory,
+        employment_history_start=args.employment_history_start,
+        employment_access=access(args.allow_employment_local_read),
+        employment_allow_collect=args.allow_employment_collect,
         ppi_enabled=args.enable_ppi_timeseries,
         ppi_schedule_path=args.ppi_schedule_path,
         ppi_job_directory=args.ppi_job_directory,

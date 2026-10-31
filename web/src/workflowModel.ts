@@ -23,6 +23,10 @@ export const CPI: Key = {
   identity: "mdf.macro.bls.cpi.headlines",
   revision: "p3-r1",
 };
+export const EMPLOYMENT: Key = {
+  identity: "mdf.macro.bls.employment.ces-cps",
+  revision: "t03-r1",
+};
 export const PPI: Key = {
   identity: "mdf.macro.bls.ppi.final-demand",
   revision: "t01-r1",

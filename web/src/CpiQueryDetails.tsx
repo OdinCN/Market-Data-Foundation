@@ -229,6 +229,167 @@ export function CpiQueryApiHelp({
   request: RequestDescription;
   profile?: MacroProfile;
 }) {
+  if (profile.id === "employment")
+    return (
+      <section aria-label="就业 API说明" className="cpi-api-help">
+        <h4>GET {profile.basePath}/query</h4>
+        <p>{profile.historyNotice}</p>
+        <CompactTable
+          label="查询参数"
+          headers={["参数", "默认", "说明"]}
+          rows={[
+            ["start / end", "必填", "YYYY-MM，最多2400个月"],
+            [
+              "series",
+              "全部三系列",
+              "逗号分隔 CES0000000001、LNS14000000、CES0500000003",
+            ],
+            [
+              "query_mode",
+              "current",
+              "current 本地优先缺口透传不保存；history 仅本地",
+            ],
+            ["local_only", "false", "true 禁止上游；history 始终仅本地"],
+            [
+              "as_of / as_of_basis",
+              "available",
+              "带时区截止时间，历史按入库时间",
+            ],
+            ["measure", "index", "就业仅此值，不使用 basket / adjustment"],
+          ]}
+        />
+        <CompactTable
+          label="就业字段"
+          headers={["字段", "单位及语义"]}
+          rows={[
+            [
+              "value / value_unit / survey",
+              "非农 CES 千岗位；CPS 失业率 %；CES 时薪 USD/hour",
+            ],
+            ["net_change_1m_thousand_jobs", "当月减上月，千岗位"],
+            ["change_1m_percentage_points", "失业率差值，百分点，非通胀同比"],
+            ["mom_pct / yoy_pct", "仅时薪本地端点计算，百分数"],
+            [
+              "provider_calculations.net_changes / pct_changes / footnotes",
+              "官方计算与脚注原样保留，可能采用不同精度，不替代本地推导",
+            ],
+            [
+              "revision / available_at / observed_at",
+              "本地修订号、入库可用时间、来源观察时间；不是官方首发或修订发布时间",
+            ],
+            [
+              "origin / availability",
+              "local 或 upstream；available 或未保存临时来源值",
+            ],
+            [
+              "calculation_inputs / raw_sha256 / batch_id",
+              "同截止基期值及来源、原始材料摘要、本地批次",
+            ],
+            ["change_1m_ratio / change_12m_ratio", "仅时薪比例；0.01 表示1%"],
+            ["null / missing", "缺值或比较基期缺失，不补零"],
+          ]}
+        />
+        <p>
+          以下为合成响应示例，展示三种单位、官方计算和本地差值；不作为真实来源证据。
+        </p>
+        <CodeBlock
+          label="就业响应示例"
+          copyLabel="复制就业响应示例"
+          text={JSON.stringify(
+            {
+              start_month: "2026-09",
+              end_month: "2026-09",
+              series_ids: profile.series.map((s) => s[0]),
+              query_mode: "current",
+              as_of_basis: "observed",
+              vintage_mode: "observed",
+              as_of: null,
+              persisted: false,
+              provider_requests: 1,
+              provider_attempts: 1,
+              complete: true,
+              coverage_complete: true,
+              points: [
+                {
+                  series_id: "CES0000000001",
+                  month: "2026-09",
+                  survey: "CES",
+                  value: "150010",
+                  value_unit: "thousand_jobs",
+                  net_change_1m_thousand_jobs: "10",
+                  provider_calculations: {
+                    net_changes: { "1": "10" },
+                    pct_changes: {},
+                  },
+                  footnotes: [{}],
+                  origin: "upstream",
+                  availability: "unpersisted",
+                  available_at: null,
+                  revision: null,
+                },
+                {
+                  series_id: "LNS14000000",
+                  month: "2026-09",
+                  survey: "CPS",
+                  value: "4.2",
+                  value_unit: "percent",
+                  change_1m_percentage_points: "0.1",
+                  provider_calculations: {
+                    net_changes: { "1": "0.1" },
+                    pct_changes: {},
+                  },
+                  footnotes: [{}],
+                  origin: "upstream",
+                  availability: "unpersisted",
+                  available_at: null,
+                  revision: null,
+                },
+                {
+                  series_id: "CES0500000003",
+                  month: "2026-09",
+                  survey: "CES",
+                  value: "30.10",
+                  value_unit: "USD/hour",
+                  mom_pct: "0.33",
+                  yoy_pct: "3.08",
+                  change_1m_ratio: "0.0033",
+                  change_12m_ratio: "0.0308",
+                  provider_calculations: {
+                    net_changes: { "1": "0.10" },
+                    pct_changes: { "1": "0.3", "12": "3.1" },
+                  },
+                  footnotes: [{ code: "P", text: "Preliminary" }],
+                  origin: "upstream",
+                  availability: "unpersisted",
+                  available_at: null,
+                  revision: null,
+                },
+              ],
+              missing: [],
+              calculation_missing: [],
+            },
+            null,
+            2,
+          )}
+        />
+        <p>
+          官方日历时间只绑定参考月事件，不证明本次修订当时已知。来源 BLS
+          Employment Situation，CES 与 CPS 调查口径分别保留。
+        </p>
+        <RequestPreview
+          request={{
+            method: "GET",
+            path: `${profile.basePath}/query?start=2025-01&end=2026-09&series=CES0000000001,LNS14000000,CES0500000003&query_mode=current&local_only=false&measure=index`,
+          }}
+        />
+        <RequestPreview
+          request={{
+            method: "GET",
+            path: `${profile.basePath}/query?start=2025-01&end=2026-09&series=LNS14000000&query_mode=history&local_only=true&as_of_basis=available&as_of=2026-10-31T08%3A00%3A00%2B08%3A00`,
+          }}
+        />
+      </section>
+    );
   const permission = availability.data?.web_capabilities.query;
   return (
     <section aria-label={`${profile.label} API说明`} className="cpi-api-help">

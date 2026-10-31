@@ -68,6 +68,11 @@ def selected_series(params, *, query=False, profile=CPI_PROFILE):
         if not values or not set(values) <= set(profile.series_ids):
             raise InterfaceError("unsupported_series")
         return values
+    if profile.key == "employment":
+        if basket is not None or adjustment is not None:
+            if basket != "all" or adjustment != "all":
+                raise InterfaceError("employment_series_filter_required")
+        return profile.series_ids
     basket = ("headline" if query else "all") if basket is None else basket
     adjustment = ("sa" if query else "all") if adjustment is None else adjustment
     if not isinstance(basket, str) or not isinstance(adjustment, str):
@@ -306,6 +311,10 @@ def execute(service, action, params=None, *, scheduler=None):
         or ("available" if query_mode == "history" or as_of is not None else None),
         **options,
     )
+    if getattr(service, "profile", CPI_PROFILE).key == "employment":
+        if measure != "index":
+            raise InterfaceError("employment_measure_not_supported")
+        return result
     field, unit = MEASURES[measure]
     points = [{**point, "value": point.get(field)} for point in result["points"]]
     return {

@@ -1,8 +1,8 @@
 # 美国就业连续核心 R1
 
-本轮交付连续来源、数值语义、共享持久化适配与独立 CLI。公共 Web Host、
-就业资产查询/采集页面、执行记录适配、Employment Situation 日历与周期策略、
-worker 尚未接通；没有新增可用按钮，也没有启用策略。
+上一轮交付连续来源、数值语义、共享持久化适配与独立 CLI。后续公共 Web Host、
+查询/采集、执行记录、Employment Situation 日历、策略和 worker 接线见
+[美国就业公共 DEV 流程 R1](employment-public-flow-r1.md)。本轮没有实际启用策略或服务。
 旧 T03 固定快照及 `source_qualified` 声明保持原状，不作为本实现的运行授权。
 
 ## 来源与语义
@@ -54,12 +54,12 @@ uv run --no-sync python scripts/employment_timeseries.py --runtime "$MDF_RUNTIME
 ```
 
 `--series` 可重复指定三个 series_id；没有 headline/core 或四口径参数。
-初始化可改 `--months` 或显式 `--start`/`--end`；省略结束月时请求当前月份，
+初始化可改 `--months` 或显式 `--start`/`--end`；省略结束月预置北京时间上一完整月，
 实际公布覆盖以返回结果为准。更新必须明确起止范围。
 CLI 上游凭据读取要求显式 `--live-provider`，采用具名 BLS 就业 profile，
 复用现有 BLS 密钥读取和请求控制，不借用 CPI/PPI 的 capability 开关。
-公共 package 尚未加入 employment capability，不能用三族 Host 代替就业 Host。
-没有可宣称已接通的新 Host 或 worker 启动命令。
+公共 package 现已加入 employment capability；只有显式就业 Host 装配才公开连续能力，
+不能用三族 Host 代替。启动参数与待 root 实测项见公共流程文档。
 
 ## 查询表格排序
 

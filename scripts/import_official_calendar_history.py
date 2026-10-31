@@ -7,6 +7,7 @@ from pathlib import Path
 
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
+    EMPLOYMENT_PROFILE,
     PPI_PROFILE,
 )
 from market_data_foundation.historical.cpi_release_schedule import CpiReleaseScheduler
@@ -14,7 +15,7 @@ from market_data_foundation.historical.cpi_release_schedule import CpiReleaseSch
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--asset", choices=("cpi", "ppi"), required=True)
+    parser.add_argument("--asset", choices=("cpi", "ppi", "employment"), required=True)
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--html", type=Path, required=True)
     parser.add_argument("--source", required=True)
@@ -27,7 +28,11 @@ def main():
     scheduler = CpiReleaseScheduler(
         None,
         args.state,
-        profile=CPI_PROFILE if args.asset == "cpi" else PPI_PROFILE,
+        profile={
+            "cpi": CPI_PROFILE,
+            "ppi": PPI_PROFILE,
+            "employment": EMPLOYMENT_PROFILE,
+        }[args.asset],
         history_start=state["history_start"],
         calendar_fetcher=None,
         reference_fetcher=None,

@@ -2,6 +2,7 @@ import {
   CPI_PROFILE,
   PPI_PROFILE,
   PCE_PROFILE,
+  EMPLOYMENT_PROFILE,
 } from "./macroTimeSeriesProfile";
 import { beijingToday, nowBeijingIso, toBeijingIso } from "./beijingTime";
 import { useEffect, useMemo, useState } from "react";
@@ -43,6 +44,7 @@ import {
   catalogForOperation,
   project,
   keyOf,
+  EMPLOYMENT,
   sameKey,
 } from "./workflowModel";
 import { menus, route, type Navigate } from "./workflowRoute";
@@ -199,11 +201,13 @@ export default function App({
     ((!identity && !operation) || sameKey(key, CPI));
   const macroIdentity = identity ?? operationEntry?.asset?.identity;
   const macroProfile =
-    macroIdentity === PCE.identity
-      ? PCE_PROFILE
-      : macroIdentity === PPI.identity
-        ? PPI_PROFILE
-        : CPI_PROFILE;
+    macroIdentity === EMPLOYMENT.identity
+      ? EMPLOYMENT_PROFILE
+      : macroIdentity === PCE.identity
+        ? PCE_PROFILE
+        : macroIdentity === PPI.identity
+          ? PPI_PROFILE
+          : CPI_PROFILE;
   const collectionList =
     page.view === "collection" &&
     ["periodic", "executions"].includes(page.fields.get("tab") ?? "new");
@@ -217,6 +221,8 @@ export default function App({
     transport,
     generation,
     !page.invalid &&
+      (macroIdentity !== EMPLOYMENT.identity ||
+        (collectionList && collectionFilter !== keyOf(EMPLOYMENT))) &&
       (macroIdentity !== PCE.identity ||
         (collectionList && collectionFilter !== keyOf(PCE))) &&
       (identity !== PPI.identity ||
@@ -258,12 +264,28 @@ export default function App({
     page.view === "collection",
     PCE_PROFILE,
   );
+  const employmentAvailability = useCpiAvailability(
+    transport,
+    generation,
+    !page.invalid &&
+      ["assets", "collection"].includes(page.view) &&
+      !operation &&
+      ((identity === EMPLOYMENT.identity &&
+        (!revision || revision === EMPLOYMENT.revision)) ||
+        (collectionList &&
+          (collectionFilter === "all" ||
+            collectionFilter === keyOf(EMPLOYMENT)))),
+    page.view === "collection",
+    EMPLOYMENT_PROFILE,
+  );
   const macroAvailability =
-    macroProfile.id === "pce"
-      ? pceAvailability
-      : macroProfile.id === "ppi"
-        ? ppiAvailability
-        : cpiAvailability;
+    macroProfile.id === "employment"
+      ? employmentAvailability
+      : macroProfile.id === "pce"
+        ? pceAvailability
+        : macroProfile.id === "ppi"
+          ? ppiAvailability
+          : cpiAvailability;
   const catalog = useResource<Catalog>(
     (signal) => request(transport, "/api/r5/cpi", query, signal),
     [transport, generation, query, wantsCatalog, page.view, page.invalid],
@@ -340,7 +362,11 @@ export default function App({
     directory.data &&
     ((operation && !source) ||
       (identity &&
-        ((revision && !asset && !sameKey(key, PPI) && !sameKey(key, PCE)) ||
+        ((revision &&
+          !asset &&
+          !sameKey(key, PPI) &&
+          !sameKey(key, PCE) &&
+          !sameKey(key, EMPLOYMENT)) ||
           (!revision &&
             (page.view !== "assets" ||
               !!operation ||
@@ -674,6 +700,7 @@ export default function App({
                       cpiAvailability={cpiAvailability}
                       ppiAvailability={ppiAvailability}
                       pceAvailability={pceAvailability}
+                      employmentAvailability={employmentAvailability}
                     />
                   )}
                   {page.view === "platform" && (

@@ -135,6 +135,8 @@ function CpiTimeSeriesContent({
   profile?: MacroProfile;
   availability: CpiAvailability;
 }) {
+  const employment = profile.id === "employment";
+  const [series, setSeries] = useState(profile.series.map((s) => s[0]));
   const cpiSeries = profile.series;
   const availableAdjustments = adjustments.filter((item) =>
     profile.series.some((s) => s[3] === item.value),
@@ -190,10 +192,12 @@ function CpiTimeSeriesContent({
     basket.length > 0 &&
     adjustment.length > 0 &&
     measure.length > 0 &&
+    (!employment || series.length > 0) &&
     (!history || !!beijingInputToIso(asOf));
   const scope: CpiScope = {
     start,
     end,
+    ...(employment ? { series: series.join(",") } : {}),
     basket: basket.length === baskets.length ? "all" : (basket[0] ?? ""),
     adjustment:
       adjustment.length === adjustments.length ? "all" : (adjustment[0] ?? ""),
@@ -256,7 +260,18 @@ function CpiTimeSeriesContent({
         (row) => row.month,
       )
     : [];
-  const columns = measures.filter((item) => measure.includes(item.value));
+  const columns = employment
+    ? ([
+        { value: "value", label: "数值（单位见指标）" },
+        { value: "net_change_1m_thousand_jobs", label: "非农月净增（千岗位）" },
+        {
+          value: "change_1m_percentage_points",
+          label: "失业率月变化（百分点）",
+        },
+        { value: "mom_pct", label: "时薪环比（%）" },
+        { value: "yoy_pct", label: "时薪同比（%）" },
+      ] as const)
+    : measures.filter((item) => measure.includes(item.value));
   const selectedCalculationMissing =
     result?.calculation_missing.filter((gap) =>
       columns.some((column) => column.value === gap.metric),
@@ -342,24 +357,38 @@ function CpiTimeSeriesContent({
               value={end}
               onChange={(value) => change(() => setEnd(value))}
             />
-            <MultiSelect
-              label="统计篮子"
-              options={baskets}
-              value={basket}
-              onChange={(value) => change(() => setBasket(value))}
-            />
-            <MultiSelect
-              label="季节调整"
-              options={availableAdjustments}
-              value={adjustment}
-              onChange={(value) => change(() => setAdjustment(value))}
-            />
-            <MultiSelect
-              label="显示指标"
-              options={measures}
-              value={measure}
-              onChange={setMeasure}
-            />
+            {employment ? (
+              <MultiSelect
+                label="就业指标"
+                options={profile.series.map((s) => ({
+                  value: s[0],
+                  label: s[1],
+                }))}
+                value={series}
+                onChange={(value) => change(() => setSeries(value))}
+              />
+            ) : (
+              <>
+                <MultiSelect
+                  label="统计篮子"
+                  options={baskets}
+                  value={basket}
+                  onChange={(value) => change(() => setBasket(value))}
+                />
+                <MultiSelect
+                  label="季节调整"
+                  options={availableAdjustments}
+                  value={adjustment}
+                  onChange={(value) => change(() => setAdjustment(value))}
+                />
+                <MultiSelect
+                  label="显示指标"
+                  options={measures}
+                  value={measure}
+                  onChange={setMeasure}
+                />
+              </>
+            )}
           </div>
           <label className="cpi-history-toggle">
             <input
@@ -403,7 +432,9 @@ function CpiTimeSeriesContent({
           </button>
         </form>
         <p className="small">
-          显示指标只控制表格列；实际请求固定 measure=index，不发送列选择参数。
+          {employment
+            ? "就业指标选择直接限定请求系列；缺值不补零。"
+            : "显示指标只控制表格列；实际请求固定 measure=index，不发送列选择参数。"}
         </p>
         <RequestPreview request={request} />
         {pending && <p role="status">正在查询 {profile.label}…</p>}
@@ -446,7 +477,9 @@ function CpiTimeSeriesContent({
                   : "所选指标存在缺值。"}
               </p>
               <p className="small">
-                变化率以百分比显示；3月、6月为相隔对应月数的累计变化，未经年化。
+                {employment
+                  ? "CES 千岗位及月净增；CPS 百分数及百分点变化；CES 时薪美元/小时及环同比。"
+                  : "变化率以百分比显示；3月、6月为相隔对应月数的累计变化，未经年化。"}
               </p>
               <div className="table-wrap">
                 <table aria-label={`${profile.label} 范围数据`}>
@@ -492,7 +525,13 @@ function CpiTimeSeriesContent({
                                 {valueText(
                                   row.point?.[field],
                                   field.endsWith("ratio"),
-                                  field === "index_value" ? "" : "%",
+                                  employment
+                                    ? field === "mom_pct" || field === "yoy_pct"
+                                      ? "%"
+                                      : ""
+                                    : field === "index_value"
+                                      ? ""
+                                      : "%",
                                 )}
                               </td>
                             ))}

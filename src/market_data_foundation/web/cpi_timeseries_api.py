@@ -42,7 +42,7 @@ from market_data_foundation.web.pce_dev_host import CANDIDATE_ORIGIN, admitted
 from market_data_foundation.web.ppi_timeseries import execute_profile
 
 PREFIX = "/api/r5/cpi/timeseries"
-PREFIXES = (PREFIX, "/api/r5/ppi/timeseries")
+PREFIXES = (PREFIX, "/api/r5/ppi/timeseries", "/api/r5/employment/timeseries")
 
 
 def admitted_job(request, *, prefix=None):
@@ -126,7 +126,9 @@ class TimeSeriesHost:
         self.auto_strategy = strategy or CpiAutoStrategy(
             scheduler,
             scheduler.state_path.with_name(
-                "strategy.json" if profile is CPI_PROFILE else "ppi-strategy.json"
+                "strategy.json"
+                if profile is CPI_PROFILE
+                else f"{profile.key}-strategy.json"
             ),
             clock=clock,
         )
@@ -272,10 +274,17 @@ class TimeSeriesHost:
                 "local_only",
                 "query_mode",
                 "as_of_basis",
-            },
+            }
+            | ({"series"} if self.profile.key == "employment" else set()),
         )
         if not self.query_allowed:
             raise WebError("local_read_not_authorized", 403)
+        if self.profile.key == "employment" and (
+            "basket" in params
+            or "adjustment" in params
+            or params.get("measure", "index") != "index"
+        ):
+            raise WebError("employment_series_filter_required")
         local_only = params.get(
             "local_only", "true" if self.profile is CPI_PROFILE else "false"
         )
@@ -453,7 +462,7 @@ class TimeSeriesHost:
                         profile=self.profile,
                     )
                 read_start, read_end = command["start"], command["end"]
-                if self.profile.key in {"ppi", "pce"}:
+                if self.profile.key in {"ppi", "pce", "employment"}:
                     months = [
                         p["month"]
                         for p in written.get("source_returned_series_months", [])

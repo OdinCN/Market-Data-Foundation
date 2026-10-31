@@ -16,6 +16,7 @@ from market_data_foundation.domain_contracts.macro import (
 )
 from market_data_foundation.historical.bea_pce import PCE_DEFINITION
 from market_data_foundation.historical.daily_bars import RAW_DAILY_BARS
+from market_data_foundation.historical.employment_contract import BLS_EMPLOYMENT
 from market_data_foundation.web.dto import DTO
 from market_data_foundation.web.source_catalog import (
     ContractKeyDTO,
@@ -79,7 +80,7 @@ PACKAGES = (
         "macro",
         "宏观数据接入包",
         "Macro",
-        "CPI、PPI 与 PCE；启用配置不代表来源准入或当前可执行。",
+        "CPI、PPI、PCE 与美国就业；启用配置不代表来源准入或当前可执行。",
         (
             CapabilityView(
                 capability_id="cpi",
@@ -91,6 +92,12 @@ PACKAGES = (
                 capability_id="ppi",
                 title="美国 PPI",
                 definition_ref=ref(BLS_PPI_FINAL_DEMAND),
+                required_sources=["BLS"],
+            ),
+            CapabilityView(
+                capability_id="employment",
+                title="美国就业",
+                definition_ref=ref(BLS_EMPLOYMENT),
                 required_sources=["BLS"],
             ),
             CapabilityView(
