@@ -46,7 +46,9 @@ class PceTimeSeriesHost(TimeSeriesHost):
                 "index[t]/index[t-k]-1; same_cutoff; not_annualized; 0.0312=3.12%"
             ),
             "buffer_months": 12,
-            "availability_default": "mdf_post_commit_confirmation_available_at",
+            "history_availability_semantics": (
+                "mdf_post_commit_confirmation_available_at"
+            ),
             "official_publication_time": "explicit_official_calendar_event_only",
             "last_revised_is_publication_time": False,
             "official_mom_table_is_index": False,

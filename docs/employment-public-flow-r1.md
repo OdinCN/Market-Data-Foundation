@@ -15,6 +15,19 @@ Host 开关、DEV 读取权限及采集权限分别核实。未装配 Host 时�
 当前查询本地优先，缺口透传不保存；history 只读本地，默认 available/入库截止。
 页面时间为北京时间，官方日历时间不表示本次数据修订当时已发布。
 
+API 说明复用 CPI/PPI/PCE 的权限、参数、统计序列、字段、缺值、示例和失败诊断
+折叠框架；请求预览直接使用当前表单的请求。Web `local_only` 默认值为 CPI=true，
+PPI/PCE/就业=false，history 始终禁止上游；表单会显式传入该参数。
+`as_of_basis`/`vintage_mode` 仅支持 observed/available，同传必须一致。
+current 无截止时实际使用 observed（来源响应观察时间）；history 默认 available
+（MDF 提交确认可用时间），显式 observed 不证明当时已入库，更不重建官方历史版本。
+`availability` 是返回证据，不是查询参数：available 为本地可用，unpersisted
+为临时补源；source_unavailable/withdrawn/unknown 进入缺值证据数组。
+就业的公共 HTTP 点不返回 `index_value` 或 `batch_id`；返回原生 `value/value_unit`，
+本地对比输入使用 `comparison_value`，材料证据为 `raw_sha256/raw_locator`。
+顶层不返回 `measure/unit/measure_complete`。来源空值计入记录覆盖，但不计入数值完整，
+不补零；派生计算缺少比较月另列 `calculation_missing`。合成示例不作为官方首发证据。
+
 新建采集、执行简报和执行记录复用共享窗体与覆盖说明。初始化默认240个月可编辑；
 优先已有可用数据/已到期官方事件，无证据时截至北京时间上一个完整自然月，
 只是预置范围。CLI 省略 end 同样使用上一完整月，包含跨年。
@@ -29,20 +42,29 @@ BLS 请求控制仍与 CPI/PPI 共享；保持既有发布快采、请求上限�
 ICS 仅筛选 Employment Situation；没有明确 Reference Month 证据时只显示未绑定事件，
 不从发布日期推算月份，不借 PPI 计划。改期、取消、历史展示沿用共享事件规则。
 月历历史接受明确 `Employment Situation for October 2026` 一类文本。
-DEV 直连 BLS 日历返回 HTTP 403。root 通过另一检索通道取得官方页面原始 HTML，
-验证并显式导入14个未来事件及2026年度10条历史展示事件。状态保留 operator_import
-与来源哈希；没有伪装为 worker 直连成功。worker 单元测试另使用明确合成材料。
+早轮通用 urllib 探测收到 HTTP 403，不能据此判定正式日历 fetcher 失败。
+root 曾通过另一检索通道取得官方页面原始 HTML，验证并显式导入14个未来事件及
+2026年度10条历史展示事件；状态保留 operator_import 与来源哈希，不代表直连成功。
+就业 Host 默认的 ICS 和 empSit.htm fetcher 均通过共享 `_fetch_calendar` 调用
+`bls_web_transport`：验证证书和主机名、保留既有 cipher advertisement，实际握手为
+TLS1.3 后才发送 HTTP。离线回归覆盖实际 Host 默认装配和 TLS1.2 发 HTTP 前拒绝。
+2026-10-31 07:47–07:48Z，root 使用正式传输取得就业 ICS（80672字节，解析23个事件）、
+就业参考月页（55395字节，14条）、CPI/PPI参考月页（各55389字节，各14条），全部通过，
+并用真实就业 scheduler 完成一次有锁日历刷新。证据为本轮事务中的
+`CALENDAR_PRODUCTION_PROBE.json`、`CALENDAR_REFRESH.json`；不是缓存或检索代理成功。
+实现检查本身仅执行离线测试，没有额外联网。
 
 ## root 的实际 DEV 操作
 
 以下为 root 已验证的操作方式；实际采集通过公共 jobs API 完成。
-18761已切换至本工作树，以下示例不可与现服务并启。此启动器沿用 `192.168.10.20:18761` 与原有访问边界，
+预览运行目录、Git HEAD 与到期时间以控制目录当前 `RUNTIME_WINDOW.json` 为准。
+以下示例不可与现服务并启。此启动器沿用 `192.168.10.20:18761` 与原有访问边界，
 仅在 root 安排部署切换、端口可用后启动，不能与现服务并启。不得把测试 shim 带入服务。
 `MDF_CONFIG`、`MDF_PACKAGE_STORE`、`MDF_ENV`、PCE 的 owner/OID 使用 root 已核实的
 现有路径/身份；程序不改写 runtime/secret。读身份必须与 runtime 的 PG user 一致。
 
 ```sh
-cd /srv/market-data-foundation-control/worktrees/mdf-employment-web-20261031-r1
+cd /srv/market-data-foundation-control/worktrees/mdf-employment-align-20261031-r1
 uv run --no-sync python scripts/employment_timeseries.py \
   --runtime "$MDF_CONFIG/runtime.toml" --secret "$MDF_CONFIG/secret.toml" prepare-schema
 uv run --no-sync python scripts/employment_timeseries.py \
@@ -88,7 +110,7 @@ curl 'http://192.168.10.20:18761/api/r5/employment/timeseries/query?start=2025-0
 ```
 
 独立 worker 的前台启动参数如下。实际 worker 已随有期限的 DEV 预览启动；
-就业策略仍为暂停，CPI/PPI/PCE原启用状态保持不变：
+root 本轮确认保留用户已启用的就业策略，CPI/PPI/PCE原启用状态保持不变：
 
 ```sh
 uv run --no-sync python scripts/mdf_cpi_timeseries_worker.py \
@@ -121,5 +143,7 @@ PG视图与公共API的2026-09数据及单位一致：非农159044千岗位、�
 
 事务证据保存在控制目录 MDF-EMPLOYMENT-WEB-20261031-R1：SCHEMA_PREPARE、
 CALENDAR_IMPORT、LIVE_INIT_JOB、LIVE_QUERY、FINAL_VERIFY、RUNTIME_WINDOW。
-前后端定向回归、构建、类型及静态检查通过。全套pytest在本地限时中止，不能宣称
-全套通过；完整CI与用户浏览器视觉验收仍待后续。预览期限不因本轮切换延长。
+此前全套pytest本地限时中止；此后基线78e0225的CI104已完整green。
+本轮对齐修正的定向离线验证为后端485项、前端245项通过，详见 MDF-EMPLOYMENT-ALIGN-20261031-R1 的
+`IMPLEMENTATION_REPLY.md`；不以基线CI代替本轮验证。用户浏览器视觉验收仍待后续，
+预览期限不因本轮代码修改延长。

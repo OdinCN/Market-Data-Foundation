@@ -8,8 +8,18 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { HttpExchangePanel, RequestPreview } from "./CpiQueryDetails";
-import type { CpiHttpExchange } from "./cpiTimeSeriesApi";
+import {
+  CpiQueryApiHelp,
+  HttpExchangePanel,
+  RequestPreview,
+} from "./CpiQueryDetails";
+import type { CpiAvailability, CpiHttpExchange } from "./cpiTimeSeriesApi";
+import {
+  CPI_PROFILE,
+  PPI_PROFILE,
+  PCE_PROFILE,
+  EMPLOYMENT_PROFILE,
+} from "./macroTimeSeriesProfile";
 
 const request = {
   method: "GET" as const,
@@ -241,5 +251,119 @@ it.each([
       expect(screen.getByLabelText("原始 HTTP 正文").textContent).toBe(
         "replacement",
       );
+  },
+);
+
+it.each([CPI_PROFILE, PPI_PROFILE, PCE_PROFILE, EMPLOYMENT_PROFILE])(
+  "$label help shares the complete disclosure structure and uses the actual supplied request",
+  (profile) => {
+    const actualRequest = {
+      method: "GET" as const,
+      path: `${profile.basePath}/query?start=2025-10&end=2026-09&${profile.id === "employment" ? "series=LNS14000000" : "basket=core&adjustment=sa"}&query_mode=history&local_only=true&as_of_basis=available&as_of=2026-10-31T08%3A00%3A00%2B08%3A00`,
+    };
+    const availability: CpiAvailability = {
+      busy: false,
+      failure: null,
+      legacy: false,
+      data: {
+        latest_months: {},
+        observation_count: 0,
+        revision_count: 0,
+        batch_count: 0,
+        web_capabilities: { query: true, collect: false, reason: null },
+      },
+    };
+    const view = render(
+      <CpiQueryApiHelp
+        profile={profile}
+        availability={availability}
+        request={actualRequest}
+      />,
+    );
+    expect(screen.getByText(/已开放查询/)).toBeTruthy();
+    const parameters = within(screen.getByRole("table", { name: "查询参数" }));
+    const defaultRow = parameters.getByText("local_only").closest("tr")!;
+    expect(defaultRow.textContent).toContain(
+      `否 / ${profile.id === "cpi" ? "true" : "false"}（Web）`,
+    );
+    expect(
+      parameters.getByText("as_of_basis / vintage_mode").closest("tr")!
+        .textContent,
+    ).toContain("无截止 current: observed；history 或有截止: available");
+    expect(
+      parameters.getByText("measure").closest("tr")!.textContent,
+    ).toContain("index");
+    for (const title of [
+      `${profile.series.length}个统计序列`,
+      "返回字段、类型与单位",
+      "来源与官方计算",
+      "成功示例（字段节选，非本次响应）",
+      "失败示例与诊断",
+    ]) {
+      const disclosure = screen.getByText(title).closest("details")!;
+      expect(disclosure.open).toBe(false);
+      fireEvent.click(screen.getByText(title));
+      expect(disclosure.open).toBe(true);
+    }
+    expect(
+      screen
+        .getByRole("table", { name: "统计序列" })
+        .querySelectorAll("tbody tr"),
+    ).toHaveLength(profile.series.length);
+    expect(
+      screen.getByRole("table", { name: "返回字段" }).textContent,
+    ).toContain("revision 1 仅首次本地观察");
+    expect(screen.getByLabelText("请求 URL").textContent).toBe(
+      `GET ${new URL(actualRequest.path, location.origin).href}`,
+    );
+    const example = JSON.parse(
+      screen.getByLabelText(`${profile.label} 响应示例`).textContent!,
+    );
+    expect(example.persisted).toBe(false);
+    if (profile.id === "employment") {
+      expect(parameters.getByText("series")).toBeTruthy();
+      expect(parameters.queryByText("basket")).toBeNull();
+      expect(
+        example.points.map((p: { value_unit: string }) => p.value_unit),
+      ).toEqual(["thousand_jobs", "percent", "USD/hour"]);
+      expect(
+        example.points
+          .slice(0, 2)
+          .every((p: object) => !("mom_pct" in p) && !("yoy_pct" in p)),
+      ).toBe(true);
+      expect(
+        example.points.every(
+          (p: object) => !("batch_id" in p) && !("index_value" in p),
+        ),
+      ).toBe(true);
+      expect("measure" in example).toBe(false);
+      expect("unit" in example).toBe(false);
+      expect("measure_complete" in example).toBe(false);
+    } else {
+      expect(parameters.getByText("basket")).toBeTruthy();
+      expect(example.unit).toBe("index");
+    }
+    view.rerender(
+      <CpiQueryApiHelp
+        profile={profile}
+        availability={{
+          ...availability,
+          data: {
+            ...availability.data!,
+            web_capabilities: { query: false, collect: false, reason: null },
+          },
+        }}
+        request={actualRequest}
+      />,
+    );
+    expect(screen.getByText(/未开放查询/)).toBeTruthy();
+    view.rerender(
+      <CpiQueryApiHelp
+        profile={profile}
+        availability={{ ...availability, failure: "offline" }}
+        request={actualRequest}
+      />,
+    );
+    expect(screen.getByText(/服务状态暂未核实/)).toBeTruthy();
   },
 );

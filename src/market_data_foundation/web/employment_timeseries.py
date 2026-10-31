@@ -21,17 +21,33 @@ class EmploymentTimeSeriesHost(TimeSeriesHost):
             "parameters": {
                 "start/end": "required YYYY-MM, at most 2400 months",
                 "series": "comma-separated allowlisted series; default all three",
-                "query_mode": "current: local-first, unsaved; history: local only",
-                "as_of": "aware cutoff; history uses local commit availability",
-                "local_only": "true forbids source; history always local",
+                "query_mode": (
+                    "current/history; inferred history with as_of or available"
+                ),
+                "as_of": (
+                    "optional aware cutoff; history defaults to commit availability"
+                ),
+                "as_of_basis/vintage_mode": (
+                    "observed/available; must agree if both supplied; "
+                    "current without cutoff uses observed; history defaults available; "
+                    "observed is source response time, not official release"
+                ),
+                "local_only": (
+                    "default false; true forbids source; history always local"
+                ),
                 "measure": "index only; basket/adjustment are not employment filters",
             },
             "series": EMPLOYMENT_PROFILE.series_metadata,
             "fields": {
                 "value": "CES thousand jobs; CPS percent; CES USD/hour",
-                "origin/availability": "local/upstream; persisted/temporary/gaps",
+                "origin/availability": (
+                    "local/upstream; available/unpersisted; source_unavailable, "
+                    "withdrawn and unknown appear in missing-evidence arrays"
+                ),
                 "calculation_inputs": "same-cutoff comparison value and provenance",
-                "raw_sha256/batch_id": "retained artifact and local batch",
+                "raw_sha256/raw_locator": (
+                    "material digest/nullable retained locator; no HTTP batch_id"
+                ),
                 "change_1m_ratio/change_12m_ratio": "AHE ratios; 0.01 means 1%",
                 "net_change_1m_thousand_jobs": "CES month difference; thousand jobs",
                 "change_1m_percentage_points": "CPS difference; percentage points",

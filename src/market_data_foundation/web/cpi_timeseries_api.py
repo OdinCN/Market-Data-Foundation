@@ -184,6 +184,20 @@ class TimeSeriesHost:
             },
             "history_local_only": True,
             "query_persists": False,
+            "as_of_basis_semantics": {
+                "observed": (
+                    "source_response_observed_at_not_mdf_commit_or_historical_vintage"
+                ),
+                "available": "mdf_post_commit_confirmation_available_at",
+            },
+            "availability_is_query_parameter": False,
+            "point_availability_values": [
+                "available",
+                "unpersisted",
+                "source_unavailable",
+                "withdrawn",
+                "unknown",
+            ],
         }
 
     def source(self, record=None):
@@ -335,7 +349,8 @@ class TimeSeriesHost:
             "publication_event": {
                 "label": "官方日历时间",
                 "description": (
-                    "来自官方日历，不代表当前修订值当时已知；历史截止按入库时间。"
+                    "来自官方日历，不代表当前修订值当时已知；"
+                    "历史默认按入库可用时间，显式 observed 按来源响应观察时间。"
                 ),
                 "semantics": "official_month_event_not_current_value_revision_time",
                 "binds_current_revision": False,

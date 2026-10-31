@@ -252,3 +252,40 @@ def test_ics_is_default_and_html_reference_has_separate_fixed_path(wire):
     wire[0].append({"status": 302, "location": "/schedule/news_release/cpi.htm"})
     with pytest.raises(CpiScheduleError, match="calendar_redirect_rejected"):
         fetch_official_calendar()
+
+
+@pytest.mark.parametrize("tls", ["TLSv1.3", "TLSv1.2"])
+def test_employment_host_default_calendar_binding_uses_verified_transport(
+    wire, tmp_path, monkeypatch, tls
+):
+    from tests.test_employment_web import setup
+
+    _, runtime, source, _, _ = setup(
+        tmp_path,
+        monkeypatch,
+        employment_calendar_fetcher=None,
+        employment_reference_fetcher=None,
+    )
+    scheduler = runtime.employment_timeseries.scheduler
+    for fetcher, path, accept in [
+        (scheduler.calendar_fetcher, "/schedule/news_release/bls.ics", "text/calendar"),
+        (
+            scheduler.reference_fetcher,
+            "/schedule/news_release/empSit.htm",
+            "text/html",
+        ),
+    ]:
+        wire[0].append({"tls": tls, "raw": b"offline-calendar"})
+        if tls == "TLSv1.3":
+            assert fetcher() == b"offline-calendar"
+            connection = wire[1][-1]
+            assert connection.request_args[:2] == ("GET", path)
+            assert connection.request_args[2]["Accept"] == accept
+            assert connection.context.verify_mode == ssl.CERT_REQUIRED
+            assert connection.context.check_hostname is True
+            assert connection.events[:3] == ["connect", "version", "request"]
+        else:
+            with pytest.raises(CpiScheduleError, match="calendar_tls_version_rejected"):
+                fetcher()
+            assert wire[1][-1].events == ["connect", "version", "close"]
+    assert not source.calls

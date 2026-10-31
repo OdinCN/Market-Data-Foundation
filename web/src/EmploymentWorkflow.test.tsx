@@ -18,6 +18,7 @@ import {
   buildCpiQueryRequest,
   type CpiAvailability,
   type CpiJob,
+  type CpiResult,
   type CpiStrategy,
 } from "./cpiTimeSeriesApi";
 import type { Transport } from "./api";
@@ -139,6 +140,15 @@ it("employment filters series and units, reverses months and preserves exact HTT
     options.getByRole("checkbox", { name: profile.series[1][1] }),
   );
   fireEvent.click(screen.getByRole("button", { name: "就业指标" }));
+  fireEvent.click(screen.getByRole("tab", { name: "API说明" }));
+  const preview = within(
+    screen.getByRole("region", { name: "就业 API说明" }),
+  ).getByLabelText("请求 URL").textContent!;
+  expect(new URL(preview.slice(4)).searchParams.get("series")).toBe(
+    "LNS14000000",
+  );
+  expect(paths).toHaveLength(0);
+  fireEvent.click(screen.getByRole("tab", { name: "查询数据" }));
   fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
   const table = await screen.findByRole("table", { name: "就业 范围数据" });
   expect(
@@ -149,6 +159,7 @@ it("employment filters series and units, reverses months and preserves exact HTT
   ).toEqual(["2026-01", "2025-12"]);
   expect(table.textContent).toContain("百分点");
   const url = new URL(paths[0], "http://fixture");
+  expect(preview).toBe(`GET ${new URL(paths[0], location.origin).href}`);
   expect(url.searchParams.get("series")).toBe("LNS14000000");
   expect(url.searchParams.has("basket")).toBe(false);
   expect(url.searchParams.has("adjustment")).toBe(false);
@@ -174,6 +185,95 @@ it("history uses an available cutoff and a local-only employment request", () =>
   expect(params.get("local_only")).toBe("true");
   expect(params.get("as_of_basis")).toBe("available");
   expect(params.get("series")).toBe("LNS14000000");
+});
+
+it("keeps employment source nulls and missing comparisons distinct, with Beijing calendar time", async () => {
+  const result: CpiResult = {
+    start_month: "2025-10",
+    end_month: "2025-10",
+    series_ids: profile.series.map((s) => s[0]),
+    points: [
+      {
+        series_id: "CES0000000001",
+        month: "2025-10",
+        value: "150010",
+        value_unit: "thousand_jobs",
+        net_change_1m_thousand_jobs: "10",
+      },
+      {
+        series_id: "CES0500000003",
+        month: "2025-10",
+        value: "30.10",
+        value_unit: "USD/hour",
+        mom_pct: null,
+        yoy_pct: "3.08",
+      },
+    ],
+    missing: [
+      {
+        series_id: "LNS14000000",
+        month: "2025-10",
+        reason: "source_unavailable",
+      },
+    ],
+    calculation_missing: [
+      {
+        series_id: "CES0500000003",
+        month: "2025-10",
+        metric: "mom_pct",
+        required_month: "2025-09",
+        reason: "not_observed",
+      },
+    ],
+    complete: false,
+    coverage_complete: true,
+    persisted: false,
+    provider_requests: 0,
+    provider_attempts: 0,
+    vintage_mode: "observed",
+    as_of: null,
+    publication_events: [
+      {
+        reference_month: "2025-10",
+        time: "2025-11-20T13:30:00Z",
+        status: "published",
+        evidence: { source: "synthetic-calendar" },
+      },
+    ],
+  };
+  let queries = 0;
+  render(
+    <CpiTimeSeries
+      profile={profile}
+      availability={availability}
+      transport={async () => {
+        queries++;
+        return response(result);
+      }}
+    />,
+  );
+  for (const name of ["开始月份", "结束月份"])
+    fireEvent.change(screen.getByLabelText(name), {
+      target: { value: "2025-10" },
+    });
+  fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
+  const table = await screen.findByRole("table", { name: "就业 范围数据" });
+  const rows = within(table).getAllByRole("row").slice(1);
+  expect(rows).toHaveLength(3);
+  expect(rows[1].textContent).toContain("失业率 · CPS · %");
+  expect(rows[1].textContent).toContain("未公布 / 来源缺值");
+  expect(rows[1].children[2].textContent).toBe("—");
+  expect(rows[2].textContent).toContain("30.10");
+  expect(rows[2].textContent).toContain("3.08%");
+  expect(rows[2].textContent).toContain(
+    "计算基期缺值：2025-09（本地尚无记录）",
+  );
+  expect(rows[0].textContent).toContain("2025-11-20 21:30");
+  fireEvent.click(screen.getByRole("tab", { name: "原始响应" }));
+  expect(screen.getByLabelText("原始 HTTP 正文").textContent).toBe(
+    JSON.stringify(result),
+  );
+  expect(queries).toBe(1);
 });
 it("editable initialization confirms DEV, refreshes briefs and opens the shared execution detail", async () => {
   const submitted: unknown[] = [];
@@ -287,9 +387,57 @@ it("employment strategy uses its independent plan and only start/pause controls"
   expect(screen.getByRole("button", { name: /暂停/ })).toBeTruthy();
 });
 
-it("App routes employment to the explicit Host without querying CPI or the T03 snapshot", async () => {
+it.each(["ui=r5&view=assets", "page=3"])(
+  "App routes %s employment links to the explicit Host without querying CPI or the T03 snapshot",
+  async (route) => {
+    const paths: string[] = [];
+    location.hash = `${route}&asset=${EMPLOYMENT.identity}&asset_revision=${EMPLOYMENT.revision}`;
+    render(
+      <App
+        transport={async (input) => {
+          const path = new URL(String(input), "http://fixture").pathname;
+          paths.push(path);
+          if (path === profile.basePath + "/status")
+            return response(availability.data);
+          if (path === "/api/r5/packages")
+            return response({
+              status: "OK",
+              packages: [
+                {
+                  package_id: "macro",
+                  name: "宏观",
+                  history_completeness: "COMPLETE",
+                  capabilities: [
+                    { title: "美国就业", definition_ref: EMPLOYMENT },
+                  ],
+                  assets: [],
+                },
+              ],
+            });
+          if (path === "/api/r5/sources" || path === "/api/r3/management")
+            return response({ status: "OK", entries: [], instances: [] });
+          return new Response(
+            JSON.stringify({
+              status: "NOT_AVAILABLE",
+              classification: "not_found",
+            }),
+            { status: 404 },
+          );
+        }}
+      />,
+    );
+    expect(
+      await screen.findByRole("region", { name: "就业 范围查询" }),
+    ).toBeTruthy();
+    expect(
+      paths.some((p) => p.includes("/cpi/") || p.includes("bls_employment")),
+    ).toBe(false);
+  },
+);
+
+it("opens the ordinary employment asset row through the shared runtime catalog", async () => {
+  location.hash = "ui=r5&view=assets";
   const paths: string[] = [];
-  location.hash = `ui=r5&view=assets&asset=${EMPLOYMENT.identity}&asset_revision=${EMPLOYMENT.revision}`;
   render(
     <App
       transport={async (input) => {
@@ -308,7 +456,23 @@ it("App routes employment to the explicit Host without querying CPI or the T03 s
                 capabilities: [
                   { title: "美国就业", definition_ref: EMPLOYMENT },
                 ],
-                assets: [],
+                assets: [
+                  {
+                    identity: EMPLOYMENT.identity,
+                    revisions: [
+                      {
+                        definition_ref: EMPLOYMENT,
+                        capability_enabled: true,
+                        metadata_view_permission: "allowed",
+                        local_holding: "PRESENT",
+                        local_read: { allowed: true },
+                        upstream_read: { allowed: true },
+                        collect: { allowed: true },
+                        source_entries: [],
+                      },
+                    ],
+                  },
+                ],
               },
             ],
           });
@@ -324,9 +488,15 @@ it("App routes employment to the explicit Host without querying CPI or the T03 s
       }}
     />,
   );
+  const row = await screen.findByRole("button", { name: "选择 美国就业 宏观" });
+  paths.length = 0;
+  fireEvent.click(row);
   expect(
     await screen.findByRole("region", { name: "就业 范围查询" }),
   ).toBeTruthy();
+  expect(
+    new URLSearchParams(location.hash.slice(1)).get("asset_revision"),
+  ).toBe(EMPLOYMENT.revision);
   expect(
     paths.some((p) => p.includes("/cpi/") || p.includes("bls_employment")),
   ).toBe(false);

@@ -322,9 +322,14 @@ def execute(service, action, params=None, *, scheduler=None):
         "points": points,
         "measure": measure,
         "query_mode": query_mode,
-        "as_of_basis": basis
-        or (
-            "available" if query_mode == "history" or as_of is not None else "observed"
+        "as_of_basis": result.get(
+            "as_of_basis",
+            basis
+            or (
+                "available"
+                if query_mode == "history" or as_of is not None
+                else "observed"
+            ),
         ),
         "unit": unit,
         "measure_complete": result["complete"]

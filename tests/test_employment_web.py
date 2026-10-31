@@ -60,10 +60,17 @@ def setup(tmp_path, monkeypatch, *, enabled=True, allowed=True, **options):
         employment_schedule_path=tmp_path / "employment" / "plan.json",
         employment_job_directory=tmp_path / "employment" / "jobs",
         employment_history_start="2026-08",
-        employment_calendar_fetcher=lambda: ics(
-            event("employment-oct", "20261106T083000", summary="Employment Situation")
+        employment_calendar_fetcher=options.pop(
+            "employment_calendar_fetcher",
+            lambda: ics(
+                event(
+                    "employment-oct", "20261106T083000", summary="Employment Situation"
+                )
+            ),
         ),
-        employment_reference_fetcher=lambda: html(REFERENCE),
+        employment_reference_fetcher=options.pop(
+            "employment_reference_fetcher", lambda: html(REFERENCE)
+        ),
         **options,
     )
     return app, app.state.timeseries_runtime, source, data, connections
@@ -152,6 +159,56 @@ def test_denied_query_permission_blocks_writes(tmp_path, monkeypatch):
     with pytest.raises(WebError):
         host.submit(command())
     assert not source.calls
+
+
+def test_http_help_matches_defaults_units_and_official_nulls(tmp_path, monkeypatch):
+    app, runtime, source, _, _ = setup(tmp_path, monkeypatch)
+    source.overrides[(EMPLOYMENT_PROFILE.series_ids[1], "2025-10")] = None
+    prefix = runtime.employment_timeseries.prefix
+    with client(app) as http:
+        help_doc = http.get(prefix + "/api-help").json()
+        assert help_doc["query_defaults"]["local_only"] is False
+        assert help_doc["query_defaults"]["as_of_basis"] == "observed"
+        assert help_doc["query_defaults"]["history_as_of_basis"] == "available"
+        assert "raw_sha256/batch_id" not in help_doc["fields"]
+        current = http.get(prefix + "/query?start=2025-10&end=2025-10").json()
+        assert current["query_mode"] == "current"
+        assert current["as_of_basis"] == current["vintage_mode"] == "observed"
+        assert current["coverage_complete"] is True and current["complete"] is False
+        assert current["persisted"] is False
+        assert current["provider_requests"] == 1
+        assert {p["value_unit"] for p in current["points"]} == {
+            "thousand_jobs",
+            "USD/hour",
+        }
+        assert current["missing"] == [
+            {
+                "series_id": "LNS14000000",
+                "month": "2025-10",
+                "reason": "source_unavailable",
+            }
+        ]
+        null_point = current["source_unavailable"][0]
+        assert null_point["value"] is None and null_point["value_unit"] == "percent"
+        for point in [*current["points"], null_point]:
+            assert "index_value" not in point and "batch_id" not in point
+        assert not {"measure", "unit", "measure_complete"} & current.keys()
+        invalid = http.get(prefix + "/query?start=2025-10&end=2025-10&measure=yoy")
+        assert invalid.status_code == 400
+        assert invalid.json()["classification"] == "employment_series_filter_required"
+        calls = len(source.calls)
+        history = http.get(
+            prefix + "/query?start=2025-10&end=2025-10&query_mode=history"
+        ).json()
+        assert history["as_of_basis"] == history["vintage_mode"] == "available"
+        assert history["provider_requests"] == 0 and len(source.calls) == calls
+        # Availability is returned evidence, not a query filter with a default.
+        assert (
+            http.get(
+                prefix + "/query?start=2025-10&end=2025-10&availability=available"
+            ).status_code
+            == 400
+        )
 
 
 def test_calendar_filters_references_retiming_and_cancellation(tmp_path, monkeypatch):

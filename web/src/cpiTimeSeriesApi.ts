@@ -254,13 +254,15 @@ export type CpiPoint = {
   net_change_1m_thousand_jobs?: string | number | null;
   change_1m_percentage_points?: string | number | null;
   value_unit?: string;
-  index_value: string | number | null;
-  mom_pct: string | number | null;
-  yoy_pct: string | number | null;
-  change_1m_ratio: string | number | null;
-  change_3m_ratio: string | number | null;
-  change_6m_ratio: string | number | null;
-  change_12m_ratio: string | number | null;
+  // Employment omits index_value; only AHE carries ratios and percent changes.
+  // Inflation response validation below still requires its complete field set.
+  index_value?: string | number | null;
+  mom_pct?: string | number | null;
+  yoy_pct?: string | number | null;
+  change_1m_ratio?: string | number | null;
+  change_3m_ratio?: string | number | null;
+  change_6m_ratio?: string | number | null;
+  change_12m_ratio?: string | number | null;
   observed_at?: string;
   available_at?: string | null;
   origin?: string;
