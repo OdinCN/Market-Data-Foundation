@@ -34,13 +34,27 @@ const button = (name: string) =>
   screen.getByRole("button", { name }) as HTMLButtonElement;
 const tab = (name: string) =>
   fireEvent.click(screen.getByRole("tab", { name }));
-function host(scenario = "ready") {
+function host(
+  scenario = "ready",
+  pceMode: "timeseries" | "legacy" = "timeseries",
+) {
   const cpi = asgi(scenario, "cpi_r8_ui_exchange.py");
   const pce = asgi("backfill", "pce_native_ui_exchange.py");
-  const transport: Transport = (input, init) =>
-    String(input).startsWith("/api/pce/")
+  const transport: Transport = async (input, init) => {
+    // Generic parent/backfill tests explicitly exercise the supported legacy
+    // host contract. Default PCE entry now belongs to the timeseries workflow.
+    if (
+      pceMode === "legacy" &&
+      String(input) === "/api/r5/pce/timeseries/status"
+    )
+      return new Response(
+        JSON.stringify({ classification: "pce_timeseries_not_enabled" }),
+        { status: 503, headers: { "Content-Type": "application/json" } },
+      );
+    return String(input).startsWith("/api/pce/")
       ? pce.transport(input, init)
       : cpi.transport(input, init);
+  };
   return { cpi, pce, transport };
 }
 function open(transport: Transport, fields: Record<string, string> = {}) {
@@ -67,7 +81,7 @@ async function chooseBackfillParent(target = CPI, job = parent) {
   fireEvent.change(screen.getByLabelText("采集目标"), {
     target: { value: keyOf(target) },
   });
-  fireEvent.click(button("指定范围回补"));
+  fireEvent.click(await screen.findByRole("button", { name: "指定范围回补" }));
   await screen.findByRole("option", { name: new RegExp(job) });
   fireEvent.change(screen.getByLabelText("关联失败 / 异常执行"), {
     target: { value: job },
@@ -138,7 +152,7 @@ it.each([false, true])(
 );
 
 it("clearing a selected parent and changing assets invalidates its source, range and confirmation", async () => {
-  const h = host();
+  const h = host("ready", "legacy");
   open(h.transport);
   await screen.findByRole("option", { name: /PCE/ });
   fireEvent.change(screen.getByLabelText("采集目标"), {
@@ -181,6 +195,7 @@ it("clearing a selected parent and changing assets invalidates its source, range
     fireEvent.change(screen.getByLabelText("采集目标"), {
       target: { value: keyOf(target) },
     });
+    await screen.findByRole("button", { name: "创建采集任务" });
     expect(new URLSearchParams(location.hash.slice(1)).has("job")).toBe(false);
     expect(new URLSearchParams(location.hash.slice(1)).has("operation")).toBe(
       false,
@@ -204,7 +219,7 @@ it.each([
 ] as const)(
   "ordinary details preserve the selected creation target %j",
   async (target, viewedJob) => {
-    const h = host();
+    const h = host("ready", "legacy");
     open(h.transport);
     await screen.findByRole("option", { name: /PCE/ });
     fireEvent.change(screen.getByLabelText("采集目标"), {
@@ -231,7 +246,7 @@ it.each([
 it.each([CPI, PCE])(
   "named existing successor for %j remains visible outside both asset and plan list filters",
   async (target) => {
-    const h = host();
+    const h = host("ready", "legacy");
     const bridge = target === CPI ? h.cpi : h.pce;
     const path = target === CPI ? "/api/r5/cpi/jobs" : "/api/pce/jobs";
     const filter = keyOf(target === CPI ? PCE : CPI);

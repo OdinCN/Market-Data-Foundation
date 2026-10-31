@@ -479,7 +479,8 @@ it("shows official missing values and available-time evidence without zero filli
   expect(url.searchParams.get("vintage_mode")).toBe("available");
   expect(url.searchParams.get("as_of")).toBe("2026-06-01T12:00:00+08:00");
   const missingRow = screen.getByText("未公布 / 来源缺值").closest("tr")!;
-  expect(within(missingRow).getAllByText("—")).toHaveLength(6);
+  expect(within(missingRow).getAllByText("—")).toHaveLength(5);
+  expect(within(missingRow).getByText("未获取")).toBeTruthy();
   expect(url.searchParams.get("query_mode")).toBe("history");
   expect(url.searchParams.get("local_only")).toBe("true");
   expect(url.searchParams.get("as_of_basis")).toBe("available");
@@ -1314,6 +1315,10 @@ it.each(["time", "publication_time"])(
     expect(
       within(table).getByText("计划发布：2026-06-10 20:30:00 北京时间"),
     ).toBeTruthy();
+    expect(
+      within(table).getByRole("columnheader", { name: "官方日历时间" }),
+    ).toBeTruthy();
+    expect(within(table).getAllByText("未获取").length).toBeGreaterThan(0);
     expect(within(table).queryByText(/2027-03-01/)).toBeNull();
     expect(screen.getByText(/不表示当前修订值在该时已知/)).toBeTruthy();
   },
@@ -1814,3 +1819,32 @@ it.each([false, null])(
     expect(releases).toHaveLength(2);
   },
 );
+
+it("shows cancellation without retaining its obsolete planned time", () => {
+  expect(
+    publicationText({
+      month: "2026-05",
+      publication_event: {
+        reference_month: "2026-05",
+        status: "cancelled",
+        time: "2026-06-10T12:30:00Z",
+        evidence: {
+          source: "https://www.bls.gov/schedule/news_release/cpi.htm",
+        },
+      },
+    }),
+  ).toBe("已取消");
+  expect(
+    publicationText({
+      month: "2026-05",
+      publication_event: {
+        reference_month: "2026-05",
+        status: "unknown",
+        time: null,
+        evidence: {
+          source: "https://www.bls.gov/schedule/news_release/cpi.htm",
+        },
+      },
+    }),
+  ).toBeNull();
+});

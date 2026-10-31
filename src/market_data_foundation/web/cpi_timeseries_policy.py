@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from uuid import UUID, uuid5
+from zoneinfo import ZoneInfo
 
 from market_data_foundation.historical.bls_timeseries_profile import CPI_PROFILE
 from market_data_foundation.historical.cpi_timeseries import month_number
@@ -32,9 +33,13 @@ def month_text(number):
     return f"{year:04d}-{month + 1:02d}"
 
 
-def official_releases(snapshot, *, exclude_absent=False):
+def official_releases(snapshot, *, exclude_absent=False, profile=CPI_PROFILE):
     events = snapshot.get("calendar", {}).get("events", {}).values()
-    for target in [*snapshot.get("targets", []), *events]:
+    for target in [
+        *snapshot.get("targets", []),
+        *snapshot.get("calendar_publications", []),
+        *events,
+    ]:
         evidence = target.get("reference_month_evidence") or {}
         source = evidence.get("source") or evidence.get("evidence_url")
         month = target.get("reference_month")
@@ -43,7 +48,11 @@ def official_releases(snapshot, *, exclude_absent=False):
             valid_month(month)
             and evidence.get("reference_month") == month
             and isinstance(source, str)
-            and source.startswith("https://www.bls.gov/")
+            and source.startswith(
+                "https://www.bea.gov/"
+                if profile.key == "pce"
+                else "https://www.bls.gov/"
+            )
             and at is not None
             and target.get("state") != "calendar_removed"
             and target.get("publication_status") != "cancelled"
@@ -61,7 +70,7 @@ def initialization_preset(service, status, snapshot, now, *, profile=CPI_PROFILE
     boundary = month_number(earliest) if earliest else 1901 * 12
     candidates = [
         (month, "official_elapsed_release/reference_month")
-        for month, at in official_releases(snapshot)
+        for month, at in official_releases(snapshot, profile=profile)
         if at <= now
     ]
     # status.latest_months is only an upper bound: it includes unknown holdings.
@@ -105,6 +114,10 @@ def initialization_preset(service, status, snapshot, now, *, profile=CPI_PROFILE
     if anchor is None and profile.key == "ppi":
         anchor = month_text(now.year * 12 + now.month - 2)
         basis = "request_calendar_month"
+    if anchor is None and profile.key == "pce":
+        local_now = now.astimezone(ZoneInfo("Asia/Shanghai"))
+        anchor = month_text(local_now.year * 12 + local_now.month - 2)
+        basis = "request_calendar_month_no_release_claim"
     available = (
         anchor is not None
         and month_number(anchor) >= boundary
@@ -138,13 +151,17 @@ def initialization_preset(service, status, snapshot, now, *, profile=CPI_PROFILE
     return result
 
 
-def next_release_at(snapshot, now):
+def next_release_at(snapshot, now, *, profile=CPI_PROFILE):
     dates = [
-        at for _, at in official_releases(snapshot, exclude_absent=True) if at > now
+        at
+        for _, at in official_releases(snapshot, exclude_absent=True, profile=profile)
+        if at > now
     ]
     # Official ICS dates remain valid even while reference-month mapping waits.
     calendar = snapshot.get("calendar", {})
-    if str(calendar.get("source", "")).startswith("https://www.bls.gov/"):
+    if str(calendar.get("source", "")).startswith(
+        "https://www.bea.gov/" if profile.key == "pce" else "https://www.bls.gov/"
+    ):
         for event in calendar.get("events", {}).values():
             at = instant(event.get("release_at"))
             if (
@@ -172,15 +189,24 @@ def automatic_executions(snapshot, *, profile=CPI_PROFILE):
         if instant(completed) is None or instant(completed) < instant(attempted):
             completed = None
         result = {
+            **(stage.get("result") or {}),
             "summary_scope": "latest_stage_attempt",
             "scheduler_attempts_total": stage.get("attempts"),
         }
         if "actual_http" in stage:
             result["actual_http_total"] = stage["actual_http"]
-        if profile.key == "ppi":
+        if "readback" in stage:
+            result["readback"] = stage["readback"]
+        if "error" in stage:
+            result["error"] = stage["error"]
+        if "buffer_source_missing" in stage:
+            result["buffer_source_missing"] = stage["buffer_source_missing"]
+        if profile.key in {"ppi", "pce"}:
             if isinstance(stage.get("coverage_complete"), bool):
                 result["coverage_complete"] = stage["coverage_complete"]
-                if stage["coverage_complete"] is False:
+                if stage["coverage_complete"] is False and (
+                    profile.key != "pce" or stage.get("readback_verified") is True
+                ):
                     result["completion"] = "source_coverage_partial"
             if isinstance(stage.get("source_missing"), list):
                 result["source_missing"] = stage["source_missing"]
@@ -254,7 +280,7 @@ def strategy_projection(value, snapshot, now, *, profile=CPI_PROFILE):
     latest = max(executions, key=lambda r: instant(r["started_at"]), default=None)
     return {
         **value,
-        "next_release_at": next_release_at(snapshot, now),
+        "next_release_at": next_release_at(snapshot, now, profile=profile),
         "execution_state": value["worker"]["state"] if value["enabled"] else "paused",
         "last_result": latest,
     }

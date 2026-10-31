@@ -95,6 +95,7 @@ export function publicationText(
     !hasEvidence(event.evidence)
   )
     return null;
+  if ((event.status ?? event.state) === "cancelled") return "已取消";
   const time = event.time ?? event.publication_time;
   if (typeof time !== "string") return null;
   const formatted = formatBeijingTime(time, "");
@@ -134,11 +135,16 @@ function CpiTimeSeriesContent({
   availability: CpiAvailability;
 }) {
   const cpiSeries = profile.series;
+  const availableAdjustments = adjustments.filter((item) =>
+    profile.series.some((s) => s[3] === item.value),
+  );
   const latest = latestMonth(availability.data);
   const [start, setStart] = useState(latest ? shiftMonth(latest, -11) : "");
   const [end, setEnd] = useState(latest);
   const [basket, setBasket] = useState(["headline", "core"]);
-  const [adjustment, setAdjustment] = useState(["sa", "nsa"]);
+  const [adjustment, setAdjustment] = useState(
+    availableAdjustments.map((item) => item.value),
+  );
   const [measure, setMeasure] = useState<string[]>(
     measures.map((item) => item.value),
   );
@@ -285,7 +291,7 @@ function CpiTimeSeriesContent({
       </div>
       <div hidden={tab !== "query"}>
         <p className="muted">
-          当前查询优先读取本地，缺口可向 BLS
+          当前查询优先读取本地，缺口可向 {profile.provider}
           查询，不保存。历史截止查询只读已入库记录。
         </p>
         <CpiAvailabilityNotice profile={profile} availability={availability} />
@@ -341,7 +347,7 @@ function CpiTimeSeriesContent({
             />
             <MultiSelect
               label="季节调整"
-              options={adjustments}
+              options={availableAdjustments}
               value={adjustment}
               onChange={(value) => change(() => setAdjustment(value))}
             />
@@ -448,7 +454,7 @@ function CpiTimeSeriesContent({
                       {columns.map((column) => (
                         <th key={column.value}>{column.label}</th>
                       ))}
-                      <th>官方发布时间</th>
+                      <th>官方日历时间</th>
                       <th>缺值说明</th>
                     </tr>
                   </thead>
@@ -496,7 +502,7 @@ function CpiTimeSeriesContent({
                                     (event) =>
                                       event.reference_month === row.month,
                                   ),
-                              }) ?? "—"}
+                              }) ?? "未获取"}
                             </td>
                             <td>
                               {!row.point
@@ -531,12 +537,12 @@ function CpiTimeSeriesContent({
               <details>
                 <summary>来源与时间详情</summary>
                 <p>
-                  来源：BLS；本次未保存。来源请求 {result.provider_requests}{" "}
-                  次。
+                  来源：{profile.provider}；本次未保存。来源请求{" "}
+                  {result.provider_requests} 次。
                   {history
                     ? `入库截止：${formatBeijingTime(result.as_of)}。`
                     : "展示当前查询值。"}
-                  官方发布时间仅为该统计月的事件信息，不表示当前修订值在该时已知。
+                  时间来自官方日历，不表示当前修订值在该时已知；历史截止仍按入库时间。
                   来源观察时间仅记录收到响应的时点，不作为历史截止依据。
                 </p>
               </details>

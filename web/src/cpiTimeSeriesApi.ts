@@ -170,9 +170,12 @@ export function useCpiAvailability(
         );
       } catch (error) {
         if (
-          profile.id === "cpi" &&
+          (profile.id === "cpi" || profile.id === "pce") &&
           error instanceof CpiServiceFailure &&
-          error.status === 404
+          (error.status === 404 ||
+            (profile.id === "pce" &&
+              error.status === 503 &&
+              error.classification === "pce_timeseries_not_enabled"))
         )
           return "legacy";
         throw error;

@@ -12,6 +12,7 @@ from pathlib import Path
 
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
+    PCE_PROFILE,
     validate_profile,
 )
 
@@ -78,12 +79,15 @@ def selected_series(params, *, query=False, profile=CPI_PROFILE):
         raise InterfaceError("invalid_basket")
     if adjustment not in {"sa", "nsa", "all"}:
         raise InterfaceError("invalid_adjustment")
-    return tuple(
+    selected = tuple(
         series
         for series, metadata in profile.series_metadata.items()
         if basket in {"all", metadata["indicator"]}
         and adjustment in {"all", metadata["seasonal_adjustment"].lower()}
     )
+    if not selected:
+        raise InterfaceError("unsupported_series_selection")
+    return selected
 
 
 def require_parameters(params, allowed):
@@ -342,7 +346,10 @@ def build_parser(*, profile=CPI_PROFILE):
         description=(
             "MDF-DEV CPI time series: direct service and loopback HTTP"
             if profile is CPI_PROFILE
-            else "MDF-DEV PPI time series: "
+            else "MDF-DEV PCE time series: init/update/query/status; "
+            "serve/schedule/signals/confirm-availability unsupported"
+            if profile is PCE_PROFILE
+            else f"MDF-DEV {profile.key.upper()} time series: "
             "init/update/query/status/confirm-availability; "
             "serve/schedule/signals unsupported"
         )
@@ -365,14 +372,15 @@ def build_parser(*, profile=CPI_PROFILE):
             if profile is CPI_PROFILE
             else f"{first_month // 12:04d}-{first_month % 12 + 1:02d}"
         ),
-        help="Requested history start; PPI defaults to a 240-month request window",
+        help="Requested history start; PPI/PCE default to a 240-month request window",
     )
     parser.add_argument("--signal-poll-seconds", type=int, default=3600)
     commands = parser.add_subparsers(dest="command", required=True)
     for name in ("init", "update", "query", "confirm-availability"):
         command = commands.add_parser(name)
-        command.add_argument("--start", required=name != "update")
-        command.add_argument("--end", required=name != "update")
+        required = name != "update" and not (profile is PCE_PROFILE and name == "init")
+        command.add_argument("--start", required=required)
+        command.add_argument("--end", required=required)
         command.add_argument("--series", action="append")
         command.add_argument("--basket", choices=("headline", "overall", "core", "all"))
         command.add_argument(
@@ -553,10 +561,23 @@ def package_credential_loader(
         if (
             current_environment != environment_id
             or package_id != "macro"
-            or source_id != "BLS"
+            or source_id != profile.provider
         ):
             return None
-        return load_registration_key(Path(secret_path))
+        if profile.provider == "BEA":
+            import tomllib
+
+            try:
+                with Path(secret_path).open("rb") as stream:
+                    value = tomllib.load(stream)["bea"]["api_key"]
+                if type(value) is not str or not value.strip():
+                    raise ValueError
+                return value
+            except Exception:
+                raise InterfaceError("bea_credential_missing") from None
+        if profile.provider == "BLS":
+            return load_registration_key(Path(secret_path))
+        return None
 
     packages = PackageHost(
         LocalPackageStore(directory, PackageCatalog()),
@@ -570,9 +591,9 @@ def package_credential_loader(
         record = packages.store.read(environment_id, "macro")
         if record is None or profile.key not in record.enabled_capability_ids:
             raise InterfaceError(f"{profile.key}_capability_disabled")
-        value = packages.load_credential("macro", "BLS", record=record)
+        value = packages.load_credential("macro", profile.provider, record=record)
         if value is None:
-            raise InterfaceError("bls_credential_missing")
+            raise InterfaceError(f"{profile.provider.lower()}_credential_missing")
         return value
 
     return load
@@ -594,6 +615,14 @@ def persisted_history_start(schedule_path, default="1999-01"):
 def main(
     argv=None, *, service_factory=None, scheduler_factory=None, profile=CPI_PROFILE
 ):
+    if profile is PCE_PROFILE:
+        from market_data_foundation.historical.pce_timeseries_cli import (
+            main as pce_main,
+        )
+
+        return pce_main(
+            argv, service_factory=service_factory, scheduler_factory=scheduler_factory
+        )
     service = None
     try:
         profile = validate_profile(profile)

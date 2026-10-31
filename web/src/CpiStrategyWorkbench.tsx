@@ -1,5 +1,9 @@
 import { MacroSourceCoverage, coverageEvidence } from "./MacroSourceCoverage";
-import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
+import {
+  CPI_PROFILE,
+  profileScopeText,
+  type MacroProfile,
+} from "./macroTimeSeriesProfile";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
 import { formatBeijingTime } from "./beijingTime";
@@ -302,6 +306,9 @@ function CpiStrategyWorkbenchContent({
   additionalProfile,
   additionalAvailability,
   additionalVisible = true,
+  thirdProfile,
+  thirdAvailability,
+  thirdVisible = true,
   selectedId,
   selected: selectedProp,
   onSelect,
@@ -316,6 +323,9 @@ function CpiStrategyWorkbenchContent({
   additionalProfile?: MacroProfile;
   additionalAvailability?: CpiAvailability;
   additionalVisible?: boolean;
+  thirdProfile?: MacroProfile;
+  thirdAvailability?: CpiAvailability;
+  thirdVisible?: boolean;
   selectedId?: string | null;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
@@ -339,6 +349,13 @@ function CpiStrategyWorkbenchContent({
     additionalAvailability ?? emptyAvailability,
     !!additionalProfile && additionalVisible,
   );
+  const third = useStrategyControl(
+    transport,
+    generation,
+    thirdProfile ?? primaryProfile,
+    thirdAvailability ?? emptyAvailability,
+    !!thirdProfile && thirdVisible,
+  );
   const entries = [
     {
       profile: primaryProfile,
@@ -353,6 +370,16 @@ function CpiStrategyWorkbenchContent({
             availability: additionalAvailability ?? emptyAvailability,
             visible: additionalVisible,
             ...secondary,
+          },
+        ]
+      : []),
+    ...(thirdProfile
+      ? [
+          {
+            profile: thirdProfile,
+            availability: thirdAvailability ?? emptyAvailability,
+            visible: thirdVisible,
+            ...third,
           },
         ]
       : []),
@@ -449,7 +476,7 @@ function CpiStrategyWorkbenchContent({
         {shown && detailVisible && data && (
           <>
             <h3>{profile.label} 策略详情</h3>
-            <p>总体、核心 × 季调、未季调，共四种口径。</p>
+            <p>{profileScopeText(profile)}</p>
             {profile.historyNotice && <p>{profile.historyNotice}</p>}
             <dl>
               <Fact name="策略状态">
@@ -464,10 +491,10 @@ function CpiStrategyWorkbenchContent({
               <Fact name="最近心跳（北京时间）">
                 {formatBeijingTime(data.worker.last_heartbeat_at, "未记录")}
               </Fact>
-              <Fact name="下次官方发布时间（北京时间）">
+              <Fact name="下次官方日历时间（北京时间）">
                 {formatBeijingTime(data.next_release_at, "未记录")}
               </Fact>
-              <Fact name="后台维护时间（非官方发布时间）">
+              <Fact name="后台维护时间（非官方日历时间）">
                 {formatBeijingTime(data.next_due, "未记录")}
               </Fact>
               <Fact name="日历状态">
@@ -569,7 +596,7 @@ function CpiStrategyWorkbenchContent({
                   <header>
                     <strong>{target.reference_month}</strong>
                     <span>
-                      官方发布时间{" "}
+                      官方日历时间{" "}
                       <time>{calendarTime(target.release_at)}</time>
                     </span>
                   </header>

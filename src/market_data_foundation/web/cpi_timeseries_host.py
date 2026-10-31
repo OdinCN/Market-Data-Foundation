@@ -1,12 +1,14 @@
 """Opt-in DEV composition: new CPI storage, existing packages and read-only PCE."""
 
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
+    PCE_PROFILE,
     PPI_PROFILE,
 )
 from market_data_foundation.historical.cpi_release_schedule import CpiReleaseScheduler
@@ -23,6 +25,7 @@ from market_data_foundation.historical.cpi_timeseries_cli import (
 from market_data_foundation.historical.cpi_timeseries_store import (
     PostgresTimeSeriesStore,
 )
+from market_data_foundation.historical.pce_release_schedule import PceReleaseScheduler
 from market_data_foundation.storage.postgres_runtime_config import load_pg_config
 from market_data_foundation.web.cpi_api import create_app
 from market_data_foundation.web.cpi_query import CpiQueryAccess
@@ -34,10 +37,16 @@ from market_data_foundation.web.cpi_timeseries_api import (
     timeseries_router,
 )
 from market_data_foundation.web.cpi_timeseries_jobs import WebError
-from market_data_foundation.web.package_catalog import Eligibility, HistoryEvidence
+from market_data_foundation.web.package_catalog import (
+    CredentialState,
+    Eligibility,
+    HistoryEvidence,
+    PackageError,
+)
 from market_data_foundation.web.packages import PackageHost
 from market_data_foundation.web.pce_api import add_read_routes
 from market_data_foundation.web.pce_dev_host import CANDIDATE_ORIGIN, admitted
+from market_data_foundation.web.pce_timeseries import PceTimeSeriesHost
 from market_data_foundation.web.readonly_host import (
     ReadonlyRuntime,
     _clock,
@@ -52,6 +61,22 @@ class LocalOnlySource:
 
 class TimeSeriesPackages(PackageHost):
     """CPI eligibility uses time-series evidence without inventing Publication."""
+
+    def credential_states(self, package_id, record, *, source_ids=None):
+        scoped = getattr(self, "scoped_credentials", None)
+        if source_ids is None or scoped is None:
+            return super().credential_states(package_id, record, source_ids=source_ids)
+        # Keep reference precedence and failure handling in PackageHost while
+        # restricting legacy credential inspection to this capability's source.
+        isolated = PackageHost(
+            self.store,
+            self.environment_id,
+            credentials=lambda environment, package, current: scoped(
+                environment, package, current, source_ids=source_ids
+            ),
+            credential_replace_enabled=self.credential_replace_enabled,
+        )
+        return isolated.credential_states(package_id, record, source_ids=source_ids)
 
     def project(self, package_id, record, access):
         view = super().project(package_id, record, access)
@@ -142,6 +167,16 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         ppi_access=CpiQueryAccess(),
         ppi_allow_collect=False,
         ppi_history_start=None,
+        pce_enabled=False,
+        pce_read_service_factory=None,
+        pce_write_service_factory=None,
+        pce_query_service_factory=None,
+        pce_schedule_path=None,
+        pce_job_directory=None,
+        pce_allow_collect=False,
+        pce_history_start=None,
+        pce_calendar_fetcher=None,
+        pce_request_control_path=None,
     ):
         super().__init__(
             settings,
@@ -156,6 +191,9 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             raise ValueError("explicit_timeseries_permissions_required")
         self.accesses["ppi"] = ppi_access
         self.ppi_timeseries = None
+        self.pce_timeseries = None
+        if type(pce_enabled) is not bool or type(pce_allow_collect) is not bool:
+            raise ValueError("explicit_timeseries_permissions_required")
         self.packages = TimeSeriesPackages(
             self.packages.store,
             settings.environment_id,
@@ -165,6 +203,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             history=self.history,
             credential_replace_enabled=settings.package_config_save,
         )
+        self.packages.scoped_credentials = self.scoped_credential_states
         from market_data_foundation.historical.cpi_request_control import (
             CpiRequestControl,
         )
@@ -243,6 +282,138 @@ class TimeSeriesRuntime(ReadonlyRuntime):
                 clock=clock,
             )
             self.packages.timeseries_hosts["ppi"] = self.ppi_timeseries
+
+        pce_configured = pce_enabled or any(
+            factory is not None
+            for factory in (
+                pce_read_service_factory,
+                pce_write_service_factory,
+                pce_query_service_factory,
+            )
+        )
+        if pce_configured:
+            from market_data_foundation.historical.pce_timeseries_source import (
+                BeaRequestControl,
+            )
+
+            control_path = Path(
+                pce_request_control_path
+                or (settings.config_directory / "bea-timeseries-request-control.json")
+            )
+            if not control_path.is_absolute() or ".." in control_path.parts:
+                raise ValueError("bea_absolute_request_control_path_required")
+            if control_path.resolve() == self.request_control.state_path.resolve():
+                raise ValueError("bea_independent_request_control_required")
+            self.bea_request_control = BeaRequestControl(control_path.resolve())
+            if pce_schedule_path is None or pce_job_directory is None:
+                raise ValueError("pce_independent_paths_required")
+            new_paths = (pce_schedule_path, pce_job_directory)
+            if not all(
+                Path(p).is_absolute() and ".." not in Path(p).parts for p in new_paths
+            ):
+                raise ValueError("pce_independent_absolute_paths_required")
+            existing_paths = [schedule_path, job_directory]
+            if configured:
+                existing_paths.extend((ppi_schedule_path, ppi_job_directory))
+            resolved = [Path(p).resolve() for p in new_paths]
+            existing = [Path(p).resolve() for p in existing_paths]
+            if any(
+                left == right or left in right.parents or right in left.parents
+                for left, right in [
+                    (resolved[0], resolved[1]),
+                    *((left, right) for left in resolved for right in existing),
+                ]
+            ):
+                raise ValueError("pce_independent_paths_required")
+            from market_data_foundation.historical.cpi_timeseries import month_at
+
+            now = clock().astimezone(ZoneInfo("Asia/Shanghai"))
+            # Match the 240-month preset ending in Beijing's previous month.
+            baseline = pce_history_start or month_at(
+                now.year * 12 + now.month - 2 - 239
+            )
+            scheduler_options = {}
+            if pce_calendar_fetcher is not None:
+                scheduler_options["calendar_fetcher"] = pce_calendar_fetcher
+            self.pce_timeseries = PceTimeSeriesHost(
+                packages=self.packages,
+                read_service_factory=pce_read_service_factory or self.pce_read_service,
+                write_service_factory=pce_write_service_factory
+                or (self.pce_write_service if pce_enabled else None),
+                query_service_factory=pce_query_service_factory
+                or (self.pce_query_service if pce_enabled else None),
+                scheduler=PceReleaseScheduler(
+                    WorkerService(self.pce_worker_service, profile=PCE_PROFILE),
+                    pce_schedule_path,
+                    clock=clock,
+                    history_start=persisted_history_start(pce_schedule_path, baseline),
+                    **scheduler_options,
+                ),
+                job_directory=pce_job_directory,
+                allow_collect=pce_allow_collect,
+                query_allowed=pce_access.metadata_permission == "allowed"
+                and pce_access.read_permission == "allowed",
+                max_collect_months=max_collect_months,
+                clock=clock,
+            )
+            self.packages.timeseries_hosts["pce"] = self.pce_timeseries
+
+    def pce_worker_service(self):
+        host = self.pce_timeseries
+        capabilities = host.capabilities(host.source())
+        if not capabilities["collect"]:
+            raise WebError(capabilities["reason"], 403)
+        return host.write_factory(credential_loader=host.effective_credential)
+
+    def scoped_credential_states(
+        self, environment_id, package_id, record, *, source_ids
+    ):
+        states = []
+        for source in sorted(source_ids):
+            value = "unknown"
+            if source in {"BEA", "BLS"}:
+                try:
+                    value = (
+                        "configured"
+                        if self.load_legacy_key(environment_id, package_id, source)
+                        is not None
+                        else "missing"
+                    )
+                except PackageError:
+                    pass
+            states.append(CredentialState(source_id=source, credential_state=value))
+        return states
+
+    def pce_read_service(self):
+        return self.read_service(profile=PCE_PROFILE)
+
+    def pce_query_service(self, *, credential_loader):
+        service = self.pce_read_service()
+        try:
+            service.source = build_source(
+                credential_loader=credential_loader,
+                max_transport_attempts=1,
+                profile=PCE_PROFILE,
+                request_control=self.bea_request_control,
+            )
+            return service
+        except BaseException:
+            service.close()
+            raise
+
+    def pce_write_service(self, *, credential_loader):
+        config = self.settings.config_directory
+        if load_pg_config(config / "runtime.toml") != self.profile:
+            raise WebError("postgres_profile_changed", 503)
+        return build_service(
+            runtime_path=config / "runtime.toml",
+            secret_path=config / "secret.toml",
+            registered=True,
+            credential_loader=credential_loader,
+            max_transport_attempts=1,
+            profile=PCE_PROFILE,
+            request_control=self.bea_request_control,
+        )
 
     def worker_service(self):
         capabilities = self.timeseries.capabilities(self.timeseries.source())
@@ -328,10 +499,16 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             raise
 
     def _history(self, capability, definition, at):
-        if capability not in {"cpi", "ppi"}:
+        if capability not in {"cpi", "ppi", "pce"} or (
+            capability == "pce" and self.pce_timeseries is None
+        ):
             return super()._history(capability, definition, at)
         access = self.accesses[capability]
-        host = self.timeseries if capability == "cpi" else self.ppi_timeseries
+        host = {
+            "cpi": self.timeseries,
+            "ppi": self.ppi_timeseries,
+            "pce": self.pce_timeseries,
+        }[capability]
         holding = "unknown"
         if access.metadata_permission == "allowed" and host is not None:
             try:
@@ -341,6 +518,10 @@ class TimeSeriesRuntime(ReadonlyRuntime):
                     )
             except Exception:
                 pass
+        if capability == "pce" and holding != "present":
+            legacy = super()._history(capability, definition, at)
+            if legacy.holding == "present":
+                return legacy
         return HistoryEvidence(
             definition_ref=definition,
             holding=holding,
@@ -399,12 +580,13 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
     prune(app)
     app.include_router(timeseries_router(runtime.timeseries))
     app.include_router(timeseries_router(runtime.ppi_timeseries, profile=PPI_PROFILE))
+    app.include_router(timeseries_router(runtime.pce_timeseries, profile=PCE_PROFILE))
     app.state.timeseries_runtime = runtime
 
     @app.middleware("http")
     async def boundary(request, call_next):
         config_put = settings.package_config_save and admitted_package_save(request)
-        prefixes = PREFIXES
+        prefixes = (*PREFIXES, "/api/r5/pce/timeseries")
         job_post = any(admitted_job(request, prefix=prefix) for prefix in prefixes)
         strategy_put = any(
             admitted_strategy(request, prefix=prefix) for prefix in prefixes
@@ -420,7 +602,9 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
             error = (403, "operator_not_authorized")
         else:
             capability = (
-                "ppi"
+                "pce"
+                if request.url.path.startswith("/api/r5/pce/")
+                else "ppi"
                 if request.url.path.startswith("/api/r5/ppi/")
                 else "cpi"
                 if request.url.path.startswith("/api/r5/cpi")

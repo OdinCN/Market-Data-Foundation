@@ -1,4 +1,8 @@
-import { CPI_PROFILE, PPI_PROFILE } from "./macroTimeSeriesProfile";
+import {
+  CPI_PROFILE,
+  PPI_PROFILE,
+  PCE_PROFILE,
+} from "./macroTimeSeriesProfile";
 import { beijingToday, nowBeijingIso, toBeijingIso } from "./beijingTime";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -193,7 +197,13 @@ export default function App({
       (page.view === "assets" && !!(identity || operation))) &&
     (!operation || sameKey(operationEntry?.asset, CPI)) &&
     ((!identity && !operation) || sameKey(key, CPI));
-  const macroProfile = identity === PPI.identity ? PPI_PROFILE : CPI_PROFILE;
+  const macroIdentity = identity ?? operationEntry?.asset?.identity;
+  const macroProfile =
+    macroIdentity === PCE.identity
+      ? PCE_PROFILE
+      : macroIdentity === PPI.identity
+        ? PPI_PROFILE
+        : CPI_PROFILE;
   const collectionList =
     page.view === "collection" &&
     ["periodic", "executions"].includes(page.fields.get("tab") ?? "new");
@@ -207,6 +217,8 @@ export default function App({
     transport,
     generation,
     !page.invalid &&
+      (macroIdentity !== PCE.identity ||
+        (collectionList && collectionFilter !== keyOf(PCE))) &&
       (identity !== PPI.identity ||
         (collectionList && collectionFilter !== keyOf(PPI))) &&
       ["assets", "collection"].includes(page.view) &&
@@ -232,8 +244,26 @@ export default function App({
     page.view === "collection",
     PPI_PROFILE,
   );
+  const pceAvailability = useCpiAvailability(
+    transport,
+    generation,
+    !page.invalid &&
+      ["assets", "collection"].includes(page.view) &&
+      ((macroIdentity === PCE.identity &&
+        (!revision || revision === PCE.revision) &&
+        (!operation || operation === PCE_OPERATION)) ||
+        (collectionList &&
+          !operation &&
+          (collectionFilter === "all" || collectionFilter === keyOf(PCE)))),
+    page.view === "collection",
+    PCE_PROFILE,
+  );
   const macroAvailability =
-    macroProfile.id === "ppi" ? ppiAvailability : cpiAvailability;
+    macroProfile.id === "pce"
+      ? pceAvailability
+      : macroProfile.id === "ppi"
+        ? ppiAvailability
+        : cpiAvailability;
   const catalog = useResource<Catalog>(
     (signal) => request(transport, "/api/r5/cpi", query, signal),
     [transport, generation, query, wantsCatalog, page.view, page.invalid],
@@ -262,6 +292,9 @@ export default function App({
     ["assets", "services"].includes(page.view) &&
     sameKey(key, PCE) &&
     (!operation || operation === PCE_OPERATION);
+  // Navigation also carries reference/as_of; only an explicit version pins
+  // the compatibility reader when the PCE time-series service is available.
+  const pceExactVersion = wantsPce && page.fields.has("version");
   const pceEvidence = useResource<PceEvidence>(
     async (signal) => {
       const inventory = await pceRequest<PceAssets>(
@@ -289,7 +322,10 @@ export default function App({
       return { catalog: pceCatalog.data!, assets: inventory, reading };
     },
     [transport, generation, query, wantsPce, pceCatalog.data, page.view],
-    wantsPce && !!pceCatalog.data && !page.invalid,
+    wantsPce &&
+      (pceAvailability.legacy || pceExactVersion) &&
+      !!pceCatalog.data &&
+      !page.invalid,
   );
   const model = project(
     directory.data,
@@ -304,7 +340,7 @@ export default function App({
     directory.data &&
     ((operation && !source) ||
       (identity &&
-        ((revision && !asset && !sameKey(key, PPI)) ||
+        ((revision && !asset && !sameKey(key, PPI) && !sameKey(key, PCE)) ||
           (!revision &&
             (page.view !== "assets" ||
               !!operation ||
@@ -329,6 +365,7 @@ export default function App({
   const busy =
     cpiAvailability.busy ||
     ppiAvailability.busy ||
+    pceAvailability.busy ||
     packages.busy ||
     directory.busy ||
     catalog.busy ||
@@ -338,7 +375,9 @@ export default function App({
   const localReader =
     selectedAsset &&
     (!sameKey(selectedAsset.key, CPI) || cpiAvailability.legacy) &&
-    (sameKey(selectedAsset.key, CPI) || sameKey(selectedAsset.key, PCE)) ? (
+    (sameKey(selectedAsset.key, CPI) ||
+      (sameKey(selectedAsset.key, PCE) &&
+        (pceAvailability.legacy || pceExactVersion))) ? (
       <LocalReader
         key={`${identity}:${revision}:${operation}`}
         catalog={readCatalog}
@@ -535,6 +574,7 @@ export default function App({
                       navigate={navigate}
                       cpi={
                         !macroAvailability.legacy &&
+                        !pceExactVersion &&
                         (!!macroAvailability.data ||
                           !!macroAvailability.failure) &&
                         !invalidIdentity &&
@@ -633,6 +673,7 @@ export default function App({
                       generation={generation}
                       cpiAvailability={cpiAvailability}
                       ppiAvailability={ppiAvailability}
+                      pceAvailability={pceAvailability}
                     />
                   )}
                   {page.view === "platform" && (
