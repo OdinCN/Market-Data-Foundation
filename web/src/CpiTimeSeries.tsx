@@ -95,6 +95,7 @@ export function publicationText(
     !hasEvidence(event.evidence)
   )
     return null;
+  if ((event.status ?? event.state) === "cancelled") return "已取消";
   const time = event.time ?? event.publication_time;
   if (typeof time !== "string") return null;
   const formatted = formatBeijingTime(time, "");
@@ -453,7 +454,7 @@ function CpiTimeSeriesContent({
                       {columns.map((column) => (
                         <th key={column.value}>{column.label}</th>
                       ))}
-                      <th>官方发布时间</th>
+                      <th>官方日历时间</th>
                       <th>缺值说明</th>
                     </tr>
                   </thead>
@@ -501,7 +502,7 @@ function CpiTimeSeriesContent({
                                     (event) =>
                                       event.reference_month === row.month,
                                   ),
-                              }) ?? "—"}
+                              }) ?? "未获取"}
                             </td>
                             <td>
                               {!row.point
@@ -541,7 +542,7 @@ function CpiTimeSeriesContent({
                   {history
                     ? `入库截止：${formatBeijingTime(result.as_of)}。`
                     : "展示当前查询值。"}
-                  官方发布时间仅为该统计月的事件信息，不表示当前修订值在该时已知。
+                  时间来自官方日历，不表示当前修订值在该时已知；历史截止仍按入库时间。
                   来源观察时间仅记录收到响应的时点，不作为历史截止依据。
                 </p>
               </details>

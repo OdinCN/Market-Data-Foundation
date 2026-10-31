@@ -150,7 +150,7 @@ it("has one preset row and one inline toggle; detail has no create, history edit
     { enabled: false },
   ]);
   expect(detail.getByText("策略已暂停。")).toBeTruthy();
-  expect(detail.getByText("后台维护时间（非官方发布时间）")).toBeTruthy();
+  expect(detail.getByText("后台维护时间（非官方日历时间）")).toBeTruthy();
   expect(detail.getByText("2026-11-10 21:30:00 北京时间")).toBeTruthy();
   expect(detail.getByText("等待当期采集")).toBeTruthy();
   expect(detail.getByText("受阻")).toBeTruthy();

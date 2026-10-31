@@ -491,10 +491,10 @@ function CpiStrategyWorkbenchContent({
               <Fact name="最近心跳（北京时间）">
                 {formatBeijingTime(data.worker.last_heartbeat_at, "未记录")}
               </Fact>
-              <Fact name="下次官方发布时间（北京时间）">
+              <Fact name="下次官方日历时间（北京时间）">
                 {formatBeijingTime(data.next_release_at, "未记录")}
               </Fact>
-              <Fact name="后台维护时间（非官方发布时间）">
+              <Fact name="后台维护时间（非官方日历时间）">
                 {formatBeijingTime(data.next_due, "未记录")}
               </Fact>
               <Fact name="日历状态">
@@ -596,7 +596,7 @@ function CpiStrategyWorkbenchContent({
                   <header>
                     <strong>{target.reference_month}</strong>
                     <span>
-                      官方发布时间{" "}
+                      官方日历时间{" "}
                       <time>{calendarTime(target.release_at)}</time>
                     </span>
                   </header>

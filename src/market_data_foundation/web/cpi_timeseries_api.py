@@ -12,6 +12,7 @@ from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
     validate_profile,
 )
+from market_data_foundation.historical.calendar_publications import publication_events
 from market_data_foundation.historical.cpi_auto_strategy import CpiAutoStrategy
 from market_data_foundation.historical.cpi_timeseries_cli import (
     error_document,
@@ -315,45 +316,7 @@ class TimeSeriesHost:
         return value
 
     def publication_metadata(self, result):
-        events = {}
-        snapshot = self.scheduler.status()
-        for target in [
-            *snapshot.get("targets", []),
-            *snapshot.get("calendar_publications", []),
-        ]:
-            evidence = target.get("reference_month_evidence") or {}
-            month, at = target.get("reference_month"), target.get("release_at")
-            source = evidence.get("source") or evidence.get("evidence_url")
-            if (
-                not month
-                or not at
-                or not isinstance(source, str)
-                or not source.startswith(self.official_origin)
-                or evidence.get("reference_month", month) != month
-            ):
-                continue
-            try:
-                if datetime.fromisoformat(at).utcoffset() is None:
-                    continue
-            except ValueError, TypeError:
-                continue
-            status = target.get("publication_status", "scheduled")
-            if status not in {"scheduled", "published", "cancelled"}:
-                status = "scheduled"
-            event = {
-                "reference_month": month,
-                "publication_time": at,
-                "time": at,
-                "evidence": {
-                    key: evidence[key]
-                    for key in ("source", "evidence_url", "sha256")
-                    if key in evidence
-                },
-                "status": "cancelled"
-                if target.get("state") == "calendar_removed"
-                else status,
-            }
-            events[month] = event
+        events = publication_events(self.scheduler.status(), self.official_origin)
         result["points"] = [
             dict(point, publication_event=events.get(point["month"]))
             for point in result["points"]
@@ -361,7 +324,10 @@ class TimeSeriesHost:
         result["publication_events"] = list(events.values())
         result["metadata"] = {
             "publication_event": {
-                "label": "官方月度发布事件",
+                "label": "官方日历时间",
+                "description": (
+                    "来自官方日历，不代表当前修订值当时已知；历史截止按入库时间。"
+                ),
                 "semantics": "official_month_event_not_current_value_revision_time",
                 "binds_current_revision": False,
             },

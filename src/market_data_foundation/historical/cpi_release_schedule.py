@@ -30,6 +30,9 @@ from market_data_foundation.historical.bls_web_transport import (
     BlsWebError,
     fetch_bls_page,
 )
+from market_data_foundation.historical.calendar_publications import (
+    bls_calendar_publications,
+)
 from market_data_foundation.historical.cpi_revision_signals import (
     CpiSignalError,
     fetch_official_errata,
@@ -208,6 +211,33 @@ def parse_official_calendar(raw):
     if not seen_header or not releases:
         raise CpiScheduleError("calendar_table_missing")
     return sorted(releases.values(), key=lambda item: item["reference_month"])
+
+
+def parse_official_history(raw, *, profile=CPI_PROFILE):
+    """BLS annual/month list: explicit 'Index for Month Year' only."""
+    if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_CALENDAR_BYTES:
+        raise CpiScheduleError("calendar_payload_invalid")
+    parser = _ScheduleTable()
+    try:
+        parser.feed(raw.decode("utf-8"))
+    except UnicodeError, ValueError:
+        raise CpiScheduleError("calendar_payload_invalid") from None
+    title = "Consumer Price Index" if profile.key == "cpi" else "Producer Price Index"
+    rows = []
+    for row in parser.rows:
+        if not row or len(row) < 3:
+            continue
+        match = re.fullmatch(re.escape(title) + r" for ([A-Za-z]+ \d{4})", row[2])
+        if match:
+            rows.append((match[1], row[0].split(", ", 1)[-1], row[1]))
+    html = (
+        "<table><tr><th>Reference Month</th><th>Release Date</th>"
+        "<th>Release Time</th></tr>"
+    )
+    html += "".join(
+        "<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>" for row in rows
+    )
+    return parse_official_calendar((html + "</table>").encode())
 
 
 def _ics_text(value):
@@ -700,6 +730,8 @@ class CpiReleaseScheduler:
                 if calendar_state.get("sha256")
                 else "unavailable"
             )
+        if acquired is None:
+            return "unavailable"
         if at - _instant(acquired) >= CALENDAR_MAX_AGE:
             return "stale"
         return "fresh"
@@ -808,6 +840,7 @@ class CpiReleaseScheduler:
             ),
             "calendar": state["calendar"],
             "targets": targets,
+            "calendar_publications": bls_calendar_publications(state),
             "history_start": state["history_start"],
             "signals": signals,
             "revision_status": (
@@ -1126,6 +1159,7 @@ class CpiReleaseScheduler:
             "changes": changes,
             "horizon": max(dates) if dates else None,
             "events": events,
+            "display_history": previous.get("display_history", []),
             "pending_events": pending,
             "reference_mapping_status": "pending" if pending else "verified",
             "reference_mapping_error": reference_error,
@@ -1220,6 +1254,7 @@ class CpiReleaseScheduler:
                 key: state["calendar"][key]
                 for key in (
                     "events",
+                    "display_history",
                     "pending_events",
                     "reference_mapping_status",
                     "reference_mapping_error",
@@ -1268,6 +1303,50 @@ class CpiReleaseScheduler:
                 "last_refresh_attempt": at.isoformat(),
                 "next_refresh_at": (at + timedelta(seconds=delay)).isoformat(),
             }
+            self._save(state)
+            return self._snapshot(state, at)
+
+    def import_display_history(self, raw, acquired_at, *, source, start, end):
+        """Explicit bounded official HTML import, with no executable targets."""
+        validate_month(start)
+        validate_month(end)
+        if start > end or _month_shift(start, 120) <= end:
+            raise CpiScheduleError("calendar_history_range_invalid")
+        if source != self.calendar_url and not re.fullmatch(
+            r"https://www\.bls\.gov/schedule/\d{4}/(?:\d{2}_sched_list\.htm)?", source
+        ):
+            raise CpiScheduleError("calendar_history_source_invalid")
+        at, acquired = _aware(self.clock()), _aware(acquired_at)
+        if acquired > at:
+            raise CpiScheduleError("calendar_acquired_at_in_future")
+        if source == self.calendar_url:
+            releases = parse_official_calendar(raw)
+        else:
+            releases = parse_official_history(raw, profile=self.profile)
+        releases = [r for r in releases if start <= r["reference_month"] <= end]
+        if not releases or any(_instant(r["release_at"]) > at for r in releases):
+            raise CpiScheduleError("calendar_history_not_past")
+        with self._locked():
+            state = self._read()
+            metadata = self._cache_calendar(raw, ".html")
+            records = state["calendar"].setdefault("display_history", [])
+            for release in releases:
+                evidence = {
+                    **metadata,
+                    **release,
+                    "source": source,
+                    "acquired_at": acquired.isoformat(),
+                }
+                record = {**release, "reference_month_evidence": evidence}
+                matches = [
+                    e
+                    for e in state["calendar"].get("events", {}).values()
+                    if e.get("release_at") == release["release_at"]
+                ]
+                if len(matches) == 1:
+                    record["uid"] = matches[0]["uid"]
+                if record not in records:
+                    records.append(record)
             self._save(state)
             return self._snapshot(state, at)
 

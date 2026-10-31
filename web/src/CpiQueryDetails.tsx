@@ -398,7 +398,7 @@ export function CpiQueryApiHelp({
             [
               "publication_events / points[].publication_event",
               "object[] / object|null（可选）",
-              "统计月发布事件及 evidence；事件发布时间不能证明当前修订值当时已知",
+              "官方日历时间及 evidence；不代表当前修订值当时已知，历史截止仍按入库时间",
             ],
           ]}
         />
