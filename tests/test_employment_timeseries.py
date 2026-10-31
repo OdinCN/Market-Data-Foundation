@@ -53,6 +53,8 @@ class Source:
                     SERIES_IDS[0]: Decimal(150000) + n * 10,
                     SERIES_IDS[1]: Decimal(4) + n / 10,
                     SERIES_IDS[2]: Decimal(30) + n / 10,
+                    SERIES_IDS[3]: Decimal(62) + n / 10,
+                    SERIES_IDS[4]: Decimal(34) + n / 10,
                 }[sid]
                 points.append(
                     SourcePoint(
@@ -81,10 +83,10 @@ def setup():
     return EmploymentTimeSeriesService(store, source), store, source
 
 
-def test_three_series_have_distinct_units_and_same_series_comparisons(setup):
+def test_five_series_have_distinct_units_and_same_series_comparisons(setup):
     service, store, source = setup
     result = service.init_range("2025-01", "2026-01")
-    jobs, rate, ahe = [
+    jobs, rate, ahe, participation, hours = [
         next(p for p in result["points"] if p["series_id"] == sid) for sid in SERIES_IDS
     ]
     assert jobs["value"] == "150000" and jobs["value_unit"] == "thousand_jobs"
@@ -96,6 +98,10 @@ def test_three_series_have_distinct_units_and_same_series_comparisons(setup):
     assert ahe["value_unit"] == "USD/hour" and ahe["survey"] == "CES"
     assert ahe["mom_pct"] == "0.33" and ahe["change_1m_ratio"] == "0.0033"
     assert ahe["yoy_pct"] == "4.17" and ahe["change_12m_ratio"] == "0.0417"
+    assert participation["value_unit"] == "percent"
+    assert participation["change_1m_percentage_points"] == "0.1"
+    assert hours["value_unit"] == "hours" and hours["change_1m_hours"] == "0.1"
+    assert "mom_pct" not in participation and "change_1m_ratio" not in hours
     assert jobs["provider_calculations"]["net_changes"]["1"] == "-2.0"
     assert source.calls[0][1] == "2024-01"
     assert result["calculation_missing"] == []
@@ -114,7 +120,7 @@ def test_query_fills_only_gaps_without_saving_and_history_never_fetches(setup):
     assert result["points"][1]["raw_locator"] is None
     calls = len(source.calls)
     result = service.query_range("2025-01", "2025-01", as_of=source.at)
-    assert len(source.calls) == calls and len(result["missing"]) == 2
+    assert len(source.calls) == calls and len(result["missing"]) == 4
 
 
 def test_changed_only_and_same_cutoff_comparison_inputs(setup):
@@ -184,7 +190,9 @@ def test_parser_keeps_official_calculations_footnotes_decimal_and_null():
                         ],
                     }
                     for sid, value in zip(
-                        SERIES_IDS, ("150000.123456789", "0", "-"), strict=True
+                        SERIES_IDS,
+                        ("150000.123456789", "0", "-", "62.5", "34.3"),
+                        strict=True,
                     )
                 ]
             },
@@ -272,3 +280,60 @@ def test_cli_omitted_end_uses_previous_complete_beijing_month(
     assert main(["init"], service_factory=lambda **_: service, clock=lambda: at) == 0
     result = json.loads(capsys.readouterr().out)
     assert (result["start_month"], result["end_month"]) == (start, end)
+
+
+@pytest.mark.parametrize(
+    "sid,metric",
+    [
+        ("LNS11300000", "change_1m_percentage_points"),
+        ("CES0500000002", "change_1m_hours"),
+    ],
+)
+def test_new_series_null_gap_and_same_cutoff_history(setup, sid, metric):
+    service, _, source = setup
+    source.overrides[sid, "2024-12"] = None
+    initial = service.init_range("2025-01", "2025-02", series_ids=(sid,))
+    assert initial["points"][0][metric] is None
+    assert initial["calculation_missing"][0]["required_month"] == "2024-12"
+    source.at += timedelta(minutes=1)
+    source.overrides[sid, "2025-01"] = Decimal("60")
+    service.update_range("2025-01", "2025-02", series_ids=(sid,))
+    calls = len(source.calls)
+    historical = service.query_range("2025-02", "2025-02", series_ids=(sid,), as_of=NOW)
+    current = service.query_range(
+        "2025-02", "2025-02", series_ids=(sid,), allow_upstream=False
+    )
+    assert historical["points"][0][metric] == "0.1"
+    assert current["points"][0][metric] != "0.1"
+    assert len(source.calls) == calls
+    source.at += timedelta(minutes=1)
+    source.overrides[sid, "2025-02"] = None
+    null = service.update_range("2025-02", "2025-02", series_ids=(sid,))
+    assert null["source_unavailable"][0]["value"] is None
+    assert not null["complete"] and null["coverage_complete"]
+
+
+def test_migration_preserves_existing_view_columns_and_only_extends_checks():
+    from pathlib import Path
+
+    from market_data_foundation.historical.employment_timeseries import (
+        five_series_migration_sql,
+        rates_view_sql,
+    )
+
+    sql = five_series_migration_sql()
+    assert Path("scripts/sql/employment-five-series-r1.sql").read_text() == sql
+    assert "DROP TABLE" not in sql and "GRANT" not in sql and "COMMIT" not in sql
+    assert "CREATE TABLE" not in sql
+    assert sql.count("DROP CONSTRAINT") == 2
+    assert "pg_advisory_xact_lock" in sql
+    rates = rates_view_sql()
+    assert (
+        "c.series_id='LNS14000000'\n                "
+        "THEN c.index_value-p1.index_value END AS change_1m_percentage_points" in rates
+    )
+    assert rates.index("AS ahe_yoy_percent") < rates.index(
+        "AS labor_force_participation_rate_percent"
+    )
+    assert "AS participation_change_1m_percentage_points" in rates
+    assert "AS change_1m_hours" in rates

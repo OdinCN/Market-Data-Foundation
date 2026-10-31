@@ -8,12 +8,12 @@ import {
   act,
 } from "@testing-library/react";
 import App from "./App";
+import { asgi, closeBridges } from "./workflowTestBridge";
 import { CpiTimeSeries } from "./CpiTimeSeries";
-import { CpiTimeSeriesCollection } from "./CpiTimeSeriesCollection";
 import { CollectionWorkbench } from "./CollectionWorkbench";
 import { CpiStrategyWorkbench } from "./CpiStrategyWorkbench";
 import { EMPLOYMENT_PROFILE as profile } from "./macroTimeSeriesProfile";
-import { EMPLOYMENT, keyOf } from "./workflowModel";
+import { CPI, EMPLOYMENT, keyOf } from "./workflowModel";
 import {
   buildCpiQueryRequest,
   type CpiAvailability,
@@ -74,6 +74,7 @@ const job: CpiJob = {
   },
 };
 afterEach(() => {
+  closeBridges();
   cleanup();
   localStorage.clear();
   sessionStorage.clear();
@@ -208,6 +209,20 @@ it("keeps employment source nulls and missing comparisons distinct, with Beijing
         mom_pct: null,
         yoy_pct: "3.08",
       },
+      {
+        series_id: "LNS11300000",
+        month: "2025-10",
+        value: "62.5",
+        value_unit: "percent",
+        change_1m_percentage_points: "0.1",
+      },
+      {
+        series_id: "CES0500000002",
+        month: "2025-10",
+        value: "34.3",
+        value_unit: "hours",
+        change_1m_hours: "-0.1",
+      },
     ],
     missing: [
       {
@@ -259,10 +274,13 @@ it("keeps employment source nulls and missing comparisons distinct, with Beijing
   fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
   const table = await screen.findByRole("table", { name: "就业 范围数据" });
   const rows = within(table).getAllByRole("row").slice(1);
-  expect(rows).toHaveLength(3);
+  expect(rows).toHaveLength(5);
   expect(rows[1].textContent).toContain("失业率 · CPS · %");
   expect(rows[1].textContent).toContain("未公布 / 来源缺值");
   expect(rows[1].children[2].textContent).toBe("—");
+  expect(rows[3].textContent).toContain("劳动参与率");
+  expect(rows[4].textContent).toContain("-0.1");
+  expect(rows[4].textContent).toContain("小时");
   expect(rows[2].textContent).toContain("30.10");
   expect(rows[2].textContent).toContain("3.08%");
   expect(rows[2].textContent).toContain(
@@ -291,12 +309,24 @@ it("editable initialization confirms DEV, refreshes briefs and opens the shared 
     return response({ jobs });
   };
   render(
-    <CpiTimeSeriesCollection
-      profile={profile}
-      availability={availability}
+    <CollectionWorkbench
+      assets={[]}
+      asset={undefined}
+      source={undefined}
+      route={{
+        view: "collection",
+        fields: new URLSearchParams({
+          asset: EMPLOYMENT.identity,
+          asset_revision: EMPLOYMENT.revision,
+          tab: "new",
+        }),
+        invalid: false,
+      }}
+      navigate={(_, fields) => onExecution(fields?.job)}
       transport={transport}
-      tab="new"
-      onExecution={onExecution}
+      generation={0}
+      invalidIdentity={false}
+      employmentAvailability={availability}
     />,
   );
   fireEvent.change(screen.getByLabelText("采集方式"), {
@@ -501,3 +531,233 @@ it("opens the ordinary employment asset row through the shared runtime catalog",
     paths.some((p) => p.includes("/cpi/") || p.includes("bls_employment")),
   ).toBe(false);
 });
+
+function publicAppTransport(
+  paths: string[],
+  writes: Record<string, string>[],
+): Transport {
+  let jobs: CpiJob[] = [];
+  return async (input, init) => {
+    const path = new URL(String(input), "http://fixture").pathname;
+    paths.push(path);
+    if (path === profile.basePath + "/status")
+      return response(availability.data);
+    if (path === profile.basePath + "/jobs") {
+      if (init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        writes.push(body);
+        jobs = [{ ...job, ...body, job_id: body.request_id }];
+        return response(jobs[0]);
+      }
+      return response({ jobs });
+    }
+    if (path === profile.basePath + "/executions")
+      return response({
+        executions: jobs.map((j) => ({ ...j, id: j.job_id, origin: "manual" })),
+      });
+    if (path === "/api/r5/packages")
+      return response({
+        status: "OK",
+        packages: [
+          {
+            package_id: "macro",
+            name: "宏观",
+            history_completeness: "COMPLETE",
+            capabilities: [{ title: "美国就业", definition_ref: EMPLOYMENT }],
+            assets: [
+              {
+                identity: EMPLOYMENT.identity,
+                revisions: [
+                  {
+                    definition_ref: EMPLOYMENT,
+                    capability_enabled: true,
+                    metadata_view_permission: "allowed",
+                    local_holding: "PRESENT",
+                    local_read: { allowed: true },
+                    upstream_read: { allowed: true },
+                    collect: { allowed: true },
+                    source_entries: [],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+    if (path === "/api/r5/sources" || path === "/api/r3/management")
+      return response({ status: "OK", entries: [], instances: [] });
+    return new Response(
+      JSON.stringify({ status: "NOT_AVAILABLE", classification: "not_found" }),
+      { status: 404 },
+    );
+  };
+}
+it.each(["ui=r5&view=collection", "page=4"])(
+  "actual App %s renders employment controlled collection and briefs",
+  async (route) => {
+    location.hash = `${route}&asset=${EMPLOYMENT.identity}&asset_revision=${EMPLOYMENT.revision}`;
+    const paths: string[] = [],
+      writes: Record<string, string>[] = [];
+    render(<App transport={publicAppTransport(paths, writes)} />);
+    const region = await screen.findByRole("region", { name: "就业 受控采集" });
+    expect(
+      within(region).getByRole("complementary", { name: "执行简报" }),
+    ).toBeTruthy();
+    expect(region.textContent).toContain("共5种口径");
+    expect(region.textContent).toContain("劳动参与率");
+    expect(region.textContent).toContain("平均每周计薪工时");
+    expect(
+      within(region).queryByRole("group", { name: "采集指标" }),
+    ).toBeNull();
+    expect(region.textContent).not.toMatch(/Host|T03/);
+    expect(
+      paths.some((p) => p.includes("/cpi/") || p.includes("bls_employment")),
+    ).toBe(false);
+    expect(writes).toHaveLength(0);
+  },
+);
+it("ordinary asset collection navigation submits all five employment series and selects its unified execution", async () => {
+  location.hash = "ui=r5&view=assets";
+  const paths: string[] = [],
+    writes: Record<string, string>[] = [];
+  render(<App transport={publicAppTransport(paths, writes)} />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "选择 美国就业 宏观" }),
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "采集数据" }));
+  await screen.findByRole("region", { name: "就业 受控采集" });
+  fireEvent.change(screen.getByLabelText("采集方式"), {
+    target: { value: "initialize" },
+  });
+  expect(
+    (screen.getByLabelText("采集开始月份") as HTMLInputElement).value,
+  ).toBe("2006-02");
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "提交 就业 采集" }));
+  await flush();
+  expect(writes).toHaveLength(1);
+  expect(writes[0].series).toBeUndefined();
+  fireEvent.click(
+    within(screen.getByRole("complementary", { name: "执行简报" })).getByRole(
+      "button",
+      { name: /美国 就业/ },
+    ),
+  );
+  await screen.findByText("执行详情");
+  expect(new URLSearchParams(location.hash.slice(1)).get("job")).toBe(
+    writes[0].request_id,
+  );
+  expect(paths).toContain(profile.basePath + "/executions");
+});
+it.each(["legacy", "shared"])(
+  "%s collection target fallback retains employment when absent from the asset directory",
+  async (variant) => {
+    const navigate = vi.fn();
+    render(
+      <CollectionWorkbench
+        assets={[]}
+        asset={undefined}
+        source={undefined}
+        route={{
+          view: "collection",
+          fields: new URLSearchParams(
+            variant === "shared"
+              ? { asset: CPI.identity, asset_revision: CPI.revision }
+              : {},
+          ),
+          invalid: false,
+        }}
+        navigate={navigate}
+        transport={async () => response({ jobs: [] })}
+        generation={0}
+        invalidIdentity={false}
+        employmentAvailability={availability}
+        cpiAvailability={variant === "shared" ? availability : undefined}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("采集目标"), {
+      target: { value: keyOf(EMPLOYMENT) },
+    });
+    expect(navigate).toHaveBeenCalledWith(
+      "collection",
+      expect.objectContaining({
+        asset: EMPLOYMENT.identity,
+        asset_revision: EMPLOYMENT.revision,
+        operation: null,
+      }),
+    );
+  },
+);
+it("an unrelated operation cannot enter employment collection", () => {
+  render(
+    <CollectionWorkbench
+      assets={[]}
+      asset={undefined}
+      source={undefined}
+      route={{
+        view: "collection",
+        fields: new URLSearchParams({
+          asset: EMPLOYMENT.identity,
+          asset_revision: EMPLOYMENT.revision,
+          operation: "unrelated@r1",
+        }),
+        invalid: false,
+      }}
+      navigate={vi.fn()}
+      transport={async () => response({})}
+      generation={0}
+      invalidIdentity={false}
+      employmentAvailability={availability}
+    />,
+  );
+  expect(screen.queryByRole("region", { name: "就业 受控采集" })).toBeNull();
+  expect(screen.queryByRole("region", { name: "CPI 受控采集" })).toBeNull();
+});
+
+it.each(["matching", "wrong_source", "wrong_binding"])(
+  "real catalog employment operation %s preserves the explicit binding boundary",
+  async (variant) => {
+    const fixture = asgi();
+    const catalog = await fixture.exchange({
+      method: "GET",
+      path: "/api/r5/sources",
+    });
+    const entry = catalog.body.entries.find(
+      (e: { asset?: { identity: string } }) =>
+        e.asset?.identity === EMPLOYMENT.identity,
+    );
+    expect(entry).toBeTruthy();
+    if (variant === "wrong_source") entry.source_contract.revision = "other";
+    if (variant === "wrong_binding")
+      entry.binding_contract.source.revision = "other";
+    location.hash = `ui=r5&view=collection&asset=${EMPLOYMENT.identity}&asset_revision=${EMPLOYMENT.revision}&operation=${entry.identity}`;
+    const paths: string[] = [],
+      writes: Record<string, string>[] = [];
+    const normal = publicAppTransport(paths, writes);
+    render(
+      <App
+        transport={async (input, init) => {
+          const path = new URL(String(input), "http://fixture").pathname;
+          return path === "/api/r5/sources"
+            ? response({ ...catalog.body, entries: [entry] })
+            : normal(input, init);
+        }}
+      />,
+    );
+    if (variant === "matching")
+      await screen.findByRole("region", { name: "就业 受控采集" });
+    else {
+      await screen.findByLabelText("采集目标");
+      expect(
+        screen.queryByRole("region", { name: "就业 受控采集" }),
+      ).toBeNull();
+      expect(
+        paths.some(
+          (p) => p.startsWith(profile.basePath) || p.includes("/cpi/"),
+        ),
+      ).toBe(false);
+    }
+  },
+);

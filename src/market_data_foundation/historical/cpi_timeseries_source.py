@@ -259,7 +259,10 @@ def parse_response(
                     index = Decimal(value)
                 except InvalidOperation:
                     raise CpiSourceError("cpi_timeseries_index_invalid") from None
-                zero_rate = profile is EMPLOYMENT_PROFILE and identity == "LNS14000000"
+                zero_rate = profile is EMPLOYMENT_PROFILE and identity in {
+                    "LNS14000000",
+                    "LNS11300000",
+                }
                 if not index.is_finite() or index < 0 or (index == 0 and not zero_rate):
                     raise CpiSourceError("cpi_timeseries_index_invalid")
             calculations, footnotes = (

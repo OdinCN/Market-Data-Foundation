@@ -253,6 +253,7 @@ export type CpiPoint = {
   value?: string | number | null;
   net_change_1m_thousand_jobs?: string | number | null;
   change_1m_percentage_points?: string | number | null;
+  change_1m_hours?: string | number | null;
   value_unit?: string;
   // Employment omits index_value; only AHE carries ratios and percent changes.
   // Inflation response validation below still requires its complete field set.
@@ -396,6 +397,7 @@ export async function queryCpiRange(
             p.value,
             p.net_change_1m_thousand_jobs ?? null,
             p.change_1m_percentage_points ?? null,
+            p.change_1m_hours ?? null,
             p.mom_pct ?? null,
             p.yoy_pct ?? null,
           ]
@@ -423,6 +425,7 @@ export async function queryCpiRange(
   return result;
 }
 export type CpiJobIntent = {
+  series?: string;
   request_id: string;
   action: "init" | "initialize" | "update";
   start: string;

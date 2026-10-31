@@ -153,8 +153,10 @@ def _metrics(profile, series_id):
     if profile is EMPLOYMENT_PROFILE:
         if series_id == "CES0000000001":
             return ((1, "net_change_1m_thousand_jobs"),)
-        if series_id == "LNS14000000":
+        if series_id in {"LNS14000000", "LNS11300000"}:
             return ((1, "change_1m_percentage_points"),)
+        if series_id == "CES0500000002":
+            return ((1, "change_1m_hours"),)
         return (
             (1, "mom_pct"),
             (12, "yoy_pct"),
@@ -618,6 +620,7 @@ class CpiTimeSeriesService:
                             in {
                                 "net_change_1m_thousand_jobs",
                                 "change_1m_percentage_points",
+                                "change_1m_hours",
                             }
                             else _ratio
                             if metric.endswith("_ratio")
@@ -732,6 +735,7 @@ class CpiTimeSeriesService:
                 "value": "per_series_value_unit",
                 "net_change_1m_thousand_jobs": "thousand_jobs",
                 "change_1m_percentage_points": "percentage_points",
+                "change_1m_hours": "hours",
                 "mom_pct": "percent",
                 "yoy_pct": "percent",
                 "change_1m_ratio": "ratio",
@@ -739,7 +743,9 @@ class CpiTimeSeriesService:
             }
             result["calculation_method"] = (
                 "CES total nonfarm: value[t]-value[t-1], thousand jobs, not people. "
-                "CPS unemployment rate: value[t]-value[t-1], percentage points. "
+                "CPS unemployment and participation rates: "
+                "value[t]-value[t-1], percentage points. "
+                "CES average weekly paid hours: value[t]-value[t-1], hours. "
                 "CES AHE: USD/hour; mom_pct/yoy_pct and 1m/12m ratios derived "
                 "from same-cutoff endpoints, not annualized. Official net_changes "
                 "and pct_changes remain separate in provider_calculations. "

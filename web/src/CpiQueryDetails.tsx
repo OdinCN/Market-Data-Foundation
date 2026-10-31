@@ -259,8 +259,8 @@ export function CpiQueryApiHelp({
             ? [
                 [
                   "series",
-                  "否 / 全部三系列",
-                  "string；逗号分隔 CES0000000001、LNS14000000、CES0500000003；拒绝 basket / adjustment",
+                  "否 / 全部五系列",
+                  "string；逗号分隔 CES0000000001、LNS14000000、CES0500000003、LNS11300000、CES0500000002；拒绝 basket / adjustment",
                 ],
               ]
             : [
@@ -356,7 +356,7 @@ export function CpiQueryApiHelp({
                 ? "decimal string / string；points 中 value 非空，来源缺值在 source_unavailable 中为 null"
                 : "decimal string；value 可 null",
               employment
-                ? "非农 thousand_jobs（千岗位，不是人数）；失业率 percent；时薪 USD/hour。不返回 index_value"
+                ? "非农 thousand_jobs（千岗位，不是人数）；失业率 / 劳动参与率 percent；时薪 USD/hour；周工时 hours。不返回 index_value"
                 : "指数；value 由 measure 选择，当前等于 index_value",
             ],
             ...(employment
@@ -368,8 +368,13 @@ export function CpiQueryApiHelp({
                   ],
                   [
                     "points[].change_1m_percentage_points",
-                    "decimal string|null；仅失业率",
+                    "decimal string|null；失业率 / 劳动参与率",
                     "value[t]−value[t−1]，百分点",
+                  ],
+                  [
+                    "points[].change_1m_hours",
+                    "decimal string|null；仅周工时",
+                    "value[t]−value[t−1]，小时",
                   ],
                 ]
               : []),
@@ -494,7 +499,7 @@ export function CpiQueryApiHelp({
         <summary>来源与官方计算</summary>
         <p>
           {employment
-            ? "BLS Employment Situation：CES 非农与平均时薪、CPS 失业率分别保留调查口径。非农与失业率本地计算为相邻月差值，仅时薪计算环同比；官方 net_changes / pct_changes 不替代本地端点计算。"
+            ? "BLS Employment Situation：CES 非农、平均时薪与每周计薪工时，CPS 失业率与劳动参与率分别保留调查口径。非农、失业率、劳动参与率与周工时本地计算为相邻月差值，仅时薪计算环同比；官方 net_changes / pct_changes 不替代本地端点计算。"
             : profile.id === "pce"
               ? "BEA NIPA T20804 月度指数；官方月环比来自 T20807，见 bea_pct_1m（百分数，可 null），不等同于从指数计算的 mom_pct。留存材料为去凭据的 Results 投影，不声称保留完整原始响应。"
               : `BLS ${profile.label} 月度指数；官方 pct_changes 与本地同截止端点推导分别保留，可能因官方精度和方法不同而不同。`}
@@ -568,6 +573,22 @@ export function CpiQueryApiHelp({
                       availability: "unpersisted",
                       revision: null,
                       available_at: null,
+                    },
+                    {
+                      series_id: "LNS11300000",
+                      month: "2026-09",
+                      survey: "CPS",
+                      value: "62.5",
+                      value_unit: "percent",
+                      change_1m_percentage_points: "0.1",
+                    },
+                    {
+                      series_id: "CES0500000002",
+                      month: "2026-09",
+                      survey: "CES",
+                      value: "34.3",
+                      value_unit: "hours",
+                      change_1m_hours: "-0.1",
                     },
                   ],
                   missing: [],

@@ -45,6 +45,7 @@ import {
   project,
   keyOf,
   EMPLOYMENT,
+  employmentOperationMatches,
   sameKey,
 } from "./workflowModel";
 import { menus, route, type Navigate } from "./workflowRoute";
@@ -269,8 +270,8 @@ export default function App({
     generation,
     !page.invalid &&
       ["assets", "collection"].includes(page.view) &&
-      !operation &&
-      ((identity === EMPLOYMENT.identity &&
+      (!operation || employmentOperationMatches(operationEntry)) &&
+      ((macroIdentity === EMPLOYMENT.identity &&
         (!revision || revision === EMPLOYMENT.revision)) ||
         (collectionList &&
           (collectionFilter === "all" ||
@@ -609,7 +610,12 @@ export default function App({
                         (!revision ||
                           revision === macroProfile.asset.revision) &&
                         (!operation ||
-                          sameKey(selectedAsset?.key, macroProfile.asset)) ? (
+                          (macroProfile.id === "employment"
+                            ? employmentOperationMatches(operationEntry)
+                            : sameKey(
+                                selectedAsset?.key,
+                                macroProfile.asset,
+                              ))) ? (
                           <>
                             <CpiTimeSeries
                               profile={macroProfile}

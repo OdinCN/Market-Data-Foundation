@@ -9,7 +9,10 @@ from uuid import UUID
 
 from market_data_foundation.historical.bls_timeseries_profile import CPI_PROFILE
 from market_data_foundation.historical.cpi_timeseries import month_number, month_range
-from market_data_foundation.historical.cpi_timeseries_cli import validate_range
+from market_data_foundation.historical.cpi_timeseries_cli import (
+    selected_series,
+    validate_range,
+)
 
 
 class WebError(ValueError):
@@ -18,8 +21,10 @@ class WebError(ValueError):
         super().__init__(classification)
 
 
-def validate_command(command, max_months):
-    if not isinstance(command, dict) or set(command) != {
+def validate_command(command, max_months, *, profile=CPI_PROFILE):
+    if not isinstance(command, dict) or set(command) - (
+        {"series"} if profile.key == "employment" else set()
+    ) != {
         "request_id",
         "action",
         "start",
@@ -28,6 +33,8 @@ def validate_command(command, max_months):
         raise WebError("invalid_job_request")
     if any(type(v) is not str for v in command.values()):
         raise WebError("invalid_job_request")
+    if "series" in command:
+        selected_series({"series": command["series"]}, profile=profile)
     try:
         request_id = str(UUID(command["request_id"]))
     except ValueError:
@@ -49,7 +56,10 @@ def verify_readback(written, readback, command, *, profile=CPI_PROFILE):
         return verify_ppi_readback(written, readback, command, profile=profile)
     expected = {
         (s, m)
-        for s in profile.series_ids
+        for s in selected_series(
+            {"series": command["series"]} if "series" in command else {},
+            profile=profile,
+        )
         for m in month_range(command["start"], command["end"])
     }
 
@@ -141,7 +151,10 @@ def verify_ppi_readback(written, readback, command, *, profile):
 
     expected = {
         (s, m)
-        for s in profile.series_ids
+        for s in selected_series(
+            {"series": command["series"]} if "series" in command else {},
+            profile=profile,
+        )
         for m in month_range(command["start"], command["end"])
     }
     returned = keys(written.get("source_returned_series_months", []))

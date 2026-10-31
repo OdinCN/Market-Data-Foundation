@@ -21,6 +21,7 @@ from market_data_foundation.historical.employment_timeseries import (
 )
 from market_data_foundation.web.cpi_timeseries_host import create_timeseries_preview
 from market_data_foundation.web.cpi_timeseries_jobs import WebError
+from market_data_foundation.web.pce_dev_host import CANDIDATE_ORIGIN
 from tests import test_readonly_host as old
 from tests.test_cpi_release_schedule_ics import event, html, ics
 from tests.test_cpi_timeseries_web import command, no_network  # noqa: F401
@@ -180,6 +181,8 @@ def test_http_help_matches_defaults_units_and_official_nulls(tmp_path, monkeypat
         assert {p["value_unit"] for p in current["points"]} == {
             "thousand_jobs",
             "USD/hour",
+            "percent",
+            "hours",
         }
         assert current["missing"] == [
             {
@@ -418,3 +421,63 @@ def test_display_history_is_offline_and_never_creates_jobs(tmp_path, monkeypatch
     assert snapshot["calendar_publications"][0]["reference_month"] == "2026-10"
     assert runtime.timeseries.scheduler.status()["calendar_publications"] == []
     assert not source.calls
+
+
+@pytest.mark.parametrize("selection", [None, "LNS11300000,CES0500000002"])
+def test_public_jobs_five_defaults_and_subset_readback(
+    tmp_path, monkeypatch, selection
+):
+    from threading import Event
+
+    app, runtime, source, _, _ = setup(tmp_path, monkeypatch)
+    host = runtime.employment_timeseries
+    payload = command(start="2026-09", end="2026-09")
+    if selection:
+        payload["series"] = selection
+    with client(app) as http:
+        accepted = http.post(
+            host.prefix + "/jobs", json=payload, headers={"Origin": CANDIDATE_ORIGIN}
+        )
+        assert accepted.status_code in {200, 202}, accepted.json()
+        for _ in range(100):
+            result = host.journal.read(payload["request_id"])
+            if result["state"] != "running":
+                break
+            Event().wait(0.01)
+        assert result["state"] == "complete", result
+        expected = (
+            tuple(selection.split(",")) if selection else EMPLOYMENT_PROFILE.series_ids
+        )
+        assert source.calls[0][0] == expected
+        assert result["result"]["readback"]["expected_points"] == len(expected)
+        assert result["result"]["readback"]["verified"]
+        assert (
+            http.post(
+                host.prefix + "/jobs",
+                json=payload,
+                headers={"Origin": CANDIDATE_ORIGIN},
+            ).status_code
+            == 200
+        )
+        changed = dict(payload, series="LNS14000000")
+        assert (
+            http.post(
+                host.prefix + "/jobs",
+                json=changed,
+                headers={"Origin": CANDIDATE_ORIGIN},
+            ).status_code
+            == 409
+        )
+        invalid = dict(payload, series="CIVPART")
+        assert (
+            http.post(
+                host.prefix + "/jobs",
+                json=invalid,
+                headers={"Origin": CANDIDATE_ORIGIN},
+            ).status_code
+            == 400
+        )
+        help_doc = http.get(host.prefix + "/api-help").json()
+        assert len(help_doc["series_ids"]) == 5
+        assert help_doc["series"]["LNS11300000"]["fred_alias"] == "CIVPART"
+        assert help_doc["series"]["CES0500000002"]["value_unit"] == "hours"

@@ -296,7 +296,7 @@ def _revision_ddl(*, profile=CPI_PROFILE):
     )
     comparison = ">=" if profile is EMPLOYMENT_PROFILE else ">"
     zero_guard = (
-        "AND (index_value > 0 OR series_id='LNS14000000')"
+        "AND (index_value > 0 OR series_id IN ('LNS14000000','LNS11300000'))"
         if profile is EMPLOYMENT_PROFILE
         else ""
     )

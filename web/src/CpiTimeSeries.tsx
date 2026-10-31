@@ -266,8 +266,9 @@ function CpiTimeSeriesContent({
         { value: "net_change_1m_thousand_jobs", label: "非农月净增（千岗位）" },
         {
           value: "change_1m_percentage_points",
-          label: "失业率月变化（百分点）",
+          label: "失业率 / 劳动参与率月变化（百分点）",
         },
+        { value: "change_1m_hours", label: "周工时月变化（小时）" },
         { value: "mom_pct", label: "时薪环比（%）" },
         { value: "yoy_pct", label: "时薪同比（%）" },
       ] as const)
@@ -478,7 +479,7 @@ function CpiTimeSeriesContent({
               </p>
               <p className="small">
                 {employment
-                  ? "CES 千岗位及月净增；CPS 百分数及百分点变化；CES 时薪美元/小时及环同比。"
+                  ? "CES 千岗位及月净增；失业率、劳动参与率为百分数及百分点变化；时薪为美元/小时及环同比；平均每周工时为小时及小时变化。"
                   : "变化率以百分比显示；3月、6月为相隔对应月数的累计变化，未经年化。"}
               </p>
               <div className="table-wrap">

@@ -94,7 +94,13 @@ PCE_PROFILE = BlsTimeSeriesProfile(
 EMPLOYMENT_PROFILE = BlsTimeSeriesProfile(
     key="employment",
     label="Employment Situation; seasonally adjusted CES and CPS base series",
-    series_ids=("CES0000000001", "LNS14000000", "CES0500000003"),
+    series_ids=(
+        "CES0000000001",
+        "LNS14000000",
+        "CES0500000003",
+        "LNS11300000",
+        "CES0500000002",
+    ),
     schema="mdf_employment_timeseries_dev_r1",
     raw_prefix="employment-timeseries/dev-r1/sha256/",
     earliest_month=None,
@@ -126,6 +132,26 @@ EMPLOYMENT_PROFILE = BlsTimeSeriesProfile(
                 ("seasonal_adjustment", "SA"),
                 ("survey", "CES"),
                 ("value_unit", "USD/hour"),
+            ),
+        ),
+        (
+            "LNS11300000",
+            (
+                ("indicator", "labor_force_participation_rate"),
+                ("seasonal_adjustment", "SA"),
+                ("survey", "CPS"),
+                ("value_unit", "percent"),
+                ("fred_alias", "CIVPART"),
+            ),
+        ),
+        (
+            "CES0500000002",
+            (
+                ("indicator", "average_weekly_hours"),
+                ("seasonal_adjustment", "SA"),
+                ("survey", "CES"),
+                ("value_unit", "hours"),
+                ("fred_alias", "AWHAETP"),
             ),
         ),
     ),

@@ -65,9 +65,21 @@ export const EMPLOYMENT_PROFILE: MacroProfile = Object.freeze({
       "average_hourly_earnings",
       "sa",
     ],
+    [
+      "LNS11300000",
+      "劳动参与率 · CPS · %",
+      "labor_force_participation_rate",
+      "sa",
+    ],
+    [
+      "CES0500000002",
+      "平均每周计薪工时 · CES · 小时",
+      "average_weekly_hours",
+      "sa",
+    ],
   ] as const,
   historyNotice:
-    "此为显式连续就业 Host；旧 T03 固定快照不构成运行证据。非农为千岗位及月净增，岗位不是人数；失业率为百分数及百分点变化；平均时薪为美元/小时及环比、同比。初始化240个月可编辑，无发布证据时截至上一完整自然月，仅为预置范围。官方变化与本地计算分别保留，revision 1 是首次本地观察。",
+    "非农为千岗位及月净增，岗位不是人数；失业率、劳动参与率为百分数及百分点变化；平均每周计薪工时为小时及小时变化；平均时薪为美元/小时及环比、同比。初始化240个月可编辑，无发布证据时截至上一完整自然月，仅为预置范围。官方变化与本地计算分别保留，revision 1 是首次本地观察。",
 });
 export const profileScopeText = (profile: MacroProfile) =>
   `${profile.series.map(([, title]) => title).join("、")}，共${profile.series.length}种口径。`;

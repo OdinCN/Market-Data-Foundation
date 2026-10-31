@@ -20,7 +20,10 @@ root 于 2026-10-31T06:49:27.403127Z 完成 BLS v2 三序列 2025..2026
 | CES0000000001 | CES 总非农，千岗位，SA | 月净变化为绝对差值，`net_change_1m_thousand_jobs` |
 | LNS14000000 | CPS 16岁以上总体失业率，百分数，SA | 月变化为百分点，`change_1m_percentage_points` |
 | CES0500000003 | CES 私营部门全体雇员平均时薪，USD/hour，SA | `mom_pct`/`yoy_pct` 为百分数；`change_1m_ratio`/`change_12m_ratio` 为比例 |
+| LNS11300000 | CPS 劳动参与率，percent，SA；别名 CIVPART | `change_1m_percentage_points`，百分点差 |
+| CES0500000002 | CES 私人非农全体雇员平均每周计薪工时，hours，SA；别名 AWHAETP | `change_1m_hours`，小时差 |
 
+上述 root 取样仅覆盖原三项；新增两项尚未真实验证或补采。迁移和入口修复见公共流程文档的五项兼容扩展候选章节。
 岗位不是人数；本轮没有新增就业人数序列。失业率不生成通胀式环比/同比。
 官方 `calculations.net_changes`、`calculations.pct_changes` 和 `footnotes`
 单独保留，包含负变化、preliminary 脚注和空脚注对象，不用官方变化替代本地推导。
@@ -53,7 +56,7 @@ uv run --no-sync python scripts/employment_timeseries.py --runtime "$MDF_RUNTIME
 uv run --no-sync python scripts/employment_timeseries.py --runtime "$MDF_RUNTIME" --secret "$MDF_SECRET" --live-provider update --start 2026-07 --end 2026-09
 ```
 
-`--series` 可重复指定三个 series_id；没有 headline/core 或四口径参数。
+`--series` 可重复指定五个 series_id（省略默认五项）；没有 headline/core 或四口径参数。
 初始化可改 `--months` 或显式 `--start`/`--end`；省略结束月预置北京时间上一完整月，
 实际公布覆盖以返回结果为准。更新必须明确起止范围。
 CLI 上游凭据读取要求显式 `--live-provider`，采用具名 BLS 就业 profile，

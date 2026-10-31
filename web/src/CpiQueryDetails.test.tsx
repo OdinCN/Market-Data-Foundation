@@ -325,7 +325,7 @@ it.each([CPI_PROFILE, PPI_PROFILE, PCE_PROFILE, EMPLOYMENT_PROFILE])(
       expect(parameters.queryByText("basket")).toBeNull();
       expect(
         example.points.map((p: { value_unit: string }) => p.value_unit),
-      ).toEqual(["thousand_jobs", "percent", "USD/hour"]);
+      ).toEqual(["thousand_jobs", "percent", "USD/hour", "percent", "hours"]);
       expect(
         example.points
           .slice(0, 2)

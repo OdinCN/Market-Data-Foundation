@@ -8,8 +8,9 @@ Host 开关、DEV 读取权限及采集权限分别核实。未装配 Host 时�
 `source_qualified=false` 均未修改。新 status 明示
 `host_binding=employment-continuous-dev-r1`，旧快照不构成连续运行证据。
 
-查询按月范围和三系列多选，不使用通胀 basket/adjustment。CES 非农为千岗位及
-月净增，CPS 失业率为百分数及百分点差，CES 平均时薪为 USD/hour 及环同比。
+查询按月范围和五系列多选，不使用通胀 basket/adjustment。CES 非农为千岗位及
+月净增，CPS 失业率为百分数及百分点差，CES 平均时薪为 USD/hour 及环同比；CPS 劳动参与率为 percent 及百分点差；
+CES 私人非农全体雇员平均每周计薪工时为 hours 及小时差。五项均季调。
 官方 `provider_calculations.net_changes/pct_changes` 与 `footnotes` 原样保留，
 本地计算单列；缺值不补零。月份仅在表格副本中倒序，原始 HTTP 正文不改写。
 当前查询本地优先，缺口透传不保存；history 只读本地，默认 available/入库截止。
@@ -64,7 +65,7 @@ TLS1.3 后才发送 HTTP。离线回归覆盖实际 Host 默认装配和 TLS1.2 
 现有路径/身份；程序不改写 runtime/secret。读身份必须与 runtime 的 PG user 一致。
 
 ```sh
-cd /srv/market-data-foundation-control/worktrees/mdf-employment-align-20261031-r1
+cd /srv/market-data-foundation-control/worktrees/mdf-employment-five-20261031-r1
 uv run --no-sync python scripts/employment_timeseries.py \
   --runtime "$MDF_CONFIG/runtime.toml" --secret "$MDF_CONFIG/secret.toml" prepare-schema
 uv run --no-sync python scripts/employment_timeseries.py \
@@ -105,7 +106,7 @@ uv run --no-sync python scripts/mdf_cpi_timeseries_web.py \
 
 ```sh
 curl 'http://192.168.10.20:18761/api/r5/employment/timeseries/status'
-curl 'http://192.168.10.20:18761/api/r5/employment/timeseries/query?start=2025-01&end=2026-09&series=CES0000000001,LNS14000000,CES0500000003&query_mode=current&local_only=false&measure=index'
+curl 'http://192.168.10.20:18761/api/r5/employment/timeseries/query?start=2025-01&end=2026-09&series=CES0000000001,LNS14000000,CES0500000003,LNS11300000,CES0500000002&query_mode=current&local_only=false&measure=index'
 curl 'http://192.168.10.20:18761/api/r5/employment/timeseries/query?start=2025-01&end=2026-09&series=LNS14000000&query_mode=history&local_only=true&as_of_basis=available&as_of=2026-10-31T00%3A00%3A00Z'
 ```
 
@@ -129,7 +130,7 @@ uv run --no-sync python scripts/mdf_cpi_timeseries_worker.py \
 `scripts/import_official_calendar_history.py --asset employment`，必须指定就业现有 state、
 本地 HTML、官方 source URL、start/end 和带时区 acquired-at，不联网、不生成采集任务。
 
-## 2026-10-31 DEV 验证结果
+## 2026-10-31 三项基线 DEV 验证记录
 
 公共 jobs API 的初始化范围为2006-10至2026-09，2次BLS请求、2次实际尝试，
 保存751条观测（含计算前置月份），新增修订0；独立入库回读通过。
@@ -147,3 +148,42 @@ CALENDAR_IMPORT、LIVE_INIT_JOB、LIVE_QUERY、FINAL_VERIFY、RUNTIME_WINDOW。
 本轮对齐修正的定向离线验证为后端485项、前端245项通过，详见 MDF-EMPLOYMENT-ALIGN-20261031-R1 的
 `IMPLEMENTATION_REPLY.md`；不以基线CI代替本轮验证。用户浏览器视觉验收仍待后续，
 预览期限不因本轮代码修改延长。
+
+## 五项兼容扩展（2026-10-31）
+
+本节描述五项兼容扩展；实际部署、数据库迁移及补采结果以控制目录
+MDF-EMPLOYMENT-FIVE-20261031-R1 的当前运行回执和验证记录为准。
+原 T03 `t03-r1` 三项固定快照契约不变；连续 API 使用显式就业 profile，
+默认从三项扩至五项，原三项的 series、字段和语义兼容，旧调用显式指定三项即可保持范围。
+新增 LNS11300000（CPS 劳动参与率，percent，FRED 别名 CIVPART，仅标识映射）与
+CES0500000002（CES 私人非农全体雇员平均每周计薪工时，hours，FRED 别名 AWHAETP）。
+只访问 BLS，不回退 FRED；五项进入同一有界年份批次，沿用 Employment Situation
+日历、共享预算和重试。状态、策略与默认采集范围自动采用五项。
+查询 `series` 为逗号串；CLI 重复 `--series`；就业 jobs 可选 `series` 逗号串，
+省略时全部五项。WebUI 查询支持多选；新建采集统一采集全部五项，复用三族的简洁表单。
+HTTP 与 CLI 支持明确指定子集，其他族 jobs 格式不变。
+
+劳动参与率 HTTP 使用 `change_1m_percentage_points`，周工时新增 `change_1m_hours`；
+仅 AHE 输出 `mom_pct/yoy_pct` 与 1/12 月 ratio。缺比较月仍为 null 并列出缺口；
+官方 null、同截止比较和历史仅本地规则沿用。别名不会触发另一个 provider。
+
+新建采集的真实 CollectionWorkbench 渲染分支纳入就业，两个目标下拉均保留目录外的
+就业 key；共享确认框、可编辑240月预置、右侧简报和执行记录跳转/轮询沿用。
+只允许无 operation 或精确匹配已登记就业来源、绑定和资产的 operation 进入连续入口；
+能力、读取、采集和 HTTP origin 权限仍独立核验，不由旧快照授予。
+
+迁移前应核实实际 pg_constraint、视图列序、owner 与 odin_dba 权限。
+现有跨列数值约束名为 `revisions_check`，系列约束名为 `revisions_series_id_check`；
+迁移按这两个已核实名称执行，未知布局应先检查。
+先运行只读审计 `scripts/sql/employment-five-series-audit.sql`，保存事务前后的约束、列序、权限与计数。
+迁移文件为 `scripts/sql/employment-five-series-r1.sql`，由
+`five_series_migration_sql()` 生成，只扩展 revisions 的两个具名 CHECK 并替换两个业务视图。
+不 replay schema/init，不改 batches/revisions/latest 的结构或数据，不改授权。
+`employment_latest` 原列顺序/类型保留，增加两个 series 的单位与 CPS 调查映射。
+`employment_timeseries_rates` 原 `change_1m_percentage_points` 仍仅失业率；末尾追加
+`labor_force_participation_rate_percent`、`participation_change_1m_percentage_points`、
+`average_weekly_hours`、`change_1m_hours`。CREATE OR REPLACE 保留 owner/grants。
+root 先 BEGIN，执行 SQL 并核查原有数据、列序和只读权限后 ROLLBACK 演练；
+确认后再开事务执行并 COMMIT。SQL 不自带提交，重复执行幂等；未知约束命名会拒绝执行。
+旧三项 CHECK 不会被 CREATE TABLE IF NOT EXISTS 自动扩展，已有库必须先完成此迁移。
+本节迁移不使用以上历史 `prepare-schema` 示例；不要用旧 init/schema 脚本代替。

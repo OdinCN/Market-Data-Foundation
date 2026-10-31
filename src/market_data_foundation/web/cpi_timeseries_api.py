@@ -422,13 +422,13 @@ class TimeSeriesHost:
         }
 
     def submit(self, command, *, on_started=None):
-        validate_command(command, None)
+        validate_command(command, None, profile=self.profile)
         # Replay is read-only and remains available if source access is revoked.
         existing = self.journal.read(command["request_id"])
         if existing is not None:
             return self.replay(existing, command)
         # Initialization is a suggested range, not an execution constraint.
-        validate_command(command, self.max_collect_months)
+        validate_command(command, self.max_collect_months, profile=self.profile)
         record = self.packages.store.read(self.packages.environment_id, "macro")
         capabilities = self.capabilities(self.source(record))
         if not capabilities["collect"]:
@@ -473,7 +473,15 @@ class TimeSeriesHost:
                         "update"
                         if command["action"] == "initialize"
                         else command["action"],
-                        {"start": command["start"], "end": command["end"]},
+                        {
+                            "start": command["start"],
+                            "end": command["end"],
+                            **(
+                                {"series": command["series"]}
+                                if "series" in command
+                                else {}
+                            ),
+                        },
                         profile=self.profile,
                     )
                 read_start, read_end = command["start"], command["end"]
@@ -495,6 +503,15 @@ class TimeSeriesHost:
                             "adjustment": "all",
                             "local_only": True,
                             "vintage_mode": "available",
+                            **(
+                                {
+                                    "series": command["series"],
+                                    "basket": None,
+                                    "adjustment": None,
+                                }
+                                if "series" in command
+                                else {}
+                            ),
                         },
                         profile=self.profile,
                     )
@@ -530,7 +547,9 @@ class TimeSeriesHost:
             return job
 
     def replay(self, record, command):
-        if any(record[key] != value for key, value in command.items()):
+        if record.get("series") != command.get("series") or any(
+            record.get(key) != value for key, value in command.items()
+        ):
             raise WebError("request_id_conflict", 409)
         if record["state"] == "running":
             return next(

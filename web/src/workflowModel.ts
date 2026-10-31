@@ -27,6 +27,29 @@ export const EMPLOYMENT: Key = {
   identity: "mdf.macro.bls.employment.ces-cps",
   revision: "t03-r1",
 };
+export const EMPLOYMENT_OPERATION =
+  "mdf.source-candidate.bls-v2.employment-2026-09@t03-snapshot-2026-09-r1";
+// This is an explicit navigation mapping. Runtime permissions still come from
+// the continuous employment capability, never from the retained snapshot.
+export function employmentOperationMatches(entry?: DirectoryEntry): boolean {
+  const binding = entry?.binding_contract;
+  return (
+    !!entry &&
+    entry.identity === EMPLOYMENT_OPERATION &&
+    sameKey(entry.asset, EMPLOYMENT) &&
+    sameKey(entry.source_contract, {
+      identity: "mdf.source-candidate.bls-v2.employment-2026-09",
+      revision: "t03-snapshot-2026-09-r1",
+    }) &&
+    sameKey(binding, {
+      identity: "mdf.binding-candidate.bls-v2.employment-2026-09",
+      revision: "t03-snapshot-2026-09-r1",
+    }) &&
+    sameKey(binding?.source, entry.source_contract) &&
+    binding?.silent_fallback === false &&
+    binding.mappings.some((mapping) => sameKey(mapping.definition, EMPLOYMENT))
+  );
+}
 export const PPI: Key = {
   identity: "mdf.macro.bls.ppi.final-demand",
   revision: "t01-r1",

@@ -27,6 +27,7 @@ import {
   PPI,
   PCE,
   EMPLOYMENT,
+  employmentOperationMatches,
   MANUAL_OPERATION,
   PCE_OPERATION,
   HISTORY_OPERATION,
@@ -167,9 +168,12 @@ export function CollectionWorkbench({
       route.fields.get("operation") === PCE_OPERATION);
   const employmentTarget =
     !invalidIdentity &&
-    !route.fields.has("operation") &&
-    route.fields.get("asset") === EMPLOYMENT.identity &&
-    route.fields.get("asset_revision") === EMPLOYMENT.revision;
+    (!route.fields.has("operation") ||
+      (route.fields.get("operation") === source?.id &&
+        employmentOperationMatches(source?.dto))) &&
+    (sameKey(asset?.key, EMPLOYMENT) ||
+      (route.fields.get("asset") === EMPLOYMENT.identity &&
+        route.fields.get("asset_revision") === EMPLOYMENT.revision));
   const newEmployment =
     !!employmentAvailability?.data && !employmentAvailability.legacy;
   const macroProfile = employmentTarget
@@ -977,7 +981,7 @@ export function CollectionWorkbench({
       )}
       {tab === "new" &&
       (newMacro || macroPending) &&
-      (cpiTarget || isPpi || pceTarget) ? (
+      (cpiTarget || isPpi || pceTarget || employmentTarget) ? (
         <>
           <label>
             采集目标
@@ -988,13 +992,15 @@ export function CollectionWorkbench({
                   (a) => keyOf(a.key) === e.target.value,
                 );
                 const selectedKey =
-                  e.target.value === keyOf(PCE)
-                    ? PCE
-                    : e.target.value === keyOf(PPI)
-                      ? PPI
-                      : e.target.value === keyOf(CPI)
-                        ? CPI
-                        : selected?.key;
+                  e.target.value === keyOf(EMPLOYMENT)
+                    ? EMPLOYMENT
+                    : e.target.value === keyOf(PCE)
+                      ? PCE
+                      : e.target.value === keyOf(PPI)
+                        ? PPI
+                        : e.target.value === keyOf(CPI)
+                          ? CPI
+                          : selected?.key;
                 navigate("collection", {
                   asset: selectedKey?.identity ?? null,
                   asset_revision: selectedKey?.revision ?? null,
@@ -1083,13 +1089,15 @@ export function CollectionWorkbench({
                       (a) => keyOf(a.key) === e.target.value,
                     );
                     const selectedKey =
-                      e.target.value === keyOf(PCE)
-                        ? PCE
-                        : e.target.value === keyOf(PPI)
-                          ? PPI
-                          : e.target.value === keyOf(CPI)
-                            ? CPI
-                            : a?.key;
+                      e.target.value === keyOf(EMPLOYMENT)
+                        ? EMPLOYMENT
+                        : e.target.value === keyOf(PCE)
+                          ? PCE
+                          : e.target.value === keyOf(PPI)
+                            ? PPI
+                            : e.target.value === keyOf(CPI)
+                              ? CPI
+                              : a?.key;
                     navigate("collection", {
                       asset: selectedKey?.identity ?? null,
                       asset_revision: selectedKey?.revision ?? null,
@@ -1099,6 +1107,9 @@ export function CollectionWorkbench({
                   }}
                 >
                   <option value="">选择一个已登记资产</option>
+                  {!assets.some((a) => sameKey(a.key, EMPLOYMENT)) && (
+                    <option value={keyOf(EMPLOYMENT)}>美国就业</option>
+                  )}
                   {!assets.some((a) => sameKey(a.key, CPI)) && (
                     <option value={keyOf(CPI)}>美国 CPI</option>
                   )}

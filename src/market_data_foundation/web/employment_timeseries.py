@@ -20,7 +20,7 @@ class EmploymentTimeSeriesHost(TimeSeriesHost):
             **super().api_help(),
             "parameters": {
                 "start/end": "required YYYY-MM, at most 2400 months",
-                "series": "comma-separated allowlisted series; default all three",
+                "series": "comma-separated allowlisted series; default all five",
                 "query_mode": (
                     "current/history; inferred history with as_of or available"
                 ),
@@ -38,8 +38,15 @@ class EmploymentTimeSeriesHost(TimeSeriesHost):
                 "measure": "index only; basket/adjustment are not employment filters",
             },
             "series": EMPLOYMENT_PROFILE.series_metadata,
+            "collection_parameters": {
+                "series": "comma-separated allowlisted subset; default all five",
+                "scope": "query/CLI/jobs subsets; automatic strategy always all five",
+            },
             "fields": {
-                "value": "CES thousand jobs; CPS percent; CES USD/hour",
+                "value": (
+                    "CES thousand jobs; CPS unemployment/participation percent; "
+                    "CES USD/hour or hours"
+                ),
                 "origin/availability": (
                     "local/upstream; available/unpersisted; source_unavailable, "
                     "withdrawn and unknown appear in missing-evidence arrays"
@@ -50,7 +57,10 @@ class EmploymentTimeSeriesHost(TimeSeriesHost):
                 ),
                 "change_1m_ratio/change_12m_ratio": "AHE ratios; 0.01 means 1%",
                 "net_change_1m_thousand_jobs": "CES month difference; thousand jobs",
-                "change_1m_percentage_points": "CPS difference; percentage points",
+                "change_1m_percentage_points": (
+                    "CPS unemployment/participation difference; percentage points"
+                ),
+                "change_1m_hours": "CES weekly paid hours month difference; hours",
                 "mom_pct/yoy_pct": "AHE same-cutoff endpoint derived percentages only",
                 "provider_calculations": "official net_changes/pct_changes, separate",
                 "footnotes": "official preliminary and empty objects retained",
@@ -61,7 +71,7 @@ class EmploymentTimeSeriesHost(TimeSeriesHost):
             },
             "examples": [
                 self.prefix + "/query?start=2025-01&end=2026-09"
-                "&series=CES0000000001,LNS14000000,CES0500000003"
+                "&series=CES0000000001,LNS14000000,CES0500000003,LNS11300000,CES0500000002"
                 "&query_mode=current&local_only=false&measure=index",
                 self.prefix + "/query?start=2025-01&end=2026-09&series=LNS14000000"
                 "&query_mode=history&local_only=true&as_of_basis=available"
