@@ -32,6 +32,7 @@ import {
 } from "./workflowModel";
 import type { Navigate, Route } from "./workflowRoute";
 import { Fact, Tabs, Technical, WorkflowTable } from "./WorkflowTable";
+import { newestMonthFirst } from "./queryTableOrder";
 import { failureName } from "./workflowHooks";
 export function AccessPage({
   components,
@@ -953,7 +954,10 @@ export function LocalReader({
                 </tr>
               </thead>
               <tbody>
-                {result.measurements.map((m) => (
+                {newestMonthFirst(
+                  result.measurements,
+                  (m) => m.reference_period,
+                ).map((m) => (
                   <tr key={m.measure_identity}>
                     <td>{m.name}</td>
                     <td>{m.value ?? "未提供"}</td>

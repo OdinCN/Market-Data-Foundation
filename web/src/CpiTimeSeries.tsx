@@ -23,6 +23,7 @@ import {
   RequestPreview,
 } from "./CpiQueryDetails";
 import { Tabs } from "./WorkflowTable";
+import { newestMonthFirst } from "./queryTableOrder";
 
 export function CpiAvailabilityNotice({
   availability,
@@ -239,18 +240,20 @@ function CpiTimeSeriesContent({
     }
   }
   const rows = result
-    ? [
-        ...result.points.map((point) => ({
-          ...point,
-          point,
-          reason: undefined as string | undefined,
-        })),
-        ...result.missing.map((gap) => ({ ...gap, point: null })),
-      ].sort(
-        (a, b) =>
-          a.month.localeCompare(b.month) ||
-          cpiSeries.findIndex((s) => s[0] === a.series_id) -
+    ? newestMonthFirst(
+        [
+          ...result.points.map((point) => ({
+            ...point,
+            point,
+            reason: undefined as string | undefined,
+          })),
+          ...result.missing.map((gap) => ({ ...gap, point: null })),
+        ].sort(
+          (a, b) =>
+            cpiSeries.findIndex((s) => s[0] === a.series_id) -
             cpiSeries.findIndex((s) => s[0] === b.series_id),
+        ),
+        (row) => row.month,
       )
     : [];
   const columns = measures.filter((item) => measure.includes(item.value));
