@@ -16,6 +16,7 @@ from market_data_foundation.historical.bls_cpi_material_store import (
 )
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
+    EMPLOYMENT_PROFILE,
     PCE_PROFILE,
     validate_profile,
 )
@@ -146,6 +147,32 @@ def _ratio(current, previous):
                 Decimal("0.0001"), rounding=ROUND_HALF_UP
             )
         )
+
+
+def _metrics(profile, series_id):
+    if profile is EMPLOYMENT_PROFILE:
+        if series_id == "CES0000000001":
+            return ((1, "net_change_1m_thousand_jobs"),)
+        if series_id == "LNS14000000":
+            return ((1, "change_1m_percentage_points"),)
+        return (
+            (1, "mom_pct"),
+            (12, "yoy_pct"),
+            (1, "change_1m_ratio"),
+            (12, "change_12m_ratio"),
+        )
+    return (
+        (1, "mom_pct"),
+        (12, "yoy_pct"),
+        (1, "change_1m_ratio"),
+        (3, "change_3m_ratio"),
+        (6, "change_6m_ratio"),
+        (12, "change_12m_ratio"),
+    )
+
+
+def _difference(current, previous):
+    return str(Decimal(current) - Decimal(previous))
 
 
 def _gap_requests(series, fetch_keys):
@@ -576,14 +603,7 @@ class CpiTimeSeriesService:
                     continue
                 point = dict(point)
                 point["calculation_inputs"] = {}
-                for lag, metric in (
-                    (1, "mom_pct"),
-                    (12, "yoy_pct"),
-                    (1, "change_1m_ratio"),
-                    (3, "change_3m_ratio"),
-                    (6, "change_6m_ratio"),
-                    (12, "change_12m_ratio"),
-                ):
+                for lag, metric in _metrics(self.profile, s):
                     previous_month = month_at(month_number(month) - lag)
                     previous = indexed.get((s, previous_month))
                     point[metric] = None
@@ -592,7 +612,17 @@ class CpiTimeSeriesService:
                         and previous["index_value"] is not None
                         and previous.get("availability") not in {"withdrawn", "unknown"}
                     ):
-                        calculate = _ratio if metric.endswith("_ratio") else _rate
+                        calculate = (
+                            _difference
+                            if metric
+                            in {
+                                "net_change_1m_thousand_jobs",
+                                "change_1m_percentage_points",
+                            }
+                            else _ratio
+                            if metric.endswith("_ratio")
+                            else _rate
+                        )
                         point[metric] = calculate(
                             point["index_value"], previous["index_value"]
                         )
@@ -691,6 +721,29 @@ class CpiTimeSeriesService:
                 "means 0. coverage_complete describes index coverage only and "
                 "does not assert complete official monthly percent coverage. "
                 "mom_pct/yoy_pct and change_km_ratio remain derived from T20804."
+            )
+        if self.profile is EMPLOYMENT_PROFILE:
+            for point in points + unavailable + withdrawn:
+                point["value"] = point.pop("index_value")
+                point.update(self.profile.series_metadata[point["series_id"]])
+                for inputs in point.get("calculation_inputs", {}).values():
+                    inputs["comparison_value"] = inputs.pop("denominator_index_value")
+            result["units"] = {
+                "value": "per_series_value_unit",
+                "net_change_1m_thousand_jobs": "thousand_jobs",
+                "change_1m_percentage_points": "percentage_points",
+                "mom_pct": "percent",
+                "yoy_pct": "percent",
+                "change_1m_ratio": "ratio",
+                "change_12m_ratio": "ratio",
+            }
+            result["calculation_method"] = (
+                "CES total nonfarm: value[t]-value[t-1], thousand jobs, not people. "
+                "CPS unemployment rate: value[t]-value[t-1], percentage points. "
+                "CES AHE: USD/hour; mom_pct/yoy_pct and 1m/12m ratios derived "
+                "from same-cutoff endpoints, not annualized. Official net_changes "
+                "and pct_changes remain separate in provider_calculations. "
+                "Revision 1 is first local observation, not official first release."
             )
         if persist:
             result.update(saved)

@@ -91,10 +91,52 @@ PCE_PROFILE = BlsTimeSeriesProfile(
 )
 
 
+EMPLOYMENT_PROFILE = BlsTimeSeriesProfile(
+    key="employment",
+    label="Employment Situation; seasonally adjusted CES and CPS base series",
+    series_ids=("CES0000000001", "LNS14000000", "CES0500000003"),
+    schema="mdf_employment_timeseries_dev_r1",
+    raw_prefix="employment-timeseries/dev-r1/sha256/",
+    earliest_month=None,
+    lock_id=78328741642028104,
+    rates_view="employment_timeseries_rates",
+    explicit_series_metadata=(
+        (
+            "CES0000000001",
+            (
+                ("indicator", "total_nonfarm"),
+                ("seasonal_adjustment", "SA"),
+                ("survey", "CES"),
+                ("value_unit", "thousand_jobs"),
+            ),
+        ),
+        (
+            "LNS14000000",
+            (
+                ("indicator", "unemployment_rate"),
+                ("seasonal_adjustment", "SA"),
+                ("survey", "CPS"),
+                ("value_unit", "percent"),
+            ),
+        ),
+        (
+            "CES0500000003",
+            (
+                ("indicator", "average_hourly_earnings"),
+                ("seasonal_adjustment", "SA"),
+                ("survey", "CES"),
+                ("value_unit", "USD/hour"),
+            ),
+        ),
+    ),
+)
+
+
 def validate_profile(profile):
     """Only builtins may supply SQL identifiers, series and raw namespaces."""
     if all(
-        profile is not builtin for builtin in (CPI_PROFILE, PPI_PROFILE, PCE_PROFILE)
+        profile is not builtin
+        for builtin in (CPI_PROFILE, PPI_PROFILE, PCE_PROFILE, EMPLOYMENT_PROFILE)
     ):
         raise ValueError("bls_timeseries_profile_invalid")
     return profile

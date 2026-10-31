@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
+    EMPLOYMENT_PROFILE,
     validate_profile,
 )
 from market_data_foundation.historical.bls_web_transport import (
@@ -215,6 +216,8 @@ def parse_official_calendar(raw):
 
 def parse_official_history(raw, *, profile=CPI_PROFILE):
     """BLS annual/month list: explicit 'Index for Month Year' only."""
+    if profile is EMPLOYMENT_PROFILE:
+        raise CpiScheduleError("employment_schedule_not_connected")
     if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_CALENDAR_BYTES:
         raise CpiScheduleError("calendar_payload_invalid")
     parser = _ScheduleTable()
@@ -289,6 +292,8 @@ def parse_official_ics(raw, *, profile=CPI_PROFILE, known_uids=()):
     ambiguous/nonexistent wall times require review rather than approximation.
     """
     profile = validate_profile(profile)
+    if profile is EMPLOYMENT_PROFILE:
+        raise CpiScheduleError("employment_schedule_not_connected")
     titles = (
         {"consumer price index"}
         if profile.key == "cpi"
@@ -565,6 +570,8 @@ class CpiReleaseScheduler:
         profile=CPI_PROFILE,
     ):
         self.profile = validate_profile(profile)
+        if profile is EMPLOYMENT_PROFILE:
+            raise CpiScheduleError("employment_schedule_not_connected")
         self.asset_key = profile.key
         self.series_ids = profile.series_ids
         self.calendar_title = (
