@@ -1,6 +1,6 @@
 """Rebuild a minimal offline retail wire contract with the production serializer.
 
-No DEV response, database, ASGI bridge, provider or credentials are used.
+Only synthetic in-process HTTP is used; no DEV response, database or provider.
 """
 
 import json
@@ -9,14 +9,23 @@ from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
+from fastapi.responses import JSONResponse
+
 from market_data_foundation.historical.census_retail_release_schedule import (
     CALENDAR_URL,
 )
 from market_data_foundation.historical.retail_release_scheduler import (
     RetailReleaseScheduler,
 )
-from market_data_foundation.web.retail_timeseries import json_value
+from market_data_foundation.web.retail_timeseries import (
+    PREFIX,
+    RetailTimeSeriesHost,
+    create_app,
+    json_value,
+)
 from market_data_foundation.web.retail_timeseries_host import RetailContinuousHost
+from tests.test_cpi_timeseries_web import no_network  # noqa: F401
+from tests.test_ppi_timeseries_web import client
 
 
 def body():
@@ -130,7 +139,7 @@ def body():
 
 
 def serialized_body():
-    return json.dumps(json_value(body()), separators=(",", ":")) + "\n"
+    return JSONResponse(json_value(body())).body.decode("utf-8") + "\n"
 
 
 def test_frontend_wire_fixture_matches_real_backend_decimal_serialization():
@@ -139,6 +148,28 @@ def test_frontend_wire_fixture_matches_real_backend_decimal_serialization():
     wire = json.loads(sample.read_text())
     assert wire["points"][0]["official_headline_mpcsm"]["value"] == "0E-9"
     assert wire["points"][1]["headline_rates"]["1"]["value"] == "1.25E-7"
+
+    # The frontend consumes this exact body. Exercise the actual router/response
+    # serializer as well as the fixture helper, with only the service injected.
+    calls = []
+
+    def query(start, end, **options):
+        calls.append((start, end, options))
+        return body()
+
+    app = create_app(
+        RetailTimeSeriesHost(SimpleNamespace(query_range=query), query_allowed=True),
+        authorize=lambda _: True,
+    )
+    with client(app) as http:
+        response = http.get(
+            PREFIX + "/query",
+            params={"start": "2025-10", "end": "2026-12", "local_only": "true"},
+        )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+    assert response.text + "\n" == sample.read_text()
+    assert calls == [("2025-10", "2026-12", {"local_only": True})]
 
 
 if __name__ == "__main__":

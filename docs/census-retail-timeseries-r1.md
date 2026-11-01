@@ -1,10 +1,12 @@
-# Census MARTS continuous input foundation R1 candidate
+# Census MARTS continuous input foundation R1
 
-This is an unbound, reviewable backend candidate. The bounded storage/service/API
-implementation below adds explicit factories; imports and GET requests do not
-create a database, enable an asset, bind the shared WebUI, or start a worker. It
-does not qualify an operational continuous service. The fixed two-month T05 candidate and its
-limited qualification in `census-retail-r1.md` remain unchanged.
+当前代码包含连续来源、独立存储、共享 WebUI、手动任务和官方日历周期 worker 的显式绑定。
+开发与审查共同入口见 [五族基线指南](macro-family-development-review.md)。
+导入模块或 GET 不建库、不启用资产、不启动 worker；代码能力不证明当前运行状态或未来自然发布已验收。
+
+本文依次保留来源核心、独立后端和共享 DEV 接线的阶段合同。下文早期的 unbound / no worker
+描述仅适用于相应独立组件与当时验证，不描述后续共享 Host 的现有能力。
+固定两月 T05 的原合同与有限资格见 [历史 T05](census-retail-r1.md)，保持不变。
 
 ## Source contract and request budget
 
@@ -40,7 +42,7 @@ classifications, retryable HTTP statuses and 1/2-second backoff are reused.
 There are at most three wire attempts per logical batch. Retry-After delta
 seconds and HTTP dates are honored. A wait exceeding five seconds returns a
 safe error with aware UTC `retry_at`; HTTP 429 has a conservative minimum
-300-second deferral. No polling or worker is provided. The caller must retain
+300-second deferral. The source component itself provides no polling or worker. The caller must retain
 and respect a returned retry time before another invocation. There is no durable
 cross-process admission state in this candidate.
 
@@ -198,7 +200,8 @@ Collection results report COMPLETED/PARTIAL/ERROR, safe classification,
 collection_id, planned/completed/staged batches, new saved points, attempts in
 this invocation, attempts attached to retained successful batches, and retry_at.
 The caller must respect retry_at and serialize execution of a collection_id.
-There is no persistent scheduler, global retry admission or general task system.
+This standalone collection service has no scheduler or global retry admission;
+the shared Host's periodic scheduler is described below.
 Process failure before archive publication, unavailable/corrupt archives, and
 archive retention/backup require host handling; resume never substitutes another
 provider or treats a local read error as a source gap.
@@ -258,8 +261,8 @@ There is no default credential/config lookup. Example after root provides a bind
 .venv/bin/python scripts/retail_timeseries.py query --service-factory retail_binding:build --start 2026-08 --end 2026-09 --local-only
 ```
 
-Shared running UI, retail asset activation, calendar/worker and periodic strategy
-remain unbound. Root still owns independent code review, isolated PostgreSQL
+At this standalone-backend stage, shared UI, activation and calendar/worker were
+unbound; subsequent explicit bindings are documented below. Root owns independent code review, isolated PostgreSQL
 execution/rollback evidence, permission decisions and any future runtime binding.
 No employment migration or existing four-family behavior is changed.
 
@@ -310,15 +313,16 @@ SQL/API ratio differences were below 1e-26. Three changed inputs created exactly
 three revisions; unchanged recollection created none. Read-only ASGI requests,
 historical cutoffs, unknown-confirmation masking and reconciliation passed.
 The temporary schema was removed; all four existing family schemas and grants
-were unchanged. A long-lived retail schema and shared runtime remain unbound.
+were unchanged. At that verification stage, a long-lived retail schema and shared runtime were unbound.
 
-## Shared DEV Web candidate (2026-11-01, offline implementation)
+## Shared DEV Web binding (2026-11-01, implementation scope)
 
 The shared `create_timeseries_preview` / `TimeSeriesRuntime` now accepts explicit
-retail bindings. This code has not switched the running DEV service, created its
-long-lived schema, granted privileges or made a real Census request. T05 remains
+retail bindings. The implementation task did not switch the running DEV service,
+create its long-lived schema, grant privileges or make a real Census request. T05 remains
 `source_qualified=False`; its fixed snapshot is navigation metadata, never proof
-of continuous qualification. Retail periodic policy/calendar worker is not enabled.
+of continuous qualification. Policy/calendar worker code is described below;
+runtime enablement and natural publication verification require separate evidence.
 The existing four families retain their own factories, schemas and strategy state.
 
 Root extends its existing `scripts/mdf_cpi_timeseries_web.py` invocation (including
@@ -371,7 +375,8 @@ and `/executions`; each job's id is exactly its service `collection_id`. A faile
 or interrupted job can be explicitly POSTed to `/jobs/resume` with the **same**
 command. Retained successful inputs reconcile locally; persisted `retry_at` is
 honored. Unknown submission is not automatically reissued. Archives and jobs must
-be retained across restarts. There is no automatic retry worker.
+be retained across restarts. Manual unknown outcomes require explicit resume;
+the official-calendar worker below handles its separately planned periodic work.
 
 Read back via GET `/query?start=2026-08&end=2026-09&local_only=true` and optionally
 history with URL-encoded `as_of=...%2B08%3A00`. GET never performs DDL or writes.

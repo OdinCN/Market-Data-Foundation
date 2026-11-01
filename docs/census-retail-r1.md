@@ -1,5 +1,8 @@
 # T05 Census Retail R1 candidate
 
+> 历史适用范围：本文保留 T05 固定两月快照及当时资格合同，不描述当前连续服务。
+> 连续五族开发与审查入口见 [五族基线指南](macro-family-development-review.md)，零售差异见 [连续合同](census-retail-timeseries-r1.md)。
+
 This closes the existing candidate for reference `2026-09`, with comparison
 period `2026-08`. It does not activate a binding or establish complete source
 qualification. The deterministic fixtures are synthetic. The parser correction

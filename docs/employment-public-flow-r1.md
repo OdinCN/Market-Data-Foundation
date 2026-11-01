@@ -1,5 +1,7 @@
 # 美国就业公共 DEV 流程 R1
 
+开发与审查先读 [五族基线指南](macro-family-development-review.md)；本文保留就业公共流程及迁移证据。
+
 连续就业能力通过显式 `EmploymentTimeSeriesHost` 接入 MACRO 公共流程，前缀
 `/api/r5/employment/timeseries`。启用 MACRO 的 `employment` 能力、BLS 凭据、
 Host 开关、DEV 读取权限及采集权限分别核实。未装配 Host 时返回

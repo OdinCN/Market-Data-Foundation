@@ -49,10 +49,12 @@ and `docs/qualification/q0-runtime.md` for tested runtime/candidate evidence.
 repositories. Same-repository CI does not require it. Never put its value, other
 credentials, private keys or production data in this repository.
 
-## CPI / PPI 入口与共用 WebUI
+## 五族宏观连续时序与共用 WebUI
 
-当前交付覆盖 CPI 与 PPI 的查询、显式采集、预置周期策略、执行记录和 API 说明；
-共用 React/TypeScript WebUI 保持既有 PCE 读取兼容，不代表全部 MACRO 已完成或已生产部署。
+当前实现覆盖 CPI、PPI、PCE、美国就业和美国零售销售的连续查询、显式采集、
+预置周期策略、执行记录和 API 说明；部署权限及真实验证范围须分别核对。
+开发与审查统一入口见 [五族基线指南](docs/macro-family-development-review.md)，
+其中列明来源差异、代码复用、现有测试和 DEV 人工核对路径。
 参见 [Web 快速上手](docs/cpi-webui-quickstart-zh.md)、
 [CLI / 本机 API](docs/cpi-timeseries-cli-zh.md) 与
 [发布历史设计](docs/macro-publication-history-design.md)。服务地址与权限以 DEV 部署配置为准。
@@ -71,9 +73,4 @@ npm run build
 当前查询本地优先，真实缺口仅临时读取上游、不落库；strict 历史查询仅按本地 available 截止。
 初始化 revision=1 不等于官方首发，官方全部 vintage 仍 unsupported；真实未来发布仍待自然验证。
 
-PPI 已完成开发环境真实初始化（2006-10 至 2026-09，802 条观测），
-请求范围 960 个“月×序列”位置中 158 个来源未返回，12 个月计算缓冲期另缺 48 个位置；
-这不代表完整 20 年覆盖。重复更新验证为 0 新增、0 修订；临时上游空缺查询已验证不入库，
-尚未验证返回正值的临时补取。官方日历获取、策略启用与有界 worker 心跳已验证，
-自然发布捕获尚未验证，也不代表常驻生产部署。
-代码入口、数据口径与验证边界见 [PPI 连续时间序列速览](docs/ppi-timeseries-quickstart-zh.md)。
+PPI 的来源差异及历史 DEV 验证证据见 [PPI 连续时间序列速览](docs/ppi-timeseries-quickstart-zh.md)。

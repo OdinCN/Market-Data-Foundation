@@ -1,5 +1,8 @@
 # BEA PCE retained candidate R1
 
+> 历史适用范围：本文保留固定快照、原始材料与 Publication 合同，不描述当前双表连续时序服务。
+> 当前开发与审查入口见 [五族基线指南](macro-family-development-review.md)，PCE 差异见 [连续速览](pce-timeseries-quickstart-zh.md)。
+
 This T04 candidate is bounded to BEA NIPA monthly T20807/T20804, lines 1 and 25,
 reference July 2026 and its July 2025 index comparison. The explicit
 [Source adapter](bea-pce-live-edge-r1.md) uses the standing BEA capability; real

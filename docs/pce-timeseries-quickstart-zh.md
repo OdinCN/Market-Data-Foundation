@@ -1,5 +1,7 @@
 # PCE 连续时间序列（DEV）
 
+共同入口与审查路径见 [五族基线指南](macro-family-development-review.md)；本文保留 BEA 双表及 PCE 接线差异。
+
 新接口前缀 `/api/r5/pce/timeseries`，操作与 CPI/PPI 共用：
 `GET status/query/api-help/jobs/strategy/schedule/executions`、`POST jobs`、
 `PUT strategy`。运行时属性 `pce_timeseries` 独立于旧 PCE exact/history reader；

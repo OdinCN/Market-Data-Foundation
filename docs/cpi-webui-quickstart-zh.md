@@ -1,5 +1,7 @@
 # CPI WebUI 快速上手
 
+开发与审查先读 [五族基线指南](macro-family-development-review.md)；下文保留 CPI 操作说明。
+
 本基线已初步验收 CPI 查询、采集、预置周期策略、执行记录与 API 说明；兼容共用 WebUI 的既有 PCE 读取。
 范围仅为 CPI 样本，不代表全部 MACRO 完成或生产部署；历史 live 验收不承诺当前服务可用。
 
