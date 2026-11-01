@@ -1,8 +1,9 @@
 # Census MARTS continuous input foundation R1 candidate
 
-This is an unbound, reviewable data core. It does not enable retail collection,
-create a database, expose HTTP/WebUI routes, start a calendar worker, or qualify
-an operational continuous service. The fixed two-month T05 candidate and its
+This is an unbound, reviewable backend candidate. The bounded storage/service/API
+implementation below adds explicit factories; imports and GET requests do not
+create a database, enable an asset, bind the shared WebUI, or start a worker. It
+does not qualify an operational continuous service. The fixed two-month T05 candidate and its
 limited qualification in `census-retail-r1.md` remain unchanged.
 
 ## Source contract and request budget
@@ -47,9 +48,9 @@ Only transport failures and transient HTTP responses are retried. Successful
 responses are parsed, checked, timestamped and assembled outside retry. A parse,
 clock, or other local failure never reissues that successful request. A later
 batch failure does not repeat earlier successful batches within the invocation;
-no partial successful snapshot is returned. Durable partial acquisition/resume
-belongs to the later collection integration, which must retain successful inputs
-rather than blindly restart a failed initialization.
+no partial successful snapshot is returned. The explicit collection service now supplies per-batch persistence and resume
+through `completed`/`on_batch`; the default source-only call still returns no
+partial snapshot. Successful guarded inputs are retained before each DB write.
 
 ## Raw input, availability and lineage
 
@@ -76,9 +77,8 @@ The network Source checks exact credential bytes and decoded JSON strings for
 credential echoes before raw bytes can enter `RetailBatch`. JSON unicode escapes
 cannot bypass the guard. Raw is excluded from object repr. Failures contain only
 classification, attempt count, status and retry time, without provider exception
-text. There is no logging or artifact writer in this core. A future persistence
-adapter must keep guarded raw and safe observations under ignored `artifacts/`,
-not in Git. Offline `parse_range_response` can additionally accept
+text. There is no logging or artifact writer in this core. The backend file archive keeps guarded raw and replay metadata under an explicit
+`artifacts/` directory, outside Git. Offline `parse_range_response` can additionally accept
 `forbidden_secret`; without a known credential it cannot certify echo absence.
 
 ## Calculation and snapshot semantics
@@ -134,30 +134,114 @@ TBA stays null and visible. Every event retains source URL and raw SHA-256;
 publication or readiness. No release time, calendar worker or UI entry is
 hardcoded or enabled by this candidate.
 
-## Next integration boundary
+## Bounded storage/service/HTTP implementation (2026-11-01)
 
-The next task must connect this verified core to the existing unified collection,
-DB/HTTP and shared UI/strategy contracts, with explicit provider admission and
-review. It must:
+`historical/retail_timeseries_store.py` provides independent in-memory and
+PostgreSQL ports, without inheriting CPI storage or reusing a CPI capability.
+`schema_sql(schema)` returns reviewable SQL; only explicit collection calls invoke
+`ensure_schema()`. PostgreSQL receives an existing autocommit connection and
+`FileRetailBatchArchive`; no credentials, connection discovery, grants, migrations
+or real database execution are included. The schema defaults to
+`retail_timeseries_candidate`; root must select the real schema, privileges and
+migration. Isolation schemas accept lowercase SQL identifiers of at most 63
+characters and are quoted; data and cutoffs use bound SQL parameters.
 
-1. Persist versioned **raw source cells**, availability, acquisition metadata and
-   raw lineage. Persist control outputs only as derived values with formula/input
-   lineage, never as provider-returned categories.
-2. Implement revisions/latest/rates and history cutoff selection on explicit
-   source snapshots first, using one common input cutoff for all five operands
-   and each comparison base. Recompute derived controls/rates after selecting
-   inputs; do not combine latest operands with historical bases or imply Census
-   as-published history without evidence. Define durable multi-batch completion
-   and recovery before exposing initialization.
-3. Adapt Decimal/aware datetime values to the shared storage/HTTP serialization
-   contract, preserving the difference between percent, ratio and million USD,
-   and exposing range gaps and unavailable calculations.
-4. Bind the official calendar to the shared worker with persistent retry budgets
-   and safe release probing. Scheduled time alone cannot mark data available.
-5. Complete independent Host review, source qualification and end-to-end
-   storage/readback/UI/strategy validation before enabling a retail product.
+Two tables, `batches` and `revisions`, retain six raw cells per month, month-start
+DATE, NUMERIC(27,9), original text/status/reason, raw digest/pointer, batch lineage,
+observed_at and nullable available_at. `latest` selects each input's latest local
+revision; `retail_timeseries_rates` is a convenient latest numeric projection with separate
+`official_headline_mpcsm_percent`. SQL views are current projections; historical
+service reads select all input versions before calculation. Only content changes
+(value, status, reason or original source text) append revisions; changed raw
+hash, row pointer or observation time alone do not. An unchanged acquisition
+remains a batch, and does not rewrite the previous revision's provenance.
 
-No existing half-connected retail page is exposed by this work.
+`RetailTimeSeriesService.initialize/update` default to 240 target months ending
+at the previous UTC calendar month, plus 12 comparison months. This calendar
+anchor makes no release-readiness claim. An explicit end with omitted start
+anchors 240 months at that end. Updates accept an explicit revision window or
+use the same bounded default. Each successful batch is archived and committed
+independently. A returned collection_id is an explicit replay key: resume with
+the exact same range and archive. A new collection_id is a new observation.
+
+Archive records publish atomically with file/directory fsync. Resume loads the
+same guarded bytes, timestamps and attempt counts, reconciles their batch IDs,
+and skips those source requests, including after a lost COMMIT acknowledgement.
+PostgreSQL writes serialize with a schema-specific transaction advisory lock;
+nested write transactions are rejected. Availability is sampled only after the
+data commit returns successfully and confirmed separately. A missing confirmation
+stays null in available history; explicit replay confirms it at the new time,
+never backdating it. An acknowledged unchanged replay does not append revisions.
+An older conflicting observation fails closed instead of reverting newer data.
+
+Collection results report COMPLETED/PARTIAL/ERROR, safe classification,
+collection_id, planned/completed/staged batches, new saved points, attempts in
+this invocation, attempts attached to retained successful batches, and retry_at.
+The caller must respect retry_at and serialize execution of a collection_id.
+There is no persistent scheduler, global retry admission or general task system.
+Process failure before archive publication, unavailable/corrupt archives, and
+archive retention/backup require host handling; resume never substitutes another
+provider or treats a local read error as a source gap.
+
+`query_range` reads local raw versions first. Current gaps (no local evidence or
+an explicit absent Census row) can be filled by the uniquely bound
+`CensusRetailRangeSource`, under both service and HTTP-host permission. The broad
+bounded Census query may include existing months; only gaps are complemented.
+Queries never archive or persist. `local_only`, history, any explicit cutoff, or
+available-basis selection forbid source access. Historical operands and all
+1/3/6/12 month comparison bases share one inclusive aware cutoff, normalized to
+UTC; default historical basis is post-commit availability. Local absence is
+`not_provided`, distinct from a returned `missing` row, null or suppression.
+Controls and ratios reuse the verified pure calculation after version selection.
+Revision 1 is only the first local observation, never an official first release.
+
+`web/retail_timeseries.py` exposes `timeseries_router` and `create_app` with actual
+GET `/api/r5/retail/timeseries/{status,query,api-help}` routes. Factories default to
+unbound/denied; the embedding host must provide a service, query permission,
+request authorization callback and, separately, source permission. GET routes
+perform no DDL. Decimal JSON values are strings, datetimes retain offsets, months
+are descending, and levels/derived ratios/official percent explicitly use
+`million_current_usd`/`ratio`/`percent`. `api-help` documents every query parameter,
+operand provenance, units, nulls, cutoff semantics and URL-encoded +08:00 examples.
+
+Minimal isolated assembly (root supplies connection and authorization):
+
+```python
+from market_data_foundation.historical.retail_timeseries_store import (
+    FileRetailBatchArchive,
+    PostgresRetailStore,
+)
+from market_data_foundation.historical.retail_timeseries import RetailTimeSeriesService
+from market_data_foundation.web.retail_timeseries import (
+    RetailTimeSeriesHost,
+    create_app,
+)
+
+store = PostgresRetailStore(
+    connection,
+    FileRetailBatchArchive(ignored_artifacts_directory),
+    schema="root_retail_isolated",
+)
+service = RetailTimeSeriesService(store)  # local reads; no source admission
+app = create_app(
+    RetailTimeSeriesHost(service, query_allowed=True),
+    authorize=authorize_request,
+)
+```
+
+The local CLI is `scripts/retail_timeseries.py` (or the historical CLI module),
+with initialize/init, update, query and status. Inject `service_factory` in Python,
+or explicitly select a trusted local `--service-factory module:callable` binder.
+There is no default credential/config lookup. Example after root provides a binder:
+
+```text
+.venv/bin/python scripts/retail_timeseries.py query --service-factory retail_binding:build --start 2026-08 --end 2026-09 --local-only
+```
+
+Shared running UI, retail asset activation, calendar/worker and periodic strategy
+remain unbound. Root still owns independent code review, isolated PostgreSQL
+execution/rollback evidence, permission decisions and any future runtime binding.
+No employment migration or existing four-family behavior is changed.
 
 ## Verification evidence
 
@@ -181,3 +265,29 @@ calculation evidence, not proof of a newly connected live service or database.
 - [MARTS API variables](https://api.census.gov/data/timeseries/eits/marts/variables.html) and [official query examples](https://api.census.gov/data/timeseries/eits/marts/examples.html) define the dimensions and key requirement.
 - [Retail definitions](https://www.census.gov/retail/definitions.html) explain current-dollar sales and identify estimates derived by users as their own calculations.
 - The [official advance report](https://www.census.gov/retail/marts/www/marts_current.pdf), checked 2026-10-31, names 08:30 EDT for the October release and 08:30 EST for the November schedule. This supports America/New_York rather than a fixed UTC offset.
+
+## Independent database review corrections
+
+The derived view is named `retail_timeseries_rates`, alongside `latest`,
+following the family naming convention. SQL division promotes its numerator to
+NUMERIC(64,32), avoiding PostgreSQL's shorter default quotient scale; API
+calculations remain Decimal precision 28.
+
+Available-time reads exclude an older confirmed input while a newer observed
+revision has an unknown commit confirmation. A cutoff before that newer
+observation can still read the past confirmed input. Reconciliation confirms
+the retained batch at the present confirmation time without backdating.
+
+Current queries preflight the total source budget and request only the span
+containing gaps in each admitted batch window. Query responses explicitly report
+their range, request/attempt counts and `persisted=false`. Local failures and
+historical queries cannot trigger upstream access.
+
+Independent Host verification used a temporary PostgreSQL schema and retained raw,
+with zero live Census requests. All 1,512 input cells and 240 target months were
+read back; 1,920 derived ratios matched an independent raw-data calculation.
+SQL/API ratio differences were below 1e-26. Three changed inputs created exactly
+three revisions; unchanged recollection created none. Read-only ASGI requests,
+historical cutoffs, unknown-confirmation masking and reconciliation passed.
+The temporary schema was removed; all four existing family schemas and grants
+were unchanged. A long-lived retail schema and shared runtime remain unbound.

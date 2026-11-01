@@ -56,6 +56,13 @@ def calculate_snapshot(snapshot: RetailInputSnapshot) -> tuple[RetailMonth, ...]
         for cell in batch.cells:
             _require(cell.key not in cells, "snapshot_duplicate_target")
             cells[cell.key] = cell
+    return calculate_inputs(plan, tuple(cells.values()), snapshot.identity)
+
+
+def calculate_inputs(plan, source_cells, identity):
+    """Project already selected raw versions without inventing a provider batch."""
+    cells = {cell.key: cell for cell in source_cells}
+    _require(len(cells) == len(source_cells), "snapshot_duplicate_target")
     first, last = _range(plan.input_start_month, plan.end_month)
     expected = {
         (month_at(n), category, "SM")
@@ -103,7 +110,7 @@ def calculate_snapshot(snapshot: RetailInputSnapshot) -> tuple[RetailMonth, ...]
             value, reason, inputs, f"level[t]/level[t-{horizon}]-1", "ratio"
         )
 
-    identity, result = snapshot.identity, []
+    result = []
     with localcontext() as context:
         context.prec, context.rounding = 28, ROUND_HALF_EVEN
         for n in range(month_number(plan.start_month), last + 1):

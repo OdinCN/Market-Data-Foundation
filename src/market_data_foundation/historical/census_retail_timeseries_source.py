@@ -375,7 +375,9 @@ class CensusRetailRangeSource:
                 ) from None
         raise AssertionError
 
-    def fetch(self, start_month, end_month, *, buffer_months=12):
+    def fetch(
+        self, start_month, end_month, *, buffer_months=12, completed=(), on_batch=None
+    ):
         _require(self._enabled is True, "explicit_opt_in_required")
         plan = self.plan(start_month, end_month, buffer_months=buffer_months)
         key = self._credential
@@ -383,11 +385,19 @@ class CensusRetailRangeSource:
             type(key) is str and re.fullmatch(r"[A-Za-z0-9]{16,128}", key) is not None,
             "credential_invalid",
         )
+        retained = {batch.request: batch for batch in completed}
+        _require(
+            len(retained) == len(completed) and set(retained) <= set(plan.requests),
+            "resume_batches_mismatch",
+        )
         total, batches = 0, []
         try:
             requested_at = _now(self._clock)
             client = self._transport or ExactCensusTransport()
             for request in plan.requests:
+                if request in retained:
+                    batches.append(retained[request])
+                    continue
                 try:
                     response, attempts = self._request(
                         client, request.persisted()["parameters"] | {"key": key}
@@ -414,9 +424,12 @@ class CensusRetailRangeSource:
                 )
                 observed_at = _now(self._clock)
                 _require(observed_at >= requested_at, "clock_regressed")
-                batches.append(
-                    RetailBatch(request, cells, response.body, observed_at, attempts)
+                batch = RetailBatch(
+                    request, cells, response.body, observed_at, attempts
                 )
+                if on_batch is not None:
+                    on_batch(batch)
+                batches.append(batch)
             return RetailInputSnapshot(plan, tuple(batches), requested_at)
         except RetailSourceError as error:
             raise RetailSourceError(
