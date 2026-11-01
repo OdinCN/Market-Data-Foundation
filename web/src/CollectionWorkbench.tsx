@@ -185,7 +185,7 @@ export function CollectionWorkbench({
     (sameKey(asset?.key, RETAIL) ||
       (route.fields.get("asset") === RETAIL.identity &&
         route.fields.get("asset_revision") === RETAIL.revision));
-  const newRetail = !!retailAvailability && !retailAvailability.legacy;
+  const newRetail = !!retailAvailability?.data && !retailAvailability.legacy;
   const newEmployment =
     !!employmentAvailability?.data && !employmentAvailability.legacy;
   const macroProfile = retailTarget
@@ -211,7 +211,7 @@ export function CollectionWorkbench({
   const newPce =
     !!pceAvailability && !pceAvailability.legacy && !!pceAvailability.data;
   const newMacro = retailTarget
-    ? newRetail
+    ? !!retailAvailability && !retailAvailability.legacy
     : employmentTarget
       ? !!employmentAvailability && !employmentAvailability.legacy
       : pceTarget

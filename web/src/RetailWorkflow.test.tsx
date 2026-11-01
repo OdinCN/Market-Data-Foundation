@@ -9,10 +9,15 @@ import {
 } from "@testing-library/react";
 import App from "./App";
 import { asgi, closeBridges } from "./workflowTestBridge";
-import { RETAIL, keyOf } from "./workflowModel";
+import { CPI, RETAIL, keyOf } from "./workflowModel";
 import { RETAIL_PROFILE as profile } from "./macroTimeSeriesProfile";
-import { buildCpiQueryRequest, type CpiJob } from "./cpiTimeSeriesApi";
+import {
+  buildCpiQueryRequest,
+  type CpiAvailability,
+  type CpiJob,
+} from "./cpiTimeSeriesApi";
 import type { Transport } from "./api";
+import { CollectionWorkbench } from "./CollectionWorkbench";
 const flush = () => act(async () => {});
 const response = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status });
@@ -170,6 +175,114 @@ afterEach(() => {
   sessionStorage.clear();
   location.hash = "";
   vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+it.each(["missing", "disabled", "loading", "failed"])(
+  "keeps legacy CPI record refresh independent of %s retail status",
+  async (state) => {
+    const calls: string[] = [];
+    const availability: CpiAvailability | undefined =
+      state === "missing"
+        ? undefined
+        : {
+            data: null,
+            legacy: false,
+            busy: state === "loading",
+            failure: state === "failed" ? "read_failed" : null,
+          };
+    render(
+      <CollectionWorkbench
+        assets={[]}
+        asset={undefined}
+        source={undefined}
+        route={{
+          view: "collection",
+          invalid: false,
+          fields: new URLSearchParams("tab=executions&execution_asset=all"),
+        }}
+        navigate={() => {}}
+        transport={async (path) => {
+          calls.push(String(path));
+          return response({
+            status: "OK",
+            asset_identity: CPI.identity,
+            asset_revision: CPI.revision,
+            jobs: [],
+            plans: [],
+          });
+        }}
+        generation={0}
+        invalidIdentity={false}
+        retailAvailability={availability}
+      />,
+    );
+    await flush();
+    expect(calls).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "回查执行记录" }));
+    await flush();
+    expect(calls).toHaveLength(4);
+    expect(
+      calls.every((path) => /^\/api\/r5\/cpi\/(jobs|plans)/.test(path)),
+    ).toBe(true);
+  },
+);
+it.each(["loading", "failed", "invalid"])(
+  "retains selected retail collection identity while status is %s",
+  async (state) => {
+    const h = fixture();
+    const calls: string[] = [];
+    const transport: Transport = async (path, init) => {
+      calls.push(String(path));
+      if (String(path).startsWith(profile.basePath + "/status")) {
+        if (state === "loading") return new Promise<Response>(() => {});
+        return state === "failed"
+          ? response({ classification: "not_enabled" }, 503)
+          : response({});
+      }
+      return h.transport(path, init);
+    };
+    location.hash = `ui=r5&view=collection&tab=new&asset=${RETAIL.identity}&asset_revision=${RETAIL.revision}`;
+    render(<App transport={transport} />);
+    await flush();
+    expect((screen.getByLabelText("采集目标") as HTMLSelectElement).value).toBe(
+      keyOf(RETAIL),
+    );
+    if (state === "loading")
+      expect(screen.getByText("正在核实 零售销售 采集服务…")).toBeTruthy();
+    else {
+      const form = within(
+        screen.getByRole("region", { name: "零售销售 受控采集" }),
+      );
+      expect(form.getByRole("alert").textContent).toContain(
+        "零售销售 服务状态未知",
+      );
+      expect(
+        (
+          form.getByRole("button", {
+            name: "提交 零售销售 采集",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+    }
+    expect(calls.some((path) => /\/cpi\//.test(path))).toBe(false);
+    expect(calls.some((path) => path.endsWith("/executions"))).toBe(false);
+  },
+);
+it("automatically refreshes confirmed retail records without the legacy refresh button", async () => {
+  vi.useFakeTimers();
+  const h = fixture();
+  location.hash = `ui=r5&view=collection&tab=executions&execution_asset=${encodeURIComponent(keyOf(RETAIL))}`;
+  render(<App transport={h.transport} />);
+  await flush();
+  const reads = () =>
+    h.calls.filter((call) => call.path === profile.basePath + "/executions");
+  expect(reads()).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: "回查执行记录" })).toBeNull();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  expect(reads()).toHaveLength(2);
+  expect(h.calls.every((call) => call.method === "GET")).toBe(true);
 });
 it("selects retail in the real shared App, preserves amount/raw precision, actual URL and descending months", async () => {
   const h = fixture();
