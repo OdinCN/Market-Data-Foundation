@@ -528,7 +528,7 @@ function CpiTimeSeriesContent({
             : employment
               ? "就业指标选择直接限定请求系列；缺值不补零。"
               : retail
-                ? "口径和显示指标控制表格展示；请求读取全部六原始输入及两种口径，不发送价格指数参数。"
+                ? "按所选口径返回结果；显示指标仅控制表格列。计算复用六项原始输入。"
                 : "显示指标只控制表格列；实际请求固定 measure=index，不发送列选择参数。"}
         </p>
         <RequestPreview request={request} />

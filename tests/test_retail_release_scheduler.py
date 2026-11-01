@@ -4,8 +4,11 @@ from datetime import timedelta
 
 import pytest
 
+from market_data_foundation.historical import macro_release_acquisition
+from market_data_foundation.historical.bls_timeseries_profile import CPI_PROFILE
 from market_data_foundation.historical.census_retail_live import HttpResult
 from market_data_foundation.historical.cpi_request_control import CpiRequestControl
+from market_data_foundation.historical.macro_release_records import ReleaseRecords
 from market_data_foundation.historical.retail_release_scheduler import (
     CensusControlledTransport,
     RetailReleaseScheduler,
@@ -21,6 +24,7 @@ from tests.test_census_retail_timeseries import (
     response,
 )
 from tests.test_cpi_timeseries_web_host import client
+from tests.test_macro_release_chain import Raw, material
 from tests.test_retail_timeseries_web import retail
 
 RAW = table([("September 2026", "October 15, 2026"), ("October 2026", "TBA")]).encode()
@@ -29,6 +33,19 @@ RAW = table([("September 2026", "October 15, 2026"), ("October 2026", "TBA")]).e
 def bound(tmp_path, monkeypatch):
     app, runtime, data, wire, calls = retail(tmp_path, monkeypatch)
     host = runtime.retail_timeseries
+    raw, expected_url = material("census-retail.html")
+    data.raw_store = Raw(CPI_PROFILE)
+    ReleaseRecords(data).prepare()
+    host.test_material_calls = []
+
+    def fetch_material(url, family):
+        assert url == expected_url and family == "retail"
+        host.test_material_calls.append((url, family))
+        return raw
+
+    monkeypatch.setattr(
+        macro_release_acquisition, "fetch_official_material", fetch_material
+    )
     now = [AT - timedelta(days=20)]
     host.clock = host.scheduler.clock = host.auto_strategy.clock = lambda: now[0]
     data.clock = lambda: now[0]
@@ -104,6 +121,10 @@ def test_real_target_history_inputs_readback_restart_and_reschedule(
     first_job = host.executions()["executions"][0]
     assert first_job["origin"] == "automatic" and first_job["stage"] == "target"
     assert first_job["request_id"] == first_job["collection_id"]
+    proof = first_job["result"]["release_material"]
+    assert proof["event_ids"] == ["census:advance-retail:2026-10-15"]
+    assert proof["evidence_ids"] and proof["transport_calls"] == 1
+    assert len(host.test_material_calls) == 1
     count = len(wire.calls)
     host.scheduler = RetailReleaseScheduler(
         host,
@@ -128,6 +149,7 @@ def test_real_target_history_inputs_readback_restart_and_reschedule(
     assert history["update_start"] == "2025-10"
     assert host.auto_strategy.tick()["action"] == "not_due"
     assert len(wire.calls) == count + 1
+    assert len(host.test_material_calls) == 1  # Retained event, no refetch.
 
 
 def test_missing_target_retries_new_response_and_tba_never_fabricated(

@@ -367,6 +367,7 @@ class MaterialAcquirer:
                     state="retained",
                     event_ids=[old["event_id"]],
                     evidence_ids=[old["evidence_id"]],
+                    evidence_origin="previous_bounded_official_transport",
                     material_outcomes=[dict(old, deduplicated=True)],
                     reasons=old.get("missing", []),
                 )
@@ -449,6 +450,11 @@ class MaterialAcquirer:
                     state="retained",
                     event_ids=[saved["event_id"]],
                     evidence_ids=[saved["evidence_id"]],
+                    evidence_origin=(
+                        "current_shared_original_material_cache"
+                        if family in {"pce", "consumption"} and not fetched
+                        else "current_bounded_official_transport"
+                    ),
                     reasons=saved["missing"],
                 )
             except Exception as error:

@@ -276,6 +276,8 @@ def test_actual_acquirer_reuses_bytes_but_imports_each_asset_scope(tmp_path):
     assert pce["evidence_ids"] != native["evidence_ids"]
     assert pce["transport_calls"] == 1 and native["transport_calls"] == 0
     assert calls == ["pce"]
+    assert pce["evidence_origin"] == "current_bounded_official_transport"
+    assert native["evidence_origin"] == "current_shared_original_material_cache"
     doc = ReleaseRecords(consumption).read()["events"][0]
     assert doc["retention"]["acquisition_method"] == "shared_original_material_cache"
     assert all(c["series_id"] in P.series_ids for c in doc["claims"])

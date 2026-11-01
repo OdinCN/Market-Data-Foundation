@@ -832,3 +832,36 @@ def test_range_evidence_and_first_capture_use_bounded_read_queries_without_boots
     assert len(connection.queries) <= 5
     assert all(sql.lstrip().startswith("SELECT") for sql in connection.queries)
     assert all(p["mdf_first_captured"] is None for p in points)
+
+
+def test_successful_transport_replaces_prior_operator_origin_without_rewriting_proof(
+    tmp_path,
+):
+    repo = repository("pce")
+    raw, url = material("bea-pio-202609.html")
+    prior = repo.import_material(
+        raw, url, acquisition_method="explicit_operator_import"
+    )
+    selection = dict(
+        source_url=url, source_date="2026-10-29", reference_month="2026-09"
+    )
+    calls = []
+
+    def fetch(*args):
+        calls.append(args)
+        return raw
+
+    acquirer = MaterialAcquirer(tmp_path / "state.json", fetcher=fetch)
+    result = acquirer.capture(repo.store, selection)
+    assert result["state"] == "retained" and result["transport_calls"] == 1
+    assert result["evidence_origin"] == "current_bounded_official_transport"
+    assert result["evidence_ids"] != [prior["evidence_id"]]
+    proofs = {p["evidence_id"]: p for p in repo.read()["events"][0]["evidence"]}
+    assert proofs[prior["evidence_id"]]["obtained_at"] == prior["obtained_at"]
+    assert (
+        proofs[prior["evidence_id"]]["retention"]["acquisition_method"]
+        == "explicit_operator_import"
+    )
+    again = acquirer.capture(repo.store, selection)
+    assert again["transport_calls"] == 0 and len(calls) == 1
+    assert again["evidence_origin"] == "previous_bounded_official_transport"
