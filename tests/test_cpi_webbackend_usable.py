@@ -225,10 +225,12 @@ def test_publication_event_never_claims_revision_time(fixture, monkeypatch):
     )
     result = host.publication_metadata(
         {
+            "start_month": "2026-08",
+            "end_month": "2026-09",
             "points": [
                 {"month": "2026-09", "revision": 7, "observed_at": NOW.isoformat()},
                 {"month": "2026-08", "revision": 1},
-            ]
+            ],
         }
     )
     event = result["points"][0]["publication_event"]
