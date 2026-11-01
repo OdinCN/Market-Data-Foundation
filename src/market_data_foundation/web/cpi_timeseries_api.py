@@ -342,7 +342,13 @@ class TimeSeriesHost:
         events = publication_events(
             self.scheduler.status() if snapshot is None else snapshot,
             self.official_origin,
+            as_of=result.get("as_of"),
         )
+        events = {
+            month: event
+            for month, event in events.items()
+            if result["start_month"] <= month <= result["end_month"]
+        }
         result["points"] = [
             dict(point, publication_event=events.get(point["month"]))
             for point in result["points"]
@@ -354,6 +360,7 @@ class TimeSeriesHost:
                 "description": (
                     "来自官方日历，不代表当前修订值当时已知；"
                     "历史默认按入库可用时间，显式 observed 按来源响应观察时间。"
+                    "as_of 仅展示截止前取得的日历及月份证据；缺失时不推算。"
                 ),
                 "semantics": "official_month_event_not_current_value_revision_time",
                 "binds_current_revision": False,

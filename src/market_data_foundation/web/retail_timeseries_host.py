@@ -14,7 +14,6 @@ from market_data_foundation.historical.retail_release_scheduler import (
 )
 from market_data_foundation.historical.retail_timeseries import (
     RetailTimeSeriesService,
-    cutoff,
 )
 from market_data_foundation.historical.retail_timeseries_store import (
     PostgresRetailStore,
@@ -57,6 +56,7 @@ class RetailContinuousHost:
         clock=lambda: datetime.now(UTC),
         schedule_path=None,
         calendar_fetcher=None,
+        history_calendar_fetcher=None,
     ):
         if any(
             type(v) is not bool for v in (query_allowed, allow_collect, allow_source)
@@ -79,6 +79,7 @@ class RetailContinuousHost:
             schedule_path or self.journal.directory.parent / "retail-schedule.json",
             clock=clock,
             calendar_fetcher=calendar_fetcher,
+            history_calendar_fetcher=history_calendar_fetcher,
         )
         self.auto_strategy = RetailAutoStrategy(
             self.scheduler,
@@ -179,32 +180,7 @@ class RetailContinuousHost:
         return self.publication_metadata(result)
 
     def publication_metadata(self, result):
-        # Read the retained calendar, never refresh it. Execution targets omit
-        # past releases and cannot establish calendar coverage for those months.
-        calendar = self.scheduler.status().get("calendar", {})
-        acquired = cutoff(calendar.get("acquired_at"))
-        at = cutoff(result.get("as_of"))
-        rows = []
-        if acquired is not None and (at is None or acquired <= at):
-            for event in calendar.get("events", {}).values():
-                month = event["reference_month"]
-                if result["start_month"] <= month <= result["end_month"]:
-                    rows.append(
-                        dict(
-                            event,
-                            publication_status="scheduled"
-                            if event.get("status") == "scheduled"
-                            else "unknown",
-                            reference_month_evidence={
-                                "reference_month": month,
-                                "source": calendar.get("source"),
-                                "sha256": calendar.get("sha256"),
-                            },
-                        )
-                    )
-        return TimeSeriesHost.publication_metadata(
-            self, result, snapshot={"calendar_publications": rows}
-        )
+        return TimeSeriesHost.publication_metadata(self, result)
 
     def api_help(self):
         result = RetailTimeSeriesHost(object(), query_allowed=True).api_help()
@@ -213,7 +189,10 @@ class RetailContinuousHost:
             "fields": {
                 **result["fields"],
                 "publication_events/points.publication_event": (
-                    "retained official Census calendar by reference month; "
+                    "retained official Census Data Month / annual "
+                    "Period Covered calendar; "
+                    "worker maintains current and previous release years, named years "
+                    "can be imported; only evidenced months, not twenty-year coverage. "
                     "scheduled is a plan, never actual publication or revision "
                     "availability. Includes months with null levels. Missing month "
                     "has null event; TBA/unknown has unknown status and null time. "

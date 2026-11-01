@@ -70,6 +70,8 @@ def retail(tmp_path, monkeypatch, **options):
             expected_revision=old.revision, enabled_capability_ids=["cpi", "retail"]
         ),
     )
+    if runtime.retail_timeseries is not None:
+        runtime.retail_timeseries.scheduler.history_calendar_fetcher = None
     return app, runtime, data, wire, calls
 
 

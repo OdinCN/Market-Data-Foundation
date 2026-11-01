@@ -95,6 +95,9 @@ def test_calendar_only_history_future_unknown_get_and_cutoff(asset, request, tmp
             assert response.status_code == 200, response.text
             result = response.json()
             events = {e["reference_month"]: e for e in result["publication_events"]}
+            if extra:
+                assert events == {}
+                continue
             assert set(events) == {"2026-05", "2026-10"}
             assert all(e["status"] == "scheduled" for e in events.values())
             assert events["2026-05"]["time"] == "2026-06-10T12:30:00+00:00"
@@ -239,3 +242,38 @@ def test_bls_conflicting_month_evidence_never_assigns_one_event_twice(request):
     assert len(events) == 2
     assert all(e["status"] == "unknown" and e["time"] is None for e in events.values())
     assert scheduler.status()["targets"] == []
+
+
+@pytest.mark.parametrize("asset", ["cpi", "ppi", "pce", "employment"])
+def test_real_provider_snapshot_cutoff_without_asgi(
+    asset, request, tmp_path, monkeypatch
+):
+    if asset == "pce":
+        _, host, _, _, _ = request.getfixturevalue("pce_fixture")
+        raw = bea_ics(
+            "Personal Income and Outlays, October 2026", at="20261125T133000Z"
+        )
+    elif asset == "employment":
+        from tests.test_employment_web import setup
+
+        _, runtime, _, _, _ = setup(tmp_path, monkeypatch)
+        host = runtime.employment_timeseries
+        raw = html(("October 2026", "Nov. 6, 2026", "08:30 AM"))
+    else:
+        _, hosts, _, _ = request.getfixturevalue("dual")
+        host = hosts[asset]
+        raw = html(("October 2026", "Nov. 10, 2026", "08:30 AM"))
+    host.scheduler.import_calendar(raw, host.clock())
+    saved = host.scheduler.state_path.read_bytes()
+    for at, expected in ((datetime(2026, 1, 1, tzinfo=UTC), 0), (host.clock(), 1)):
+        result = host.query(
+            {
+                "start": "2026-10",
+                "end": "2026-10",
+                "local_only": "true",
+                "query_mode": "history",
+                "as_of": at.isoformat(),
+            }
+        )
+        assert len(result["publication_events"]) == expected
+    assert host.scheduler.state_path.read_bytes() == saved

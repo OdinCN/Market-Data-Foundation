@@ -11,6 +11,8 @@ from uuid import NAMESPACE_URL, uuid5
 from market_data_foundation.historical.census_retail_release_schedule import (
     CALENDAR_URL,
     MAX_CALENDAR_BYTES,
+    annual_calendar_url,
+    parse_annual_calendar,
     parse_official_calendar,
 )
 from market_data_foundation.historical.census_retail_timeseries_source import (
@@ -54,14 +56,16 @@ class CensusControlledTransport:
 
 
 class CensusCalendarTransport:
-    def get(self):
+    def get(self, year=None):
         from market_data_foundation.historical.census_retail_live import HttpResult
 
         connection = http.client.HTTPSConnection("www.census.gov", timeout=20)
         try:
             connection.request(
                 "GET",
-                "/retail/release_schedule.html",
+                annual_calendar_url(year).removeprefix("https://www.census.gov")
+                if year is not None
+                else "/retail/release_schedule.html",
                 headers={"Accept-Encoding": "identity"},
             )
             response = connection.getresponse()
@@ -74,8 +78,9 @@ class CensusCalendarTransport:
 
 
 def calendar_fetcher(control):
-    def fetch():
-        response = CensusControlledTransport(CensusCalendarTransport(), control).get()
+    def fetch(year=None):
+        transport = CensusControlledTransport(CensusCalendarTransport(), control)
+        response = transport.get() if year is None else transport.get(year)
         if response.status != 200:
             raise RetailSourceError(
                 "census_retail_calendar_http_failure",
@@ -97,16 +102,26 @@ class RetailReleaseScheduler(PceReleaseScheduler):
     calendar_url = CALENDAR_URL
     auto_mode = True
 
-    def __init__(self, host, state_path, *, clock=now_utc, calendar_fetcher=None):
+    def __init__(
+        self,
+        host,
+        state_path,
+        *,
+        clock=now_utc,
+        calendar_fetcher=None,
+        history_calendar_fetcher=None,
+    ):
         self.host, self.clock = host, clock
         self.state_path = Path(state_path).resolve()
         self.history_start = "1992-01"
         self.calendar_fetcher = calendar_fetcher
+        self.history_calendar_fetcher = history_calendar_fetcher
 
     def _read(self):
         state = super()._read()
         if not self.state_path.exists():
             state["calendar"] = {"source": CALENDAR_URL, "events": {}}
+        self.history_start = state["history_start"]
         return state
 
     def _calendar_status(self, state, at):
@@ -132,8 +147,30 @@ class RetailReleaseScheduler(PceReleaseScheduler):
             if (s := t[n]).get("state") in {"pending", "awaiting_provider"}
             and s.get("next_attempt_at")
         ]
+        recent = state["calendar"].get("events", {})
+        publications = [
+            dict(
+                event,
+                publication_status=event.get("status", "unknown"),
+                reference_month_evidence=event.get("reference_month_evidence")
+                or {
+                    "reference_month": event["reference_month"],
+                    "source": state["calendar"].get("source"),
+                    "sha256": state["calendar"].get("sha256"),
+                    "acquired_at": state["calendar"].get("acquired_at"),
+                },
+            )
+            for event in recent.values()
+        ]
+        publications += [
+            event
+            for cache in state["calendar"].get("history_calendars", {}).values()
+            for event in cache.get("events", [])
+            if event["reference_month"] not in recent
+        ]
         return {
             **state,
+            "calendar_publications": publications,
             "provider": "Census",
             "calendar_status": self._calendar_status(state, now),
             "calendar_coverage": "official_data_month_only",
@@ -143,7 +180,43 @@ class RetailReleaseScheduler(PceReleaseScheduler):
     def _accept(self, state, raw, acquired):
         events = parse_official_calendar(raw)
         previous = {t["reference_month"]: t for t in state["targets"]}
-        targets, calendar = [], {}
+        targets = []
+        old_calendar = state["calendar"]
+        calendar = {
+            month: dict(
+                event,
+                acquired_at=event.get("acquired_at", old_calendar.get("acquired_at")),
+                reference_month_evidence=event.get("reference_month_evidence")
+                or {
+                    "reference_month": month,
+                    "source": CALENDAR_URL,
+                    "sha256": old_calendar.get("sha256"),
+                    "acquired_at": old_calendar.get("acquired_at"),
+                },
+            )
+            for month, event in old_calendar.get("events", {}).items()
+        }
+        first_month = min(e["reference_month"] for e in events) if events else None
+        present = {e["reference_month"] for e in events}
+        for month, old in list(calendar.items()):
+            if month not in present and (
+                not first_month
+                or month >= first_month
+                or (old.get("release_at") and _instant(old["release_at"]) >= acquired)
+            ):
+                calendar[month] = dict(
+                    old,
+                    status="cancelled",
+                    release_at=None,
+                    acquired_at=acquired.isoformat(),
+                    reference_month_evidence={
+                        "reference_month": month,
+                        "source": CALENDAR_URL,
+                        "sha256": hashlib.sha256(raw).hexdigest(),
+                        "acquired_at": acquired.isoformat(),
+                        "mapping": "removed_from_current_coverage",
+                    },
+                )
         for event in events:
             month, release = event["reference_month"], event["release_at"]
             at = release.isoformat() if release else None
@@ -152,6 +225,13 @@ class RetailReleaseScheduler(PceReleaseScheduler):
                 release_at=at,
                 status=event["status"],
                 actual_release_at=None,
+                acquired_at=acquired.isoformat(),
+                reference_month_evidence={
+                    "reference_month": month,
+                    "source": CALENDAR_URL,
+                    "sha256": event["sha256"],
+                    "acquired_at": acquired.isoformat(),
+                },
             )
             old = previous.pop(month, None)
             # Only future or tracked releases; never replay old initialization.
@@ -185,10 +265,12 @@ class RetailReleaseScheduler(PceReleaseScheduler):
             )
             targets.append(target)
         for old in previous.values():
-            old.update(calendar_execution_blocked=True, state="calendar_removed")
+            if calendar.get(old["reference_month"], {}).get("status") == "cancelled":
+                old.update(calendar_execution_blocked=True, state="calendar_removed")
             targets.append(old)
         state["targets"] = sorted(targets, key=lambda t: t["reference_month"])
         state["calendar"] = {
+            "history_calendars": old_calendar.get("history_calendars", {}),
             "source": CALENDAR_URL,
             "events": calendar,
             "acquired_at": acquired.isoformat(),
@@ -198,11 +280,87 @@ class RetailReleaseScheduler(PceReleaseScheduler):
         }
         self._save(state)
 
+    def _accept_history(self, state, raw, acquired, year):
+        events = parse_annual_calendar(raw, year=year)
+        caches = state["calendar"].setdefault("history_calendars", {})
+        previous = caches.get(str(year), {}).get("acquired_at")
+        if previous and acquired < _instant(previous):
+            raise RetailSourceError("census_retail_calendar_import_older_than_current")
+        caches[str(year)] = {
+            "source": annual_calendar_url(year),
+            "acquired_at": acquired.isoformat(),
+            "next_refresh_at": (acquired + timedelta(days=7)).isoformat(),
+            "events": [
+                dict(
+                    event,
+                    acquired_at=acquired.isoformat(),
+                    reference_month_evidence=dict(
+                        event["reference_month_evidence"],
+                        acquired_at=acquired.isoformat(),
+                    ),
+                )
+                for event in events
+            ],
+        }
+        self._save(state)
+
+    def import_history_calendar(self, raw, acquired_at, *, year):
+        acquired = _aware(acquired_at)
+        if acquired > _aware(self.clock()):
+            raise RetailSourceError("census_retail_calendar_acquired_at_in_future")
+        with self._locked():
+            self._accept_history(self._read(), raw, acquired, year)
+        return self.status()
+
+    def _refresh_history(self, state, now, years=None):
+        if self.history_calendar_fetcher is None:
+            return
+        for year in years if years is not None else (now.year - 1, now.year):
+            annual_calendar_url(year)
+            cache = (
+                state["calendar"].setdefault("history_calendars", {}).get(str(year), {})
+            )
+            due = cache.get("next_refresh_at")
+            if due and _instant(due) > now:
+                continue
+            try:
+                raw = self.history_calendar_fetcher(year)
+                self._accept_history(state, raw, _aware(self.clock()), year)
+            except Exception as error:
+                retry = now + timedelta(hours=6)
+                if getattr(error, "retry_at", None):
+                    retry_at = _instant(str(error.retry_at))
+                    retry = (
+                        retry_at
+                        if getattr(error, "classification", "").startswith(
+                            "census_retail_request_"
+                        )
+                        else max(retry, retry_at)
+                    )
+                cache.update(
+                    error=getattr(
+                        error,
+                        "classification",
+                        "census_retail_history_calendar_failure",
+                    ),
+                    last_refresh_attempt=now.isoformat(),
+                    next_refresh_at=retry.isoformat(),
+                )
+                state["calendar"]["history_calendars"][str(year)] = cache
+                self._save(state)
+
+    def refresh_history_calendars(self, *, years=None):
+        """Calendar-only maintenance, preserving strategy and execution identities."""
+        with self._locked():
+            self._refresh_history(self._read(), _aware(self.clock()), years)
+        return self.status()
+
     def _refresh(self, state, now):
         try:
             if self.calendar_fetcher is None:
                 raise RetailSourceError("census_retail_calendar_not_bound")
-            self._accept(state, self.calendar_fetcher(), now)
+            raw = self.calendar_fetcher()
+            self._accept(state, raw, _aware(self.clock()))
             return True
         except Exception as error:
             value = state["calendar"]
@@ -234,6 +392,23 @@ class RetailReleaseScheduler(PceReleaseScheduler):
             refresh = state["calendar"].get("next_refresh_at")
             if not refresh or _instant(refresh) <= now:
                 self._refresh(state, now)
+            # Low-priority calendar maintenance must not delay a release attempt.
+            collection_due_soon = any(
+                not target.get("calendar_execution_blocked")
+                and (
+                    stage["state"] == "running"
+                    or (
+                        stage["state"] in {"pending", "awaiting_provider"}
+                        and stage.get("next_attempt_at")
+                        and _instant(stage["next_attempt_at"])
+                        <= now + timedelta(minutes=2)
+                    )
+                )
+                for target in state["targets"]
+                for stage in (target["target"], target["history"])
+            )
+            if not collection_due_soon:
+                self._refresh_history(state, now)
             if self._calendar_status(state, now) != "fresh":
                 return {"action": "calendar_unavailable"}
             for target in state["targets"]:

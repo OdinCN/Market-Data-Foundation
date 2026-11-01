@@ -59,6 +59,7 @@ def bls_calendar_publications(state):
                 or event.get("mapping_status") == "release_time_pending"
                 else "scheduled",
                 "reference_month_evidence": evidence,
+                "acquired_at": calendar.get("acquired_at", calendar.get("fetched_at")),
             }
         )
     for row in result:
@@ -73,6 +74,11 @@ def bls_calendar_publications(state):
     result += [
         {
             **ref,
+            "acquired_at": calendar.get("acquired_at")
+            if unresolved_cancellation
+            else (ref.get("reference_month_evidence") or {}).get(
+                "acquired_at", calendar.get("acquired_at")
+            ),
             "publication_status": "unknown" if unresolved_cancellation else "scheduled",
         }
         for ref in references
@@ -81,8 +87,16 @@ def bls_calendar_publications(state):
     return result
 
 
-def publication_events(snapshot, official_origin):
+def publication_events(snapshot, official_origin, *, as_of=None):
     """Calendar cache supersedes execution snapshots; ambiguity withholds time."""
+    cutoff = (
+        as_of
+        if isinstance(as_of, datetime)
+        else datetime.fromisoformat(as_of)
+        if as_of
+        else None
+    )
+    cache = snapshot.get("calendar", {})
     calendar = snapshot.get("calendar_publications", [])
     authoritative = {row.get("reference_month") for row in calendar}
     rows = [
@@ -95,6 +109,26 @@ def publication_events(snapshot, official_origin):
     groups = {}
     for row in rows:
         evidence = row.get("reference_month_evidence") or {}
+        if cutoff is not None:
+            # Mapping evidence and current event evidence must both predate cutoff.
+            acquired = [
+                value
+                for value in (
+                    row.get(
+                        "acquired_at", cache.get("acquired_at", cache.get("fetched_at"))
+                    ),
+                    evidence.get("acquired_at"),
+                )
+                if value is not None
+            ]
+            if not acquired:
+                acquired = [cache.get("acquired_at", cache.get("fetched_at"))]
+            try:
+                stamps = [datetime.fromisoformat(value) for value in acquired]
+                if any(stamp.utcoffset() is None or stamp > cutoff for stamp in stamps):
+                    continue
+            except ValueError, TypeError:
+                continue
         month = row.get("reference_month")
         source = evidence.get("source") or evidence.get("evidence_url")
         if (

@@ -458,3 +458,54 @@ is not a service failure, official null, publication or release-time evidence.
 Absent inputs stay `not_provided`; no synthetic HTTP 200/JSON batch, raw hash,
 revision or persistence is created. Collection retains its previous failure/wait
 behavior. A nonempty 204 body remains a source-contract error.
+
+## Retained official calendar display
+
+The continuous DEV host reads the cached Census release schedule and annual
+`https://www.census.gov/economic-indicators/calendar-listview-YEAR.html` tables.
+Only the exact **Advance Monthly Sales for Retail and Food Services** rows and
+explicit **Period Covered** months are accepted. Release dates never imply the
+data month. America/New_York timezone rules preserve DST; the shared macro table
+renders Beijing time, planned, pending, cancelled and unmatched states for
+CPI/PPI/PCE/employment/retail alike.
+
+An enabled periodic worker maintains the current and previous **release years**
+(seven-day annual cache; independent refresh errors). Annual calendar HTTP shares
+the existing Census admission file with current-calendar and data requests.
+Explicit named-year imports support older evidence without a twenty-year
+coverage claim. The supplied 2025/2026 annual calendars contain 24 records,
+covering reference months 2024-12 through 2026-11. December 2026 requires explicit
+evidence from the current schedule or a subsequent annual calendar. October 2025
+maps to December 16, 2025 at 08:30 EST; November 2025 maps to January 14, 2026 at
+08:30 EST. No lag arithmetic or XLSX inference is used.
+
+Annual imports only add calendar evidence, never execution targets or data jobs.
+Current-calendar evidence wins for the same month; conflicting annual evidence
+uses the shared unknown/cancellation rules. Rolling current calendars retain
+past months before the new coverage begins. Explicit cancellations, TBA,
+retimings and removals within current coverage (or of future releases) supersede
+retained plans. The existing scheduler lock and atomic replace are reused.
+
+GET never fetches calendars or writes schedule/DB state. Each imported record
+retains source URL, SHA-256, acquisition time and the original Period Covered,
+release date/time cells. `as_of` withholds evidence acquired after cutoff, also
+for the other four macro families. Unknown acquisition times are withheld for
+historical cutoffs. This cache is not a complete archive of successive calendar
+revisions: an overwritten plan may be unavailable for earlier cutoffs. Planned
+calendar times never establish publication, revision availability or ingestion.
+
+Calendar-only maintenance (root supplies the **existing DEV** paths):
+
+```sh
+PYTHONPATH=src uv run --no-sync python scripts/import_retail_calendar_history.py \
+  --state "$RETAIL_SCHEDULE_PATH" --request-control "$CENSUS_REQUEST_CONTROL_PATH" \
+  --fetch --year 2025 --year 2026
+```
+
+This explicit fetch respects the shared budget and durable cooldowns. Alternatively
+use one `--year YEAR --html FILE --acquired-at ACTUAL_OFFSET_TIMESTAMP` without
+`--fetch`/`--request-control` for offline official HTML. Keep original files and
+runtime caches outside Git. The entrypoint validates an existing retail schedule
+and preserves its history start, targets, strategy and task identities.
+
+历史日历维护优先级低于数据采集：距离计划尝试不足两分钟、重试已到期或存在运行阶段时，worker 暂缓年度日历抓取，继续现有采集流程。

@@ -594,6 +594,11 @@ class TimeSeriesRuntime(ReadonlyRuntime):
                 if retail_allow_source
                 else None,
                 schedule_path=retail_schedule_path,
+                history_calendar_fetcher=(
+                    calendar_fetcher(self.retail_request_control)
+                    if retail_calendar_fetcher is None
+                    else None
+                ),
                 calendar_fetcher=retail_calendar_fetcher
                 or calendar_fetcher(self.retail_request_control),
                 job_directory=retail_job_directory,

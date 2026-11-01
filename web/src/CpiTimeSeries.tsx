@@ -93,7 +93,6 @@ const hasEvidence = (value: unknown): boolean => {
 };
 export function publicationText(
   point: Pick<CpiPoint, "month" | "publication_event">,
-  retail = false,
 ): string | null {
   const event = point.publication_event;
   if (
@@ -103,7 +102,7 @@ export function publicationText(
   )
     return null;
   if ((event.status ?? event.state) === "cancelled") return "已取消";
-  if (retail && (event.status ?? event.state) === "unknown")
+  if ((event.status ?? event.state) === "unknown")
     return "计划时间待定（TBA / 未知）";
   const time = event.time ?? event.publication_time;
   if (typeof time !== "string") return null;
@@ -586,18 +585,15 @@ function CpiTimeSeriesContent({
                               </td>
                             ))}
                             <td>
-                              {publicationText(
-                                {
-                                  month: row.month,
-                                  publication_event:
-                                    row.point?.publication_event ??
-                                    events.find(
-                                      (event) =>
-                                        event.reference_month === row.month,
-                                    ),
-                                },
-                                retail,
-                              ) ?? (retail ? "无对应月份记录" : "未获取")}
+                              {publicationText({
+                                month: row.month,
+                                publication_event:
+                                  row.point?.publication_event ??
+                                  events.find(
+                                    (event) =>
+                                      event.reference_month === row.month,
+                                  ),
+                              }) ?? "无对应月份记录"}
                             </td>
                             <td>
                               {!row.point

@@ -4,12 +4,16 @@ No DEV response, database, ASGI bridge, provider or credentials are used.
 """
 
 import json
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
 from market_data_foundation.historical.census_retail_release_schedule import (
     CALENDAR_URL,
+)
+from market_data_foundation.historical.retail_release_scheduler import (
+    RetailReleaseScheduler,
 )
 from market_data_foundation.web.retail_timeseries import json_value
 from market_data_foundation.web.retail_timeseries_host import RetailContinuousHost
@@ -115,10 +119,13 @@ def body():
             )
         },
     }
-    host = SimpleNamespace(
-        scheduler=SimpleNamespace(status=lambda: {"calendar": calendar}),
-        official_origin=CALENDAR_URL,
+    scheduler = RetailReleaseScheduler(
+        None,
+        Path("/synthetic-unused-schedule"),
+        clock=lambda: datetime(2026, 11, 1, 4, tzinfo=UTC),
     )
+    scheduler._read = lambda: {"calendar": calendar, "targets": []}
+    host = SimpleNamespace(scheduler=scheduler, official_origin=CALENDAR_URL)
     return RetailContinuousHost.publication_metadata(host, result)
 
 
