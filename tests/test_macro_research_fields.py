@@ -99,6 +99,7 @@ def core(profile):
 
 
 def make_host(profile, directory):
+    directory.mkdir(parents=True, exist_ok=True)
     packages_store = LocalPackageStore.initialize(
         directory / "packages", PackageCatalog()
     )

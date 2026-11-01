@@ -133,6 +133,13 @@ it.each([CPI_PROFILE, PPI_PROFILE, PCE_PROFILE])(
     fireEvent.change(screen.getByLabelText("开始月份"), {
       target: { value: "2025-12" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "统计篮子" }));
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "统计篮子选项" })).getByRole(
+        "button",
+        { name: "全选" },
+      ),
+    );
     fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
     const table = await screen.findByRole("table", {
       name: `${profile.label} 范围数据`,

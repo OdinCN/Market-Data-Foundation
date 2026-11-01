@@ -39,9 +39,13 @@ for (const profile of [CPI_PROFILE, PPI_PROFILE]) {
       />,
     );
   it(`${profile.label} counts the real 960/158 case, deduplicates and separates 48 buffer points`, () => {
-    const buffer = profile.series.flatMap(([id]) =>
-      Array.from({ length: 12 }, (_, i) => point(shiftMonth("2005-10", i), id)),
-    );
+    const buffer = profile.series
+      .filter(([id]) => profile.defaultQuerySeries?.includes(id))
+      .flatMap(([id]) =>
+        Array.from({ length: 12 }, (_, i) =>
+          point(shiftMonth("2005-10", i), id),
+        ),
+      );
     const missing = Array.from({ length: 158 }, (_, i) =>
       point(shiftMonth("2006-10", Math.floor(i / 4)), profile.series[i % 4][0]),
     );
@@ -95,7 +99,9 @@ for (const profile of [CPI_PROFILE, PPI_PROFILE]) {
     expect(screen.getByText("范围覆盖：4 / 4 条。")).toBeTruthy();
     expect(screen.queryByText("查看缺口明细")).toBeNull();
     view.unmount();
-    const missing = profile.series.map(([id]) => point("2026-09", id));
+    const missing = profile.series
+      .filter(([id]) => profile.defaultQuerySeries?.includes(id))
+      .map(([id]) => point("2026-09", id));
     show({
       coverage_complete: false,
       readback: {

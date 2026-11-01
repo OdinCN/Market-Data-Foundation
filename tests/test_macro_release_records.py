@@ -215,7 +215,9 @@ def test_explicit_cli_prepare_import_read_and_other_family_missing(tmp_path, cap
     assert main(["releases", "--as-of", AT.isoformat()], service_factory=factory) == 0
     assert '"provider_requests": 0' in capsys.readouterr().out
     other = ReleaseRecords(InMemoryTimeSeriesStore(profile=CPI_PROFILE))
-    assert "cpi_release_material_adapter_not_implemented" in other.read()["missing"]
+    assert other.read()["missing"] == [
+        "official_release_evidence_not_available_at_cutoff"
+    ]
     ddl = migration_sql(EMPLOYMENT_PROFILE)
     assert "CREATE SCHEMA" not in ddl and ".revisions" not in ddl
     assert "available_at timestamptz" in ddl
@@ -225,7 +227,7 @@ def test_surprise_requires_matching_pre_release_consensus_but_no_prior_value():
     from market_data_foundation.historical.macro_release_records import release_surprise
 
     doc = parse_employment_release(MATERIAL, URL)
-    actual = doc["claims"][0]
+    actual = dict(doc["claims"][0], confirmation_state="confirmed")
     consensus = {
         **{
             key: actual[key]
@@ -282,7 +284,7 @@ def test_projection_retention_is_explicit_and_raw_failure_is_classified():
     assert len(repo.read()["events"][0]["evidence"]) == 1
 
 
-def test_retail_release_endpoint_returns_specific_adapter_gap_without_opening_store(
+def test_retail_release_endpoint_is_local_without_bootstrap_or_provider(
     tmp_path, monkeypatch
 ):
     from tests.test_retail_timeseries_web import retail
@@ -293,11 +295,11 @@ def test_retail_release_endpoint_returns_specific_adapter_gap_without_opening_st
         assert response.status_code == 200
         doc = response.json()
         assert doc["events"] == []
-        assert doc["missing"] == ["retail_release_material_adapter_not_implemented"]
+        assert doc["missing"] == ["official_release_evidence_not_available_at_cutoff"]
         assert (
             http.get(
                 runtime.retail_timeseries.prefix + "/releases?as_of=2024-01-01"
             ).status_code
             == 400
         )
-    assert not calls and not wire.calls and not data.batches
+    assert calls == ["read", "read"] and not wire.calls and not data.batches

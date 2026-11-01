@@ -255,8 +255,15 @@ export type CpiPublicationEvent = {
   evidence?: unknown;
 };
 export type CpiPoint = {
+  related_release_events?: {
+    event_id: string;
+    evidence_ids: string[];
+    association: string;
+    reason: string | null;
+  }[];
   series_id: string;
   month: string;
+  batch_id?: string;
   annualized_3m_ratio?: string | number | null;
   annualized_6m_ratio?: string | number | null;
   provider_status?: {
@@ -287,6 +294,7 @@ export type CpiPoint = {
 };
 export type CpiGap = { series_id: string; month: string; reason?: string };
 export type CpiResult = {
+  release_records_missing?: string[];
   selected_columns?: string[];
   source_no_content?: {
     classification: "census_retail_no_content";
@@ -477,7 +485,8 @@ export async function queryCpiRange(
     throw new CpiServiceFailure("cpi_result_scope_unknown");
   return result;
 }
-export type CpiJobIntent = MacroPaths["/api/r5/cpi/timeseries/jobs"]["post"]["requestBody"]["content"]["application/json"];
+export type CpiJobIntent =
+  MacroPaths["/api/r5/cpi/timeseries/jobs"]["post"]["requestBody"]["content"]["application/json"];
 export type CpiJob = CpiJobIntent & {
   job_id: string;
   state: "running" | "complete" | "failed" | "unknown";

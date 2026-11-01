@@ -578,7 +578,10 @@ def test_http_actual_confirmation_makes_baseline_ratios_available_only_now(actua
         port=18766,
     )
     assert code == 200
-    assert result == {"confirmed_points": 52, "confirmed_at": clock.at.isoformat()}
+    assert result == {
+        "confirmed_points": 13 * len(service.profile.series_ids),
+        "confirmed_at": clock.at.isoformat(),
+    }
     for key, history in store._history.items():
         assert len(history) == len(before[key]) == 1
         assert {k: v for k, v in history[0].items() if k != "available_at"} == {

@@ -3,12 +3,13 @@
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
+from market_data_foundation.historical import macro_release_acquisition
 from market_data_foundation.historical.census_retail_release_schedule import (
     CALENDAR_URL,
 )
 from market_data_foundation.historical.cpi_timeseries import month_at, month_number
 from market_data_foundation.historical.macro_release_records import (
-    unsupported_release_records,
+    ReleaseRecords,
 )
 from market_data_foundation.historical.retail_release_scheduler import (
     RETAIL_PROFILE,
@@ -188,7 +189,16 @@ class RetailContinuousHost:
     def releases(self, params):
         if not self.query_allowed:
             raise WebError("local_read_not_authorized", 403)
-        return unsupported_release_records("retail", params, now=self.clock())
+        if set(params) - {
+            "event_id",
+            "as_of",
+            "read_mode",
+            "source_version",
+            "reference_month",
+        }:
+            raise WebError("unsupported_parameters")
+        with self.service() as service:
+            return ReleaseRecords(service.store).read(**params)
 
     def api_help(self):
         result = RetailTimeSeriesHost(object(), query_allowed=True).api_help()
@@ -287,6 +297,16 @@ class RetailContinuousHost:
                         service,
                         "update" if command["action"] == "update" else "initialize",
                     )(command["start"], command["end"], collection_id=job["job_id"])
+                    material = macro_release_acquisition.capture_for_execution(
+                        service,
+                        snapshot=self.scheduler.status(),
+                        start=command["start"],
+                        end=command["end"],
+                        state_path=self.scheduler.state_path.with_name(
+                            "retail-release-material.json"
+                        ),
+                        numeric_result=written,
+                    )
                 job["result"] = json_value(written)
                 with self.service() as service:
                     readback = service.query_range(
@@ -353,6 +373,7 @@ class RetailContinuousHost:
                 )
                 result = dict(
                     written,
+                    release_material=material,
                     saved_points=written["saved_observations"],
                     coverage_complete=verified and not gaps,
                     completion="source_coverage_partial"

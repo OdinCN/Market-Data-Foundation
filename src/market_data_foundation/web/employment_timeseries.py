@@ -65,8 +65,10 @@ class EmploymentTimeSeriesHost(TimeSeriesHost):
                     "withdrawn and unknown appear in missing-evidence arrays"
                 ),
                 "calculation_inputs": "same-cutoff comparison value and provenance",
-                "raw_sha256/raw_locator": (
-                    "material digest/nullable retained locator; no HTTP batch_id"
+                "raw_sha256/raw_locator": ("material digest/nullable retained locator"),
+                "batch_id": (
+                    "persisted numeric capture batch identity; "
+                    "not an official release ID"
                 ),
                 "change_1m_ratio/change_12m_ratio": "AHE ratios; 0.01 means 1%",
                 "net_change_1m_thousand_jobs": "CES month difference; thousand jobs",

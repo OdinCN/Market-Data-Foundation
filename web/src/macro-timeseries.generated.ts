@@ -786,20 +786,184 @@ export interface operations {
   };
   timeseries_releases_api_r5_cpi_timeseries_releases_get: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Exact canonical official event ID; BEA PIO shared across metrics and reference months. */
+        event_id?: string;
+        /** @description Optional YYYY-MM event COVERAGE filter, not only primary reference month. */
+        reference_month?: string;
+        /** @description Inclusive aware MDF availability cutoff, also applied to consensus and version associations. */
+        as_of?: string;
+        /** @description event (default) / source_history; retained official archives only; ALFRED not implemented and no latest fallback. */
+        read_mode?: string;
+        /** @description Exact source version DATE YYYY-MM-DD; remains date precision, never midnight publication time. */
+        source_version?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Successful Response */
+      /** @description Local retained evidence and per-scope absence; never creates schema or requests upstream. */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": unknown;
+          "application/json": {
+            /** @enum {string} */
+            read_mode?: "event" | "source_history";
+            /** Format: date-time */
+            as_of: string;
+            /** @constant */
+            as_of_basis: "available";
+            events: {
+              event_id: string;
+              family?: string;
+              reference_month?: string;
+              reference_months: string[];
+              actual_at?: string | null;
+              source_version: {
+                value: string;
+                /** @enum {string} */
+                precision: "date" | "instant" | "interval";
+                basis: string;
+                source: string;
+              };
+              claims: {
+                series_id: string;
+                reference_month: string;
+                statistic: string;
+                unit: string;
+                adjustment: string;
+                role: string;
+                value: string;
+                value_identity: string;
+                evidence_id?: string;
+                continuous_version?: {
+                  [key: string]: unknown;
+                } | null;
+                value_basis?: string;
+                publisher_reported_rate?: boolean;
+                confirmation_state?: string;
+                mdf_first_captured_missing?: string | null;
+                mdf_pre_event_previous_missing?: string | null;
+                mdf_pre_event_previous_basis?: string;
+                mdf_pre_event_guaranteed_previous?: {
+                  [key: string]: unknown;
+                } | null;
+                association?: {
+                  [key: string]: unknown;
+                } | null;
+                association_missing?: string | null;
+                mdf_first_captured?: {
+                  [key: string]: unknown;
+                } | null;
+                mdf_pre_event_last_consumable_previous?: {
+                  [key: string]: unknown;
+                } | null;
+                consensus?: {
+                  [key: string]: unknown;
+                } | null;
+                surprise?: string | null;
+                surprise_missing?: string[];
+                locator?: {
+                  [key: string]: unknown;
+                };
+              }[];
+              evidence: {
+                evidence_id?: string;
+                raw_sha256?: string;
+                raw_locator?: string;
+                obtained_at?: string;
+                available_at?: string;
+                parser_revision?: string;
+                source_url?: string;
+                source_version?: {
+                  value: string;
+                  /** @enum {string} */
+                  precision: "date" | "instant" | "interval";
+                  basis: string;
+                  source: string;
+                };
+                retention?: {
+                  [key: string]: unknown;
+                };
+                claims?: {
+                  series_id: string;
+                  reference_month: string;
+                  statistic: string;
+                  unit: string;
+                  adjustment: string;
+                  role: string;
+                  value: string;
+                  value_identity: string;
+                  evidence_id?: string;
+                  continuous_version?: {
+                    [key: string]: unknown;
+                  } | null;
+                  value_basis?: string;
+                  publisher_reported_rate?: boolean;
+                  confirmation_state?: string;
+                  mdf_first_captured_missing?: string | null;
+                  mdf_pre_event_previous_missing?: string | null;
+                  mdf_pre_event_previous_basis?: string;
+                  mdf_pre_event_guaranteed_previous?: {
+                    [key: string]: unknown;
+                  } | null;
+                  association?: {
+                    [key: string]: unknown;
+                  } | null;
+                  association_missing?: string | null;
+                  mdf_first_captured?: {
+                    [key: string]: unknown;
+                  } | null;
+                  mdf_pre_event_last_consumable_previous?: {
+                    [key: string]: unknown;
+                  } | null;
+                  consensus?: {
+                    [key: string]: unknown;
+                  } | null;
+                  surprise?: string | null;
+                  surprise_missing?: string[];
+                  locator?: {
+                    [key: string]: unknown;
+                  };
+                }[];
+              }[];
+              /** @enum {string} */
+              state: "confirmed" | "unknown";
+              missing?: string[];
+              missing_scopes?: {
+                series_id: string;
+                reference_month: string;
+                statistic: string;
+                unit: string;
+                adjustment: string;
+                reason: string;
+                coverage_basis?: string;
+                evidence_id?: string;
+              }[];
+              conflicts?: {
+                [key: string]: unknown;
+              }[];
+              consensus_snapshots?: {
+                [key: string]: unknown;
+              }[];
+            }[];
+            consensus_snapshots?: {
+              [key: string]: unknown;
+            }[];
+            missing: string[];
+            /** @constant */
+            provider_requests: 0;
+            /** @constant */
+            provider_attempts?: 0;
+            /** @constant */
+            persisted: false;
+            history_basis?: string;
+            coverage?: string;
+          };
         };
       };
     };
@@ -1022,20 +1186,184 @@ export interface operations {
   };
   timeseries_releases_api_r5_ppi_timeseries_releases_get: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Exact canonical official event ID; BEA PIO shared across metrics and reference months. */
+        event_id?: string;
+        /** @description Optional YYYY-MM event COVERAGE filter, not only primary reference month. */
+        reference_month?: string;
+        /** @description Inclusive aware MDF availability cutoff, also applied to consensus and version associations. */
+        as_of?: string;
+        /** @description event (default) / source_history; retained official archives only; ALFRED not implemented and no latest fallback. */
+        read_mode?: string;
+        /** @description Exact source version DATE YYYY-MM-DD; remains date precision, never midnight publication time. */
+        source_version?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Successful Response */
+      /** @description Local retained evidence and per-scope absence; never creates schema or requests upstream. */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": unknown;
+          "application/json": {
+            /** @enum {string} */
+            read_mode?: "event" | "source_history";
+            /** Format: date-time */
+            as_of: string;
+            /** @constant */
+            as_of_basis: "available";
+            events: {
+              event_id: string;
+              family?: string;
+              reference_month?: string;
+              reference_months: string[];
+              actual_at?: string | null;
+              source_version: {
+                value: string;
+                /** @enum {string} */
+                precision: "date" | "instant" | "interval";
+                basis: string;
+                source: string;
+              };
+              claims: {
+                series_id: string;
+                reference_month: string;
+                statistic: string;
+                unit: string;
+                adjustment: string;
+                role: string;
+                value: string;
+                value_identity: string;
+                evidence_id?: string;
+                continuous_version?: {
+                  [key: string]: unknown;
+                } | null;
+                value_basis?: string;
+                publisher_reported_rate?: boolean;
+                confirmation_state?: string;
+                mdf_first_captured_missing?: string | null;
+                mdf_pre_event_previous_missing?: string | null;
+                mdf_pre_event_previous_basis?: string;
+                mdf_pre_event_guaranteed_previous?: {
+                  [key: string]: unknown;
+                } | null;
+                association?: {
+                  [key: string]: unknown;
+                } | null;
+                association_missing?: string | null;
+                mdf_first_captured?: {
+                  [key: string]: unknown;
+                } | null;
+                mdf_pre_event_last_consumable_previous?: {
+                  [key: string]: unknown;
+                } | null;
+                consensus?: {
+                  [key: string]: unknown;
+                } | null;
+                surprise?: string | null;
+                surprise_missing?: string[];
+                locator?: {
+                  [key: string]: unknown;
+                };
+              }[];
+              evidence: {
+                evidence_id?: string;
+                raw_sha256?: string;
+                raw_locator?: string;
+                obtained_at?: string;
+                available_at?: string;
+                parser_revision?: string;
+                source_url?: string;
+                source_version?: {
+                  value: string;
+                  /** @enum {string} */
+                  precision: "date" | "instant" | "interval";
+                  basis: string;
+                  source: string;
+                };
+                retention?: {
+                  [key: string]: unknown;
+                };
+                claims?: {
+                  series_id: string;
+                  reference_month: string;
+                  statistic: string;
+                  unit: string;
+                  adjustment: string;
+                  role: string;
+                  value: string;
+                  value_identity: string;
+                  evidence_id?: string;
+                  continuous_version?: {
+                    [key: string]: unknown;
+                  } | null;
+                  value_basis?: string;
+                  publisher_reported_rate?: boolean;
+                  confirmation_state?: string;
+                  mdf_first_captured_missing?: string | null;
+                  mdf_pre_event_previous_missing?: string | null;
+                  mdf_pre_event_previous_basis?: string;
+                  mdf_pre_event_guaranteed_previous?: {
+                    [key: string]: unknown;
+                  } | null;
+                  association?: {
+                    [key: string]: unknown;
+                  } | null;
+                  association_missing?: string | null;
+                  mdf_first_captured?: {
+                    [key: string]: unknown;
+                  } | null;
+                  mdf_pre_event_last_consumable_previous?: {
+                    [key: string]: unknown;
+                  } | null;
+                  consensus?: {
+                    [key: string]: unknown;
+                  } | null;
+                  surprise?: string | null;
+                  surprise_missing?: string[];
+                  locator?: {
+                    [key: string]: unknown;
+                  };
+                }[];
+              }[];
+              /** @enum {string} */
+              state: "confirmed" | "unknown";
+              missing?: string[];
+              missing_scopes?: {
+                series_id: string;
+                reference_month: string;
+                statistic: string;
+                unit: string;
+                adjustment: string;
+                reason: string;
+                coverage_basis?: string;
+                evidence_id?: string;
+              }[];
+              conflicts?: {
+                [key: string]: unknown;
+              }[];
+              consensus_snapshots?: {
+                [key: string]: unknown;
+              }[];
+            }[];
+            consensus_snapshots?: {
+              [key: string]: unknown;
+            }[];
+            missing: string[];
+            /** @constant */
+            provider_requests: 0;
+            /** @constant */
+            provider_attempts?: 0;
+            /** @constant */
+            persisted: false;
+            history_basis?: string;
+            coverage?: string;
+          };
         };
       };
     };
@@ -1256,20 +1584,184 @@ export interface operations {
   };
   timeseries_releases_api_r5_pce_timeseries_releases_get: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Exact canonical official event ID; BEA PIO shared across metrics and reference months. */
+        event_id?: string;
+        /** @description Optional YYYY-MM event COVERAGE filter, not only primary reference month. */
+        reference_month?: string;
+        /** @description Inclusive aware MDF availability cutoff, also applied to consensus and version associations. */
+        as_of?: string;
+        /** @description event (default) / source_history; retained official archives only; ALFRED not implemented and no latest fallback. */
+        read_mode?: string;
+        /** @description Exact source version DATE YYYY-MM-DD; remains date precision, never midnight publication time. */
+        source_version?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Successful Response */
+      /** @description Local retained evidence and per-scope absence; never creates schema or requests upstream. */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": unknown;
+          "application/json": {
+            /** @enum {string} */
+            read_mode?: "event" | "source_history";
+            /** Format: date-time */
+            as_of: string;
+            /** @constant */
+            as_of_basis: "available";
+            events: {
+              event_id: string;
+              family?: string;
+              reference_month?: string;
+              reference_months: string[];
+              actual_at?: string | null;
+              source_version: {
+                value: string;
+                /** @enum {string} */
+                precision: "date" | "instant" | "interval";
+                basis: string;
+                source: string;
+              };
+              claims: {
+                series_id: string;
+                reference_month: string;
+                statistic: string;
+                unit: string;
+                adjustment: string;
+                role: string;
+                value: string;
+                value_identity: string;
+                evidence_id?: string;
+                continuous_version?: {
+                  [key: string]: unknown;
+                } | null;
+                value_basis?: string;
+                publisher_reported_rate?: boolean;
+                confirmation_state?: string;
+                mdf_first_captured_missing?: string | null;
+                mdf_pre_event_previous_missing?: string | null;
+                mdf_pre_event_previous_basis?: string;
+                mdf_pre_event_guaranteed_previous?: {
+                  [key: string]: unknown;
+                } | null;
+                association?: {
+                  [key: string]: unknown;
+                } | null;
+                association_missing?: string | null;
+                mdf_first_captured?: {
+                  [key: string]: unknown;
+                } | null;
+                mdf_pre_event_last_consumable_previous?: {
+                  [key: string]: unknown;
+                } | null;
+                consensus?: {
+                  [key: string]: unknown;
+                } | null;
+                surprise?: string | null;
+                surprise_missing?: string[];
+                locator?: {
+                  [key: string]: unknown;
+                };
+              }[];
+              evidence: {
+                evidence_id?: string;
+                raw_sha256?: string;
+                raw_locator?: string;
+                obtained_at?: string;
+                available_at?: string;
+                parser_revision?: string;
+                source_url?: string;
+                source_version?: {
+                  value: string;
+                  /** @enum {string} */
+                  precision: "date" | "instant" | "interval";
+                  basis: string;
+                  source: string;
+                };
+                retention?: {
+                  [key: string]: unknown;
+                };
+                claims?: {
+                  series_id: string;
+                  reference_month: string;
+                  statistic: string;
+                  unit: string;
+                  adjustment: string;
+                  role: string;
+                  value: string;
+                  value_identity: string;
+                  evidence_id?: string;
+                  continuous_version?: {
+                    [key: string]: unknown;
+                  } | null;
+                  value_basis?: string;
+                  publisher_reported_rate?: boolean;
+                  confirmation_state?: string;
+                  mdf_first_captured_missing?: string | null;
+                  mdf_pre_event_previous_missing?: string | null;
+                  mdf_pre_event_previous_basis?: string;
+                  mdf_pre_event_guaranteed_previous?: {
+                    [key: string]: unknown;
+                  } | null;
+                  association?: {
+                    [key: string]: unknown;
+                  } | null;
+                  association_missing?: string | null;
+                  mdf_first_captured?: {
+                    [key: string]: unknown;
+                  } | null;
+                  mdf_pre_event_last_consumable_previous?: {
+                    [key: string]: unknown;
+                  } | null;
+                  consensus?: {
+                    [key: string]: unknown;
+                  } | null;
+                  surprise?: string | null;
+                  surprise_missing?: string[];
+                  locator?: {
+                    [key: string]: unknown;
+                  };
+                }[];
+              }[];
+              /** @enum {string} */
+              state: "confirmed" | "unknown";
+              missing?: string[];
+              missing_scopes?: {
+                series_id: string;
+                reference_month: string;
+                statistic: string;
+                unit: string;
+                adjustment: string;
+                reason: string;
+                coverage_basis?: string;
+                evidence_id?: string;
+              }[];
+              conflicts?: {
+                [key: string]: unknown;
+              }[];
+              consensus_snapshots?: {
+                [key: string]: unknown;
+              }[];
+            }[];
+            consensus_snapshots?: {
+              [key: string]: unknown;
+            }[];
+            missing: string[];
+            /** @constant */
+            provider_requests: 0;
+            /** @constant */
+            provider_attempts?: 0;
+            /** @constant */
+            persisted: false;
+            history_basis?: string;
+            coverage?: string;
+          };
         };
       };
     };
@@ -1490,20 +1982,184 @@ export interface operations {
   };
   timeseries_releases_api_r5_employment_timeseries_releases_get: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Exact canonical official event ID; BEA PIO shared across metrics and reference months. */
+        event_id?: string;
+        /** @description Optional YYYY-MM event COVERAGE filter, not only primary reference month. */
+        reference_month?: string;
+        /** @description Inclusive aware MDF availability cutoff, also applied to consensus and version associations. */
+        as_of?: string;
+        /** @description event (default) / source_history; retained official archives only; ALFRED not implemented and no latest fallback. */
+        read_mode?: string;
+        /** @description Exact source version DATE YYYY-MM-DD; remains date precision, never midnight publication time. */
+        source_version?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Successful Response */
+      /** @description Local retained evidence and per-scope absence; never creates schema or requests upstream. */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": unknown;
+          "application/json": {
+            /** @enum {string} */
+            read_mode?: "event" | "source_history";
+            /** Format: date-time */
+            as_of: string;
+            /** @constant */
+            as_of_basis: "available";
+            events: {
+              event_id: string;
+              family?: string;
+              reference_month?: string;
+              reference_months: string[];
+              actual_at?: string | null;
+              source_version: {
+                value: string;
+                /** @enum {string} */
+                precision: "date" | "instant" | "interval";
+                basis: string;
+                source: string;
+              };
+              claims: {
+                series_id: string;
+                reference_month: string;
+                statistic: string;
+                unit: string;
+                adjustment: string;
+                role: string;
+                value: string;
+                value_identity: string;
+                evidence_id?: string;
+                continuous_version?: {
+                  [key: string]: unknown;
+                } | null;
+                value_basis?: string;
+                publisher_reported_rate?: boolean;
+                confirmation_state?: string;
+                mdf_first_captured_missing?: string | null;
+                mdf_pre_event_previous_missing?: string | null;
+                mdf_pre_event_previous_basis?: string;
+                mdf_pre_event_guaranteed_previous?: {
+                  [key: string]: unknown;
+                } | null;
+                association?: {
+                  [key: string]: unknown;
+                } | null;
+                association_missing?: string | null;
+                mdf_first_captured?: {
+                  [key: string]: unknown;
+                } | null;
+                mdf_pre_event_last_consumable_previous?: {
+                  [key: string]: unknown;
+                } | null;
+                consensus?: {
+                  [key: string]: unknown;
+                } | null;
+                surprise?: string | null;
+                surprise_missing?: string[];
+                locator?: {
+                  [key: string]: unknown;
+                };
+              }[];
+              evidence: {
+                evidence_id?: string;
+                raw_sha256?: string;
+                raw_locator?: string;
+                obtained_at?: string;
+                available_at?: string;
+                parser_revision?: string;
+                source_url?: string;
+                source_version?: {
+                  value: string;
+                  /** @enum {string} */
+                  precision: "date" | "instant" | "interval";
+                  basis: string;
+                  source: string;
+                };
+                retention?: {
+                  [key: string]: unknown;
+                };
+                claims?: {
+                  series_id: string;
+                  reference_month: string;
+                  statistic: string;
+                  unit: string;
+                  adjustment: string;
+                  role: string;
+                  value: string;
+                  value_identity: string;
+                  evidence_id?: string;
+                  continuous_version?: {
+                    [key: string]: unknown;
+                  } | null;
+                  value_basis?: string;
+                  publisher_reported_rate?: boolean;
+                  confirmation_state?: string;
+                  mdf_first_captured_missing?: string | null;
+                  mdf_pre_event_previous_missing?: string | null;
+                  mdf_pre_event_previous_basis?: string;
+                  mdf_pre_event_guaranteed_previous?: {
+                    [key: string]: unknown;
+                  } | null;
+                  association?: {
+                    [key: string]: unknown;
+                  } | null;
+                  association_missing?: string | null;
+                  mdf_first_captured?: {
+                    [key: string]: unknown;
+                  } | null;
+                  mdf_pre_event_last_consumable_previous?: {
+                    [key: string]: unknown;
+                  } | null;
+                  consensus?: {
+                    [key: string]: unknown;
+                  } | null;
+                  surprise?: string | null;
+                  surprise_missing?: string[];
+                  locator?: {
+                    [key: string]: unknown;
+                  };
+                }[];
+              }[];
+              /** @enum {string} */
+              state: "confirmed" | "unknown";
+              missing?: string[];
+              missing_scopes?: {
+                series_id: string;
+                reference_month: string;
+                statistic: string;
+                unit: string;
+                adjustment: string;
+                reason: string;
+                coverage_basis?: string;
+                evidence_id?: string;
+              }[];
+              conflicts?: {
+                [key: string]: unknown;
+              }[];
+              consensus_snapshots?: {
+                [key: string]: unknown;
+              }[];
+            }[];
+            consensus_snapshots?: {
+              [key: string]: unknown;
+            }[];
+            missing: string[];
+            /** @constant */
+            provider_requests: 0;
+            /** @constant */
+            provider_attempts?: 0;
+            /** @constant */
+            persisted: false;
+            history_basis?: string;
+            coverage?: string;
+          };
         };
       };
     };

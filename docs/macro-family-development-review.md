@@ -115,3 +115,28 @@ npm test -- --configLoader runner
 Vite 使用 `--configLoader runner`，避免配置 bundle 的缓存写入限制。测试若受沙箱、依赖或运行时阻断，
 在本轮交接证据记录准确命令、退出结果和未覆盖部分，不更换版本、不绕开失败；
 人工 DEV 点击、实际数据库权限与未来自然发布仍按上文分别核对。
+
+## 五族发布事件与修订产品链（round03）
+
+共同入口和完整语义见[发布事件/材料合同](macro-release-records-r1.md)。
+五族实际 `/timeseries/releases` 已统一接入资产内列表/详情、来源历史、北京时间 cutoff、
+请求预览/原始 HTTP；不是四族 unsupported stub。读取严格本地，无 DDL/upstream。
+材料/claim、MDF首次捕获、官方原前值、MDF事前最后可消费值、当次报告修订前值和连续版本绑定分别呈现。
+partial 材料按 scope 保留旧证明；冲突和解析修正保留选择轨迹。相同数值的新事件不造经济修订。
+BEA PIO 使用 canonical 日期事件和多参考月 coverage，供独立消费收入包复用。
+
+manual/实际 WorkerService/零售自动 host.submit 都有有界材料调用；execution 中单列材料失败/原因及
+证据、事件和数值批次。初始化不产生 240 个 archive 请求。BLS 现存 archive 403 不据日历修复推断解决，
+人工投影导入不代表自动抓取成功。
+共识是可选具名冻结 snapshot persistence/read；无稳定源，不声称真实交付。
+允许 date/interval 本身足够证明事前关系；无官方前值不阻断合格 surprise。
+
+留存检查覆盖七 CPI 篮子的 NSA index/YoY 与 SA MoM、PPI 总体/第三篮子的官方率、
+PCE 两次 HTML 当前/当次上月率、就业 household/工时/时薪/行业变化及 NFP 两月修订、零售销售额/MPCSM/明确修订。
+PPI仅剔食品能源核心、就业 Summary B 行业水平/贸易运输公用事业聚合、PCE HTML 指数水平及零售派生输入
+仍分别缺材料，不用近似列或最新数值补证。PPI初步/修订状态只据真实脚注，未知保持未知。
+CPI所选NSA行基期有 Table1 明确1982-84依据；不外推原生历史起点或逐项PPI基期。
+
+Root 持有的就业 round01 两个原始 release record 必须 additive upgrade，保留原 evidence/time/digest；
+GET 不迁移，旧回退说明不得用于删除这两张已持有材料的表。
+ASGI HTTP→UI正常环境、PG集成、实际浏览器、worker自然发布分别验收；本轮沙箱不加入 socket/loop 绕过。

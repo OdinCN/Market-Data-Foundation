@@ -495,7 +495,14 @@ class WorkerService:
                 )
 
                 raise CpiTimeSeriesError("bls_timeseries_profile_mismatch")
-            return getattr(service, operation)(*args, **kwargs)
+            result = getattr(service, operation)(*args, **kwargs)
+            if operation in {"update_range", "init_range"} and hasattr(
+                self, "material_capture"
+            ):
+                result["release_material"] = self.material_capture(
+                    service, args[0], args[1], result
+                )
+            return result
         finally:
             service.close()
 

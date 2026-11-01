@@ -1,7 +1,7 @@
 """Explicit retail read routes and optional durable manual collection binding."""
 
 from dataclasses import asdict, is_dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, FastAPI, Request
@@ -14,7 +14,7 @@ from market_data_foundation.historical.census_retail_timeseries_source import (
 )
 from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
 from market_data_foundation.historical.macro_release_records import (
-    unsupported_release_records,
+    ReleaseRecords,
 )
 from market_data_foundation.historical.retail_timeseries import RetailServiceError
 from market_data_foundation.historical.retail_timeseries_store import RetailStorageError
@@ -25,7 +25,10 @@ from market_data_foundation.web.cpi_timeseries_api import (
 )
 from market_data_foundation.web.cpi_timeseries_dispatch import dispatch_job
 from market_data_foundation.web.cpi_timeseries_jobs import WebError
-from market_data_foundation.web.macro_query_contract import query_openapi
+from market_data_foundation.web.macro_query_contract import (
+    query_openapi,
+    release_openapi,
+)
 
 PREFIX = "/api/r5/retail/timeseries"
 
@@ -159,6 +162,10 @@ class RetailTimeSeriesHost:
                     k: v for k, v in point["derivations"].items() if k in baskets
                 }
             points.append(point)
+        if hasattr(service, "store"):
+            result = ReleaseRecords(service.store).link_result(
+                dict(result, points=points)
+            )
         return {
             **result,
             "points": points,
@@ -167,8 +174,15 @@ class RetailTimeSeriesHost:
         }
 
     def releases(self, params):
-        self._service()
-        return unsupported_release_records("retail", params, now=datetime.now(UTC))
+        if set(params) - {
+            "event_id",
+            "as_of",
+            "read_mode",
+            "source_version",
+            "reference_month",
+        }:
+            raise WebError("unsupported_parameters")
+        return ReleaseRecords(self._service().store).read(**params)
 
     def api_help(self):
         self._service()
@@ -179,9 +193,18 @@ class RetailTimeSeriesHost:
             "routes": ["status", "query", "api-help", "releases"],
             "release_records": {
                 "path": PREFIX + "/releases",
-                "parameters": ["event_id", "as_of", "read_mode", "source_version"],
+                "parameters": [
+                    "event_id",
+                    "as_of",
+                    "read_mode",
+                    "source_version",
+                    "reference_month",
+                ],
                 "read_only": True,
-                "coverage": "retail_release_material_adapter_not_implemented",
+                "coverage": (
+                    "retained Census release date/reference month, sales amount, "
+                    "MPCSM and explicit prior change revisions"
+                ),
                 "history_basis": "no latest fallback; as_of is MDF availability",
             },
             "baskets": ["headline", "control", "ex_auto", "all"],
@@ -388,7 +411,11 @@ def timeseries_router(host=None, *, authorize=None):
             endpoint(operation),
             methods=["GET"],
             name="retail_timeseries_" + operation,
-            openapi_extra=query_openapi("retail") if operation == "query" else None,
+            openapi_extra=query_openapi("retail")
+            if operation == "query"
+            else release_openapi()
+            if operation == "releases"
+            else None,
         )
     if host is None or hasattr(host, "journal"):
 

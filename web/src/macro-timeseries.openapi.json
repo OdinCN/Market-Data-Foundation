@@ -288,14 +288,501 @@
         "operationId": "timeseries_releases_api_r5_cpi_timeseries_releases_get",
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Local retained evidence and per-scope absence; never creates schema or requests upstream.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "events",
+                    "missing",
+                    "as_of",
+                    "as_of_basis",
+                    "provider_requests",
+                    "persisted"
+                  ],
+                  "properties": {
+                    "read_mode": {
+                      "type": "string",
+                      "enum": ["event", "source_history"]
+                    },
+                    "as_of": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "as_of_basis": {
+                      "type": "string",
+                      "const": "available"
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "event_id",
+                          "reference_months",
+                          "source_version",
+                          "claims",
+                          "evidence",
+                          "state"
+                        ],
+                        "properties": {
+                          "event_id": {
+                            "type": "string"
+                          },
+                          "family": {
+                            "type": "string"
+                          },
+                          "reference_month": {
+                            "type": "string"
+                          },
+                          "reference_months": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "actual_at": {
+                            "type": ["string", "null"]
+                          },
+                          "source_version": {
+                            "type": "object",
+                            "required": [
+                              "value",
+                              "precision",
+                              "basis",
+                              "source"
+                            ],
+                            "properties": {
+                              "value": {
+                                "type": "string"
+                              },
+                              "precision": {
+                                "type": "string",
+                                "enum": ["date", "instant", "interval"]
+                              },
+                              "basis": {
+                                "type": "string"
+                              },
+                              "source": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "claims": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "series_id",
+                                "reference_month",
+                                "statistic",
+                                "unit",
+                                "adjustment",
+                                "role",
+                                "value",
+                                "value_identity"
+                              ],
+                              "properties": {
+                                "series_id": {
+                                  "type": "string"
+                                },
+                                "reference_month": {
+                                  "type": "string"
+                                },
+                                "statistic": {
+                                  "type": "string"
+                                },
+                                "unit": {
+                                  "type": "string"
+                                },
+                                "adjustment": {
+                                  "type": "string"
+                                },
+                                "role": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                },
+                                "value_identity": {
+                                  "type": "string"
+                                },
+                                "evidence_id": {
+                                  "type": "string"
+                                },
+                                "continuous_version": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "value_basis": {
+                                  "type": "string"
+                                },
+                                "publisher_reported_rate": {
+                                  "type": "boolean"
+                                },
+                                "confirmation_state": {
+                                  "type": "string"
+                                },
+                                "mdf_first_captured_missing": {
+                                  "type": ["string", "null"]
+                                },
+                                "mdf_pre_event_previous_missing": {
+                                  "type": ["string", "null"]
+                                },
+                                "mdf_pre_event_previous_basis": {
+                                  "type": "string"
+                                },
+                                "mdf_pre_event_guaranteed_previous": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "association": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "association_missing": {
+                                  "type": ["string", "null"]
+                                },
+                                "mdf_first_captured": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "mdf_pre_event_last_consumable_previous": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "consensus": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "surprise": {
+                                  "type": ["string", "null"]
+                                },
+                                "surprise_missing": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "locator": {
+                                  "type": "object",
+                                  "additionalProperties": true
+                                }
+                              }
+                            }
+                          },
+                          "evidence": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "evidence_id": {
+                                  "type": "string"
+                                },
+                                "raw_sha256": {
+                                  "type": "string"
+                                },
+                                "raw_locator": {
+                                  "type": "string"
+                                },
+                                "obtained_at": {
+                                  "type": "string"
+                                },
+                                "available_at": {
+                                  "type": "string"
+                                },
+                                "parser_revision": {
+                                  "type": "string"
+                                },
+                                "source_url": {
+                                  "type": "string"
+                                },
+                                "source_version": {
+                                  "type": "object",
+                                  "required": [
+                                    "value",
+                                    "precision",
+                                    "basis",
+                                    "source"
+                                  ],
+                                  "properties": {
+                                    "value": {
+                                      "type": "string"
+                                    },
+                                    "precision": {
+                                      "type": "string",
+                                      "enum": ["date", "instant", "interval"]
+                                    },
+                                    "basis": {
+                                      "type": "string"
+                                    },
+                                    "source": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "retention": {
+                                  "type": "object",
+                                  "additionalProperties": true
+                                },
+                                "claims": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "series_id",
+                                      "reference_month",
+                                      "statistic",
+                                      "unit",
+                                      "adjustment",
+                                      "role",
+                                      "value",
+                                      "value_identity"
+                                    ],
+                                    "properties": {
+                                      "series_id": {
+                                        "type": "string"
+                                      },
+                                      "reference_month": {
+                                        "type": "string"
+                                      },
+                                      "statistic": {
+                                        "type": "string"
+                                      },
+                                      "unit": {
+                                        "type": "string"
+                                      },
+                                      "adjustment": {
+                                        "type": "string"
+                                      },
+                                      "role": {
+                                        "type": "string"
+                                      },
+                                      "value": {
+                                        "type": "string"
+                                      },
+                                      "value_identity": {
+                                        "type": "string"
+                                      },
+                                      "evidence_id": {
+                                        "type": "string"
+                                      },
+                                      "continuous_version": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "value_basis": {
+                                        "type": "string"
+                                      },
+                                      "publisher_reported_rate": {
+                                        "type": "boolean"
+                                      },
+                                      "confirmation_state": {
+                                        "type": "string"
+                                      },
+                                      "mdf_first_captured_missing": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "mdf_pre_event_previous_missing": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "mdf_pre_event_previous_basis": {
+                                        "type": "string"
+                                      },
+                                      "mdf_pre_event_guaranteed_previous": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "association": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "association_missing": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "mdf_first_captured": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "mdf_pre_event_last_consumable_previous": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "consensus": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "surprise": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "surprise_missing": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "locator": {
+                                        "type": "object",
+                                        "additionalProperties": true
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": ["confirmed", "unknown"]
+                          },
+                          "missing": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "missing_scopes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "series_id",
+                                "reference_month",
+                                "statistic",
+                                "unit",
+                                "adjustment",
+                                "reason"
+                              ],
+                              "properties": {
+                                "series_id": {
+                                  "type": "string"
+                                },
+                                "reference_month": {
+                                  "type": "string"
+                                },
+                                "statistic": {
+                                  "type": "string"
+                                },
+                                "unit": {
+                                  "type": "string"
+                                },
+                                "adjustment": {
+                                  "type": "string"
+                                },
+                                "reason": {
+                                  "type": "string"
+                                },
+                                "coverage_basis": {
+                                  "type": "string"
+                                },
+                                "evidence_id": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "conflicts": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          },
+                          "consensus_snapshots": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "consensus_snapshots": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "missing": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "provider_requests": {
+                      "type": "integer",
+                      "const": 0
+                    },
+                    "provider_attempts": {
+                      "type": "integer",
+                      "const": 0
+                    },
+                    "persisted": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "history_basis": {
+                      "type": "string"
+                    },
+                    "coverage": {
+                      "type": "string"
+                    }
+                  }
+                }
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "event_id",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Exact canonical official event ID; BEA PIO shared across metrics and reference months."
+          },
+          {
+            "in": "query",
+            "name": "reference_month",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional YYYY-MM event COVERAGE filter, not only primary reference month."
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Inclusive aware MDF availability cutoff, also applied to consensus and version associations."
+          },
+          {
+            "in": "query",
+            "name": "read_mode",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "event (default) / source_history; retained official archives only; ALFRED not implemented and no latest fallback."
+          },
+          {
+            "in": "query",
+            "name": "source_version",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Exact source version DATE YYYY-MM-DD; remains date precision, never midnight publication time."
+          }
+        ]
       }
     },
     "/api/r5/ppi/timeseries/status": {
@@ -581,14 +1068,501 @@
         "operationId": "timeseries_releases_api_r5_ppi_timeseries_releases_get",
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Local retained evidence and per-scope absence; never creates schema or requests upstream.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "events",
+                    "missing",
+                    "as_of",
+                    "as_of_basis",
+                    "provider_requests",
+                    "persisted"
+                  ],
+                  "properties": {
+                    "read_mode": {
+                      "type": "string",
+                      "enum": ["event", "source_history"]
+                    },
+                    "as_of": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "as_of_basis": {
+                      "type": "string",
+                      "const": "available"
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "event_id",
+                          "reference_months",
+                          "source_version",
+                          "claims",
+                          "evidence",
+                          "state"
+                        ],
+                        "properties": {
+                          "event_id": {
+                            "type": "string"
+                          },
+                          "family": {
+                            "type": "string"
+                          },
+                          "reference_month": {
+                            "type": "string"
+                          },
+                          "reference_months": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "actual_at": {
+                            "type": ["string", "null"]
+                          },
+                          "source_version": {
+                            "type": "object",
+                            "required": [
+                              "value",
+                              "precision",
+                              "basis",
+                              "source"
+                            ],
+                            "properties": {
+                              "value": {
+                                "type": "string"
+                              },
+                              "precision": {
+                                "type": "string",
+                                "enum": ["date", "instant", "interval"]
+                              },
+                              "basis": {
+                                "type": "string"
+                              },
+                              "source": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "claims": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "series_id",
+                                "reference_month",
+                                "statistic",
+                                "unit",
+                                "adjustment",
+                                "role",
+                                "value",
+                                "value_identity"
+                              ],
+                              "properties": {
+                                "series_id": {
+                                  "type": "string"
+                                },
+                                "reference_month": {
+                                  "type": "string"
+                                },
+                                "statistic": {
+                                  "type": "string"
+                                },
+                                "unit": {
+                                  "type": "string"
+                                },
+                                "adjustment": {
+                                  "type": "string"
+                                },
+                                "role": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                },
+                                "value_identity": {
+                                  "type": "string"
+                                },
+                                "evidence_id": {
+                                  "type": "string"
+                                },
+                                "continuous_version": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "value_basis": {
+                                  "type": "string"
+                                },
+                                "publisher_reported_rate": {
+                                  "type": "boolean"
+                                },
+                                "confirmation_state": {
+                                  "type": "string"
+                                },
+                                "mdf_first_captured_missing": {
+                                  "type": ["string", "null"]
+                                },
+                                "mdf_pre_event_previous_missing": {
+                                  "type": ["string", "null"]
+                                },
+                                "mdf_pre_event_previous_basis": {
+                                  "type": "string"
+                                },
+                                "mdf_pre_event_guaranteed_previous": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "association": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "association_missing": {
+                                  "type": ["string", "null"]
+                                },
+                                "mdf_first_captured": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "mdf_pre_event_last_consumable_previous": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "consensus": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "surprise": {
+                                  "type": ["string", "null"]
+                                },
+                                "surprise_missing": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "locator": {
+                                  "type": "object",
+                                  "additionalProperties": true
+                                }
+                              }
+                            }
+                          },
+                          "evidence": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "evidence_id": {
+                                  "type": "string"
+                                },
+                                "raw_sha256": {
+                                  "type": "string"
+                                },
+                                "raw_locator": {
+                                  "type": "string"
+                                },
+                                "obtained_at": {
+                                  "type": "string"
+                                },
+                                "available_at": {
+                                  "type": "string"
+                                },
+                                "parser_revision": {
+                                  "type": "string"
+                                },
+                                "source_url": {
+                                  "type": "string"
+                                },
+                                "source_version": {
+                                  "type": "object",
+                                  "required": [
+                                    "value",
+                                    "precision",
+                                    "basis",
+                                    "source"
+                                  ],
+                                  "properties": {
+                                    "value": {
+                                      "type": "string"
+                                    },
+                                    "precision": {
+                                      "type": "string",
+                                      "enum": ["date", "instant", "interval"]
+                                    },
+                                    "basis": {
+                                      "type": "string"
+                                    },
+                                    "source": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "retention": {
+                                  "type": "object",
+                                  "additionalProperties": true
+                                },
+                                "claims": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "series_id",
+                                      "reference_month",
+                                      "statistic",
+                                      "unit",
+                                      "adjustment",
+                                      "role",
+                                      "value",
+                                      "value_identity"
+                                    ],
+                                    "properties": {
+                                      "series_id": {
+                                        "type": "string"
+                                      },
+                                      "reference_month": {
+                                        "type": "string"
+                                      },
+                                      "statistic": {
+                                        "type": "string"
+                                      },
+                                      "unit": {
+                                        "type": "string"
+                                      },
+                                      "adjustment": {
+                                        "type": "string"
+                                      },
+                                      "role": {
+                                        "type": "string"
+                                      },
+                                      "value": {
+                                        "type": "string"
+                                      },
+                                      "value_identity": {
+                                        "type": "string"
+                                      },
+                                      "evidence_id": {
+                                        "type": "string"
+                                      },
+                                      "continuous_version": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "value_basis": {
+                                        "type": "string"
+                                      },
+                                      "publisher_reported_rate": {
+                                        "type": "boolean"
+                                      },
+                                      "confirmation_state": {
+                                        "type": "string"
+                                      },
+                                      "mdf_first_captured_missing": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "mdf_pre_event_previous_missing": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "mdf_pre_event_previous_basis": {
+                                        "type": "string"
+                                      },
+                                      "mdf_pre_event_guaranteed_previous": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "association": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "association_missing": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "mdf_first_captured": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "mdf_pre_event_last_consumable_previous": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "consensus": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "surprise": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "surprise_missing": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "locator": {
+                                        "type": "object",
+                                        "additionalProperties": true
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": ["confirmed", "unknown"]
+                          },
+                          "missing": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "missing_scopes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "series_id",
+                                "reference_month",
+                                "statistic",
+                                "unit",
+                                "adjustment",
+                                "reason"
+                              ],
+                              "properties": {
+                                "series_id": {
+                                  "type": "string"
+                                },
+                                "reference_month": {
+                                  "type": "string"
+                                },
+                                "statistic": {
+                                  "type": "string"
+                                },
+                                "unit": {
+                                  "type": "string"
+                                },
+                                "adjustment": {
+                                  "type": "string"
+                                },
+                                "reason": {
+                                  "type": "string"
+                                },
+                                "coverage_basis": {
+                                  "type": "string"
+                                },
+                                "evidence_id": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "conflicts": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          },
+                          "consensus_snapshots": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "consensus_snapshots": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "missing": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "provider_requests": {
+                      "type": "integer",
+                      "const": 0
+                    },
+                    "provider_attempts": {
+                      "type": "integer",
+                      "const": 0
+                    },
+                    "persisted": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "history_basis": {
+                      "type": "string"
+                    },
+                    "coverage": {
+                      "type": "string"
+                    }
+                  }
+                }
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "event_id",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Exact canonical official event ID; BEA PIO shared across metrics and reference months."
+          },
+          {
+            "in": "query",
+            "name": "reference_month",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional YYYY-MM event COVERAGE filter, not only primary reference month."
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Inclusive aware MDF availability cutoff, also applied to consensus and version associations."
+          },
+          {
+            "in": "query",
+            "name": "read_mode",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "event (default) / source_history; retained official archives only; ALFRED not implemented and no latest fallback."
+          },
+          {
+            "in": "query",
+            "name": "source_version",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Exact source version DATE YYYY-MM-DD; remains date precision, never midnight publication time."
+          }
+        ]
       }
     },
     "/api/r5/pce/timeseries/status": {
@@ -870,14 +1844,501 @@
         "operationId": "timeseries_releases_api_r5_pce_timeseries_releases_get",
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Local retained evidence and per-scope absence; never creates schema or requests upstream.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "events",
+                    "missing",
+                    "as_of",
+                    "as_of_basis",
+                    "provider_requests",
+                    "persisted"
+                  ],
+                  "properties": {
+                    "read_mode": {
+                      "type": "string",
+                      "enum": ["event", "source_history"]
+                    },
+                    "as_of": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "as_of_basis": {
+                      "type": "string",
+                      "const": "available"
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "event_id",
+                          "reference_months",
+                          "source_version",
+                          "claims",
+                          "evidence",
+                          "state"
+                        ],
+                        "properties": {
+                          "event_id": {
+                            "type": "string"
+                          },
+                          "family": {
+                            "type": "string"
+                          },
+                          "reference_month": {
+                            "type": "string"
+                          },
+                          "reference_months": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "actual_at": {
+                            "type": ["string", "null"]
+                          },
+                          "source_version": {
+                            "type": "object",
+                            "required": [
+                              "value",
+                              "precision",
+                              "basis",
+                              "source"
+                            ],
+                            "properties": {
+                              "value": {
+                                "type": "string"
+                              },
+                              "precision": {
+                                "type": "string",
+                                "enum": ["date", "instant", "interval"]
+                              },
+                              "basis": {
+                                "type": "string"
+                              },
+                              "source": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "claims": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "series_id",
+                                "reference_month",
+                                "statistic",
+                                "unit",
+                                "adjustment",
+                                "role",
+                                "value",
+                                "value_identity"
+                              ],
+                              "properties": {
+                                "series_id": {
+                                  "type": "string"
+                                },
+                                "reference_month": {
+                                  "type": "string"
+                                },
+                                "statistic": {
+                                  "type": "string"
+                                },
+                                "unit": {
+                                  "type": "string"
+                                },
+                                "adjustment": {
+                                  "type": "string"
+                                },
+                                "role": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                },
+                                "value_identity": {
+                                  "type": "string"
+                                },
+                                "evidence_id": {
+                                  "type": "string"
+                                },
+                                "continuous_version": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "value_basis": {
+                                  "type": "string"
+                                },
+                                "publisher_reported_rate": {
+                                  "type": "boolean"
+                                },
+                                "confirmation_state": {
+                                  "type": "string"
+                                },
+                                "mdf_first_captured_missing": {
+                                  "type": ["string", "null"]
+                                },
+                                "mdf_pre_event_previous_missing": {
+                                  "type": ["string", "null"]
+                                },
+                                "mdf_pre_event_previous_basis": {
+                                  "type": "string"
+                                },
+                                "mdf_pre_event_guaranteed_previous": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "association": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "association_missing": {
+                                  "type": ["string", "null"]
+                                },
+                                "mdf_first_captured": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "mdf_pre_event_last_consumable_previous": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "consensus": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "surprise": {
+                                  "type": ["string", "null"]
+                                },
+                                "surprise_missing": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "locator": {
+                                  "type": "object",
+                                  "additionalProperties": true
+                                }
+                              }
+                            }
+                          },
+                          "evidence": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "evidence_id": {
+                                  "type": "string"
+                                },
+                                "raw_sha256": {
+                                  "type": "string"
+                                },
+                                "raw_locator": {
+                                  "type": "string"
+                                },
+                                "obtained_at": {
+                                  "type": "string"
+                                },
+                                "available_at": {
+                                  "type": "string"
+                                },
+                                "parser_revision": {
+                                  "type": "string"
+                                },
+                                "source_url": {
+                                  "type": "string"
+                                },
+                                "source_version": {
+                                  "type": "object",
+                                  "required": [
+                                    "value",
+                                    "precision",
+                                    "basis",
+                                    "source"
+                                  ],
+                                  "properties": {
+                                    "value": {
+                                      "type": "string"
+                                    },
+                                    "precision": {
+                                      "type": "string",
+                                      "enum": ["date", "instant", "interval"]
+                                    },
+                                    "basis": {
+                                      "type": "string"
+                                    },
+                                    "source": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "retention": {
+                                  "type": "object",
+                                  "additionalProperties": true
+                                },
+                                "claims": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "series_id",
+                                      "reference_month",
+                                      "statistic",
+                                      "unit",
+                                      "adjustment",
+                                      "role",
+                                      "value",
+                                      "value_identity"
+                                    ],
+                                    "properties": {
+                                      "series_id": {
+                                        "type": "string"
+                                      },
+                                      "reference_month": {
+                                        "type": "string"
+                                      },
+                                      "statistic": {
+                                        "type": "string"
+                                      },
+                                      "unit": {
+                                        "type": "string"
+                                      },
+                                      "adjustment": {
+                                        "type": "string"
+                                      },
+                                      "role": {
+                                        "type": "string"
+                                      },
+                                      "value": {
+                                        "type": "string"
+                                      },
+                                      "value_identity": {
+                                        "type": "string"
+                                      },
+                                      "evidence_id": {
+                                        "type": "string"
+                                      },
+                                      "continuous_version": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "value_basis": {
+                                        "type": "string"
+                                      },
+                                      "publisher_reported_rate": {
+                                        "type": "boolean"
+                                      },
+                                      "confirmation_state": {
+                                        "type": "string"
+                                      },
+                                      "mdf_first_captured_missing": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "mdf_pre_event_previous_missing": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "mdf_pre_event_previous_basis": {
+                                        "type": "string"
+                                      },
+                                      "mdf_pre_event_guaranteed_previous": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "association": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "association_missing": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "mdf_first_captured": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "mdf_pre_event_last_consumable_previous": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "consensus": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "surprise": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "surprise_missing": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "locator": {
+                                        "type": "object",
+                                        "additionalProperties": true
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": ["confirmed", "unknown"]
+                          },
+                          "missing": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "missing_scopes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "series_id",
+                                "reference_month",
+                                "statistic",
+                                "unit",
+                                "adjustment",
+                                "reason"
+                              ],
+                              "properties": {
+                                "series_id": {
+                                  "type": "string"
+                                },
+                                "reference_month": {
+                                  "type": "string"
+                                },
+                                "statistic": {
+                                  "type": "string"
+                                },
+                                "unit": {
+                                  "type": "string"
+                                },
+                                "adjustment": {
+                                  "type": "string"
+                                },
+                                "reason": {
+                                  "type": "string"
+                                },
+                                "coverage_basis": {
+                                  "type": "string"
+                                },
+                                "evidence_id": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "conflicts": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          },
+                          "consensus_snapshots": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "consensus_snapshots": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "missing": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "provider_requests": {
+                      "type": "integer",
+                      "const": 0
+                    },
+                    "provider_attempts": {
+                      "type": "integer",
+                      "const": 0
+                    },
+                    "persisted": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "history_basis": {
+                      "type": "string"
+                    },
+                    "coverage": {
+                      "type": "string"
+                    }
+                  }
+                }
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "event_id",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Exact canonical official event ID; BEA PIO shared across metrics and reference months."
+          },
+          {
+            "in": "query",
+            "name": "reference_month",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional YYYY-MM event COVERAGE filter, not only primary reference month."
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Inclusive aware MDF availability cutoff, also applied to consensus and version associations."
+          },
+          {
+            "in": "query",
+            "name": "read_mode",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "event (default) / source_history; retained official archives only; ALFRED not implemented and no latest fallback."
+          },
+          {
+            "in": "query",
+            "name": "source_version",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Exact source version DATE YYYY-MM-DD; remains date precision, never midnight publication time."
+          }
+        ]
       }
     },
     "/api/r5/employment/timeseries/status": {
@@ -1154,14 +2615,501 @@
         "operationId": "timeseries_releases_api_r5_employment_timeseries_releases_get",
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "Local retained evidence and per-scope absence; never creates schema or requests upstream.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "events",
+                    "missing",
+                    "as_of",
+                    "as_of_basis",
+                    "provider_requests",
+                    "persisted"
+                  ],
+                  "properties": {
+                    "read_mode": {
+                      "type": "string",
+                      "enum": ["event", "source_history"]
+                    },
+                    "as_of": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "as_of_basis": {
+                      "type": "string",
+                      "const": "available"
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "event_id",
+                          "reference_months",
+                          "source_version",
+                          "claims",
+                          "evidence",
+                          "state"
+                        ],
+                        "properties": {
+                          "event_id": {
+                            "type": "string"
+                          },
+                          "family": {
+                            "type": "string"
+                          },
+                          "reference_month": {
+                            "type": "string"
+                          },
+                          "reference_months": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "actual_at": {
+                            "type": ["string", "null"]
+                          },
+                          "source_version": {
+                            "type": "object",
+                            "required": [
+                              "value",
+                              "precision",
+                              "basis",
+                              "source"
+                            ],
+                            "properties": {
+                              "value": {
+                                "type": "string"
+                              },
+                              "precision": {
+                                "type": "string",
+                                "enum": ["date", "instant", "interval"]
+                              },
+                              "basis": {
+                                "type": "string"
+                              },
+                              "source": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "claims": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "series_id",
+                                "reference_month",
+                                "statistic",
+                                "unit",
+                                "adjustment",
+                                "role",
+                                "value",
+                                "value_identity"
+                              ],
+                              "properties": {
+                                "series_id": {
+                                  "type": "string"
+                                },
+                                "reference_month": {
+                                  "type": "string"
+                                },
+                                "statistic": {
+                                  "type": "string"
+                                },
+                                "unit": {
+                                  "type": "string"
+                                },
+                                "adjustment": {
+                                  "type": "string"
+                                },
+                                "role": {
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "type": "string"
+                                },
+                                "value_identity": {
+                                  "type": "string"
+                                },
+                                "evidence_id": {
+                                  "type": "string"
+                                },
+                                "continuous_version": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "value_basis": {
+                                  "type": "string"
+                                },
+                                "publisher_reported_rate": {
+                                  "type": "boolean"
+                                },
+                                "confirmation_state": {
+                                  "type": "string"
+                                },
+                                "mdf_first_captured_missing": {
+                                  "type": ["string", "null"]
+                                },
+                                "mdf_pre_event_previous_missing": {
+                                  "type": ["string", "null"]
+                                },
+                                "mdf_pre_event_previous_basis": {
+                                  "type": "string"
+                                },
+                                "mdf_pre_event_guaranteed_previous": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "association": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "association_missing": {
+                                  "type": ["string", "null"]
+                                },
+                                "mdf_first_captured": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "mdf_pre_event_last_consumable_previous": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "consensus": {
+                                  "type": ["object", "null"],
+                                  "additionalProperties": true
+                                },
+                                "surprise": {
+                                  "type": ["string", "null"]
+                                },
+                                "surprise_missing": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "locator": {
+                                  "type": "object",
+                                  "additionalProperties": true
+                                }
+                              }
+                            }
+                          },
+                          "evidence": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "evidence_id": {
+                                  "type": "string"
+                                },
+                                "raw_sha256": {
+                                  "type": "string"
+                                },
+                                "raw_locator": {
+                                  "type": "string"
+                                },
+                                "obtained_at": {
+                                  "type": "string"
+                                },
+                                "available_at": {
+                                  "type": "string"
+                                },
+                                "parser_revision": {
+                                  "type": "string"
+                                },
+                                "source_url": {
+                                  "type": "string"
+                                },
+                                "source_version": {
+                                  "type": "object",
+                                  "required": [
+                                    "value",
+                                    "precision",
+                                    "basis",
+                                    "source"
+                                  ],
+                                  "properties": {
+                                    "value": {
+                                      "type": "string"
+                                    },
+                                    "precision": {
+                                      "type": "string",
+                                      "enum": ["date", "instant", "interval"]
+                                    },
+                                    "basis": {
+                                      "type": "string"
+                                    },
+                                    "source": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "retention": {
+                                  "type": "object",
+                                  "additionalProperties": true
+                                },
+                                "claims": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "series_id",
+                                      "reference_month",
+                                      "statistic",
+                                      "unit",
+                                      "adjustment",
+                                      "role",
+                                      "value",
+                                      "value_identity"
+                                    ],
+                                    "properties": {
+                                      "series_id": {
+                                        "type": "string"
+                                      },
+                                      "reference_month": {
+                                        "type": "string"
+                                      },
+                                      "statistic": {
+                                        "type": "string"
+                                      },
+                                      "unit": {
+                                        "type": "string"
+                                      },
+                                      "adjustment": {
+                                        "type": "string"
+                                      },
+                                      "role": {
+                                        "type": "string"
+                                      },
+                                      "value": {
+                                        "type": "string"
+                                      },
+                                      "value_identity": {
+                                        "type": "string"
+                                      },
+                                      "evidence_id": {
+                                        "type": "string"
+                                      },
+                                      "continuous_version": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "value_basis": {
+                                        "type": "string"
+                                      },
+                                      "publisher_reported_rate": {
+                                        "type": "boolean"
+                                      },
+                                      "confirmation_state": {
+                                        "type": "string"
+                                      },
+                                      "mdf_first_captured_missing": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "mdf_pre_event_previous_missing": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "mdf_pre_event_previous_basis": {
+                                        "type": "string"
+                                      },
+                                      "mdf_pre_event_guaranteed_previous": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "association": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "association_missing": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "mdf_first_captured": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "mdf_pre_event_last_consumable_previous": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "consensus": {
+                                        "type": ["object", "null"],
+                                        "additionalProperties": true
+                                      },
+                                      "surprise": {
+                                        "type": ["string", "null"]
+                                      },
+                                      "surprise_missing": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "locator": {
+                                        "type": "object",
+                                        "additionalProperties": true
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": ["confirmed", "unknown"]
+                          },
+                          "missing": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "missing_scopes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "series_id",
+                                "reference_month",
+                                "statistic",
+                                "unit",
+                                "adjustment",
+                                "reason"
+                              ],
+                              "properties": {
+                                "series_id": {
+                                  "type": "string"
+                                },
+                                "reference_month": {
+                                  "type": "string"
+                                },
+                                "statistic": {
+                                  "type": "string"
+                                },
+                                "unit": {
+                                  "type": "string"
+                                },
+                                "adjustment": {
+                                  "type": "string"
+                                },
+                                "reason": {
+                                  "type": "string"
+                                },
+                                "coverage_basis": {
+                                  "type": "string"
+                                },
+                                "evidence_id": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "conflicts": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          },
+                          "consensus_snapshots": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "consensus_snapshots": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "missing": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "provider_requests": {
+                      "type": "integer",
+                      "const": 0
+                    },
+                    "provider_attempts": {
+                      "type": "integer",
+                      "const": 0
+                    },
+                    "persisted": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "history_basis": {
+                      "type": "string"
+                    },
+                    "coverage": {
+                      "type": "string"
+                    }
+                  }
+                }
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "event_id",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Exact canonical official event ID; BEA PIO shared across metrics and reference months."
+          },
+          {
+            "in": "query",
+            "name": "reference_month",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Optional YYYY-MM event COVERAGE filter, not only primary reference month."
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Inclusive aware MDF availability cutoff, also applied to consensus and version associations."
+          },
+          {
+            "in": "query",
+            "name": "read_mode",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "event (default) / source_history; retained official archives only; ALFRED not implemented and no latest fallback."
+          },
+          {
+            "in": "query",
+            "name": "source_version",
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "description": "Exact source version DATE YYYY-MM-DD; remains date precision, never midnight publication time."
+          }
+        ]
       }
     }
   }

@@ -570,7 +570,8 @@ def test_ppi_refresh_preserves_source_gap_for_saved_null(dual, omit_old_null):
     "lost",
     [False, "value", "null", "buffer", "empty", "revision", "confirmation", "upstream"],
 )
-def test_ppi_source_coverage_partial_and_returned_points_required(dual, lost):
+@pytest.mark.parametrize("action", ["init", "initialize"])
+def test_ppi_source_coverage_partial_and_returned_points_required(dual, lost, action):
     _, hosts, _, stores = dual
     host = hosts["ppi"]
 
@@ -621,7 +622,7 @@ def test_ppi_source_coverage_partial_and_returned_points_required(dual, lost):
 
         host.read_factory = read
     start = "2026-01" if lost == "buffer" else "2006-01"
-    receipt = host.submit(command("initialize", start=start))
+    receipt = host.submit(command(action, start=start))
     if lost:
         assert receipt["state"] != "complete", receipt
     else:

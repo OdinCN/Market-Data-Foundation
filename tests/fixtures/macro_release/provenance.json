@@ -1,0 +1,65 @@
+[
+  {
+    "file": "empsit_10022026.html",
+    "source_url": "https://www.bls.gov/news.release/archives/empsit_10022026.htm",
+    "source_retention": "official_selected_projection",
+    "fixture_retention": "focused_official_material_projection",
+    "parent_sha256": "38df60bebce3a71dec847005d50ecb0c9ccd95451408009ea4abea3c09ffafdf",
+    "sha256": "bde0f1e70ccfef9e8c921899e3e027cb1ad70965114ca22a18218d32a1e08762",
+    "projection": "Selected original table markup and normalized official narrative; no changed statistic values."
+  },
+  {
+    "file": "empsit_09042026.html",
+    "source_url": "https://www.bls.gov/news.release/archives/empsit_09042026.htm",
+    "source_retention": "official_selected_projection",
+    "fixture_retention": "focused_official_material_projection",
+    "parent_sha256": "a8bb14f20da2bf62325d3a932311d2977f0a4ef061fcd0ca93d4f46b4d55baea",
+    "sha256": "9fee9743f4d512eb0c1c1525fc91382664ab4b8fd3aaa36c72bcef066b13e930",
+    "projection": "Selected original table markup and normalized official narrative; no changed statistic values."
+  },
+  {
+    "file": "cpi_10142026.html",
+    "source_url": "https://www.bls.gov/news.release/archives/cpi_10142026.htm",
+    "source_retention": "official_selected_projection",
+    "fixture_retention": "focused_official_material_projection",
+    "parent_sha256": "09944c5cfc801e2c7868d0a98760b3334b82b9d099550aa318468be6d1e89c4f",
+    "sha256": "df7dc7fd6ffed83a2eefc96a3c904702444bfc7e1b0d4857df3a5d79c1c7c1ac",
+    "projection": "Selected original table markup and normalized official narrative; no changed statistic values."
+  },
+  {
+    "file": "ppi_10152026.html",
+    "source_url": "https://www.bls.gov/news.release/archives/ppi_10152026.htm",
+    "source_retention": "official_selected_projection",
+    "fixture_retention": "focused_official_material_projection",
+    "parent_sha256": "8c2123eb05cf741c7e0c6925908fc265259451db2df6615a71b7e2c8f0d51656",
+    "sha256": "7a8acb356008ec84c47be5ae1a9d0723eca4bb5691c018ff7ebffbc758b9616f",
+    "projection": "Selected original table markup and normalized official narrative; no changed statistic values."
+  },
+  {
+    "file": "bea-pio-202609.html",
+    "source_url": "https://www.bea.gov/news/2026/personal-income-and-outlays-september-2026",
+    "source_retention": "original_http_body",
+    "fixture_retention": "focused_official_material_projection",
+    "parent_sha256": "ecebe8c3ca45d0e8b73d1036edee38838e930b6d96b89f7098235d76ea6b1f07",
+    "sha256": "c45875b2de7b744e4cc4c090f13437b6c8d81fc88b1f9a530bdefef2b28daf34",
+    "projection": "Selected original table markup and normalized official narrative; no changed statistic values."
+  },
+  {
+    "file": "bea-pio-202608.html",
+    "source_url": "https://www.bea.gov/news/2026/personal-income-and-outlays-august-2026",
+    "source_retention": "original_http_body",
+    "fixture_retention": "focused_official_material_projection",
+    "parent_sha256": "3abedebba9660e9322d9b0bee8aa98064b0a2ffd9c0904384a723bb962b732ce",
+    "sha256": "3d0a11824f69e7070cf9951feacc8604975868cbdd5596a4a7e05e4a26a0fab4",
+    "projection": "Selected original table markup and normalized official narrative; no changed statistic values."
+  },
+  {
+    "file": "census-retail.html",
+    "source_url": "https://www.census.gov/retail/sales.html",
+    "source_retention": "original_http_body",
+    "fixture_retention": "focused_official_material_projection",
+    "parent_sha256": "7082349015560687ebf4cdd88558694bc79bcd1f5224ab71020e78ad48d05f5c",
+    "sha256": "5810c83b8d8b1b0b62d19f3b4781ee0477e0a3c4908080643a34bd921e917ef6",
+    "projection": "Selected original table markup and normalized official narrative; no changed statistic values."
+  }
+]

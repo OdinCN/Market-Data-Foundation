@@ -32,6 +32,53 @@ with (
     MonkeyPatch.context() as patch,
 ):
     app, runtime, source, store, _ = setup(Path(directory), patch)
+    if sys.argv[1] == "five-family":
+        from fastapi import FastAPI
+
+        from market_data_foundation.historical.retail_timeseries import (
+            RetailTimeSeriesService,
+        )
+        from market_data_foundation.web.cpi_timeseries_api import timeseries_router
+        from market_data_foundation.web.retail_timeseries import (
+            RetailTimeSeriesHost,
+        )
+        from market_data_foundation.web.retail_timeseries import (
+            timeseries_router as retail_router,
+        )
+        from tests.test_macro_release_chain import material, repository
+        from tests.test_macro_research_fields import PROFILES, make_host
+
+        app = FastAPI()
+        files = {
+            "cpi": "cpi_10142026.html",
+            "ppi": "ppi_10152026.html",
+            "pce": "bea-pio-202609.html",
+            "employment": "empsit_10022026.html",
+        }
+        for profile in PROFILES:
+            host, _, data = make_host(profile, Path(directory) / profile.key)
+            repo = repository(profile.key)
+            data.raw_store = repo.store.raw_store
+            releases = ReleaseRecords(data)
+            releases.prepare()
+            releases.import_material(
+                *material(files[profile.key]),
+                material_format="official_selected_projection",
+            )
+            app.include_router(timeseries_router(host))
+        retail_repo = repository("retail")
+        retail_repo.import_material(
+            *material("census-retail.html"),
+            material_format="official_selected_projection",
+        )
+        app.include_router(
+            retail_router(
+                RetailTimeSeriesHost(
+                    RetailTimeSeriesService(retail_repo.store), query_allowed=True
+                ),
+                authorize=lambda _: True,
+            )
+        )
     store.raw_store = Raw()
     records = ReleaseRecords(store)
     records.prepare()

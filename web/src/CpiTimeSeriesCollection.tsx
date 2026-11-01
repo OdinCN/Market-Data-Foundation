@@ -96,13 +96,6 @@ function CpiTimeSeriesCollectionContent({
   const [start, setStart] = useState(latest);
   const [end, setEnd] = useState(latest);
   const [action, setAction] = useState<"initialize" | "update">("update");
-  const [researchOnly, setResearchOnly] = useState(false);
-  const researchSeries = profile.series
-    .filter((s) => !profile.defaultQuerySeries?.includes(s[0]))
-    .map((s) => s[0]);
-  const supportsResearchBackfill = ["cpi", "ppi", "employment"].includes(
-    profile.id,
-  );
   const [confirmed, setConfirmed] = useState(false);
   const [initial] = useState(() => {
     try {
@@ -136,7 +129,7 @@ function CpiTimeSeriesCollectionContent({
   }, [latest, action, intent]);
   useEffect(() => {
     setConfirmed(false);
-  }, [start, end, action, researchOnly]);
+  }, [start, end, action]);
   useEffect(() => {
     const update = () => {
       try {
@@ -227,9 +220,6 @@ function CpiTimeSeriesCollectionContent({
       }
       reserved = {
         request_id: requestId(),
-        ...(researchOnly && supportsResearchBackfill
-          ? { series: researchSeries.join(",") }
-          : {}),
         action,
         start: requestedStart,
         end: requestedEnd,
@@ -438,23 +428,6 @@ function CpiTimeSeriesCollectionContent({
                 <option value="initialize">初始化采集</option>
               </select>
             </label>
-            {supportsResearchBackfill && (
-              <label>
-                采集系列范围
-                <select
-                  value={researchOnly ? "research" : "all"}
-                  disabled={busy || unresolved}
-                  onChange={(event) =>
-                    setResearchOnly(event.target.value === "research")
-                  }
-                >
-                  <option value="all">全部批准系列</option>
-                  <option value="research">
-                    仅补齐本轮新增系列历史（保留已有系列）
-                  </option>
-                </select>
-              </label>
-            )}
             <div className="field-grid">
               <DateField
                 key={`${action}-start`}

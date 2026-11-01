@@ -5,6 +5,7 @@ import { DateField } from "./DateField";
 import { MultiSelect } from "./MultiSelect";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
+import { releaseLink, releaseReasonText } from "./macroReleaseLinks";
 import { MacroReleaseRecords } from "./MacroReleaseRecords";
 import {
   buildCpiQueryRequest,
@@ -144,10 +145,14 @@ function CpiTimeSeriesContent({
   transport,
   profile = CPI_PROFILE,
   availability,
+  initialReleaseEvent,
+  initialReleaseEvidence,
 }: {
   transport: Transport;
   profile?: MacroProfile;
   availability: CpiAvailability;
+  initialReleaseEvent?: string | null;
+  initialReleaseEvidence?: string | null;
 }) {
   const employment = profile.id === "employment";
   const retail = profile.id === "retail";
@@ -206,7 +211,10 @@ function CpiTimeSeriesContent({
   const [failure, setFailure] = useState(false);
   const [pending, setPending] = useState(false);
   const [page, setPage] = useState(0);
-  const [tab, setTab] = useState("query");
+  const [tab, setTab] = useState(initialReleaseEvent ? "releases" : "query");
+  useEffect(() => {
+    if (initialReleaseEvent) setTab("releases");
+  }, [initialReleaseEvent]);
   const [resultTab, setResultTab] = useState("table");
   const [exchange, setExchange] = useState<CpiHttpExchange | null>(null);
   const edited = useRef(false);
@@ -341,7 +349,13 @@ function CpiTimeSeriesContent({
         onChange={setTab}
       />
       {tab === "releases" && (
-        <MacroReleaseRecords transport={transport} profile={profile} />
+        <MacroReleaseRecords
+          key={initialReleaseEvent ?? "all"}
+          transport={transport}
+          profile={profile}
+          initialEventId={initialReleaseEvent}
+          initialEvidenceId={initialReleaseEvidence}
+        />
       )}
       <div hidden={tab !== "api"}>
         <CpiQueryApiHelp
@@ -540,6 +554,11 @@ function CpiTimeSeriesContent({
             已保留已有数据和全部月份，缺口仍为空；不代表官方缺值或已发布。
           </p>
         )}
+        {result?.release_records_missing?.map((reason) => (
+          <p key={reason} role="status">
+            发布材料状态：{releaseReasonText(reason)}；连续数值结果保留。
+          </p>
+        ))}
         <div hidden={resultTab !== "table"}>
           {result && columns.length > 0 && (
             <section aria-label={`${profile.label} 范围结果`}>
@@ -587,7 +606,26 @@ function CpiTimeSeriesContent({
                         );
                         return (
                           <tr key={`${row.month}:${row.series_id}`}>
-                            <td>{row.month}</td>
+                            <td>
+                              {row.month}
+                              {row.point?.related_release_events?.map(
+                                (link) => (
+                                  <div key={link.event_id}>
+                                    <a
+                                      href={releaseLink(profile, link.event_id)}
+                                    >
+                                      查看相关发布
+                                    </a>
+                                    <small>
+                                      {link.association ===
+                                      "explicit_version_proof"
+                                        ? " · 版本已有明确证明"
+                                        : " · 仅口径相关，版本未绑定"}
+                                    </small>
+                                  </div>
+                                ),
+                              )}
+                            </td>
                             <td>
                               {
                                 cpiSeries.find(

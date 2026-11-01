@@ -159,20 +159,25 @@ def test_initialize_refreshes_240_months_with_buffer_and_calendar_split(
     result = host.submit(request)
     assert result["action"] == "initialize" and result["state"] == "complete"
     assert result["result"]["readback"]["refresh_coverage_complete"]
-    assert result["result"]["readback"]["expected_points"] == 4 * 240
-    assert result["result"]["saved_points"] == 4 * 252
+    assert (
+        result["result"]["readback"]["expected_points"]
+        == len(host.profile.series_ids) * 240
+    )
+    assert result["result"]["saved_points"] == len(host.profile.series_ids) * 252
     assert transport.requests == [("2005", "2024"), ("2025", "2026")]
     transport.offset += 50
     transport.now += timedelta(days=1)
     refreshed = host.submit(dict(request, request_id=command()["request_id"]))
     assert refreshed["state"] == "complete"
-    assert refreshed["result"]["saved_revisions"] == 4 * 252
+    assert refreshed["result"]["saved_revisions"] == len(host.profile.series_ids) * 252
     assert len(transport.requests) == 4
     first = host.query(
         {"start": "2006-10", "end": "2006-10", "basket": "all", "adjustment": "all"}
     )["points"]
-    assert len(first) == 4 and all(p["change_12m_ratio"] is not None for p in first)
-    assert store.status()["revision_count"] == 4 * 252
+    assert len(first) == len(host.profile.series_ids) and all(
+        p["change_12m_ratio"] is not None for p in first
+    )
+    assert store.status()["revision_count"] == len(host.profile.series_ids) * 252
     with pytest.raises(WebError, match="collection_range_exceeds_host_limit"):
         host.submit(command("update", start="2006-09", end="2026-09"))
 
@@ -197,10 +202,17 @@ def test_edited_initialize_range_refreshes_existing_data(
     months = len(month_range(start, end))
     assert result["state"] == "complete" and result["action"] == "initialize"
     assert result["start"] == start and result["end"] == end
-    assert result["result"]["readback"]["expected_points"] == 4 * months
+    assert (
+        result["result"]["readback"]["expected_points"]
+        == len(host.profile.series_ids) * months
+    )
     assert result["result"]["readback"]["refresh_coverage_complete"] is True
-    assert result["result"]["saved_revisions"] == 4 * (months + 12)
-    assert store.status()["revision_count"] == 4 * (months + 12)
+    assert result["result"]["saved_revisions"] == len(host.profile.series_ids) * (
+        months + 12
+    )
+    assert store.status()["revision_count"] == len(host.profile.series_ids) * (
+        months + 12
+    )
     assert len(transport.requests) == 2 * requests
 
 
@@ -255,7 +267,10 @@ def test_initialize_obeys_configured_limit_including_default_240_months(fixture)
     assert source.calls == 0 and not host.journal.directory.exists()
     result = host.submit(command("initialize", start="2023-10", end="2026-09"))
     assert result["state"] == "complete" and source.calls == 1
-    assert result["result"]["readback"]["expected_points"] == 4 * 36
+    assert (
+        result["result"]["readback"]["expected_points"]
+        == len(host.profile.series_ids) * 36
+    )
 
 
 def test_initialize_replay_precedes_changed_anchor_and_new_range_validation(

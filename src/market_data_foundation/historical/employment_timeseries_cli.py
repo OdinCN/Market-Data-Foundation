@@ -56,6 +56,7 @@ def build_parser():
             "retained_document",
             "original_http_body",
             "official_summary_projection",
+            "official_selected_projection",
         ),
         default="retained_document",
     )

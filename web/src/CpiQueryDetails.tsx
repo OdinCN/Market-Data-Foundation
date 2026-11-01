@@ -5,7 +5,7 @@ import { formatBeijingTime } from "./beijingTime";
 
 type RequestDescription = { method: "GET"; path: string };
 
-function CodeBlock({
+export function CodeBlock({
   text,
   copyLabel,
   label,
@@ -235,8 +235,7 @@ export function CpiQueryApiHelp({
         <h4>GET {profile.basePath}/releases</h4>
         <p>
           发布记录支持
-          event_id、as_of、read_mode=event/source_history、source_version。只读本地，不联网、不写入；本轮零售发布材料适配尚未接入，返回
-          零售材料尚未建立事件记录；不回退最新值。
+          event_id、reference_month、as_of、read_mode=event/source_history、source_version。只读本地，不联网、不写入。材料支持官方销售额、MPCSM及明确的前值修订；缺失口径逐项说明，不回退最新值。
         </p>
         <h4>GET {profile.basePath}/query</h4>
         <p>{profile.historyNotice}</p>
@@ -325,11 +324,11 @@ export function CpiQueryApiHelp({
     <section aria-label={`${profile.label} API说明`} className="cpi-api-help">
       <h4>GET {profile.basePath}/releases</h4>
       <p>
-        发布记录只读本地证据，不联网、不写入、不自动建表。参数：event_id（精确事件）、as_of（含时区的MDF可用截止）、read_mode=event/source_history、source_version（YYYY-MM-DD档案日期）。日期精度保留；历史证据晚取得不会倒填。缺少正式材料、修订或共识时返回具体
+        发布记录只读本地证据，不联网、不写入、不自动建表。参数：event_id（精确事件）、as_of（含时区的MDF可用截止）、read_mode=event/source_history、reference_month（事件覆盖月，可多月）、source_version（YYYY-MM-DD档案日期）。日期精度保留；历史证据晚取得不会倒填。缺少正式材料、修订或共识时返回具体
         missing，不回退最新值。
       </p>
       <p>
-        claims.role：actual=本次官方公布值；official_previous=官方此前公布的前值；prior_revised=上期值（本次修订后）。value_identity是内容身份，continuous_version尚未绑定时为空。完整合同见{" "}
+        claims.role：actual=本次官方公布值；official_previous=官方此前公布的前值；prior_revised=上期值（本次修订后）。value_identity是内容身份；连续版本仅在明确版本证据支持时关联，数值相等不构成证明。MDF首次捕获、发布前最后可消费值、具名冻结共识与预期差逐口径返回，缺前值不阻断合格预期差。完整合同见{" "}
         {profile.basePath}/api-help 的 release_records。
       </p>
       <h4>GET {profile.basePath}/query</h4>

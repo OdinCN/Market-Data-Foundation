@@ -35,11 +35,21 @@ export const CPI_PROFILE: MacroProfile = Object.freeze({
     ["CUUR0000SA0E", "能源 · 未季调", "energy", "nsa"],
     ["CUSR0000SACL1E", "核心商品 · 季调", "core_goods", "sa"],
     ["CUUR0000SACL1E", "核心商品 · 未季调", "core_goods", "nsa"],
-    ["CUSR0000SASLE", "剔除能源服务 · 季调", "services_less_energy", "sa"],
-    ["CUUR0000SASLE", "剔除能源服务 · 未季调", "services_less_energy", "nsa"],
+    [
+      "CUSR0000SASLE",
+      "服务（不含能源服务） · 季调",
+      "services_less_energy",
+      "sa",
+    ],
+    [
+      "CUUR0000SASLE",
+      "服务（不含能源服务） · 未季调",
+      "services_less_energy",
+      "nsa",
+    ],
   ] as const,
   historyNotice:
-    "短期研究使用季调（SA）变化，年度研究使用未季调（NSA）同比；各行保留独立来源序列，不拼接。表单保留总体/核心默认，可选居住、食品、能源、核心商品和剔除能源服务。新增系列已观察2026年1—9月；基期和原生历史起点尚未核实，不能把观察起点当系列起点。",
+    "短期研究使用季调（SA）变化，年度研究使用未季调（NSA）同比；各行保留独立来源序列，不拼接。表单保留总体/核心默认，可选居住、食品、能源、核心商品和服务（不含能源服务）。实际覆盖以当前查询为准，原生历史起点未知时不推算。",
 });
 export const PPI_PROFILE: MacroProfile = Object.freeze({
   id: "ppi",
@@ -70,7 +80,7 @@ export const PCE_PROFILE: MacroProfile = Object.freeze({
     ["DPCCRG", "核心 · 季调", "core", "sa"],
   ] as const,
   historyNotice:
-    "BEA NIPA T20804 月度指数，仅总体与核心季调两系列。初始化默认240个月，可修改；实际覆盖以来源返回为准。1/3/6/12月累计变化及另列3/6月年化变化（指数比值的4/2次方减1）由同一截止时点的未舍入指数端点计算，需前12个月缓冲。入库时间不代表官方发布时间；发布事件以官方日历证据为准，未知不推算。",
+    "BEA NIPA T20804 月度指数，仅总体与核心季调两系列。初始化默认240个月，可修改；实际覆盖以来源返回为准。1/3/6/12月累计变化及另列3/6月年化变化（指数比值的4/2次方减1）由同一截止时点的未舍入指数端点计算，需前12个月缓冲。入库时间不代表官方发布时间；日历仅提供发布计划，事件数值以发布材料及版本证据为准，未知不推算。",
 });
 export const EMPLOYMENT_PROFILE: MacroProfile = Object.freeze({
   id: "employment",

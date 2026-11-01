@@ -200,7 +200,7 @@ it.each([
 );
 
 it.each([CPI_PROFILE, PPI_PROFILE, EMPLOYMENT_PROFILE])(
-  "the shared collection form can backfill only new %s inputs",
+  "the shared collection form collects all %s inputs by default",
   async (profile) => {
     const { CpiTimeSeriesCollection } = await import(
       "./CpiTimeSeriesCollection"
@@ -235,9 +235,7 @@ it.each([CPI_PROFILE, PPI_PROFILE, EMPLOYMENT_PROFILE])(
         tab="new"
       />,
     );
-    fireEvent.change(screen.getByLabelText("采集系列范围"), {
-      target: { value: "research" },
-    });
+    expect(screen.queryByLabelText("采集系列范围")).toBeNull();
     fireEvent.click(
       screen.getByRole("checkbox", {
         name: "我确认将以上范围采集到开发测试库",
@@ -247,11 +245,6 @@ it.each([CPI_PROFILE, PPI_PROFILE, EMPLOYMENT_PROFILE])(
       screen.getByRole("button", { name: `提交 ${profile.label} 采集` }),
     );
     await screen.findByText("已收到任务状态，正在自动跟踪同一请求。");
-    const ids = (submitted as { series: string } | null)?.series.split(",");
-    expect(ids).toEqual(
-      profile.series
-        .filter(([id]) => !profile.defaultQuerySeries?.includes(id))
-        .map(([id]) => id),
-    );
+    expect((submitted as { series?: string } | null)?.series).toBeUndefined();
   },
 );

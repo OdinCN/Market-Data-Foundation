@@ -456,6 +456,7 @@ class CpiTimeSeriesService:
                 missing = needed - indexed.keys()
                 fetch_keys = needed if refresh else missing
                 batches = ()
+                attempted_keys = set()
                 if allow_upstream and fetch_keys:
                     requests = _gap_requests(series, fetch_keys)
                     planner = getattr(self.source, "plan_windows", None)
@@ -488,6 +489,13 @@ class CpiTimeSeriesService:
                             for p in batch.points
                         ):
                             raise CpiTimeSeriesError("cpi_timeseries_series_invalid")
+                        if acquired:
+                            attempted_keys.update(
+                                (s, m)
+                                for s in selected
+                                for m in month_range(first, last)
+                                if (s, m) in fetch_keys
+                            )
                         fetched.extend(acquired)
                     batches = tuple(
                         replace(
@@ -555,7 +563,7 @@ class CpiTimeSeriesService:
                     saved,
                     vintage_mode,
                 )
-                if refresh:
+                if refresh or attempted_keys:
                     valid_fetched_keys = {
                         (p.series_id, p.month)
                         for b in batches
@@ -564,9 +572,9 @@ class CpiTimeSeriesService:
                         and indexed.get((p.series_id, p.month), {}).get("availability")
                         != "withdrawn"
                     }
-                    source_missing = sorted(needed - valid_fetched_keys)
+                    source_missing = sorted(attempted_keys - valid_fetched_keys)
                     result["refresh_complete"] = not source_missing
-                    result["refresh_coverage_complete"] = needed <= fetched_keys
+                    result["refresh_coverage_complete"] = attempted_keys <= fetched_keys
                     result["source_missing"] = [
                         {"series_id": s, "month": m} for s, m in source_missing
                     ]
@@ -574,6 +582,13 @@ class CpiTimeSeriesService:
                         {"series_id": s, "month": m}
                         for s, m in sorted(valid_fetched_keys)
                     ]
+                result["source_attempted_series_months"] = [
+                    {"series_id": s, "month": m} for s, m in sorted(attempted_keys)
+                ]
+                result["source_unprovided"] = [
+                    {"series_id": s, "month": m}
+                    for s, m in sorted(attempted_keys - fetched_keys)
+                ]
                 return result
         except CpiTimeSeriesError:
             raise

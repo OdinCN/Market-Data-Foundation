@@ -69,6 +69,37 @@ _CPI_METADATA = (
         "CUSR0000SASLE", "CUUR0000SASLE", "services_less_energy", qualified=True
     ),
 )
+# Table 1 of the retained 2026-10-14 CPI release explicitly states this
+# base for the selected NSA rows, without alternative-base row footnotes.
+_CPI_METADATA = tuple(
+    (
+        sid,
+        tuple(
+            {
+                **dict(values),
+                **(
+                    {
+                        "index_base": "1982-84=100",
+                        "index_base_basis": (
+                            "BLS CPI 2026-10-14 Table 1 header and "
+                            "selected row footnotes"
+                        ),
+                        "index_base_source_url": (
+                            "https://www.bls.gov/news.release/archives/cpi_10142026.htm"
+                        ),
+                        "index_base_table": "cpipress1",
+                        "index_base_material_sha256": (
+                            "09944c5cfc801e2c7868d0a98760b3334b82b9d099550aa318468be6d1e89c4f"
+                        ),
+                    }
+                    if sid.startswith("CUUR")
+                    else {}
+                ),
+            }.items()
+        ),
+    )
+    for sid, values in _CPI_METADATA
+)
 _PPI_METADATA = (
     *_price_metadata("WPSFD4", "WPUFD4", "headline"),
     *_price_metadata("WPSFD49104", "WPUFD49104", "core"),
