@@ -1,10 +1,12 @@
 """Explicit PCE Host wiring. Construction never performs network or secret IO."""
 
 import ipaddress
+import os
 import tomllib
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import psycopg
 from fastapi import Request
@@ -50,12 +52,43 @@ def clock():
     return datetime.now(UTC)
 
 
+def _readonly_review_origin():
+    """An explicitly configured public origin grants reads on the DEV candidate only."""
+    value = os.environ.get("MDF_DEV_READONLY_ORIGIN", "")
+    try:
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme == "http"
+            and parsed.hostname
+            and parsed.port == CANDIDATE_LISTENER[1]
+            and parsed.username is None
+            and parsed.password is None
+            and value == "http://" + parsed.netloc
+            and value != CANDIDATE_ORIGIN
+        ):
+            return value
+    except ValueError:
+        pass
+    return None
+
+
 def admitted(request: Request, *, origin=ORIGIN):
     try:
         if origin not in {ORIGIN, CANDIDATE_ORIGIN}:
             return False
         peer = ipaddress.ip_address(request.client.host)
-        if not (peer.is_loopback or peer in LAN):
+        review_origin = _readonly_review_origin()
+        public_read = (
+            origin == CANDIDATE_ORIGIN
+            and review_origin is not None
+            and request.headers.getlist("host")
+            == [review_origin.removeprefix("http://")]
+        )
+        if public_read:
+            if request.method not in {"GET", "HEAD"}:
+                return False
+            origin = review_origin
+        elif not (peer.is_loopback or peer in LAN):
             return False
         if request.headers.getlist("host") != [origin.removeprefix("http://")]:
             return False
