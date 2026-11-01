@@ -1,4 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   cleanup,
   render,
@@ -14,15 +16,32 @@ import { CPI, RETAIL, keyOf } from "./workflowModel";
 import { RETAIL_PROFILE as profile } from "./macroTimeSeriesProfile";
 import {
   buildCpiQueryRequest,
+  queryCpiRange,
+  type CpiScope,
   type CpiAvailability,
   type CpiJob,
 } from "./cpiTimeSeriesApi";
 import type { Transport } from "./api";
 import { CollectionWorkbench } from "./CollectionWorkbench";
+function decimalWire() {
+  const root = resolve(process.cwd(), "..");
+  return readFileSync(
+    resolve(root, "tests/fixtures/retail_decimal_response.json"),
+    "utf8",
+  );
+}
+const decimalScope: CpiScope = {
+  start: "2025-10",
+  end: "2026-12",
+  basket: "all",
+  adjustment: "sa",
+  measure: "index",
+  query_mode: "current",
+};
 const flush = () => act(async () => {});
 const response = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status });
-function fixture(partial = false, noContent = false) {
+function fixture(partial = false, noContent = false, queryBody?: string) {
   const calls: {
     path: string;
     method: string;
@@ -90,6 +109,10 @@ function fixture(partial = false, noContent = false) {
         },
       });
     if (url.pathname.endsWith("/query")) {
+      if (queryBody !== undefined) {
+        original = queryBody;
+        return new Response(original);
+      }
       const calc = (value: string | null) => ({ value, reason: null });
       const rates = Object.fromEntries(
         [1, 3, 6, 12].map((h) => [h, calc("0.0123456789012345678901234567")]),
@@ -686,4 +709,130 @@ it("shows 204 no returned records in the shared App without calling it a service
   expect(query.getByLabelText("原始 HTTP 正文").textContent).toBe(h.raw());
   expect(h.raw()).toContain('"source_failure":null');
   expect(h.raw()).toContain('"http_status":204');
+});
+
+it("validates backend-serialized Decimal values through the complete retail query", async () => {
+  const raw = decimalWire();
+  const observer = vi.fn();
+  const h = fixture(false, false, raw);
+  const result = await queryCpiRange(
+    h.transport,
+    decimalScope,
+    new AbortController().signal,
+    observer,
+    profile,
+  );
+  expect(result.points).toHaveLength(24);
+  expect(result.missing).toHaveLength(6);
+  expect(result.complete).toBe(false);
+  expect(result.coverage_complete).toBe(false);
+  expect(result.points[0].official_mpcsm_percent).toBe("0E-9");
+  expect(result.points[0].change_1m_ratio).toBe("0E-9");
+  expect(result.points[1].index_value).toBe("1.00000000000000000001E+30");
+  expect(result.points[2].change_1m_ratio).toBe("1.25E-7");
+  expect(result).toHaveProperty("backend_extension", {
+    exact: "12345678901234567890.123456789",
+  });
+  expect(observer.mock.calls[0][0].bodyText).toBe(raw);
+  expect(observer.mock.calls[0][0].url).toBe(
+    new URL(h.calls[0].path, location.origin).href,
+  );
+});
+
+it.each(["NaN", "Infinity", "-Infinity", "1e", "1e2junk", "", " 1", "1\n"])(
+  "rejects invalid Decimal %j in every retail numeric field",
+  async (invalid) => {
+    for (const field of [
+      "headline_level",
+      "control_level",
+      "official_headline_mpcsm",
+      "headline_rates",
+      "control_rates",
+    ]) {
+      const body = JSON.parse(decimalWire());
+      const target = body.points[0][field];
+      if (field.endsWith("rates")) target["1"].value = invalid;
+      else target.value = invalid;
+      await expect(
+        queryCpiRange(
+          async () => response(body),
+          decimalScope,
+          new AbortController().signal,
+          undefined,
+          profile,
+        ),
+      ).rejects.toThrow(/retail_(month|calculation)_unknown/);
+    }
+  },
+);
+
+it.each(["range", "units", "duplicate", "incomplete", "attempts"])(
+  "retains retail %s contract checks with Decimal exponents",
+  async (invalid) => {
+    const body = JSON.parse(decimalWire());
+    if (invalid === "range") body.start_month = "2025-09";
+    if (invalid === "units") body.units.rates = "percent";
+    if (invalid === "duplicate") body.points[0] = body.points[1];
+    if (invalid === "incomplete") body.points.pop();
+    if (invalid === "attempts") body.provider_attempts = -1;
+    await expect(
+      queryCpiRange(
+        async () => response(body),
+        decimalScope,
+        new AbortController().signal,
+        undefined,
+        profile,
+      ),
+    ).rejects.toThrow();
+  },
+);
+
+it("renders backend Decimal zero and exponents in the shared App with exact raw HTTP", async () => {
+  const raw = decimalWire();
+  const h = fixture(false, false, raw);
+  location.hash = "ui=r5&view=assets";
+  render(<App transport={h.transport} />);
+  fireEvent.click(await screen.findByRole("row", { name: /美国零售销售/ }));
+  const query = within(
+    await screen.findByRole("region", { name: "零售销售 范围查询" }),
+  );
+  fireEvent.change(query.getByLabelText("开始月份"), {
+    target: { value: decimalScope.start },
+  });
+  fireEvent.change(query.getByLabelText("结束月份"), {
+    target: { value: decimalScope.end },
+  });
+  fireEvent.click(query.getByRole("button", { name: "查询数据" }));
+  await flush();
+  const rows = within(query.getByRole("table", { name: "零售销售 范围数据" }))
+    .getAllByRole("row")
+    .slice(1);
+  expect(rows).toHaveLength(30);
+  const months = rows.map(
+    (row) => within(row).getAllByRole("cell")[0].textContent,
+  );
+  expect(months).toEqual([...months].sort().reverse());
+  expect(query.getAllByText("123456.123456789")).toHaveLength(12);
+  expect(query.getAllByText("1.00000000000000000001E+30")).toHaveLength(12);
+  expect(
+    rows.slice(0, 6).every((row) => row.textContent?.includes("金额输入缺值")),
+  ).toBe(true);
+  const zero = within(
+    rows.find(
+      (row) =>
+        row.textContent?.startsWith("2025-10") &&
+        row.textContent.includes("总体"),
+    )!,
+  );
+  expect(zero.getByText("0%")).toBeTruthy();
+  expect(zero.getByText("0.00%")).toBeTruthy();
+  expect(zero.getAllByText("1.23%")).toHaveLength(3);
+  expect(query.getAllByText("1.25E-7%")).toHaveLength(11);
+  expect(query.queryByText(/结果未知/)).toBeNull();
+  fireEvent.click(query.getByRole("tab", { name: "原始响应" }));
+  expect(query.getByLabelText("原始 HTTP 正文").textContent).toBe(raw);
+  expect(query.getByLabelText("本次请求 URL").textContent).toContain(
+    h.calls.find((c) => c.path.includes("/query?"))!.path,
+  );
+  expect(raw).toContain('"exact":"12345678901234567890.123456789"');
 });

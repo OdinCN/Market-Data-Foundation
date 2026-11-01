@@ -2,6 +2,7 @@ import type { paths as RetailPaths } from "./retail.generated";
 import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import type { Transport } from "./api";
 import { normalizeRetailResult } from "./retailTimeSeriesAdapter";
+import { isDecimalString } from "./decimalValue";
 import { useVisiblePolling } from "./useVisiblePolling";
 
 export const CPI_TIMESERIES = CPI_PROFILE.basePath;
@@ -371,7 +372,7 @@ export async function queryCpiRange(
   const numeric = (v: unknown) =>
     v === null ||
     (typeof v === "number" && Number.isFinite(v)) ||
-    (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v));
+    isDecimalString(v);
   if (
     !result ||
     result.start_month !== scope.start ||

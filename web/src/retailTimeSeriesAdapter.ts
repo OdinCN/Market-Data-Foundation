@@ -1,5 +1,6 @@
 import { shiftMonth } from "./cpiTimeSeriesApi";
 import type { CpiPoint, CpiResult, CpiScope } from "./cpiTimeSeriesApi";
+import { isDecimalString } from "./decimalValue";
 type Calculation = { value: string | null; reason: string | null };
 type RetailMonth = {
   month: string;
@@ -33,8 +34,7 @@ export function normalizeRetailResult(
     units: { levels: string; rates: string; official_headline_mpcsm: string };
     points: RetailMonth[];
   };
-  const numeric = (v: unknown) =>
-    v === null || (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v));
+  const numeric = (v: unknown) => v === null || isDecimalString(v);
   if (
     !raw ||
     raw.start_month !== scope.start ||

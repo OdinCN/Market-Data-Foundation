@@ -1,3 +1,4 @@
+import { decimalDisplayText } from "./decimalValue";
 import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import { formatBeijingTime, beijingInputToIso } from "./beijingTime";
 import { DateField } from "./DateField";
@@ -117,7 +118,7 @@ export function publicationText(
 const valueText = (value: unknown, ratio: boolean, unit: string) =>
   typeof value !== "number" && typeof value !== "string"
     ? "—"
-    : `${ratio ? (Number(value) * 100).toFixed(2) : value}${unit}`;
+    : `${ratio ? (Number(value) * 100).toFixed(2) : decimalDisplayText(value)}${unit}`;
 
 export function CpiTimeSeries(
   props: Parameters<typeof CpiTimeSeriesContent>[0],
