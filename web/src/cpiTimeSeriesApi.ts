@@ -274,6 +274,7 @@ export type CpiPoint = {
   value?: string | number | null;
   net_change_1m_thousand_jobs?: string | number | null;
   change_1m_percentage_points?: string | number | null;
+  change_12m_percentage_points?: string | number | null;
   change_1m_hours?: string | number | null;
   value_unit?: string;
   // Employment omits index_value; only AHE carries ratios and percent changes.
@@ -347,7 +348,7 @@ export function buildCpiQueryRequest(
                   .map((b) => (b === "core" ? "control" : b))
                   .join(","),
         }
-      : profile.id === "employment"
+      : profile.id === "employment" || profile.id === "consumption"
         ? {
             series:
               scope.series ??
@@ -390,7 +391,7 @@ export async function queryCpiRange(
   if (profile.id === "retail") result = normalizeRetailResult(result, scope);
   const selected = profile.series
     .filter((s) =>
-      profile.id === "employment"
+      profile.id === "employment" || profile.id === "consumption"
         ? (
             scope.series?.split(",") ??
             profile.defaultQuerySeries ??
@@ -449,12 +450,17 @@ export async function queryCpiRange(
     ) ||
     !result.points.every(
       (p) =>
-        (profile.id === "employment"
+        (profile.id === "employment" || profile.id === "consumption"
           ? [
               p.value,
               p.net_change_1m_thousand_jobs ?? null,
               p.change_1m_percentage_points ?? null,
               p.change_1m_hours ?? null,
+              p.change_12m_percentage_points ?? null,
+              p.change_1m_ratio ?? null,
+              p.change_3m_ratio ?? null,
+              p.change_6m_ratio ?? null,
+              p.change_12m_ratio ?? null,
               p.mom_pct ?? null,
               p.yoy_pct ?? null,
             ]
@@ -471,7 +477,12 @@ export async function queryCpiRange(
         (!scope.columns ||
           scope.columns
             .split(",")
-            .every((column) => column in p || profile.id === "employment")),
+            .every(
+              (column) =>
+                column in p ||
+                profile.id === "employment" ||
+                profile.id === "consumption",
+            )),
     )
   )
     throw new CpiServiceFailure("cpi_result_scope_unknown");

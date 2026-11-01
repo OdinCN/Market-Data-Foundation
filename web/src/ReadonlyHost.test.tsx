@@ -153,7 +153,7 @@ it("the explicit config Host saves all three capabilities and cancelling a later
     />,
   );
   fireEvent.click(await screen.findByRole("button", { name: "接入此包" }));
-  for (const name of ["美国 CPI", "美国 PPI", "美国 PCE"])
+  for (const name of ["美国 CPI", "美国 PPI", "美国 PCE价格指数"])
     fireEvent.click(await screen.findByRole("checkbox", { name }));
   expect(button("保存配置").disabled).toBe(false);
   fireEvent.click(button("保存配置"));

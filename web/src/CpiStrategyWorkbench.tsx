@@ -348,6 +348,9 @@ function CpiStrategyWorkbenchContent({
   fifthProfile,
   fifthAvailability,
   fifthVisible = true,
+  sixthProfile,
+  sixthAvailability,
+  sixthVisible = true,
   selectedId,
   selected: selectedProp,
   onSelect,
@@ -362,6 +365,9 @@ function CpiStrategyWorkbenchContent({
   additionalProfile?: MacroProfile;
   additionalAvailability?: CpiAvailability;
   additionalVisible?: boolean;
+  sixthProfile?: MacroProfile;
+  sixthAvailability?: CpiAvailability;
+  sixthVisible?: boolean;
   fifthProfile?: MacroProfile;
   fifthAvailability?: CpiAvailability;
   fifthVisible?: boolean;
@@ -415,7 +421,24 @@ function CpiStrategyWorkbenchContent({
     fifthAvailability ?? emptyAvailability,
     !!fifthProfile && fifthVisible,
   );
+  const sixth = useStrategyControl(
+    transport,
+    generation,
+    sixthProfile ?? primaryProfile,
+    sixthAvailability ?? emptyAvailability,
+    !!sixthProfile && sixthVisible,
+  );
   const entries = [
+    ...(sixthProfile
+      ? [
+          {
+            profile: sixthProfile,
+            availability: sixthAvailability ?? emptyAvailability,
+            visible: sixthVisible,
+            ...sixth,
+          },
+        ]
+      : []),
     ...(fifthProfile
       ? [
           {

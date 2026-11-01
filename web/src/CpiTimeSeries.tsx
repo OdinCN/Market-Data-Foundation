@@ -154,26 +154,40 @@ function CpiTimeSeriesContent({
   initialReleaseEvent?: string | null;
   initialReleaseEvidence?: string | null;
 }) {
-  const employment = profile.id === "employment";
+  const consumption = profile.id === "consumption";
+  const employment = profile.id === "employment" || consumption;
   const retail = profile.id === "retail";
-  const measures = employment
-    ? employmentMeasures
-    : retail
-      ? [
-          ...globalMeasures.map((item) =>
-            item.value === "index_value"
-              ? { ...item, label: "金额（百万当期美元）" }
-              : item,
-          ),
-          { value: "official_mpcsm_percent", label: "官方 MPCSM（percent）" },
-        ]
-      : profile.id === "pce"
+  const measures = consumption
+    ? [
+        { value: "value", label: "数值（单位见指标）" },
+        ...globalMeasures.filter((m) => m.value !== "index_value"),
+        {
+          value: "change_1m_percentage_points",
+          label: "储蓄率月变化（百分点）",
+        },
+        {
+          value: "change_12m_percentage_points",
+          label: "储蓄率年变化（百分点）",
+        },
+      ]
+    : employment
+      ? employmentMeasures
+      : retail
         ? [
-            ...globalMeasures,
-            { value: "annualized_3m_ratio", label: "3月年化变化" },
-            { value: "annualized_6m_ratio", label: "6月年化变化" },
+            ...globalMeasures.map((item) =>
+              item.value === "index_value"
+                ? { ...item, label: "金额（百万当期美元）" }
+                : item,
+            ),
+            { value: "official_mpcsm_percent", label: "官方 MPCSM（percent）" },
           ]
-        : globalMeasures;
+        : profile.id === "pce"
+          ? [
+              ...globalMeasures,
+              { value: "annualized_3m_ratio", label: "3月年化变化" },
+              { value: "annualized_6m_ratio", label: "6月年化变化" },
+            ]
+          : globalMeasures;
   const baskets = [
     ...new Map(
       profile.series.map((s) => [
@@ -259,7 +273,7 @@ function CpiTimeSeriesContent({
     ...(columnsEdited ? { columns: measure.join(",") } : {}),
     adjustment:
       adjustment.length === adjustments.length ? "all" : (adjustment[0] ?? ""),
-    measure: "index",
+    measure: consumption ? "native" : "index",
     query_mode: history ? "history" : "current",
     ...(history
       ? {
@@ -337,7 +351,12 @@ function CpiTimeSeriesContent({
       aria-label={`${profile.label} 范围查询`}
       className="ordinary-query cpi-timeseries macro-range-query"
     >
-      <h3>美国 {profile.label} · 范围查询</h3>
+      <h3>
+        {profile.label.startsWith("美国")
+          ? profile.label
+          : `美国 ${profile.label}`}{" "}
+        · 范围查询
+      </h3>
       <Tabs
         label={`${profile.label} 消费者页签`}
         values={[
@@ -416,7 +435,7 @@ function CpiTimeSeriesContent({
             />
             {employment ? (
               <MultiSelect
-                label="就业指标"
+                label={consumption ? "消费与收入指标" : "就业指标"}
                 options={profile.series.map((s) => ({
                   value: s[0],
                   label: s[1],
@@ -504,11 +523,13 @@ function CpiTimeSeriesContent({
           </button>
         </form>
         <p className="small">
-          {employment
-            ? "就业指标选择直接限定请求系列；缺值不补零。"
-            : retail
-              ? "按所选口径返回结果；显示指标仅控制表格列。计算复用六项原始输入。"
-              : "显示指标只控制表格列；实际请求固定 measure=index，不发送列选择参数。"}
+          {consumption
+            ? "七项指标按原生系列选择；金额为百万美元SAAR水平，储蓄率为百分数及百分点变化。显示列选择会发送columns，缺值不补零。"
+            : employment
+              ? "就业指标选择直接限定请求系列；缺值不补零。"
+              : retail
+                ? "按所选口径返回结果；显示指标仅控制表格列。计算复用六项原始输入。"
+                : "显示指标只控制表格列；实际请求固定 measure=index，不发送列选择参数。"}
         </p>
         <RequestPreview request={request} />
         {pending && <p role="status">正在查询 {profile.label}…</p>}
@@ -576,9 +597,11 @@ function CpiTimeSeriesContent({
                     : "所选指标存在缺值。"}
               </p>
               <p className="small">
-                {employment
-                  ? "CES 千岗位及月净增；失业率、劳动参与率为百分数及百分点变化；时薪为美元/小时及环同比；平均每周工时为小时及小时变化。"
-                  : "变化率以百分比显示；3月、6月为相隔对应月数的累计变化，未经年化。"}
+                {consumption
+                  ? "金额为百万当期/2017链价美元，季调年率水平；变化为累计比率。储蓄率为百分数，其变化列为百分点。"
+                  : employment
+                    ? "CES 千岗位及月净增；失业率、劳动参与率为百分数及百分点变化；时薪为美元/小时及环同比；平均每周工时为小时及小时变化。"
+                    : "变化率以百分比显示；3月、6月为相隔对应月数的累计变化，未经年化。"}
               </p>
               <div className="table-wrap">
                 <table aria-label={`${profile.label} 范围数据`}>
@@ -647,11 +670,18 @@ function CpiTimeSeriesContent({
                                   employment
                                     ? field === "mom_pct" || field === "yoy_pct"
                                       ? "%"
-                                      : ""
+                                      : consumption &&
+                                          field === "value" &&
+                                          row.series_id === "A072RC"
+                                        ? "%"
+                                        : ""
                                     : field === "index_value"
                                       ? ""
                                       : "%",
-                                  retail,
+                                  retail ||
+                                    (consumption &&
+                                      field === "value" &&
+                                      row.series_id !== "A072RC"),
                                 )}
                               </td>
                             ))}

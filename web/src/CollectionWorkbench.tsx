@@ -2,6 +2,7 @@ import {
   CPI_PROFILE,
   PPI_PROFILE,
   PCE_PROFILE,
+  CONSUMPTION_PROFILE,
   EMPLOYMENT_PROFILE,
   RETAIL_PROFILE,
 } from "./macroTimeSeriesProfile";
@@ -27,9 +28,11 @@ import {
   CPI,
   PPI,
   PCE,
+  CONSUMPTION,
   EMPLOYMENT,
   RETAIL,
   retailOperationMatches,
+  consumptionOperationMatches,
   employmentOperationMatches,
   MANUAL_OPERATION,
   PCE_OPERATION,
@@ -84,6 +87,7 @@ export function CollectionWorkbench({
   pceAvailability,
   employmentAvailability,
   retailAvailability,
+  consumptionAvailability,
 }: {
   assets: Asset[];
   asset: Asset | undefined;
@@ -98,6 +102,7 @@ export function CollectionWorkbench({
   pceAvailability?: CpiAvailability;
   employmentAvailability?: CpiAvailability;
   retailAvailability?: CpiAvailability;
+  consumptionAvailability?: CpiAvailability;
 }) {
   const tab = tabs.some((t) => t[0] === route.fields.get("tab"))
     ? route.fields.get("tab")!
@@ -185,44 +190,60 @@ export function CollectionWorkbench({
     (sameKey(asset?.key, RETAIL) ||
       (route.fields.get("asset") === RETAIL.identity &&
         route.fields.get("asset_revision") === RETAIL.revision));
+  const consumptionTarget =
+    !invalidIdentity &&
+    (!route.fields.has("operation") ||
+      (route.fields.get("operation") === source?.id &&
+        consumptionOperationMatches(source?.dto))) &&
+    (sameKey(asset?.key, CONSUMPTION) ||
+      (route.fields.get("asset") === CONSUMPTION.identity &&
+        route.fields.get("asset_revision") === CONSUMPTION.revision));
+  const newConsumption =
+    !!consumptionAvailability?.data && !consumptionAvailability.legacy;
   const newRetail = !!retailAvailability?.data && !retailAvailability.legacy;
   const newEmployment =
     !!employmentAvailability?.data && !employmentAvailability.legacy;
-  const macroProfile = retailTarget
-    ? RETAIL_PROFILE
-    : employmentTarget
-      ? EMPLOYMENT_PROFILE
-      : pceTarget
-        ? PCE_PROFILE
-        : isPpi
-          ? PPI_PROFILE
-          : CPI_PROFILE;
-  const macroAvailability = retailTarget
-    ? retailAvailability
-    : employmentTarget
-      ? employmentAvailability
-      : pceTarget
-        ? pceAvailability
-        : isPpi
-          ? ppiAvailability
-          : cpiAvailability;
+  const macroProfile = consumptionTarget
+    ? CONSUMPTION_PROFILE
+    : retailTarget
+      ? RETAIL_PROFILE
+      : employmentTarget
+        ? EMPLOYMENT_PROFILE
+        : pceTarget
+          ? PCE_PROFILE
+          : isPpi
+            ? PPI_PROFILE
+            : CPI_PROFILE;
+  const macroAvailability = consumptionTarget
+    ? consumptionAvailability
+    : retailTarget
+      ? retailAvailability
+      : employmentTarget
+        ? employmentAvailability
+        : pceTarget
+          ? pceAvailability
+          : isPpi
+            ? ppiAvailability
+            : cpiAvailability;
   const newPpi =
     !!ppiAvailability && !ppiAvailability.legacy && !!ppiAvailability.data;
   const newPce =
     !!pceAvailability && !pceAvailability.legacy && !!pceAvailability.data;
-  const newMacro = retailTarget
-    ? !!retailAvailability && !retailAvailability.legacy
-    : employmentTarget
-      ? !!employmentAvailability && !employmentAvailability.legacy
-      : pceTarget
-        ? !!pceAvailability &&
-          !pceAvailability.legacy &&
-          (!!pceAvailability.data || !!pceAvailability.failure)
-        : isPpi
-          ? !!ppiAvailability
-          : !!cpiAvailability &&
-            !cpiAvailability.legacy &&
-            (!!cpiAvailability.data || !!cpiAvailability.failure);
+  const newMacro = consumptionTarget
+    ? !!consumptionAvailability && !consumptionAvailability.legacy
+    : retailTarget
+      ? !!retailAvailability && !retailAvailability.legacy
+      : employmentTarget
+        ? !!employmentAvailability && !employmentAvailability.legacy
+        : pceTarget
+          ? !!pceAvailability &&
+            !pceAvailability.legacy &&
+            (!!pceAvailability.data || !!pceAvailability.failure)
+          : isPpi
+            ? !!ppiAvailability
+            : !!cpiAvailability &&
+              !cpiAvailability.legacy &&
+              (!!cpiAvailability.data || !!cpiAvailability.failure);
   const macroPending =
     !!macroAvailability &&
     !macroAvailability.legacy &&
@@ -388,7 +409,23 @@ export function CollectionWorkbench({
       !invalidIdentity &&
       (filter === "all" || filter === keyOf(RETAIL)),
   );
+  const consumptionRecords = useVisiblePolling(
+    (signal) => readCpiExecutions(transport, signal, CONSUMPTION_PROFILE),
+    [transport, generation, CONSUMPTION_PROFILE.id],
+    newConsumption &&
+      tab === "executions" &&
+      !invalidIdentity &&
+      (filter === "all" || filter === keyOf(CONSUMPTION) || consumptionTarget),
+  );
   const macroRecords = [
+    ...(executionSchedule === "all" &&
+    (filter === "all" || filter === keyOf(CONSUMPTION))
+      ? (consumptionRecords.data?.executions ?? []).map((e) => ({
+          ...e,
+          profile: CONSUMPTION_PROFILE,
+          rowId: `consumption:${e.id}`,
+        }))
+      : []),
     ...((executionSchedule === "all" || executionSchedule === "retail-auto") &&
     (filter === "all" || filter === keyOf(RETAIL))
       ? (retailRecords.data?.executions ?? []).map((e) => ({
@@ -994,7 +1031,8 @@ export function CollectionWorkbench({
         ppiRecords.failure ||
         pceRecords.failure ||
         employmentRecords.failure ||
-        retailRecords.failure) && (
+        retailRecords.failure ||
+        consumptionRecords.failure) && (
         <div role="alert">
           采集记录已陈旧，保留上次数据并自动重读。
           {ppiRecords.failure && (
@@ -1016,7 +1054,12 @@ export function CollectionWorkbench({
       )}
       {tab === "new" &&
       (newMacro || macroPending) &&
-      (cpiTarget || isPpi || pceTarget || employmentTarget || retailTarget) ? (
+      (cpiTarget ||
+        isPpi ||
+        pceTarget ||
+        employmentTarget ||
+        retailTarget ||
+        consumptionTarget) ? (
         <>
           <label>
             采集目标
@@ -1027,17 +1070,19 @@ export function CollectionWorkbench({
                   (a) => keyOf(a.key) === e.target.value,
                 );
                 const selectedKey =
-                  e.target.value === keyOf(RETAIL)
-                    ? RETAIL
-                    : e.target.value === keyOf(EMPLOYMENT)
-                      ? EMPLOYMENT
-                      : e.target.value === keyOf(PCE)
-                        ? PCE
-                        : e.target.value === keyOf(PPI)
-                          ? PPI
-                          : e.target.value === keyOf(CPI)
-                            ? CPI
-                            : selected?.key;
+                  e.target.value === keyOf(CONSUMPTION)
+                    ? CONSUMPTION
+                    : e.target.value === keyOf(RETAIL)
+                      ? RETAIL
+                      : e.target.value === keyOf(EMPLOYMENT)
+                        ? EMPLOYMENT
+                        : e.target.value === keyOf(PCE)
+                          ? PCE
+                          : e.target.value === keyOf(PPI)
+                            ? PPI
+                            : e.target.value === keyOf(CPI)
+                              ? CPI
+                              : selected?.key;
                 navigate("collection", {
                   asset: selectedKey?.identity ?? null,
                   asset_revision: selectedKey?.revision ?? null,
@@ -1471,7 +1516,9 @@ export function CollectionWorkbench({
           newPce ||
           newEmployment ||
           newRetail ||
-          (filter === keyOf(RETAIL) && retailAvailability)) ? (
+          newConsumption ||
+          (filter === keyOf(RETAIL) && retailAvailability) ||
+          (filter === keyOf(CONSUMPTION) && consumptionAvailability)) ? (
         <CpiStrategyWorkbench
           transport={transport}
           availability={
@@ -1500,6 +1547,16 @@ export function CollectionWorkbench({
               : undefined
           }
           fifthAvailability={retailAvailability}
+          sixthProfile={
+            (newConsumption ||
+              consumptionTarget ||
+              filter === keyOf(CONSUMPTION)) &&
+            consumptionAvailability
+              ? CONSUMPTION_PROFILE
+              : undefined
+          }
+          sixthAvailability={consumptionAvailability}
+          sixthVisible={filter === "all" || filter === keyOf(CONSUMPTION)}
           fifthVisible={
             !invalidIdentity && (filter === "all" || filter === keyOf(RETAIL))
           }
@@ -1615,7 +1672,8 @@ export function CollectionWorkbench({
             columns={["任务名称", "创建时间（北京时间）", "采集范围", "结果"]}
             pageSize={20}
             locateId={
-              (retailTarget ||
+              (consumptionTarget ||
+                retailTarget ||
                 employmentTarget ||
                 isPpi ||
                 (pceTarget && newPce)) &&
@@ -1709,6 +1767,7 @@ export function CollectionWorkbench({
             !pceRecords.busy &&
             !employmentRecords.busy &&
             !retailRecords.busy &&
+            !consumptionRecords.busy &&
             !execution &&
             !cpiExecution && (
               <p role="status">

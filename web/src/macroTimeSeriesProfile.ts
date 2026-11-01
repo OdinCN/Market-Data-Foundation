@@ -1,7 +1,15 @@
-import { CPI, PPI, PCE, EMPLOYMENT, RETAIL, type Key } from "./workflowModel";
+import {
+  CPI,
+  PPI,
+  PCE,
+  EMPLOYMENT,
+  RETAIL,
+  CONSUMPTION,
+  type Key,
+} from "./workflowModel";
 
 export type MacroProfile = Readonly<{
-  id: "cpi" | "ppi" | "pce" | "employment" | "retail";
+  id: "cpi" | "ppi" | "pce" | "employment" | "retail" | "consumption";
   label: string;
   provider: "BLS" | "BEA" | "Census";
   asset: Key;
@@ -169,4 +177,28 @@ export const RETAIL_PROFILE: MacroProfile = Object.freeze({
   ] as const,
   historyNotice:
     "仅季调（SA）。金额单位为百万当期美元；控制组为 MDF 推导：44X72−441−444−447−722，包含445。除汽车=44X72−441；两者保留公式、派生身份和同截止输入版本，复用现有原始输入。1/3/6/12月变化为未年化比率，官方 MPCSM 另以 percent 保留。六原始输入一起采集。初始化默认240个月可编辑；首次本地修订不是官方首发。周期策略按 Census 官方 Data Month 发布日历运行，计划时间不代表实际发布或入库时间。",
+});
+
+export const CONSUMPTION_PROFILE: MacroProfile = Object.freeze({
+  id: "consumption",
+  label: "美国消费与收入",
+  provider: "BEA",
+  asset: CONSUMPTION,
+  basePath: "/api/r5/consumption/timeseries",
+  series: [
+    ["DPCERC", "名义个人消费支出 · 百万当期美元 · SAAR", "nominal_pce", "sa"],
+    ["DPCERX", "实际个人消费支出 · 百万2017链价美元 · SAAR", "real_pce", "sa"],
+    ["DGDSRX", "实际商品消费 · 百万2017链价美元 · SAAR", "real_goods", "sa"],
+    ["DSERRX", "实际服务消费 · 百万2017链价美元 · SAAR", "real_services", "sa"],
+    ["A067RC", "名义可支配个人收入 · 百万当期美元 · SAAR", "nominal_dpi", "sa"],
+    [
+      "A067RX",
+      "实际可支配个人收入 · 百万2017链价美元 · SAAR",
+      "real_dpi",
+      "sa",
+    ],
+    ["A072RC", "个人储蓄率 · % · 季调非年化", "saving_rate", "sa"],
+  ] as const,
+  historyNotice:
+    "金额按 BEA UNIT_MULT=6 保留百万美元原值，SAAR 是季调年率水平，不是年化增长。实际值为2017链价美元，商品与服务不可相加替代实际PCE；不使用CPI平减。储蓄率原值为百分数，可为零或负数，仅计算百分点变化。其余变化按同一截止未舍入端点计算。初始化默认240月可编辑，实际覆盖按来源返回，2026样本不证明原生历史起点。来源历史与事件材料按已留存证据读取，不回退最新值。",
 });

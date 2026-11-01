@@ -985,6 +985,7 @@ class ReleaseRecords:
                 "cpi": "bls:cpi:",
                 "ppi": "bls:ppi:",
                 "pce": "bea:personal-income-and-outlays:",
+                "consumption": "bea:personal-income-and-outlays:",
                 "retail": "census:advance-retail:",
             }[self.profile.key]
         ):
@@ -1001,7 +1002,13 @@ class ReleaseRecords:
         else:
             metadata = self.profile.series_metadata.get(series)
             units = {"CES0500000002": "hours", "CES0500000003": "USD/hour"}
-            if self.profile.key == "employment":
+            if self.profile.key == "consumption":
+                native = metadata.get("value_unit") if metadata else None
+                statistics = (
+                    {"level"} if series == "A072RC" else {"level", "mom_pct", "yoy_pct"}
+                )
+                unit = native if document["statistic"] == "level" else "percent"
+            elif self.profile.key == "employment":
                 native = units.get(
                     series, "thousand_jobs" if series.startswith("CES") else "percent"
                 )
@@ -1568,7 +1575,7 @@ class ReleaseRecords:
                         dict(
                             series_id=point["series_id"],
                             statistic="level"
-                            if self.profile.key == "employment"
+                            if self.profile.key in {"employment", "consumption"}
                             else "index",
                         ),
                         instant(first["available_at"]),

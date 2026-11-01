@@ -2,6 +2,7 @@ import {
   CPI_PROFILE,
   PPI_PROFILE,
   PCE_PROFILE,
+  CONSUMPTION_PROFILE,
   EMPLOYMENT_PROFILE,
   RETAIL_PROFILE,
 } from "./macroTimeSeriesProfile";
@@ -41,6 +42,7 @@ import {
   CPI,
   PPI,
   PCE,
+  CONSUMPTION,
   PCE_OPERATION,
   catalogForOperation,
   project,
@@ -205,15 +207,17 @@ export default function App({
     ((!identity && !operation) || sameKey(key, CPI));
   const macroIdentity = identity ?? operationEntry?.asset?.identity;
   const macroProfile =
-    macroIdentity === RETAIL.identity
-      ? RETAIL_PROFILE
-      : macroIdentity === EMPLOYMENT.identity
-        ? EMPLOYMENT_PROFILE
-        : macroIdentity === PCE.identity
-          ? PCE_PROFILE
-          : macroIdentity === PPI.identity
-            ? PPI_PROFILE
-            : CPI_PROFILE;
+    macroIdentity === CONSUMPTION.identity
+      ? CONSUMPTION_PROFILE
+      : macroIdentity === RETAIL.identity
+        ? RETAIL_PROFILE
+        : macroIdentity === EMPLOYMENT.identity
+          ? EMPLOYMENT_PROFILE
+          : macroIdentity === PCE.identity
+            ? PCE_PROFILE
+            : macroIdentity === PPI.identity
+              ? PPI_PROFILE
+              : CPI_PROFILE;
   const collectionList =
     page.view === "collection" &&
     ["periodic", "executions"].includes(page.fields.get("tab") ?? "new");
@@ -230,6 +234,7 @@ export default function App({
       (!collectionList ||
         page.fields.get("tab") !== "periodic" ||
         collectionFilter !== keyOf(RETAIL)) &&
+      (macroIdentity !== CONSUMPTION.identity || collectionList) &&
       (macroIdentity !== RETAIL.identity ||
         (collectionList && collectionFilter !== keyOf(RETAIL))) &&
       (macroIdentity !== EMPLOYMENT.identity ||
@@ -302,16 +307,32 @@ export default function App({
     page.view === "collection",
     RETAIL_PROFILE,
   );
+  const consumptionAvailability = useCpiAvailability(
+    transport,
+    generation,
+    !page.invalid &&
+      ["assets", "collection"].includes(page.view) &&
+      ((macroIdentity === CONSUMPTION.identity &&
+        (!revision || revision === CONSUMPTION.revision)) ||
+        (collectionList &&
+          !operation &&
+          (collectionFilter === "all" ||
+            collectionFilter === keyOf(CONSUMPTION)))),
+    page.view === "collection",
+    CONSUMPTION_PROFILE,
+  );
   const macroAvailability =
-    macroProfile.id === "retail"
-      ? retailAvailability
-      : macroProfile.id === "employment"
-        ? employmentAvailability
-        : macroProfile.id === "pce"
-          ? pceAvailability
-          : macroProfile.id === "ppi"
-            ? ppiAvailability
-            : cpiAvailability;
+    macroProfile.id === "consumption"
+      ? consumptionAvailability
+      : macroProfile.id === "retail"
+        ? retailAvailability
+        : macroProfile.id === "employment"
+          ? employmentAvailability
+          : macroProfile.id === "pce"
+            ? pceAvailability
+            : macroProfile.id === "ppi"
+              ? ppiAvailability
+              : cpiAvailability;
   const catalog = useResource<Catalog>(
     (signal) => request(transport, "/api/r5/cpi", query, signal),
     [transport, generation, query, wantsCatalog, page.view, page.invalid],
@@ -393,7 +414,8 @@ export default function App({
           !sameKey(key, PPI) &&
           !sameKey(key, PCE) &&
           !sameKey(key, EMPLOYMENT) &&
-          !sameKey(key, RETAIL)) ||
+          !sameKey(key, RETAIL) &&
+          !sameKey(key, CONSUMPTION)) ||
           (!revision &&
             (page.view !== "assets" ||
               !!operation ||
@@ -742,6 +764,7 @@ export default function App({
                       pceAvailability={pceAvailability}
                       employmentAvailability={employmentAvailability}
                       retailAvailability={retailAvailability}
+                      consumptionAvailability={consumptionAvailability}
                     />
                   )}
                   {page.view === "platform" && (

@@ -66,6 +66,7 @@ class TimeSeriesHandler(CandidateHandler):
                 admitted_job(request, prefix="/api/r5/cpi/timeseries")
                 or admitted_job(request, prefix="/api/r5/ppi/timeseries")
                 or admitted_job(request, prefix="/api/r5/pce/timeseries")
+                or admitted_job(request, prefix="/api/r5/consumption/timeseries")
                 or admitted_job(request, prefix="/api/r5/employment/timeseries")
                 or admitted_job(request, prefix="/api/r5/retail/timeseries")
                 or (
@@ -86,6 +87,7 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_strategy(request, prefix="/api/r5/cpi/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/ppi/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/pce/timeseries")
+                or admitted_strategy(request, prefix="/api/r5/consumption/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/employment/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/retail/timeseries")
             )
@@ -131,6 +133,12 @@ def main():
     parser.add_argument("--ppi-history-start")
     parser.add_argument("--allow-ppi-local-read", action="store_true")
     parser.add_argument("--allow-ppi-collect", action="store_true")
+    parser.add_argument("--enable-consumption-timeseries", action="store_true")
+    parser.add_argument("--allow-consumption-local-read", action="store_true")
+    parser.add_argument("--allow-consumption-collect", action="store_true")
+    parser.add_argument("--consumption-schedule-path", type=Path)
+    parser.add_argument("--consumption-job-directory", type=Path)
+    parser.add_argument("--consumption-history-start")
     parser.add_argument("--enable-pce-timeseries", action="store_true")
     parser.add_argument("--pce-schedule-path", type=Path)
     parser.add_argument("--pce-job-directory", type=Path)
@@ -211,6 +219,12 @@ def main():
         ppi_history_start=args.ppi_history_start,
         ppi_access=access(args.allow_ppi_local_read),
         ppi_allow_collect=args.allow_ppi_collect,
+        consumption_enabled=args.enable_consumption_timeseries,
+        consumption_access=access(args.allow_consumption_local_read),
+        consumption_allow_collect=args.allow_consumption_collect,
+        consumption_schedule_path=args.consumption_schedule_path,
+        consumption_job_directory=args.consumption_job_directory,
+        consumption_history_start=args.consumption_history_start,
         pce_enabled=args.enable_pce_timeseries,
         pce_schedule_path=args.pce_schedule_path,
         pce_job_directory=args.pce_job_directory,

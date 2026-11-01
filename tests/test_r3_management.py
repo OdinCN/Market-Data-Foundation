@@ -174,7 +174,13 @@ def test_default_is_actual_catalog_without_host_scope_or_network(monkeypatch):
         assert data["deferred"] == ["QMT"]
         assert data["persistence"] == "DEV_PG_GATE_PENDING"
         assert {f["identity"] for f in data["families"]} == {f[0] for f in FAMILIES}
-        assert len(data["families"]) == 9
+        assert len(data["families"]) == len(FAMILIES)
+        consumption = next(
+            f for f in data["families"] if f["identity"] == "CONSUMPTION"
+        )
+        assert consumption["catalog_identities"] == [
+            "mdf.source.bea.nipa.consumption-income@r1"
+        ]
         macro = {e["identity"] for e in data["entries"] if e["domain"] == "Macro"}
         linked = [
             identity for f in data["families"] for identity in f["catalog_identities"]

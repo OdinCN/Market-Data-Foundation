@@ -204,7 +204,7 @@ class PceReleaseScheduler:
         auto_mode=True,
         max_attempts=10,
     ):
-        if getattr(service, "profile", PCE_PROFILE) is not PCE_PROFILE:
+        if getattr(service, "profile", self.profile) is not self.profile:
             raise PceScheduleError("schedule_service_profile_mismatch")
         self.service, self.clock = service, clock
         self.state_path = Path(state_path).expanduser().resolve()
@@ -425,7 +425,7 @@ class PceReleaseScheduler:
                 and p.get("origin") == "local"
                 and p.get("availability") == "available"
                 and p.get("available_at") is not None
-                and p.get("index_value") is not None
+                and p.get("index_value", p.get("value")) is not None
             }
             return not set(self.series_ids) <= held
         except Exception:
@@ -568,11 +568,6 @@ class PceReleaseScheduler:
             for a in state.get("data_admissions", [])
             if _instant(a["at"]) > now - timedelta(hours=24)
         ]
-        if (
-            sum(a["reserved_http"] for a in budget) + 2 > 100
-            or target.get("reserved_http", 0) + 2 > 30
-        ):
-            return {"action": "budget_exhausted"}
         month = target["reference_month"]
         start = (
             month if name == "target" else stage.get("next_start", self.history_start)
@@ -594,6 +589,21 @@ class PceReleaseScheduler:
             stage.update(state="complete", completed_at=now.isoformat())
             self._save(state)
             return {"action": "history_not_required"}
+        reserved_http = 2
+        if self.asset_key == "consumption" and name == "history":
+            from market_data_foundation.historical.pce_timeseries_source import (
+                year_windows,
+            )
+
+            # Include the actual derivative buffer and the five-calendar-year
+            # source window limit in the admission before side effects.
+            first = month_at(month_number(start) - 12)
+            reserved_http = 2 * len(year_windows(first, end))
+        if (
+            sum(a["reserved_http"] for a in budget) + reserved_http > 100
+            or target.get("reserved_http", 0) + reserved_http > 30
+        ):
+            return {"action": "budget_exhausted"}
         stage.update(
             state="running",
             attempts=stage["attempts"] + 1,
@@ -605,9 +615,9 @@ class PceReleaseScheduler:
             stage["post_release_attempts"] = stage.get("post_release_attempts", 0) + 1
         state["last_data_attempt_at"] = now.isoformat()
         state["data_admissions"] = budget + [
-            {"at": now.isoformat(), "reserved_http": 2}
+            {"at": now.isoformat(), "reserved_http": reserved_http}
         ]
-        target["reserved_http"] = target.get("reserved_http", 0) + 2
+        target["reserved_http"] = target.get("reserved_http", 0) + reserved_http
         stage.update(result=None, readback=None, error=None, readback_verified=False)
         if name == "target":
             target["auto"] = stage.copy()
@@ -662,7 +672,10 @@ class PceReleaseScheduler:
                 for point in readback.get("points", [])
                 + readback.get("source_unavailable", [])
                 if point.get("origin") == "local"
-                and (name == "history" or point.get("index_value") is not None)
+                and (
+                    name == "history"
+                    or point.get("index_value", point.get("value")) is not None
+                )
                 and point.get("available_at") is not None
                 and point.get("availability")
                 in (
@@ -691,7 +704,13 @@ class PceReleaseScheduler:
                     key not in local
                     or any(
                         local[key].get(field) != produced[key].get(field)
-                        for field in ("index_value", "revision", "raw_sha256")
+                        for field in (
+                            "value"
+                            if self.asset_key == "consumption"
+                            else "index_value",
+                            "revision",
+                            "raw_sha256",
+                        )
                     )
                     for key in produced
                 )
@@ -738,6 +757,16 @@ class PceReleaseScheduler:
                 "classification": classification,
                 "provider_attempts": count if type(count) is int else 0,
             }
+            if self.asset_key == "consumption":
+                requests = getattr(
+                    error, "provider_requests", getattr(error, "request_count", 0)
+                )
+                stage["error"]["provider_requests"] = requests
+                if stage.get("result") is None:
+                    stage["result"] = {
+                        "provider_requests": requests,
+                        "provider_attempts": count if type(count) is int else 0,
+                    }
             stopped = stage["attempts"] >= self.max_attempts or getattr(
                 error, "http_status", None
             ) in {401, 403}

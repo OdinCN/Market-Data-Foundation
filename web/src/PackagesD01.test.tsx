@@ -233,8 +233,11 @@ it("real CAS conflict preserves draft and blocks saving until explicit reread", 
   fireEvent.click(btn("重读核对配置"));
   await ready();
   expect(
-    (screen.getByRole("checkbox", { name: "美国 PCE" }) as HTMLInputElement)
-      .checked,
+    (
+      screen.getByRole("checkbox", {
+        name: "美国 PCE价格指数",
+      }) as HTMLInputElement
+    ).checked,
   ).toBe(true);
 });
 it("lost PUT receipt remains unknown and rereads the committed revision without a second PUT", async () => {
@@ -472,7 +475,7 @@ it.each(["取消", "关闭包配置", "Escape"])(
     expect(within(dialog).getAllByRole("tab")).toHaveLength(2);
     expect(within(dialog).getByRole("tab", { name: "能力配置" })).toBeTruthy();
     choose("美国 CPI");
-    choose("美国 PCE");
+    choose("美国 PCE价格指数");
     fireEvent.click(within(dialog).getByRole("tab", { name: "来源配置" }));
     expect(
       within(dialog).getByText(/本次选择所需来源：BEA \/ BLS/),
@@ -486,7 +489,7 @@ it.each(["取消", "关闭包配置", "Escape"])(
     expect(btn("接入此包")).toBeTruthy();
     await ready();
     fireEvent.click(screen.getByRole("tab", { name: "能力配置" }));
-    for (const name of ["美国 CPI", "美国 PPI", "美国 PCE"])
+    for (const name of ["美国 CPI", "美国 PPI", "美国 PCE价格指数"])
       expect(
         (screen.getByRole("checkbox", { name }) as HTMLInputElement).checked,
       ).toBe(false);

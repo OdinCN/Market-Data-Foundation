@@ -385,6 +385,9 @@ class BeaHttpsTransport:
 
 class BeaRangeSource:
     max_range_requests = MAX_RANGE_REQUESTS
+    profile_default = PCE_PROFILE
+    tables = _TABLES
+    parse_results = staticmethod(_parse_results)
 
     def __init__(
         self,
@@ -400,7 +403,7 @@ class BeaRangeSource:
         profile=PCE_PROFILE,
     ):
         self.profile = validate_profile(profile)
-        if profile is not PCE_PROFILE:
+        if profile is not self.profile_default:
             raise PceSourceError("pce_timeseries_profile_mismatch")
         if not valid_transport_attempts(max_transport_attempts):
             raise PceSourceError("pce_timeseries_transport_attempts_invalid")
@@ -448,9 +451,10 @@ class BeaRangeSource:
                             attempts,
                             http_status=429,
                             retry_at=retry_at,
+                            transient=True,
                         )
                 last_status = response.status
-                if response.status == 200:
+                if response.status in {200, 204}:
                     return response, attempts
                 classification, transient = (
                     "pce_timeseries_http_failure",
@@ -462,13 +466,19 @@ class BeaRangeSource:
                     attempts,
                     http_status=error.http_status or last_status,
                     retry_at=error.retry_at,
+                    transient=error.transient,
                 ) from None
             except Exception as error:
                 _, transient = classify_source_exception(error)
+                if isinstance(error, PermissionError):
+                    transient = False
                 classification = "pce_timeseries_transport_failure"
             if not transient or attempts == self._max_attempts:
                 raise PceSourceError(
-                    classification, attempts, http_status=last_status
+                    classification,
+                    attempts,
+                    http_status=last_status,
+                    transient=transient,
                 ) from None
             self._sleep(retry_delay_after(attempts))
         raise AssertionError
@@ -487,21 +497,22 @@ class BeaRangeSource:
                 raise ValueError
         except Exception:
             raise PceSourceError("pce_timeseries_bea_credential_invalid") from None
-        batches, total_attempts = [], 0
+        batches, total_attempts, total_requests = [], 0, 0
         for first, last in windows:
             params = {
                 "method": "GetData",
                 "DataSetName": "NIPA",
-                "TableName": "T20804",
+                "TableName": self.tables[0],
                 "Frequency": "M",
                 "Year": ",".join(map(str, range(first, last + 1))),
                 "ResultFormat": "JSON",
             }
             try:
                 requests, table_results, batch_attempts = [], [], 0
-                for table in _TABLES:
+                for table in self.tables:
                     safe_params = {**params, "TableName": table}
                     requests.append(safe_params)
+                    total_requests += 1
                     try:
                         response, attempts = self._request(
                             urlencode({**safe_params, "UserID": key}).encode("ascii")
@@ -513,14 +524,20 @@ class BeaRangeSource:
                         raise
                     total_attempts += attempts
                     batch_attempts += attempts
+                    if response.status == 204 and response.body:
+                        raise PceSourceError("pce_timeseries_nonempty_no_content")
                     if any(
                         k.lower() == "content-encoding" and v.lower() != "identity"
                         for k, v in response.headers.items()
                     ):
                         raise PceSourceError("pce_timeseries_content_encoding_rejected")
-                    table_results.append(_results(response.body, key))
+                    table_results.append(
+                        {"Data": [], "no_content": True}
+                        if response.status == 204
+                        else _results(response.body, key)
+                    )
                 results, official_results = table_results
-                points = _parse_results(
+                points = self.parse_results(
                     results,
                     series_ids,
                     max(start_month, f"{first:04d}-01"),
@@ -535,8 +552,10 @@ class BeaRangeSource:
                         "retention_class": "credential_free_bea_results_projection",
                         "exact_original_retained": False,
                         "Results": results,
-                        "official_mom": {
-                            "TableName": "T20807",
+                        "official_mom"
+                        if self.profile is PCE_PROFILE
+                        else "second_table": {
+                            "TableName": self.tables[1],
                             "Results": official_results,
                         },
                     },
@@ -562,6 +581,8 @@ class BeaRangeSource:
                     total_attempts,
                     http_status=error.http_status,
                     retry_at=error.retry_at,
+                    request_count=total_requests,
+                    transient=error.transient,
                 ) from None
             except Exception:
                 raise PceSourceError(

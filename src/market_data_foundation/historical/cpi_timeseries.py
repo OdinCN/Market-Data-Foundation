@@ -15,6 +15,7 @@ from market_data_foundation.historical.bls_cpi_material_store import (
     GarageCredentials,
 )
 from market_data_foundation.historical.bls_timeseries_profile import (
+    CONSUMPTION_PROFILE,
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
     PCE_PROFILE,
@@ -68,12 +69,19 @@ _DEFAULT_SERIES = object()
 
 class CpiTimeSeriesError(RuntimeError):
     def __init__(
-        self, classification, provider_attempts=0, *, http_status=None, retry_at=None
+        self,
+        classification,
+        provider_attempts=0,
+        *,
+        http_status=None,
+        retry_at=None,
+        provider_requests=0,
     ):
         self.classification = classification
         self.provider_attempts = provider_attempts
         self.attempts = provider_attempts
         self.http_status, self.retry_at = http_status, retry_at
+        self.provider_requests = provider_requests
         super().__init__(classification)
 
 
@@ -127,11 +135,20 @@ def _parameters(start, end, series_ids, as_of, *, profile=CPI_PROFILE):
 
 
 def _rate(current, previous):
-    return str(
-        ((Decimal(current) / Decimal(previous) - 1) * 100).quantize(
-            Decimal("0.01"), rounding=ROUND_HALF_UP
+    numerator, denominator = Decimal(current), Decimal(previous)
+    with localcontext() as context:
+        context.prec = max(
+            50,
+            len(numerator.as_tuple().digits)
+            + len(denominator.as_tuple().digits)
+            + abs(numerator.adjusted() - denominator.adjusted())
+            + 20,
         )
-    )
+        return str(
+            ((numerator / denominator - 1) * 100).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+        )
 
 
 def _ratio(current, previous):
@@ -183,6 +200,11 @@ def _provider_status(footnotes):
 
 
 def _metrics(profile, series_id):
+    if profile is CONSUMPTION_PROFILE and series_id == "A072RC":
+        return (
+            (1, "change_1m_percentage_points"),
+            (12, "change_12m_percentage_points"),
+        )
     if profile is EMPLOYMENT_PROFILE:
         if profile.series_metadata[series_id]["value_unit"] == "thousand_jobs":
             return ((1, "net_change_1m_thousand_jobs"),)
@@ -212,7 +234,16 @@ def _metrics(profile, series_id):
 
 
 def _difference(current, previous):
-    return str(Decimal(current) - Decimal(previous))
+    numerator, denominator = Decimal(current), Decimal(previous)
+    with localcontext() as context:
+        context.prec = max(
+            50,
+            len(numerator.as_tuple().digits)
+            + len(denominator.as_tuple().digits)
+            + abs(numerator.adjusted() - denominator.adjusted())
+            + 20,
+        )
+        return str(numerator - denominator)
 
 
 def _gap_requests(series, fetch_keys):
@@ -406,6 +437,7 @@ class CpiTimeSeriesService:
         if as_of is not None or vintage_mode == "available":
             allow_upstream = False
         attempts = 0
+        fetched = []
         try:
             if restoration_evidence_url is not None:
                 validate_evidence_url(restoration_evidence_url, profile=self.profile)
@@ -455,8 +487,20 @@ class CpiTimeSeriesService:
                 }
                 missing = needed - indexed.keys()
                 fetch_keys = needed if refresh else missing
+                if self.profile is CONSUMPTION_PROFILE and not persist:
+                    # Skip current/future reference months; this does not assert
+                    # that every prior month has been published. Keep local rows.
+                    now = self.store._clock().astimezone(UTC)
+                    last_complete = month_at(now.year * 12 + now.month - 2)
+                    fetch_keys = (
+                        {(s, m) for s, m in fetch_keys if m <= last_complete}
+                        if start <= last_complete
+                        else set()
+                    )
                 batches = ()
                 attempted_keys = set()
+                source_failure = None
+                failed_requests = failed_attempts = 0
                 if allow_upstream and fetch_keys:
                     requests = _gap_requests(series, fetch_keys)
                     planner = getattr(self.source, "plan_windows", None)
@@ -471,16 +515,51 @@ class CpiTimeSeriesService:
                             )
                         )
                         for _, first, last in requests
-                    ) * (2 if self.profile is PCE_PROFILE else 1)
+                    ) * (2 if self.profile.provider == "BEA" else 1)
                     if count > getattr(
                         self.source, "max_range_requests", MAX_RANGE_REQUESTS
                     ):
                         raise CpiTimeSeriesError(
                             "cpi_timeseries_request_budget_exceeded"
                         )
+                    if self.profile is CONSUMPTION_PROFILE and planner is not None:
+                        requests = [
+                            (
+                                selected,
+                                max(first, f"{a:04d}-01"),
+                                min(last, f"{b:04d}-12"),
+                            )
+                            for selected, first, last in requests
+                            for a, b in planner(first, last)
+                        ]
                     fetched = []
                     for selected, first, last in requests:
-                        acquired = self.source.fetch(selected, first, last)
+                        try:
+                            acquired = self.source.fetch(selected, first, last)
+                        except CpiSourceError as error:
+                            trusted_local = any(
+                                start <= m <= end
+                                and p.get("index_value") is not None
+                                and p.get("availability")
+                                not in {"withdrawn", "unknown"}
+                                for (_, m), p in indexed.items()
+                            )
+                            if not (
+                                self.profile is CONSUMPTION_PROFILE
+                                and not persist
+                                and trusted_local
+                                and error.transient
+                                and error.attempts > 0
+                            ):
+                                raise
+                            source_failure = {
+                                "classification": error.classification,
+                                "http_status": error.http_status,
+                                "retry_at": error.retry_at,
+                            }
+                            failed_attempts = error.attempts
+                            failed_requests = error.request_count
+                            break
                         attempts += sum(batch.attempts for batch in acquired)
                         _validate_batches(acquired, profile=self.profile)
                         if any(
@@ -589,6 +668,14 @@ class CpiTimeSeriesService:
                     {"series_id": s, "month": m}
                     for s, m in sorted(attempted_keys - fetched_keys)
                 ]
+                if self.profile is CONSUMPTION_PROFILE:
+                    result.update(
+                        status="PARTIAL" if source_failure else "OK",
+                        source_failure=source_failure,
+                    )
+                    result["provider_requests"] += failed_requests
+                    result["provider_attempts"] += failed_attempts
+                    result["source_request_count"] += failed_attempts
                 return result
         except CpiTimeSeriesError:
             raise
@@ -598,6 +685,10 @@ class CpiTimeSeriesService:
                 attempts + error.attempts,
                 http_status=getattr(error, "http_status", None),
                 retry_at=getattr(error, "retry_at", None),
+                provider_requests=sum(
+                    b.request.get("request_count", 1) for b in fetched
+                )
+                + error.request_count,
             ) from None
         except CpiStorageError as error:
             raise CpiTimeSeriesError(error.classification, attempts) from None
@@ -673,6 +764,7 @@ class CpiTimeSeriesService:
                             in {
                                 "net_change_1m_thousand_jobs",
                                 "change_1m_percentage_points",
+                                "change_12m_percentage_points",
                                 "change_1m_hours",
                             }
                             else _ratio
@@ -793,7 +885,7 @@ class CpiTimeSeriesService:
                 "does not assert complete official monthly percent coverage. "
                 "mom_pct/yoy_pct and change_km_ratio remain derived from T20804."
             )
-        if self.profile is EMPLOYMENT_PROFILE:
+        if self.profile in (EMPLOYMENT_PROFILE, CONSUMPTION_PROFILE):
             for point in points + unavailable + withdrawn:
                 point["value"] = point.pop("index_value")
                 point.update(self.profile.series_metadata[point["series_id"]])
@@ -819,6 +911,29 @@ class CpiTimeSeriesService:
                 "and pct_changes remain separate in provider_calculations. "
                 "Revision 1 is first local observation, not official first release."
             )
+        if self.profile is CONSUMPTION_PROFILE:
+            result.update(
+                provider="BEA",
+                retention_class="credential_free_bea_results_projection",
+                exact_original_retained=False,
+                calculation_method=(
+                    "Native money values in millions; SAAR levels are not "
+                    "annualized growth. Same-cutoff unrounded endpoints; "
+                    "cumulative ratios. Saving rate percent: differences in "
+                    "percentage points only. Chained 2017-dollar components "
+                    "are not additive."
+                ),
+            )
+            result["units"] = {
+                "value": "per_series_value_unit",
+                "mom_pct": "percent",
+                "yoy_pct": "percent",
+                **{f"change_{k}m_ratio": "ratio" for k in (1, 3, 6, 12)},
+                **{
+                    f"change_{k}m_percentage_points": "percentage_points"
+                    for k in (1, 12)
+                },
+            }
         if persist:
             result.update(saved)
         return result
@@ -847,6 +962,17 @@ def build_source(
     profile=CPI_PROFILE,
 ):
     profile = validate_profile(profile)
+    if profile is CONSUMPTION_PROFILE:
+        from market_data_foundation.historical.consumption_source import (
+            ConsumptionRangeSource,
+        )
+
+        return ConsumptionRangeSource(
+            credential_loader=credential_loader,
+            request_control=request_control,
+            request_control_path=request_control_path,
+            max_transport_attempts=max_transport_attempts,
+        )
     if profile is PCE_PROFILE:
         from market_data_foundation.historical.pce_timeseries_source import (
             BeaRangeSource,

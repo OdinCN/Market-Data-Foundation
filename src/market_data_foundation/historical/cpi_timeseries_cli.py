@@ -25,6 +25,7 @@ SERIES = {
 }
 MEASURES = {
     "index": ("index_value", "index"),
+    "native": ("value", "per_series_value_unit"),
     "mom": ("mom_pct", "percent"),
     "yoy": ("yoy_pct", "percent"),
     **{
@@ -71,10 +72,10 @@ def selected_series(params, *, query=False, profile=CPI_PROFILE):
         if not values or not set(values) <= set(profile.series_ids):
             raise InterfaceError("unsupported_series")
         return values
-    if profile.key == "employment":
+    if profile.key in {"employment", "consumption"}:
         if basket is not None or adjustment is not None:
             if basket != "all" or adjustment != "all":
-                raise InterfaceError("employment_series_filter_required")
+                raise InterfaceError(profile.key + "_series_filter_required")
         return (
             profile.default_query_series_ids
             if query and basket is None
@@ -308,9 +309,18 @@ def execute(service, action, params=None, *, scheduler=None):
         return service.update_range(start, end, series_ids=selected)
     if action == "confirm-availability":
         return service.confirm_current_availability(start, end, series_ids=selected)
-    measure = params.get("measure", "index")
-    validate_query(params)
+    measure = params.get(
+        "measure",
+        "native"
+        if getattr(service, "profile", CPI_PROFILE).key == "consumption"
+        else "index",
+    )
+    validate_query(dict(params, measure=measure))
     profile = getattr(service, "profile", CPI_PROFILE)
+    if measure == "native" and profile.key != "consumption":
+        raise InterfaceError("invalid_measure")
+    if profile.key == "consumption" and measure != "native":
+        raise InterfaceError("consumption_measure_not_supported")
     if measure.startswith("annualized_") and profile is not PCE_PROFILE:
         raise InterfaceError("invalid_measure")
     from market_data_foundation.historical.macro_research_fields import (
@@ -340,9 +350,11 @@ def execute(service, action, params=None, *, scheduler=None):
         or ("available" if query_mode == "history" or as_of is not None else None),
         **options,
     )
-    if getattr(service, "profile", CPI_PROFILE).key == "employment":
-        if measure != "index":
-            raise InterfaceError("employment_measure_not_supported")
+    if getattr(service, "profile", CPI_PROFILE).key in {"employment", "consumption"}:
+        if measure != ("native" if profile.key == "consumption" else "index"):
+            raise InterfaceError(profile.key + "_measure_not_supported")
+        if profile.key == "consumption":
+            result.update(measure=measure, unit="per_series_value_unit")
         return project_columns(result, columns, profile.key)
     field, unit = MEASURES[measure]
     points = [{**point, "value": point.get(field)} for point in result["points"]]

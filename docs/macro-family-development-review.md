@@ -140,3 +140,13 @@ CPI所选NSA行基期有 Table1 明确1982-84依据；不外推原生历史起�
 Root 持有的就业 round01 两个原始 release record 必须 additive upgrade，保留原 evidence/time/digest；
 GET 不迁移，旧回退说明不得用于删除这两张已持有材料的表。
 ASGI HTTP→UI正常环境、PG集成、实际浏览器、worker自然发布分别验收；本轮沙箱不加入 socket/loop 绕过。
+
+## 独立消费收入增量（round04）
+
+[美国消费与收入完整链与Root运行步骤](bea-consumption-income-r1.md) 新增独立BEA资产，
+保留五族现有身份/存储/初始化。PCE明确称价格指数。新增七个原生金额/储蓄率序列，
+`UNIT_MULT=6`金额为百万美元，储蓄率0/负值有效；SAAR水平不冒充年化增长，链式成分不相加。
+当前临时补缺与历史同cutoff只读、首次捕获、事件/来源历史、手工任务、独立策略/实际worker、
+共同采集/执行/查询UI均接共享合同。未把2026留存样本外推成二十年已交付覆盖。
+BEA日历/公共原始材料可复用，但consumption独立解析revision/evidence，canonical事件和rawSHA共享，
+不重写PCE旧证据和可用时间。新增schema准备/只读授权及Root只读PG验收，真实DEV效果仍由Root执行。

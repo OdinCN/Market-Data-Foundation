@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 
 from market_data_foundation.historical.bls_timeseries_profile import (
+    CONSUMPTION_PROFILE,
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
     PCE_PROFILE,
@@ -102,11 +103,15 @@ class TimeSeriesPackages(PackageHost):
                 if host is None and revision.definition_ref.identity in {
                     "mdf.macro.bls.employment.ces-cps",
                     "mdf.macro.census.retail",
+                    "mdf.macro.bea.consumption-income",
                 }:
                     unavailable = Eligibility(
                         allowed=False,
                         reasons=[
-                            "retail_timeseries_not_enabled"
+                            "consumption_timeseries_not_enabled"
+                            if revision.definition_ref.identity
+                            == "mdf.macro.bea.consumption-income"
+                            else "retail_timeseries_not_enabled"
                             if revision.definition_ref.identity
                             == "mdf.macro.census.retail"
                             else "employment_timeseries_not_enabled"
@@ -214,6 +219,16 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         employment_allow_collect=False,
         employment_calendar_fetcher=None,
         employment_reference_fetcher=None,
+        consumption_enabled=False,
+        consumption_read_service_factory=None,
+        consumption_write_service_factory=None,
+        consumption_query_service_factory=None,
+        consumption_schedule_path=None,
+        consumption_job_directory=None,
+        consumption_history_start=None,
+        consumption_access=CpiQueryAccess(),
+        consumption_allow_collect=False,
+        consumption_calendar_fetcher=None,
         retail_enabled=False,
         retail_schedule_path=None,
         retail_request_control_path=None,
@@ -422,6 +437,148 @@ class TimeSeriesRuntime(ReadonlyRuntime):
                 clock=clock,
             )
             self.packages.timeseries_hosts["pce"] = self.pce_timeseries
+
+        self.consumption_timeseries = None
+        self.accesses["consumption"] = consumption_access
+        if not isinstance(consumption_access, CpiQueryAccess) or any(
+            type(v) is not bool
+            for v in (consumption_enabled, consumption_allow_collect)
+        ):
+            raise ValueError("explicit_timeseries_permissions_required")
+        if consumption_enabled or any(
+            factory is not None
+            for factory in (
+                consumption_read_service_factory,
+                consumption_write_service_factory,
+                consumption_query_service_factory,
+            )
+        ):
+            from market_data_foundation.historical.consumption_schedule import (
+                ConsumptionReleaseScheduler,
+            )
+            from market_data_foundation.historical.cpi_timeseries import month_at
+            from market_data_foundation.historical.pce_timeseries_source import (
+                BeaRequestControl,
+            )
+            from market_data_foundation.web.consumption_timeseries import (
+                ConsumptionTimeSeriesHost,
+            )
+
+            paths = [consumption_schedule_path, consumption_job_directory]
+            prior = [
+                schedule_path,
+                job_directory,
+                ppi_schedule_path,
+                ppi_job_directory,
+                pce_schedule_path,
+                pce_job_directory,
+                employment_schedule_path,
+                employment_job_directory,
+                retail_schedule_path,
+                retail_job_directory,
+            ]
+            prior += [
+                Path(p).with_name(name)
+                for p, name in (
+                    (schedule_path, "strategy.json"),
+                    (ppi_schedule_path, "ppi-strategy.json"),
+                    (pce_schedule_path, "pce-strategy.json"),
+                    (employment_schedule_path, "employment-strategy.json"),
+                    (retail_schedule_path, "retail-strategy.json"),
+                )
+                if p is not None
+            ]
+            if any(
+                p is None or not Path(p).is_absolute() or ".." in Path(p).parts
+                for p in paths
+            ):
+                raise ValueError("consumption_independent_absolute_paths_required")
+            resolved = [Path(p).resolve() for p in paths]
+            if any(
+                a == b or a in b.parents or b in a.parents
+                for a, b in [
+                    (resolved[0], resolved[1]),
+                    *(
+                        (a, Path(b).resolve())
+                        for a in resolved
+                        for b in prior
+                        if b is not None
+                    ),
+                ]
+            ):
+                raise ValueError("consumption_independent_paths_required")
+            if not hasattr(self, "bea_request_control"):
+                control = Path(
+                    pce_request_control_path
+                    or settings.config_directory / "bea-timeseries-request-control.json"
+                )
+                if not control.is_absolute() or ".." in control.parts:
+                    raise ValueError("bea_absolute_request_control_path_required")
+                if control.resolve() == self.request_control.state_path.resolve():
+                    raise ValueError("bea_independent_request_control_path_required")
+                self.bea_request_control = BeaRequestControl(control)
+            if any(
+                a == self.bea_request_control.state_path.resolve()
+                or a in self.bea_request_control.state_path.resolve().parents
+                for a in resolved
+            ):
+                raise ValueError("consumption_independent_paths_required")
+            now = clock().astimezone(ZoneInfo("Asia/Shanghai"))
+            baseline = consumption_history_start or month_at(
+                now.year * 12 + now.month - 2 - 239
+            )
+            scheduler_options = (
+                {"calendar_fetcher": consumption_calendar_fetcher}
+                if consumption_calendar_fetcher is not None
+                else {}
+            )
+            self.consumption_timeseries = ConsumptionTimeSeriesHost(
+                packages=self.packages,
+                read_service_factory=consumption_read_service_factory
+                or self.consumption_read_service,
+                write_service_factory=consumption_write_service_factory
+                or (self.consumption_write_service if consumption_enabled else None),
+                query_service_factory=consumption_query_service_factory
+                or (self.consumption_query_service if consumption_enabled else None),
+                scheduler=ConsumptionReleaseScheduler(
+                    WorkerService(
+                        self.consumption_worker_service, profile=CONSUMPTION_PROFILE
+                    ),
+                    consumption_schedule_path,
+                    clock=clock,
+                    history_start=persisted_history_start(
+                        consumption_schedule_path, baseline
+                    ),
+                    **scheduler_options,
+                ),
+                job_directory=consumption_job_directory,
+                allow_collect=consumption_allow_collect,
+                query_allowed=consumption_access.metadata_permission == "allowed"
+                and consumption_access.read_permission == "allowed",
+                max_collect_months=max_collect_months,
+                clock=clock,
+            )
+            self.packages.timeseries_hosts["consumption"] = self.consumption_timeseries
+
+        if self.pce_timeseries is not None or self.consumption_timeseries is not None:
+            from market_data_foundation.historical.bea_shared_material import (
+                calendar_fetcher,
+            )
+
+            shared_dir = self.bea_request_control.state_path.parent
+            shared_calendar = calendar_fetcher(
+                shared_dir / "bea-pio-calendar.json", clock=clock
+            )
+            for host, explicit in (
+                (self.pce_timeseries, pce_calendar_fetcher),
+                (self.consumption_timeseries, consumption_calendar_fetcher),
+            ):
+                if host is not None:
+                    host.material_state_path = (
+                        shared_dir / "bea-pio-material-acquisition.json"
+                    )
+                    if explicit is None:
+                        host.scheduler.calendar_fetcher = shared_calendar
 
         if employment_enabled:
             paths = (employment_schedule_path, employment_job_directory)
@@ -753,6 +910,43 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             states.append(CredentialState(source_id=source, credential_state=value))
         return states
 
+    def consumption_read_service(self):
+        return self.read_service(profile=CONSUMPTION_PROFILE)
+
+    def consumption_query_service(self, *, credential_loader):
+        service = self.consumption_read_service()
+        try:
+            service.source = build_source(
+                credential_loader=credential_loader,
+                profile=CONSUMPTION_PROFILE,
+                request_control=self.bea_request_control,
+                max_transport_attempts=1,
+            )
+            return service
+        except BaseException:
+            service.close()
+            raise
+
+    def consumption_write_service(self, *, credential_loader):
+        config = self.settings.config_directory
+        if load_pg_config(config / "runtime.toml") != self.profile:
+            raise WebError("postgres_profile_changed", 503)
+        return build_service(
+            runtime_path=config / "runtime.toml",
+            secret_path=config / "secret.toml",
+            credential_loader=credential_loader,
+            profile=CONSUMPTION_PROFILE,
+            request_control=self.bea_request_control,
+            max_transport_attempts=1,
+        )
+
+    def consumption_worker_service(self):
+        host = self.consumption_timeseries
+        capabilities = host.capabilities(host.source())
+        if not capabilities["collect"]:
+            raise WebError(capabilities["reason"], 403)
+        return host.write_factory(credential_loader=host.effective_credential)
+
     def pce_read_service(self):
         return self.read_service(profile=PCE_PROFILE)
 
@@ -868,9 +1062,14 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             raise
 
     def _history(self, capability, definition, at):
-        if capability not in {"cpi", "ppi", "pce", "employment", "retail"} or (
-            capability == "pce" and self.pce_timeseries is None
-        ):
+        if capability not in {
+            "cpi",
+            "ppi",
+            "pce",
+            "employment",
+            "retail",
+            "consumption",
+        } or (capability == "pce" and self.pce_timeseries is None):
             return super()._history(capability, definition, at)
         access = self.accesses[capability]
         host = {
@@ -879,6 +1078,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             "pce": self.pce_timeseries,
             "employment": self.employment_timeseries,
             "retail": self.retail_timeseries,
+            "consumption": self.consumption_timeseries,
         }[capability]
         holding = "unknown"
         if access.metadata_permission == "allowed" and host is not None:
@@ -907,7 +1107,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         capabilities = {
             (c.definition_ref.identity, c.definition_ref.revision): c
             for c in self.packages.catalog.package("macro").capabilities
-            if c.capability_id in {"ppi", "employment", "retail"}
+            if c.capability_id in {"ppi", "employment", "retail", "consumption"}
         }
         return result.model_copy(
             update={
@@ -960,6 +1160,9 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
     app.include_router(timeseries_router(runtime.ppi_timeseries, profile=PPI_PROFILE))
     app.include_router(timeseries_router(runtime.pce_timeseries, profile=PCE_PROFILE))
     app.include_router(
+        timeseries_router(runtime.consumption_timeseries, profile=CONSUMPTION_PROFILE)
+    )
+    app.include_router(
         timeseries_router(runtime.employment_timeseries, profile=EMPLOYMENT_PROFILE)
     )
     from market_data_foundation.web.retail_timeseries import admitted_retail_job
@@ -1001,7 +1204,9 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
             error = (403, "operator_not_authorized")
         else:
             capability = (
-                "retail"
+                "consumption"
+                if request.url.path.startswith("/api/r5/consumption/")
+                else "retail"
                 if request.url.path.startswith("/api/r5/retail/")
                 else "pce"
                 if request.url.path.startswith("/api/r5/pce/")

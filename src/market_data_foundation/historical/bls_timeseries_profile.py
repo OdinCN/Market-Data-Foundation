@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from market_data_foundation.historical.consumption_metadata import METADATA
+
 
 @dataclass(frozen=True)
 class BlsTimeSeriesProfile:
@@ -284,11 +286,31 @@ EMPLOYMENT_PROFILE = BlsTimeSeriesProfile(
 )
 
 
+CONSUMPTION_PROFILE = BlsTimeSeriesProfile(
+    key="consumption",
+    label="美国消费与收入",
+    series_ids=tuple(s for s, _ in METADATA),
+    schema="mdf_consumption_timeseries_dev_r1",
+    raw_prefix="consumption-timeseries/dev-r1/sha256/",
+    earliest_month=None,
+    lock_id=78328741642028106,
+    rates_view="consumption_timeseries_rates",
+    provider="BEA",
+    explicit_series_metadata=METADATA,
+)
+
+
 def validate_profile(profile):
     """Only builtins may supply SQL identifiers, series and raw namespaces."""
     if all(
         profile is not builtin
-        for builtin in (CPI_PROFILE, PPI_PROFILE, PCE_PROFILE, EMPLOYMENT_PROFILE)
+        for builtin in (
+            CPI_PROFILE,
+            PPI_PROFILE,
+            PCE_PROFILE,
+            EMPLOYMENT_PROFILE,
+            CONSUMPTION_PROFILE,
+        )
     ):
         raise ValueError("bls_timeseries_profile_invalid")
     return profile

@@ -48,6 +48,11 @@ from market_data_foundation.historical.census_retail import (
     RETAIL_BINDING_CANDIDATE,
     RETAIL_SOURCE,
 )
+from market_data_foundation.historical.consumption_contract import (
+    CONSUMPTION_BINDING,
+    CONSUMPTION_DEFINITION,
+    CONSUMPTION_SOURCE,
+)
 from market_data_foundation.historical.cpi_history import source_binding
 from market_data_foundation.historical.daily_bars import (
     RAW_DAILY_BARS,
@@ -271,6 +276,15 @@ def directory(query: DirectoryQuery) -> DirectoryDTO:
             EMPLOYMENT_SOURCE,
             EMPLOYMENT_BINDING_CANDIDATE,
             BLS_EMPLOYMENT,
+        ),
+        (
+            "Macro",
+            "BEA",
+            "bea_consumption",
+            "CONSUMPTION_SOURCE",
+            CONSUMPTION_SOURCE,
+            CONSUMPTION_BINDING,
+            CONSUMPTION_DEFINITION,
         ),
         (
             "Macro",

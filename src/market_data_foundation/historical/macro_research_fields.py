@@ -2,6 +2,18 @@
 
 
 def query_columns(family):
+    if family == "consumption":
+        return (
+            "value",
+            "mom_pct",
+            "yoy_pct",
+            "change_1m_ratio",
+            "change_3m_ratio",
+            "change_6m_ratio",
+            "change_12m_ratio",
+            "change_1m_percentage_points",
+            "change_12m_percentage_points",
+        )
     if family == "employment":
         return (
             "value",

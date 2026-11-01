@@ -27,6 +27,7 @@ from market_data_foundation.historical.bls_cpi_material_store import (
     _signed_headers,
 )
 from market_data_foundation.historical.bls_timeseries_profile import (
+    CONSUMPTION_PROFILE,
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
     PCE_PROFILE,
@@ -118,8 +119,14 @@ EVENT_COLUMNS = "available_at,version_status,evidence_url"
 REVISION_COLUMNS = "series_id,month,revision,observed_at,batch_id," + VALUE_COLUMNS
 
 
+def _level_column(profile):
+    return "value" if profile is CONSUMPTION_PROFILE else "index_value"
+
+
 def _percent_columns(profile=CPI_PROFILE):
     profile = validate_profile(profile)
+    if profile is CONSUMPTION_PROFILE:
+        return ()
     return (
         ("bea_pct_1m",)
         if profile is PCE_PROFILE
@@ -129,7 +136,12 @@ def _percent_columns(profile=CPI_PROFILE):
 
 def _value_columns(profile=CPI_PROFILE):
     return ",".join(
-        ("index_value", *_percent_columns(profile), "provider_extra", "footnotes")
+        (
+            _level_column(profile),
+            *_percent_columns(profile),
+            "provider_extra",
+            "footnotes",
+        )
     )
 
 
@@ -144,7 +156,7 @@ def _revision_shape(profile=CPI_PROFILE):
         "revision": "integer",
         "observed_at": "timestamp with time zone",
         "batch_id": "text",
-        "index_value": "numeric",
+        _level_column(profile): "numeric",
         **dict.fromkeys(_percent_columns(profile), "numeric"),
         "provider_extra": "jsonb",
         "footnotes": "jsonb",
@@ -188,6 +200,8 @@ def _relational_content(point, *, profile=CPI_PROFILE):
     # Only fixed CPI percent changes become numeric columns. Any other provider
     # attributes remain losslessly in the optional, nonduplicating supplement.
     extra = copy.deepcopy(point.provider_calculations)
+    if profile is CONSUMPTION_PROFILE:
+        return (point.index_value, extra or None, list(point.footnotes))
     if validate_profile(profile) is PCE_PROFILE:
         value = extra.pop("bea_pct_1m", None)
         if value is not None and (
@@ -223,6 +237,8 @@ def _relational_content(point, *, profile=CPI_PROFILE):
 
 
 def _provider_calculations(values, extra, *, profile=CPI_PROFILE):
+    if profile is CONSUMPTION_PROFILE:
+        return copy.deepcopy(extra or {})
     if validate_profile(profile) is PCE_PROFILE:
         result = copy.deepcopy(extra or {})
         if values[0] is not None:
@@ -284,6 +300,17 @@ def _latest_view_sql(*, event_columns=False, profile=CPI_PROFILE):
     columns = _revision_columns(profile) + (
         "," + EVENT_COLUMNS if event_columns else ""
     )
+    if profile is CONSUMPTION_PROFILE:
+        cases = " ".join(
+            f"WHEN '{sid}' THEN '{meta['value_unit']}'"
+            for sid, meta in profile.series_metadata.items()
+        )
+        columns += (
+            f",CASE series_id {cases} END AS value_unit,"
+            "'SA'::text AS seasonal_adjustment,series_id!='A072RC' AS annual_rate,"
+            "CASE WHEN series_id IN ('DPCERX','DGDSRX','DSERRX','A067RX') "
+            "THEN '2017'::text END AS chained_base"
+        )
     return f"""CREATE OR REPLACE VIEW {profile.schema}.latest AS
         SELECT DISTINCT ON (series_id,month) {columns}
         FROM {profile.schema}.revisions
@@ -303,17 +330,23 @@ def _revision_ddl(*, profile=CPI_PROFILE):
         if profile is EMPLOYMENT_PROFILE
         else ""
     )
+    level = _level_column(profile)
+    guard = (
+        "(series_id='A072RC' OR value > 0)"
+        if profile is CONSUMPTION_PROFILE
+        else f"index_value {comparison} 0 {zero_guard}"
+    )
+    percents = percents + "," if percents else ""
     return f"""CREATE TABLE IF NOT EXISTS {profile.schema}.revisions (
         series_id text NOT NULL CHECK(series_id IN ({admitted})),
         month date NOT NULL CHECK(EXTRACT(DAY FROM month)=1),
         revision integer NOT NULL CHECK(revision > 0),
         observed_at timestamptz NOT NULL,
         batch_id text NOT NULL REFERENCES {profile.schema}.batches(batch_id),
-        index_value numeric CHECK(index_value {comparison} 0
-            {zero_guard}
-            AND index_value != 'NaN'::numeric
-            AND index_value != 'Infinity'::numeric),
-        {percents},
+        {level} numeric CHECK({guard}
+            AND {level} NOT IN
+                ('NaN'::numeric,'Infinity'::numeric,'-Infinity'::numeric)),
+        {percents}
         provider_extra jsonb,
         footnotes jsonb NOT NULL CHECK(jsonb_typeof(footnotes)='array'),
         available_at timestamptz,
@@ -321,13 +354,19 @@ def _revision_ddl(*, profile=CPI_PROFILE):
             CHECK(version_status IN ('active','withdrawn')),
         evidence_url text,
         CHECK(version_status != 'withdrawn' OR
-            (index_value IS NULL AND evidence_url IS NOT NULL)),
+            ({level} IS NULL AND evidence_url IS NOT NULL)),
         PRIMARY KEY(series_id,month,revision)
     )"""
 
 
 def _rates_view_sql(*, profile=CPI_PROFILE):
     profile = validate_profile(profile)
+    if profile is CONSUMPTION_PROFILE:
+        from market_data_foundation.historical.consumption_timeseries import (
+            rates_view_sql,
+        )
+
+        return rates_view_sql()
     if profile is EMPLOYMENT_PROFILE:
         from market_data_foundation.historical.employment_timeseries import (
             rates_view_sql,
@@ -365,7 +404,7 @@ def validate_evidence_url(value, *, profile=CPI_PROFILE):
             and url.hostname
             in (
                 ("bea.gov", "www.bea.gov", "apps.bea.gov")
-                if profile is PCE_PROFILE
+                if profile.provider == "BEA"
                 else ("bls.gov", "www.bls.gov")
             )
             and url.username is None
@@ -408,7 +447,14 @@ def _restoration_expectations(points, evidence_url, *, profile=CPI_PROFILE):
             ):
                 raise ValueError
             value = _numeric(value)
-            if value is None or value <= 0 or (series, month) in expected:
+            if (
+                value is None
+                or (
+                    value <= 0
+                    and not (profile is CONSUMPTION_PROFILE and series == "A072RC")
+                )
+                or (series, month) in expected
+            ):
                 raise ValueError
             expected[series, month] = value
         return expected
@@ -673,7 +719,19 @@ class PostgresTimeSeriesStore:
                         "provider_attempts": "integer",
                     },
                     "revisions": revisions,
-                    "latest": revisions,
+                    "latest": {
+                        **revisions,
+                        **(
+                            {
+                                "value_unit": "text",
+                                "seasonal_adjustment": "text",
+                                "annual_rate": "boolean",
+                                "chained_base": "text",
+                            }
+                            if self.profile is CONSUMPTION_PROFILE
+                            else {}
+                        ),
+                    },
                 }
                 actual = {name: {} for name in expected}
                 for table, column, data_type in rows:
@@ -944,7 +1002,8 @@ class PostgresTimeSeriesStore:
             latest = self.connection.execute(
                 "SELECT series_id,to_char(max(month),'YYYY-MM') "
                 f"FROM {self.profile.schema}.latest "
-                "WHERE index_value IS NOT NULL AND version_status='active' "
+                f"WHERE {_level_column(self.profile)} IS NOT NULL "
+                "AND version_status='active' "
                 "GROUP BY series_id"
             ).fetchall()
             count = self.connection.execute(
