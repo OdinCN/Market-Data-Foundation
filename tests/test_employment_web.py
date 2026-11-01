@@ -10,6 +10,7 @@ import pytest
 from market_data_foundation.historical.bls_timeseries_profile import EMPLOYMENT_PROFILE
 from market_data_foundation.historical.cpi_timeseries_store import (
     InMemoryTimeSeriesStore,
+    batch_identity,
 )
 from market_data_foundation.historical.employment_release_schedule import (
     CALENDAR_URL,
@@ -193,8 +194,17 @@ def test_http_help_matches_defaults_units_and_official_nulls(tmp_path, monkeypat
         ]
         null_point = current["source_unavailable"][0]
         assert null_point["value"] is None and null_point["value_unit"] == "percent"
+        expected_batch = batch_identity(
+            SimpleNamespace(
+                raw=str(source.at).encode(),
+                request={"seriesid": list(source.calls[0][0])},
+                observed_at=source.at,
+            )
+        )
         for point in [*current["points"], null_point]:
-            assert "index_value" not in point and "batch_id" not in point
+            assert "index_value" not in point
+            assert point["batch_id"] == expected_batch
+            assert point["available_at"] is None
         assert not {"measure", "unit", "measure_complete"} & current.keys()
         invalid = http.get(prefix + "/query?start=2025-10&end=2025-10&measure=yoy")
         assert invalid.status_code == 400
