@@ -1,3 +1,4 @@
+import { macroAssetLabel } from "./macroTimeSeriesProfile";
 import {
   CPI_PROFILE,
   profileScopeText,
@@ -503,7 +504,7 @@ function CpiTimeSeriesCollectionContent({
               <li>
                 <div className="execution-brief-card" role="status">
                   <strong>
-                    美国 {profile.label} · {cpiActionText(intent.action)}
+                    {macroAssetLabel(profile)} · {cpiActionText(intent.action)}
                   </strong>
                   <dl>
                     <div>
@@ -540,7 +541,7 @@ function CpiTimeSeriesCollectionContent({
                   onClick={() => onExecution?.(job.job_id)}
                 >
                   <strong>
-                    美国 {profile.label} · {cpiActionText(job.action)}
+                    {macroAssetLabel(profile)} · {cpiActionText(job.action)}
                   </strong>
                   <dl>
                     <div>

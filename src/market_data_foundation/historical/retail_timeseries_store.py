@@ -236,7 +236,23 @@ class InMemoryRetailStore:
             return result
 
     def status(self):
+        inputs = {}
+        for (month, category, kind), versions in self.revisions.items():
+            if kind == "SM" and versions[-1].cell.value is not None:
+                inputs.setdefault(month, set()).add(category)
+        required = {
+            "headline": {"44X72"},
+            "control": {"44X72", "441", "444", "447", "722"},
+            "ex_auto": {"44X72", "441"},
+        }
         return {
+            "latest_months": {
+                basket: max(
+                    (month for month, present in inputs.items() if operands <= present),
+                    default=None,
+                )
+                for basket, operands in required.items()
+            },
             "batch_count": len(self.batches),
             "observation_count": sum(map(len, self.revisions.values())),
             "revision_count": sum(len(v) - 1 for v in self.revisions.values()),
@@ -505,7 +521,16 @@ class PostgresRetailStore:
             batches = self.connection.execute(
                 f"SELECT count(*) FROM {self.s}.batches"
             ).fetchone()[0]
+            latest = self.connection.execute(
+                "SELECT "
+                + ",".join(
+                    f"to_char(max(month) FILTER (WHERE {basket} IS NOT NULL),'YYYY-MM')"
+                    for basket in ("headline", "control", "ex_auto")
+                )
+                + f" FROM {self.s}.retail_timeseries_rates"
+            ).fetchone()
             return dict(
+                latest_months=dict(zip(("headline", "control", "ex_auto"), latest)),
                 observation_count=row[0],
                 revision_count=row[1],
                 latest_month=row[2],

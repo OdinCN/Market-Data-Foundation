@@ -617,7 +617,7 @@ footer {
     padding: 0 20px;
   }
   .workbench {
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 14px;
   }
   .content-panel,
@@ -1470,4 +1470,62 @@ footer {
   padding: 0 12px 12px;
   color: var(--muted);
   overflow-wrap: anywhere;
+}
+
+/* Keep the month, units and numbers readable inside either detail-pane width. */
+.macro-result-table {
+  min-width: 960px;
+}
+.macro-result-table th,
+.macro-result-table td {
+  overflow-wrap: normal;
+  word-break: normal;
+  vertical-align: top;
+}
+.macro-result-table th {
+  min-width: 90px;
+}
+.macro-result-table th:first-child,
+.macro-result-table td:first-child {
+  min-width: 160px;
+  white-space: nowrap;
+}
+.macro-result-table th:nth-child(2),
+.macro-result-table td:nth-child(2) {
+  min-width: 170px;
+}
+.macro-result-table td:not(:first-child):not(:nth-child(2)) {
+  min-width: 90px;
+}
+.related-release-links {
+  margin-top: 4px;
+  font-size: 12px;
+}
+.related-release-links summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.related-release-links[open] {
+  min-width: 230px;
+  max-width: 300px;
+  white-space: normal;
+}
+.related-release-links ul {
+  padding-left: 18px;
+  margin: 8px 0;
+}
+.related-release-links li + li {
+  margin-top: 8px;
+}
+.related-release-links p {
+  margin: 8px 0 0;
+}
+
+.macro-result-table th:nth-last-child(2),
+.macro-result-table td:nth-last-child(2) {
+  min-width: 250px;
+}
+.macro-result-table th:last-child,
+.macro-result-table td:last-child {
+  min-width: 200px;
 }

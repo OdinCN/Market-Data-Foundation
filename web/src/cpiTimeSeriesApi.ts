@@ -156,6 +156,50 @@ async function requestCpiJson<T>(
     throw new CpiServiceFailure("cpi_response_unknown");
   }
 }
+// Only a read-only status probe may retry the explicit transient store lock.
+export async function readCpiStatus(
+  transport: Transport,
+  signal: AbortSignal,
+  profile: MacroProfile = CPI_PROFILE,
+): Promise<CpiStatus> {
+  const delays = [200, 400, 800];
+  for (let attempt = 0; ; attempt++) {
+    signal.throwIfAborted();
+    try {
+      return await cpiRequest<CpiStatus>(
+        transport,
+        "/status",
+        { signal },
+        20000,
+        profile,
+      );
+    } catch (error) {
+      signal.throwIfAborted();
+      if (
+        !(error instanceof CpiServiceFailure) ||
+        error.status !== 503 ||
+        !["cpi", "ppi", "pce", "employment", "retail", "consumption"].some(
+          (family) => error.classification === family + "_timeseries_busy",
+        ) ||
+        attempt >= delays.length
+      )
+        throw error;
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => {
+          clearTimeout(timer);
+          signal.removeEventListener("abort", abort);
+          reject(signal.reason);
+        };
+        const timer = setTimeout(() => {
+          signal.removeEventListener("abort", abort);
+          resolve();
+        }, delays[attempt]);
+        signal.addEventListener("abort", abort, { once: true });
+        if (signal.aborted) abort();
+      });
+    }
+  }
+}
 export function useCpiAvailability(
   transport: Transport,
   generation: number,
@@ -167,13 +211,7 @@ export function useCpiAvailability(
     async (signal) => {
       let value: CpiStatus;
       try {
-        value = await cpiRequest<CpiStatus>(
-          transport,
-          "/status",
-          { signal },
-          20000,
-          profile,
-        );
+        value = await readCpiStatus(transport, signal, profile);
       } catch (error) {
         if (
           (profile.id === "cpi" || profile.id === "pce") &&
@@ -258,6 +296,13 @@ export type CpiPoint = {
   related_release_events?: {
     event_id: string;
     evidence_ids: string[];
+    source_version?: {
+      value: string;
+      precision: "date" | "instant";
+      basis: string;
+      source: string;
+    };
+    roles?: string[];
     association: string;
     reason: string | null;
   }[];

@@ -5,7 +5,8 @@ import { DateField } from "./DateField";
 import { MultiSelect } from "./MultiSelect";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
-import { releaseLink, releaseReasonText } from "./macroReleaseLinks";
+import { releaseReasonText } from "./macroReleaseLinks";
+import { RelatedReleaseLinks } from "./RelatedReleaseLinks";
 import { MacroReleaseRecords } from "./MacroReleaseRecords";
 import {
   buildCpiQueryRequest,
@@ -604,7 +605,10 @@ function CpiTimeSeriesContent({
                     : "变化率以百分比显示；3月、6月为相隔对应月数的累计变化，未经年化。"}
               </p>
               <div className="table-wrap">
-                <table aria-label={`${profile.label} 范围数据`}>
+                <table
+                  className="macro-result-table"
+                  aria-label={`${profile.label} 范围数据`}
+                >
                   <thead>
                     <tr>
                       <th>月份</th>
@@ -631,23 +635,10 @@ function CpiTimeSeriesContent({
                           <tr key={`${row.month}:${row.series_id}`}>
                             <td>
                               {row.month}
-                              {row.point?.related_release_events?.map(
-                                (link) => (
-                                  <div key={link.event_id}>
-                                    <a
-                                      href={releaseLink(profile, link.event_id)}
-                                    >
-                                      查看相关发布
-                                    </a>
-                                    <small>
-                                      {link.association ===
-                                      "explicit_version_proof"
-                                        ? " · 版本已有明确证明"
-                                        : " · 仅口径相关，版本未绑定"}
-                                    </small>
-                                  </div>
-                                ),
-                              )}
+                              <RelatedReleaseLinks
+                                links={row.point?.related_release_events}
+                                profile={profile}
+                              />
                             </td>
                             <td>
                               {
@@ -668,7 +659,9 @@ function CpiTimeSeriesContent({
                                   row.point?.[field as keyof CpiPoint],
                                   field.endsWith("ratio"),
                                   employment
-                                    ? field === "mom_pct" || field === "yoy_pct"
+                                    ? field.endsWith("ratio") ||
+                                      field === "mom_pct" ||
+                                      field === "yoy_pct"
                                       ? "%"
                                       : consumption &&
                                           field === "value" &&

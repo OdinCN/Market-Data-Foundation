@@ -202,3 +202,9 @@ export const CONSUMPTION_PROFILE: MacroProfile = Object.freeze({
   historyNotice:
     "金额按 BEA UNIT_MULT=6 保留百万美元原值，SAAR 是季调年率水平，不是年化增长。实际值为2017链价美元，商品与服务不可相加替代实际PCE；不使用CPI平减。储蓄率原值为百分数，可为零或负数，仅计算百分点变化。其余变化按同一截止未舍入端点计算。初始化默认240月可编辑，实际覆盖按来源返回，2026样本不证明原生历史起点。来源历史与事件材料按已留存证据读取，不回退最新值。",
 });
+
+export function macroAssetLabel(profile: MacroProfile): string {
+  return profile.label.startsWith("美国")
+    ? profile.label
+    : "美国 " + profile.label;
+}

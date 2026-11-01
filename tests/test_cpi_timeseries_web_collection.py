@@ -179,7 +179,9 @@ def test_long_collection_running_receipt_readback_replay_and_update(
             assert transport.requests == [("1999", "2018")]
         finally:
             release.set()
-        assert finished.wait(10), "collection_not_finished"
+        # Full range reconciliation is CPU-bound; only the receipt above has a
+        # five-second responsiveness contract. Keep completion bounded on busy CI.
+        assert finished.wait(30), "collection_not_finished"
         job = http.get(PREFIX + "/jobs").json()["jobs"][0]
         assert job["state"] == "complete"
         assert job["result"]["readback"]["verified"] is True

@@ -6,7 +6,7 @@ import {
   beijingInputToIso,
 } from "./beijingTime";
 import { DateField } from "./DateField";
-import { releaseReasonText } from "./macroReleaseLinks";
+import { releaseReasonText, releaseReasonTexts } from "./macroReleaseLinks";
 import { CodeBlock, RequestPreview } from "./CpiQueryDetails";
 
 type Locator =
@@ -296,8 +296,8 @@ export function MacroReleaseRecords({
               证据可用截止：{beijingTime(result.as_of)} · 来源请求：
               {result.provider_requests}
             </p>
-            {result.missing.map((reason) => (
-              <p key={reason}>缺项：{releaseReasonText(reason)}</p>
+            {releaseReasonTexts(result.missing).map((reason) => (
+              <p key={reason}>缺项：{reason}</p>
             ))}
             <div className="table-wrap">
               <table aria-label="发布事件列表">
@@ -358,8 +358,8 @@ export function MacroReleaseRecords({
                 <p>
                   市场共识、预期差和MDF持有值逐口径列出。未具备合格共识时预期差未计算，缺项保留原因。
                 </p>
-                {event.missing.map((reason) => (
-                  <p key={reason}>缺项：{releaseReasonText(reason)}</p>
+                {releaseReasonTexts(event.missing).map((reason) => (
+                  <p key={reason}>缺项：{reason}</p>
                 ))}
                 <details>
                   <summary>技术缺项代码</summary>

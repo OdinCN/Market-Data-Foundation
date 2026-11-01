@@ -1,3 +1,4 @@
+import { macroAssetLabel } from "./macroTimeSeriesProfile";
 import {
   CPI_PROFILE,
   PPI_PROFILE,
@@ -1093,7 +1094,7 @@ export function CollectionWorkbench({
             >
               {!assets.some((a) => sameKey(a.key, macroProfile.asset)) && (
                 <option value={keyOf(macroProfile.asset)}>
-                  美国 {macroProfile.label}
+                  {macroAssetLabel(macroProfile)}
                 </option>
               )}
               {!assets.some((a) => sameKey(a.key, EMPLOYMENT)) &&
@@ -1714,7 +1715,7 @@ export function CollectionWorkbench({
               })),
               ...macroRecords.map((e) => ({
                 id: e.rowId,
-                search: `${e.id} 美国 ${e.profile.label} ${e.origin === "automatic" ? "自动策略" : "手动采集"} ${cpiActionText(e.origin === "automatic" ? (e.stage ?? e.action) : e.action)} ${e.start ?? ""} ${e.end ?? ""} ${cpiExecutionStateText(e.state, e.result, e.profile, e)}`,
+                search: `${e.id} ${macroAssetLabel(e.profile)} ${e.origin === "automatic" ? "自动策略" : "手动采集"} ${cpiActionText(e.origin === "automatic" ? (e.stage ?? e.action) : e.action)} ${e.start ?? ""} ${e.end ?? ""} ${cpiExecutionStateText(e.state, e.result, e.profile, e)}`,
                 cells: [
                   `${e.profile.label} · ${e.origin === "automatic" ? "自动阶段 · " : ""}${cpiActionText(e.origin === "automatic" ? (e.stage ?? e.action) : e.action)}`,
                   <ExecutionCreatedAt value={e.created_at} />,

@@ -220,6 +220,18 @@ function CompactTable({
     </div>
   );
 }
+function RelatedReleaseHelp() {
+  return (
+    <p>
+      points[].related_release_events 列出相关发布事件；source_version
+      保留来源日期或时刻及精度，roles
+      区分当期公布（actual）、后续修订（prior_revised）和此前公布值（official_previous）。
+      association=explicit_version_proof
+      才表示当前连续版本已有明确证明；related_scope_only
+      仅表示口径或月份相关，不能据此认定表格数值是该事件公布值。日期级信息不补时刻。
+    </p>
+  );
+}
 export function CpiQueryApiHelp({
   profile = CPI_PROFILE,
   availability,
@@ -232,6 +244,7 @@ export function CpiQueryApiHelp({
   if (profile.id === "consumption")
     return (
       <section aria-label="美国消费与收入 API说明" className="cpi-api-help">
+        <RelatedReleaseHelp />
         <h4>GET {profile.basePath}/query</h4>
         <p>{profile.historyNotice}</p>
         <CompactTable
@@ -323,6 +336,7 @@ export function CpiQueryApiHelp({
   if (profile.id === "retail")
     return (
       <section aria-label="零售销售 API说明" className="cpi-api-help">
+        <RelatedReleaseHelp />
         <h4>GET {profile.basePath}/releases</h4>
         <p>
           发布记录支持
@@ -405,7 +419,8 @@ export function CpiQueryApiHelp({
         <p>
           GET {profile.basePath}/api-help 提供完整接口合同。POST{" "}
           {profile.basePath}/jobs 提交后台串行采集；request_id 与 collection_id
-          相同。恢复保留原请求及范围。周期策略未启用。
+          相同。恢复保留原请求及范围。/strategy
+          可开始或暂停预置官方日历策略；策略启用状态、进程心跳与实际执行结果分别查看。
         </p>
       </section>
     );
@@ -413,6 +428,7 @@ export function CpiQueryApiHelp({
   const permission = availability.data?.web_capabilities.query;
   return (
     <section aria-label={`${profile.label} API说明`} className="cpi-api-help">
+      <RelatedReleaseHelp />
       <h4>GET {profile.basePath}/releases</h4>
       <p>
         发布记录只读本地证据，不联网、不写入、不自动建表。参数：event_id（精确事件）、as_of（含时区的MDF可用截止）、read_mode=event/source_history、reference_month（事件覆盖月，可多月）、source_version（YYYY-MM-DD档案日期）。日期精度保留；历史证据晚取得不会倒填。缺少正式材料、修订或共识时返回具体
@@ -478,7 +494,7 @@ export function CpiQueryApiHelp({
           ],
           [
             "local_only",
-            `否 / ${profile.id === "cpi" ? "true" : "false"}（Web）`,
+            `否 / ${profile.id === "cpi" ? "true" : "false"}（API默认）`,
             "boolean 查询文本 true / false；当前表单发 false，历史发 true；history 始终禁止上游",
           ],
           [
@@ -633,9 +649,9 @@ export function CpiQueryApiHelp({
                   : "BLS 官方 pct_changes 与脚注保留；与本地端点计算分开",
             ],
             [
-              "points[].raw_sha256 / raw_locator",
+              "points[].raw_sha256 / raw_locator / batch_id",
               "string / string|null",
-              "原始材料摘要 / 已留存定位；未保存临时来源值无持久定位。HTTP 点不返回 batch_id",
+              "原始材料摘要 / 已留存定位 / 已保存版本的批次身份；临时来源值不保证有持久定位或批次",
             ],
             [
               "missing[]",

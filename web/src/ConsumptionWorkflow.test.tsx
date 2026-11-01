@@ -219,6 +219,26 @@ it("renders native amounts, zero saving rate and point changes in shared App wit
     ...Array(7).fill("2026-08"),
   ]);
   expect(within(table).getByText("22,452,780")).toBeTruthy();
+  const nominal = rows.find(
+    (r) =>
+      r.textContent?.includes("2026-09") &&
+      r.textContent?.includes("名义个人消费支出"),
+  )!;
+  const nominalPoint = JSON.parse(wire).points.find(
+    (p: any) => p.series_id === "DPCERC" && p.month === "2026-09",
+  );
+  for (const metric of [
+    "change_1m_ratio",
+    "change_3m_ratio",
+    "change_6m_ratio",
+    "change_12m_ratio",
+  ]) {
+    expect(
+      within(nominal).getAllByText(
+        (Number(nominalPoint[metric]) * 100).toFixed(2) + "%",
+      ).length,
+    ).toBeGreaterThan(0);
+  }
   const saving = rows.find(
     (r) =>
       r.textContent?.includes("2026-08") &&
