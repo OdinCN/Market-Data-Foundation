@@ -2,11 +2,14 @@
 
 本资产为 `mdf.macro.bea.consumption-income@r1`，能力键 `consumption`，API 前缀
 `/api/r5/consumption/timeseries`。PCE价格指数仍为原独立资产。
-本实现不表示已初始化 DEV，不表示二十年覆盖已核实，也不表示未来自然发布已测试。
+2026-11-01 已完成有界 DEV 迁移、240个月初始化、回读及真实 worker 联调。
+目标范围有9条来源缺口，不能称完整二十年覆盖；未来自然发布及真实浏览器像素尚未验收。
+实际效果与证据见本文末尾的 DEV 验证记录，以下命令是可复用运行手册，勿无条件重跑。
 
 ## 已核实的来源与数值
 
-Root 留存两个 2026 年 API Results 投影，两次实际调用均 200；本轮只离线读取，未再发请求。
+实现阶段先使用 Root 留存的两个 2026 年 API Results 投影，两次资格核验均 200；
+其后由 Root 单独执行下文记录的有界实际采集，未让实现 CLI 接触凭据或发起来源请求。
 严格匹配 TableName、LineNumber、SeriesCode、METRIC_NAME、CL_UNIT、UNIT_MULT，
 拒绝未知的目标映射、单位变化、缺少 DataValue 和重复点。无关官方表行不扩充指标集合。
 
@@ -58,8 +61,9 @@ BEA PIO canonical事件仍是 `bea:personal-income-and-outlays:YYYY-MM-DD`，同
 PCE 原 `official-five-family-v3` evidence IDs/时间/旧cutoff保持不变。
 同字节必须经过消费收入解析并导入本资产证据，不能拿PCE-only evidence ID 当消费收入已解析。
 
-留存 Sep/Aug 聚焦HTML支持四类官方 MoM；解析器另支持明确单参考月的储蓄率叙述，
-该叙述分支以合成材料验证。所选留存材料未含该段时保持missing，不能声称已核实官方储蓄率事件值。
+实现阶段的 Sep/Aug 聚焦HTML支持四类官方 MoM；其后 Root 取得的完整官方材料
+进一步核实了单参考月储蓄率叙述。两次事件各保留9项公布/修订声明，含储蓄率实际值。
+聚焦材料未含某段时仍保持missing，不能借完整材料成绩改写旧证据的覆盖范围。
 不从舍入变化反推金额；HTML 未列的金额、实际商品/服务统计量明确 missing。
 多参考月储蓄率叙述未明确分月时不猜月份。`hist.xlsx` 未当作 vintage old/new 修订表。
 连续计算的 MoM 不替代 HTML 官方率，不凭相等绑定 continuous_version。
@@ -88,7 +92,7 @@ partial source coverage均接入共同流程。已有五资产不重跑初始化
 
 ## Root 才执行的 DEV 步骤
 
-以下命令不得由本次实现会话执行。Root先核对真实DEV配置、现有五族状态、PG角色、Garage能力和备份。
+以下为 Root 运行手册；实现 CLI 不执行这些副作用。每次实际执行前核对真实DEV配置、现有五族状态、PG角色、Garage能力和备份。
 所有变量为路径/身份，不在命令行放凭据。示例目录应换成Root批准的持久runtime/artifacts根；
 `CFG/runtime.toml` 与 `CFG/secret.toml` 沿已有格式，PG必须为已资格化DEV能力，勿改系统Python。
 
@@ -134,7 +138,7 @@ uv run --locked --no-sync --offline python scripts/consumption_timeseries.py que
 
 uv的offline仅禁止依赖下载，不禁止命令中的显式来源请求！Root选择执行init才会采集。
 之后用Web manual job做一月update/真实journal/readback，检查2 logical请求与实际attempts，
-有界240月初始化由Root选择，先预估五年窗口/共享额度；不得声称本次已完成。
+有界240月初始化由Root选择，先预估五年窗口/共享额度；本轮实际执行事实单独记录如下。
 
 4. 导入已留存官方材料，无新增来源请求。`FILE`应是Root现有credential-free HTML/投影，
    选对material-format，不把聚焦投影叫原始HTTP。不可选BEA完整API response。
@@ -223,3 +227,29 @@ uv run --locked --no-sync --offline pytest -q
 shared store原生列/约束、query fields/serializer/OpenAPI、capability/source inventory、root host factories、
 web/worker flags、共享BEA material cache，以及既有frontend profile/资产/采集/策略/执行路由。
 本包未引入依赖，无uv.lock变更；不改Debian系统Python，不接QMT/ClickHouse/Redis。
+
+
+## 2026-11-01 实际 DEV 验证记录
+
+本节仅描述本轮有界开发环境效果，不把离线 fixture、HTTP、DOM 或运行心跳混为自然发布/浏览器验收。
+原五族没有重跑初始化；迁移与新包采集前后，五族全部现有表内容散列一致。
+
+| 验证 | 实际结果 |
+| --- | --- |
+| 迁移 | 新 schema 两数值表、两视图、三证据表；事务回滚演练准确；`odin_dba` 现有/未来对象只读授权已回读 |
+| 初始化 | `85d3a422-825d-4ec4-8a46-e3be60edf4cc`；2006-10～2026-09并请求12月比较缓冲；10 logical requests/10 attempts；1,719条新观测，0修订 |
+| 目标覆盖 | 1,671 / 1,680；三条实际消费序列各缺2006-10、11、12，明确来源未提供；额外比较缓冲缺36条 |
+| 原始响应核对 | 留存的对应批次中，上述三系列没有2005/2006行；仅说明这次响应的覆盖，未推定原生最早年份 |
+| 单月更新 | `078698c0-613f-4e36-a170-12bd8f776877`；2026-09，2数值请求/2 attempts，0新增/修订；回读成功；相同ID重放不再请求 |
+| SQL/API | 10,737项原生值和衍生指标逐项一致；七项2026-09值匹配资格样本 |
+| 材料 | 一次真实 BEA 9月发布HTML获取；8月原始HTML从已有留存离线导入；两个事件各9项声明；重复导入幂等 |
+| 时点与证据 | 材料取得时间不倒填；导入前cutoff不见晚证据；首次捕获不冒充本次官方公布；无共识时surprise为null |
+| BEA复用 | 同一原始材料可分资产解析；共享缓存不再HTTP；两资产不同解析/evidence身份；PCE证据不被改写 |
+| 运行 | Web及六族真实worker恢复；新策略启动/暂停/恢复、进程重启后新心跳、两项任务恢复均通过；旧五族启用状态保留 |
+
+安全证据保存在控制目录事务 `MDF-MACRO-RESEARCH-20261101-R1/artifacts/consumption/`，
+包括迁移演练/提交、来源预算/实际任务、readback/evidence核对、runtime验收及HTTP/DOM记录。
+该目录不提交凭据，完整BEA API Request回显从不落日志/Git。
+
+剩余边界：暂无稳定具名共识、完整官方历史首发/修订覆盖或精确实际发布时刻；
+历史材料使用自身日期粒度。BLS来源阻断不通过重试消耗额度。浏览器像素和未来自然发布留待对应验收。

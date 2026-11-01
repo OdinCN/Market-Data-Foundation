@@ -177,10 +177,7 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "identity",
-          "revision"
-        ],
+        "required": ["identity", "revision"],
         "title": "ContractKeyDTO"
       },
       "DirectoryEntryDTO-Input": {
@@ -193,11 +190,7 @@
           },
           "domain": {
             "type": "string",
-            "enum": [
-              "Macro",
-              "TDX",
-              "KD"
-            ],
+            "enum": ["Macro", "TDX", "KD"],
             "title": "Domain"
           },
           "source_name": {
@@ -218,10 +211,7 @@
           },
           "code_delivery": {
             "type": "string",
-            "enum": [
-              "DELIVERED",
-              "CONTRACT_ONLY"
-            ],
+            "enum": ["DELIVERED", "CONTRACT_ONLY"],
             "title": "Code Delivery"
           },
           "contract_disposition": {
@@ -357,11 +347,7 @@
           },
           "domain": {
             "type": "string",
-            "enum": [
-              "Macro",
-              "TDX",
-              "KD"
-            ],
+            "enum": ["Macro", "TDX", "KD"],
             "title": "Domain"
           },
           "source_name": {
@@ -382,10 +368,7 @@
           },
           "code_delivery": {
             "type": "string",
-            "enum": [
-              "DELIVERED",
-              "CONTRACT_ONLY"
-            ],
+            "enum": ["DELIVERED", "CONTRACT_ONLY"],
             "title": "Code Delivery"
           },
           "contract_disposition": {
@@ -539,11 +522,7 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "identity",
-          "title",
-          "catalog_identities"
-        ],
+        "required": ["identity", "title", "catalog_identities"],
         "title": "FamilyDTO"
       },
       "InstanceDTO": {
@@ -553,30 +532,17 @@
           },
           "freshness": {
             "type": "string",
-            "enum": [
-              "UNKNOWN",
-              "FRESH",
-              "EXPIRED"
-            ],
+            "enum": ["UNKNOWN", "FRESH", "EXPIRED"],
             "title": "Freshness"
           },
           "effective_state": {
             "type": "string",
-            "enum": [
-              "UNKNOWN",
-              "AVAILABLE",
-              "UNAVAILABLE"
-            ],
+            "enum": ["UNKNOWN", "AVAILABLE", "UNAVAILABLE"],
             "title": "Effective State"
           },
           "classification": {
             "type": "string",
-            "enum": [
-              "not_observed",
-              "clock_invalid",
-              "expired",
-              "observed"
-            ],
+            "enum": ["not_observed", "clock_invalid", "expired", "observed"],
             "title": "Classification"
           },
           "valid_for_ms": {
@@ -619,11 +585,7 @@
           },
           "ownership": {
             "type": "string",
-            "enum": [
-              "MDF_MANAGED",
-              "OWNER_MANAGED",
-              "OBSERVE_ONLY"
-            ],
+            "enum": ["MDF_MANAGED", "OWNER_MANAGED", "OBSERVE_ONLY"],
             "title": "Ownership"
           },
           "endpoint_ref": {
@@ -664,22 +626,14 @@
           },
           "state": {
             "type": "string",
-            "enum": [
-              "UNKNOWN",
-              "AVAILABLE",
-              "UNAVAILABLE"
-            ],
+            "enum": ["UNKNOWN", "AVAILABLE", "UNAVAILABLE"],
             "title": "State",
             "default": "UNKNOWN"
           }
         },
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "identity",
-          "catalog_identity",
-          "ownership"
-        ],
+        "required": ["identity", "catalog_identity", "ownership"],
         "title": "InstanceRecord",
         "description": "Only public symbolic references; no URL, DSN, credential or raw message."
       },
@@ -702,10 +656,7 @@
           },
           "instance_scope": {
             "type": "string",
-            "enum": [
-              "UNCONFIGURED",
-              "TRUSTED_READ"
-            ],
+            "enum": ["UNCONFIGURED", "TRUSTED_READ"],
             "title": "Instance Scope"
           },
           "persistence": {
@@ -763,27 +714,18 @@
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "UNKNOWN",
-              "NOT_AVAILABLE"
-            ],
+            "enum": ["UNKNOWN", "NOT_AVAILABLE"],
             "title": "Status"
           },
           "classification": {
             "type": "string",
-            "enum": [
-              "invalid_request",
-              "management_read_unavailable"
-            ],
+            "enum": ["invalid_request", "management_read_unavailable"],
             "title": "Classification"
           }
         },
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "status",
-          "classification"
-        ],
+        "required": ["status", "classification"],
         "title": "ManagementErrorDTO"
       },
       "MappingDTO": {

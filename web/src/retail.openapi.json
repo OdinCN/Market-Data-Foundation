@@ -160,10 +160,7 @@
                   "properties": {
                     "read_mode": {
                       "type": "string",
-                      "enum": [
-                        "event",
-                        "source_history"
-                      ]
+                      "enum": ["event", "source_history"]
                     },
                     "as_of": {
                       "type": "string",
@@ -202,10 +199,7 @@
                             }
                           },
                           "actual_at": {
-                            "type": [
-                              "string",
-                              "null"
-                            ]
+                            "type": ["string", "null"]
                           },
                           "source_version": {
                             "type": "object",
@@ -221,11 +215,7 @@
                               },
                               "precision": {
                                 "type": "string",
-                                "enum": [
-                                  "date",
-                                  "instant",
-                                  "interval"
-                                ]
+                                "enum": ["date", "instant", "interval"]
                               },
                               "basis": {
                                 "type": "string"
@@ -278,10 +268,7 @@
                                   "type": "string"
                                 },
                                 "continuous_version": {
-                                  "type": [
-                                    "object",
-                                    "null"
-                                  ],
+                                  "type": ["object", "null"],
                                   "additionalProperties": true
                                 },
                                 "value_basis": {
@@ -294,66 +281,39 @@
                                   "type": "string"
                                 },
                                 "mdf_first_captured_missing": {
-                                  "type": [
-                                    "string",
-                                    "null"
-                                  ]
+                                  "type": ["string", "null"]
                                 },
                                 "mdf_pre_event_previous_missing": {
-                                  "type": [
-                                    "string",
-                                    "null"
-                                  ]
+                                  "type": ["string", "null"]
                                 },
                                 "mdf_pre_event_previous_basis": {
                                   "type": "string"
                                 },
                                 "mdf_pre_event_guaranteed_previous": {
-                                  "type": [
-                                    "object",
-                                    "null"
-                                  ],
+                                  "type": ["object", "null"],
                                   "additionalProperties": true
                                 },
                                 "association": {
-                                  "type": [
-                                    "object",
-                                    "null"
-                                  ],
+                                  "type": ["object", "null"],
                                   "additionalProperties": true
                                 },
                                 "association_missing": {
-                                  "type": [
-                                    "string",
-                                    "null"
-                                  ]
+                                  "type": ["string", "null"]
                                 },
                                 "mdf_first_captured": {
-                                  "type": [
-                                    "object",
-                                    "null"
-                                  ],
+                                  "type": ["object", "null"],
                                   "additionalProperties": true
                                 },
                                 "mdf_pre_event_last_consumable_previous": {
-                                  "type": [
-                                    "object",
-                                    "null"
-                                  ],
+                                  "type": ["object", "null"],
                                   "additionalProperties": true
                                 },
                                 "consensus": {
-                                  "type": [
-                                    "object",
-                                    "null"
-                                  ],
+                                  "type": ["object", "null"],
                                   "additionalProperties": true
                                 },
                                 "surprise": {
-                                  "type": [
-                                    "string",
-                                    "null"
-                                  ]
+                                  "type": ["string", "null"]
                                 },
                                 "surprise_missing": {
                                   "type": "array",
@@ -408,11 +368,7 @@
                                     },
                                     "precision": {
                                       "type": "string",
-                                      "enum": [
-                                        "date",
-                                        "instant",
-                                        "interval"
-                                      ]
+                                      "enum": ["date", "instant", "interval"]
                                     },
                                     "basis": {
                                       "type": "string"
@@ -469,10 +425,7 @@
                                         "type": "string"
                                       },
                                       "continuous_version": {
-                                        "type": [
-                                          "object",
-                                          "null"
-                                        ],
+                                        "type": ["object", "null"],
                                         "additionalProperties": true
                                       },
                                       "value_basis": {
@@ -485,66 +438,39 @@
                                         "type": "string"
                                       },
                                       "mdf_first_captured_missing": {
-                                        "type": [
-                                          "string",
-                                          "null"
-                                        ]
+                                        "type": ["string", "null"]
                                       },
                                       "mdf_pre_event_previous_missing": {
-                                        "type": [
-                                          "string",
-                                          "null"
-                                        ]
+                                        "type": ["string", "null"]
                                       },
                                       "mdf_pre_event_previous_basis": {
                                         "type": "string"
                                       },
                                       "mdf_pre_event_guaranteed_previous": {
-                                        "type": [
-                                          "object",
-                                          "null"
-                                        ],
+                                        "type": ["object", "null"],
                                         "additionalProperties": true
                                       },
                                       "association": {
-                                        "type": [
-                                          "object",
-                                          "null"
-                                        ],
+                                        "type": ["object", "null"],
                                         "additionalProperties": true
                                       },
                                       "association_missing": {
-                                        "type": [
-                                          "string",
-                                          "null"
-                                        ]
+                                        "type": ["string", "null"]
                                       },
                                       "mdf_first_captured": {
-                                        "type": [
-                                          "object",
-                                          "null"
-                                        ],
+                                        "type": ["object", "null"],
                                         "additionalProperties": true
                                       },
                                       "mdf_pre_event_last_consumable_previous": {
-                                        "type": [
-                                          "object",
-                                          "null"
-                                        ],
+                                        "type": ["object", "null"],
                                         "additionalProperties": true
                                       },
                                       "consensus": {
-                                        "type": [
-                                          "object",
-                                          "null"
-                                        ],
+                                        "type": ["object", "null"],
                                         "additionalProperties": true
                                       },
                                       "surprise": {
-                                        "type": [
-                                          "string",
-                                          "null"
-                                        ]
+                                        "type": ["string", "null"]
                                       },
                                       "surprise_missing": {
                                         "type": "array",
@@ -564,10 +490,7 @@
                           },
                           "state": {
                             "type": "string",
-                            "enum": [
-                              "confirmed",
-                              "unknown"
-                            ]
+                            "enum": ["confirmed", "unknown"]
                           },
                           "missing": {
                             "type": "array",
@@ -794,9 +717,7 @@
                 },
                 "additionalProperties": false,
                 "type": "object",
-                "required": [
-                  "enabled"
-                ],
+                "required": ["enabled"],
                 "title": "RetailStrategyCommand"
               }
             }
@@ -829,9 +750,7 @@
                 },
                 "additionalProperties": false,
                 "type": "object",
-                "required": [
-                  "enabled"
-                ],
+                "required": ["enabled"],
                 "title": "RetailStrategyCommand"
               }
             }
