@@ -50,7 +50,7 @@ def test_code_inventory_is_stable_bounded_and_never_opens_host_scope(monkeypatch
         assert body["evidence_mode"] == "CODE_CONTRACTS_ONLY"
         assert body["scope"] == "NAMED_R5_I2_ALLOWLIST"
         entries = body["entries"]
-        assert len(entries) == 16 <= source_catalog.MAX_ENTRIES
+        assert len(entries) == 17 <= source_catalog.MAX_ENTRIES
         assert len({e["identity"] for e in entries}) == len(entries)
 
         def order(e):
@@ -137,7 +137,10 @@ def test_domain_contracts_do_not_masquerade_as_generic_services_or_descriptors()
         if entry.source_name in {"ECB", "ESTAT"}:
             assert entry.source_qualified_contract is False
             assert "not_source_qualified" in entry.binding_contract.limitations
-        if entry.source_name == "BEA":
+        if (
+            entry.source_name == "BEA"
+            and entry.asset.identity != "mdf.macro.bea.consumption-income"
+        ):
             assert "source_mapping_not_independently_verified" in (
                 entry.binding_contract.limitations
             )

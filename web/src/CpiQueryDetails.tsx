@@ -229,6 +229,97 @@ export function CpiQueryApiHelp({
   request: RequestDescription;
   profile?: MacroProfile;
 }) {
+  if (profile.id === "consumption")
+    return (
+      <section aria-label="美国消费与收入 API说明" className="cpi-api-help">
+        <h4>GET {profile.basePath}/query</h4>
+        <p>{profile.historyNotice}</p>
+        <CompactTable
+          label="查询参数"
+          headers={["参数", "语义"]}
+          rows={[
+            ["start/end", "必填YYYY-MM，含首尾；比较值同截止，向前12月缓冲"],
+            [
+              "series",
+              "可选七项BEA原生ID逗号多选；省略全部七项；不接受basket/adjustment",
+            ],
+            [
+              "measure",
+              "native（默认）；value始终是原生金额或储蓄率，不是价格指数",
+            ],
+            [
+              "columns",
+              "value、mom_pct、yoy_pct、change_{1,3,6,12}m_ratio、change_{1,12}m_percentage_points；逗号多选，省略保留完整字段",
+            ],
+            [
+              "local_only",
+              "API默认false；当前表单显式false，历史显式true；查询不落库、不建表",
+            ],
+            ["query_mode", "current/history；history严格本地，无最新回退"],
+            [
+              "as_of / as_of_basis / vintage_mode",
+              "带时区inclusive截止；历史默认available，observed仅来源观察审计；北京时间+08:00须URL编码。全部分子/分母同截止",
+            ],
+          ]}
+        />
+        <CompactTable
+          label="统计序列"
+          headers={["原生ID", "指标/单位"]}
+          rows={profile.series.map((s) => [s[0], s[1]])}
+        />
+        <CompactTable
+          label="返回字段"
+          headers={["字段", "含义/单位"]}
+          rows={[
+            [
+              "points[].value/value_unit",
+              "Decimal字符串；money为million_USD或million_chained_2017_USD；saving rate为percent，3.8即3.8%，可为零或负数",
+            ],
+            [
+              "annual_rate/chained_base",
+              "金额SAAR水平，与年化增长不同；实际值2017链价，分项不可相加",
+            ],
+            [
+              "change_{1,3,6,12}m_ratio / mom_pct / yoy_pct",
+              "仅金额：累计比率 / 环比百分数 / 同比百分数；同截止未舍入输入。连续计算率不替代事件公布率",
+            ],
+            [
+              "change_{1,12}m_percentage_points",
+              "仅储蓄率：当期减比较期，单位百分点；无百分比增长或年化",
+            ],
+            [
+              "missing/source_unavailable/calculation_missing",
+              "未返回行/官方null/比较期缺失分别保留，不填零；未来范围保留已有本地行",
+            ],
+            [
+              "provider_calculations.bea/retained_notes",
+              "原生行身份、指标、单位、NoteRef及来源Notes；保留投影来源，不称原始认证响应",
+            ],
+            [
+              "revision/observed_at/available_at/raw_sha256/raw_locator",
+              "本地版本、观察/提交确认时间、凭据安全Results投影摘要/定位；revision1是MDF首次捕获，不是官方首发",
+            ],
+            [
+              "provider_requests/provider_attempts",
+              "逻辑表请求数/包括重试的HTTP尝试；两表响应不是原子官方快照",
+            ],
+          ]}
+        />
+        <h4>GET {profile.basePath}/releases</h4>
+        <p>
+          event_id、reference_month、as_of、read_mode=event/source_history、source_version。只读留存官方材料，无latest回退。BEA
+          PIO
+          canonical事件与PCE价格共享；解析证据按资产范围独立，晚导入不倒填可用时间。actual、official_previous、prior_revised分别保留；HTML缺金额水平和商品/服务口径时逐项说明。没有稳定具名共识，surprise返回缺失原因。
+        </p>
+        <RequestPreview request={request} />
+        <p>
+          GET {profile.basePath}/api-help；POST {profile.basePath}
+          /jobs（request_id/action/start/end及可选series）；PUT{" "}
+          {profile.basePath}
+          /strategy仅开始/暂停预置官方日历策略。执行、心跳和实际采集结果分别展示。
+        </p>
+      </section>
+    );
   if (profile.id === "retail")
     return (
       <section aria-label="零售销售 API说明" className="cpi-api-help">

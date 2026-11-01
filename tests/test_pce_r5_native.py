@@ -69,8 +69,12 @@ def test_native_r5_reader_failed_job_and_seven_page_apis_are_preserved(tmp_path)
         for path in ("/api/r5/sources", "/api/r5/observability", "/api/r3/management"):
             assert c.get(path).status_code == 200
         entries = c.get("/api/r5/sources").json()["entries"]
-        assert len(entries) == 16
-        bea = next(e for e in entries if e["source_name"] == "BEA")
+        assert len(entries) == 17
+        bea = next(
+            e
+            for e in entries
+            if e["identity"] == f"{BINDING.source}@{BINDING.source_revision}"
+        )
         assert bea["identity"] == f"{BINDING.source}@{BINDING.source_revision}"
         assert bea["binding_contract"]["identity"] == BINDING.binding
         jobs = c.get("/api/r5/cpi/jobs").json()
@@ -278,8 +282,12 @@ def test_native_backfill_boundary_keeps_cpi_and_bea_composite_identities():
             pce_initial(),
         )
         assert c.get("/api/r5/sources").json() == before
-        assert len(before["entries"]) == 16
-        bea = next(e for e in before["entries"] if e["source_name"] == "BEA")
+        assert len(before["entries"]) == 17
+        bea = next(
+            e
+            for e in before["entries"]
+            if e["identity"] == f"{BINDING.source}@{BINDING.source_revision}"
+        )
         assert bea["identity"] == f"{BINDING.source}@{BINDING.source_revision}"
     readonly = create_preview(
         journal, scope, lambda: BASE, enabled=True, origin=CANDIDATE_ORIGIN

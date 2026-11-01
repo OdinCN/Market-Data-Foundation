@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from market_data_foundation.historical.bls_timeseries_profile import (
+    CONSUMPTION_PROFILE,
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
     PCE_PROFILE,
@@ -17,7 +18,14 @@ from market_data_foundation.historical.macro_release_records import (
 )
 
 PROFILES = {
-    p.key: p for p in (CPI_PROFILE, PPI_PROFILE, PCE_PROFILE, EMPLOYMENT_PROFILE)
+    p.key: p
+    for p in (
+        CPI_PROFILE,
+        PPI_PROFILE,
+        PCE_PROFILE,
+        EMPLOYMENT_PROFILE,
+        CONSUMPTION_PROFILE,
+    )
 }
 
 

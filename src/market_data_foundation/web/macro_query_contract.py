@@ -1,6 +1,7 @@
 """OpenAPI parameters for the existing Request-based monthly query routes."""
 
 from market_data_foundation.historical.bls_timeseries_profile import (
+    CONSUMPTION_PROFILE,
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
     PCE_PROFILE,
@@ -38,7 +39,7 @@ def query_openapi(family):
             "CSV headline/control/ex_auto or all; core aliases control. "
             "Default headline,control. Six shared source inputs; ex_auto=44X72-441."
         )
-    elif family == "employment":
+    elif family in {"employment", "consumption"}:
         descriptions["series"] = (
             "CSV allowlisted CES/CPS IDs; omitted preserves original five. "
             "Includes private/EPOP/eleven non-overlapping major sectors; "
@@ -65,7 +66,18 @@ def query_openapi(family):
                 else ""
             )
         )
-    return {
+    if family == "consumption":
+        descriptions["series"] = (
+            "CSV seven qualified BEA native IDs; omitted returns all "
+            "seven. SA only; money in millions current/chained 2017 "
+            "USD SAAR, saving rate percent."
+        )
+        descriptions["measure"] = (
+            "native only (default); value is native amount/rate. "
+            "Select display columns separately. Saving rate supports "
+            "percentage-point changes only."
+        )
+    result = {
         "parameters": [
             {
                 "in": "query",
@@ -84,6 +96,78 @@ def query_openapi(family):
             for name, description in descriptions.items()
         ]
     }
+    if family == "consumption":
+        decimal = {
+            "type": ["string", "null"],
+            "description": (
+                "Decimal text; native values unrounded, derived rates rounded once."
+            ),
+        }
+        result["responses"] = {
+            "200": {
+                "description": (
+                    "Local-first native BEA values; "
+                    "incomplete future months remain missing."
+                ),
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "required": ["points", "missing", "complete", "measure"],
+                            "properties": {
+                                "measure": {"type": "string", "enum": ["native"]},
+                                "unit": {
+                                    "type": "string",
+                                    "enum": ["per_series_value_unit"],
+                                },
+                                "complete": {"type": "boolean"},
+                                "provider_requests": {"type": "integer"},
+                                "provider_attempts": {"type": "integer"},
+                                "missing": {
+                                    "type": "array",
+                                    "items": {"type": "object"},
+                                },
+                                "points": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "required": [
+                                            "series_id",
+                                            "month",
+                                            "value_unit",
+                                            "annual_rate",
+                                        ],
+                                        "properties": {
+                                            "series_id": {
+                                                "type": "string",
+                                                "enum": list(
+                                                    CONSUMPTION_PROFILE.series_ids
+                                                ),
+                                            },
+                                            "month": {"type": "string"},
+                                            "value_unit": {"type": "string"},
+                                            "annual_rate": {"type": "boolean"},
+                                            "seasonal_adjustment": {
+                                                "type": "string",
+                                                "enum": ["SA"],
+                                            },
+                                            "chained_base": {
+                                                "type": ["string", "null"]
+                                            },
+                                            **{
+                                                k: decimal
+                                                for k in query_columns(family)
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        }
+                    }
+                },
+            }
+        }
+    return result
 
 
 def contract_app():
@@ -92,7 +176,13 @@ def contract_app():
     from market_data_foundation.web.cpi_timeseries_api import timeseries_router
 
     app = FastAPI()
-    for profile in (CPI_PROFILE, PPI_PROFILE, PCE_PROFILE, EMPLOYMENT_PROFILE):
+    for profile in (
+        CPI_PROFILE,
+        PPI_PROFILE,
+        PCE_PROFILE,
+        EMPLOYMENT_PROFILE,
+        CONSUMPTION_PROFILE,
+    ):
         app.include_router(timeseries_router(None, profile=profile))
     return app
 
@@ -104,7 +194,7 @@ def job_openapi(family):
         "start": {"type": "string", "pattern": r"^[0-9]{4}-(0[1-9]|1[0-2])$"},
         "end": {"type": "string", "pattern": r"^[0-9]{4}-(0[1-9]|1[0-2])$"},
     }
-    if family in {"cpi", "ppi", "employment"}:
+    if family in {"cpi", "ppi", "employment", "consumption"}:
         properties["series"] = {
             "type": "string",
             "description": (

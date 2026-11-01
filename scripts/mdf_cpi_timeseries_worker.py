@@ -21,11 +21,17 @@ from market_data_foundation.web.readonly_host import ReadonlySettings
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--asset", choices=("cpi", "ppi", "pce", "employment", "retail"), default="cpi"
+        "--asset",
+        choices=("cpi", "ppi", "pce", "employment", "retail", "consumption"),
+        default="cpi",
     )
     parser.add_argument("--opt-in-cpi-worker", action="store_true")
     parser.add_argument("--opt-in-ppi-worker", action="store_true")
     parser.add_argument("--opt-in-pce-worker", action="store_true")
+    parser.add_argument("--opt-in-consumption-worker", action="store_true")
+    parser.add_argument("--consumption-schedule-path", type=Path)
+    parser.add_argument("--consumption-job-directory", type=Path)
+    parser.add_argument("--consumption-history-start")
     parser.add_argument("--opt-in-employment-worker", action="store_true")
     parser.add_argument("--opt-in-retail-worker", action="store_true")
     parser.add_argument("--retail-schedule-path", type=Path)
@@ -63,6 +69,14 @@ def build_runtime(args):
     ppi = args.asset == "ppi"
     pce = args.asset == "pce"
     retail = args.asset == "retail"
+    consumption = args.asset == "consumption"
+    if consumption:
+        if (
+            args.consumption_schedule_path is None
+            or args.consumption_job_directory is None
+        ):
+            raise ValueError("consumption_independent_paths_required")
+        paths += [args.consumption_schedule_path, args.consumption_job_directory]
     if retail:
         retail_paths = [
             args.retail_schedule_path,
@@ -132,6 +146,15 @@ def build_runtime(args):
             read_permission="allowed" if ppi else "denied",
         ),
         ppi_allow_collect=args.allow_collect and ppi,
+        consumption_enabled=consumption,
+        consumption_schedule_path=args.consumption_schedule_path,
+        consumption_job_directory=args.consumption_job_directory,
+        consumption_history_start=args.consumption_history_start,
+        consumption_access=CpiQueryAccess(
+            metadata_permission="allowed" if consumption else "denied",
+            read_permission="allowed" if consumption else "denied",
+        ),
+        consumption_allow_collect=args.allow_collect and consumption,
         pce_enabled=pce,
         pce_schedule_path=args.pce_schedule_path if pce else None,
         pce_job_directory=args.pce_job_directory if pce else None,
@@ -141,7 +164,9 @@ def build_runtime(args):
             read_permission="allowed" if pce else "denied",
         ),
         pce_allow_collect=args.allow_collect and pce,
-        pce_request_control_path=args.bea_request_control_path if pce else None,
+        pce_request_control_path=args.bea_request_control_path
+        if pce or consumption
+        else None,
     )
 
 
@@ -163,6 +188,8 @@ def main(argv=None):
         # tick rereads persistent enabled; even paused workers remain observable.
         if args.asset == "cpi":
             host = runtime.timeseries
+        elif args.asset == "consumption":
+            host = runtime.consumption_timeseries
         elif args.asset == "ppi":
             host = runtime.ppi_timeseries
         elif args.asset == "retail":

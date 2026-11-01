@@ -49,7 +49,12 @@ from market_data_foundation.web.pce_dev_host import CANDIDATE_ORIGIN, admitted
 from market_data_foundation.web.ppi_timeseries import execute_profile
 
 PREFIX = "/api/r5/cpi/timeseries"
-PREFIXES = (PREFIX, "/api/r5/ppi/timeseries", "/api/r5/employment/timeseries")
+PREFIXES = (
+    PREFIX,
+    "/api/r5/ppi/timeseries",
+    "/api/r5/employment/timeseries",
+    "/api/r5/consumption/timeseries",
+)
 
 
 def admitted_job(request, *, prefix=None):
@@ -117,9 +122,11 @@ class TimeSeriesHost:
         ):
             raise ValueError("invalid_collection_limit")
         self.profile = validate_profile(profile)
-        self.source_id = "BEA" if profile.key == "pce" else "BLS"
+        self.source_id = "BEA" if profile.provider == "BEA" else "BLS"
         self.official_origin = (
-            "https://www.bea.gov/" if profile.key == "pce" else "https://www.bls.gov/"
+            "https://www.bea.gov/"
+            if profile.provider == "BEA"
+            else "https://www.bls.gov/"
         )
         if getattr(scheduler, "profile", CPI_PROFILE) is not profile:
             raise ValueError("bls_timeseries_profile_mismatch")
@@ -364,8 +371,12 @@ class TimeSeriesHost:
             snapshot=self.scheduler.status(),
             start=start,
             end=end,
-            state_path=self.scheduler.state_path.with_name(
-                self.profile.key + "-release-material.json"
+            state_path=getattr(
+                self,
+                "material_state_path",
+                self.scheduler.state_path.with_name(
+                    self.profile.key + "-release-material.json"
+                ),
             ),
             numeric_result=numeric_result,
         )
@@ -396,16 +407,23 @@ class TimeSeriesHost:
                 "query_mode",
                 "as_of_basis",
             }
-            | ({"series"} if self.profile.key == "employment" else set()),
+            | (
+                {"series"}
+                if self.profile.key in {"employment", "consumption"}
+                else set()
+            ),
         )
         if not self.query_allowed:
             raise WebError("local_read_not_authorized", 403)
-        if self.profile.key == "employment" and (
+        if self.profile.key in {"employment", "consumption"} and (
             "basket" in params
             or "adjustment" in params
-            or params.get("measure", "index") != "index"
+            or params.get(
+                "measure", "native" if self.profile.key == "consumption" else "index"
+            )
+            != ("native" if self.profile.key == "consumption" else "index")
         ):
-            raise WebError("employment_series_filter_required")
+            raise WebError(self.profile.key + "_series_filter_required")
         local_only = params.get(
             "local_only", "true" if self.profile is CPI_PROFILE else "false"
         )
@@ -607,7 +625,7 @@ class TimeSeriesHost:
                         service, command["start"], command["end"], written
                     )
                 read_start, read_end = command["start"], command["end"]
-                if self.profile.key in {"ppi", "pce", "employment"}:
+                if self.profile.key in {"ppi", "pce", "employment", "consumption"}:
                     months = [
                         p["month"]
                         for p in written.get("source_returned_series_months", [])
@@ -665,6 +683,10 @@ class TimeSeriesHost:
                     classification=classification,
                     result={"provider_attempts": document["provider_attempts"]},
                 )
+                if self.profile.key == "consumption":
+                    job["result"]["provider_requests"] = getattr(
+                        error, "provider_requests", 0
+                    )
             job["finished_at"] = self.clock().isoformat()
             self.journal.save(job)
             return job

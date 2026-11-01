@@ -63,12 +63,16 @@ class CpiSourceError(RuntimeError):
         *,
         http_status: int | None = None,
         retry_at: datetime | None = None,
+        request_count: int = 0,
+        transient: bool = False,
     ) -> None:
         super().__init__(classification)
         self.classification = classification
         self.attempts = attempts
         self.http_status = http_status
         self.retry_at = retry_at
+        self.request_count = request_count
+        self.transient = transient
 
 
 @dataclass(frozen=True)

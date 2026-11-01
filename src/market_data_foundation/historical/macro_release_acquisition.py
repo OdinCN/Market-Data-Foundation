@@ -150,7 +150,7 @@ def select_material(family, snapshot, start, end, now):
             origin = urlsplit(source)
             expected_host = (
                 "www.bea.gov"
-                if family == "pce"
+                if family in {"pce", "consumption"}
                 else "www.census.gov"
                 if family == "retail"
                 else "www.bls.gov"
@@ -174,7 +174,7 @@ def select_material(family, snapshot, start, end, now):
         if family in {"cpi", "ppi", "employment"}:
             stem = {"employment": "empsit"}.get(family, family)
             url = f"https://www.bls.gov/news.release/archives/{stem}_{day:%m%d%Y}.htm"
-        elif family == "pce":
+        elif family in {"pce", "consumption"}:
             title = target.get("summary") or (current or {}).get("summary")
             name = MONTHS[int(reference[5:]) - 1].lower()
             slug = (
@@ -292,6 +292,7 @@ class MaterialAcquirer:
             "cpi": "bls:cpi",
             "ppi": "bls:ppi",
             "pce": "bea:personal-income-and-outlays",
+            "consumption": "bea:personal-income-and-outlays",
             "retail": "census:advance-retail",
         }[family]
         identity = prefix + ":" + selection["source_date"]
@@ -316,7 +317,7 @@ class MaterialAcquirer:
             r
             for r in retained
             if r.get("retention", {}).get("acquisition_method")
-            == "bounded_official_transport"
+            in {"bounded_official_transport", "shared_original_material_cache"}
         ]
         if acquired:
             return dict(
@@ -324,14 +325,22 @@ class MaterialAcquirer:
                 state="retained",
                 event_ids=[identity],
                 evidence_ids=[r["evidence_id"] for r in acquired],
-                evidence_origin="previous_bounded_official_transport",
+                evidence_origin=(
+                    "previous_shared_original_material_cache"
+                    if all(
+                        r.get("retention", {}).get("acquisition_method")
+                        == "shared_original_material_cache"
+                        for r in acquired
+                    )
+                    else "previous_bounded_official_transport"
+                ),
                 material_outcomes=[
                     dict(
                         state="retained",
                         event_id=identity,
                         evidence_ids=[r["evidence_id"] for r in acquired],
                         deduplicated=True,
-                        basis="previous_bounded_official_transport",
+                        basis="previous_asset_scoped_material_acquisition",
                     )
                 ],
                 reasons=list(
@@ -383,7 +392,33 @@ class MaterialAcquirer:
             self._save(state)
             base.update(provider_requests=1, transport_calls=1)
             try:
-                raw = self.fetcher(selection["source_url"], family)
+                if family in {"pce", "consumption"}:
+                    from market_data_foundation.historical.bea_shared_material import (
+                        cached_material,
+                    )
+
+                    base.update(provider_requests=0, transport_calls=0)
+
+                    def acquire_raw(url, asset):
+                        base.update(provider_requests=1, transport_calls=1)
+                        return self.fetcher(url, asset)
+
+                    raw, fetched = cached_material(
+                        self.path.parent / "bea-pio-original-material",
+                        selection,
+                        family,
+                        acquire_raw,
+                    )
+                    base.update(
+                        provider_requests=int(fetched), transport_calls=int(fetched)
+                    )
+                    attempt["raw_material_origin"] = (
+                        "bounded_transport"
+                        if fetched
+                        else "shared_original_bytes_cache"
+                    )
+                else:
+                    raw = self.fetcher(selection["source_url"], family)
                 doc = parse_material(raw, selection["source_url"], family)
                 if (
                     selection["reference_month"] not in doc["reference_months"]
@@ -396,7 +431,11 @@ class MaterialAcquirer:
                     raw,
                     selection["source_url"],
                     material_format="original_http_body",
-                    acquisition_method="bounded_official_transport",
+                    acquisition_method=(
+                        "shared_original_material_cache"
+                        if family in {"pce", "consumption"} and not fetched
+                        else "bounded_official_transport"
+                    ),
                 )
                 attempt.update(
                     state="retained",

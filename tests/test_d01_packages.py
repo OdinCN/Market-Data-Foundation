@@ -155,7 +155,7 @@ def test_real_identities_source_variants_and_other_code_catalog_are_preserved(tm
         }
         directory = client.get("/api/r5/sources").json()
         assert directory["evidence_mode"] == "CODE_CONTRACTS_ONLY"
-        assert len(directory["entries"]) == 16
+        assert len(directory["entries"]) == 17
         assert (
             len(
                 {
@@ -164,7 +164,7 @@ def test_real_identities_source_variants_and_other_code_catalog_are_preserved(tm
                     if e["asset"]
                 }
             )
-            == 11
+            == 12
         )
 
 

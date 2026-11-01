@@ -52,7 +52,7 @@ def official_releases(snapshot, *, exclude_absent=False, profile=CPI_PROFILE):
                 "https://www.census.gov/"
                 if profile.key == "retail"
                 else "https://www.bea.gov/"
-                if profile.key == "pce"
+                if profile.provider == "BEA"
                 else "https://www.bls.gov/"
             )
             and at is not None
@@ -104,7 +104,11 @@ def initialization_preset(service, status, snapshot, now, *, profile=CPI_PROFILE
             if point.get("origin") == "local"
             and point.get("availability") == "available"
             and point.get("available_at") is not None
-            and point.get("value" if profile.key == "employment" else "index_value")
+            and point.get(
+                "value"
+                if profile.key in {"employment", "consumption"}
+                else "index_value"
+            )
             is not None
         ]
         if confirmed:
@@ -117,7 +121,7 @@ def initialization_preset(service, status, snapshot, now, *, profile=CPI_PROFILE
     if anchor is None and profile.key == "ppi":
         anchor = month_text(now.year * 12 + now.month - 2)
         basis = "request_calendar_month"
-    if anchor is None and profile.key in {"pce", "employment"}:
+    if anchor is None and profile.key in {"pce", "employment", "consumption"}:
         local_now = now.astimezone(ZoneInfo("Asia/Shanghai"))
         anchor = month_text(local_now.year * 12 + local_now.month - 2)
         basis = "request_calendar_month_no_release_claim"
@@ -166,7 +170,7 @@ def next_release_at(snapshot, now, *, profile=CPI_PROFILE):
         "https://www.census.gov/"
         if profile.key == "retail"
         else "https://www.bea.gov/"
-        if profile.key == "pce"
+        if profile.provider == "BEA"
         else "https://www.bls.gov/"
     ):
         for event in calendar.get("events", {}).values():
@@ -210,11 +214,11 @@ def automatic_executions(snapshot, *, profile=CPI_PROFILE):
             result["error"] = stage["error"]
         if "buffer_source_missing" in stage:
             result["buffer_source_missing"] = stage["buffer_source_missing"]
-        if profile.key in {"ppi", "pce"}:
+        if profile.key in {"ppi", "pce", "consumption"}:
             if isinstance(stage.get("coverage_complete"), bool):
                 result["coverage_complete"] = stage["coverage_complete"]
                 if stage["coverage_complete"] is False and (
-                    profile.key != "pce" or stage.get("readback_verified") is True
+                    profile.provider != "BEA" or stage.get("readback_verified") is True
                 ):
                     result["completion"] = "source_coverage_partial"
             if isinstance(stage.get("source_missing"), list):

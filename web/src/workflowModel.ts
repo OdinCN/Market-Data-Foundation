@@ -13,6 +13,32 @@ export type Key = { identity: string; revision: string };
 export const keyOf = (key: Key) => `${key.identity}@${key.revision}`;
 export const sameKey = (a?: Key | null, b?: Key | null) =>
   !!a && !!b && a.identity === b.identity && a.revision === b.revision;
+export const CONSUMPTION: Key = {
+  identity: "mdf.macro.bea.consumption-income",
+  revision: "r1",
+};
+export const CONSUMPTION_OPERATION =
+  "mdf.source.bea.nipa.consumption-income@r1";
+export function consumptionOperationMatches(entry?: DirectoryEntry): boolean {
+  const binding = entry?.binding_contract;
+  const source = {
+    identity: "mdf.source.bea.nipa.consumption-income",
+    revision: "r1",
+  };
+  return (
+    !!entry &&
+    entry.identity === CONSUMPTION_OPERATION &&
+    sameKey(entry.asset, CONSUMPTION) &&
+    sameKey(entry.source_contract, source) &&
+    sameKey(binding, {
+      identity: "mdf.binding.bea.nipa.consumption-income",
+      revision: "r1",
+    }) &&
+    sameKey(binding?.source, source) &&
+    binding?.silent_fallback === false &&
+    binding.mappings.some((mapping) => sameKey(mapping.definition, CONSUMPTION))
+  );
+}
 export const PCE: Key = {
   identity: "mdf.macro.bea.pce.headline-core",
   revision: "t04-r1",
@@ -153,7 +179,8 @@ const titles: Record<string, string> = {
   "mdf.macro.bls.cpi.headlines": "CPI · 四项核心指标",
   "mdf.macro.bls.ppi.final-demand": "PPI · 最终需求",
   "mdf.macro.bls.employment.ces-cps": "Employment · 就业",
-  "mdf.macro.bea.pce.headline-core": "PCE · 个人消费支出",
+  "mdf.macro.bea.pce.headline-core": "PCE价格指数",
+  "mdf.macro.bea.consumption-income": "美国消费与收入",
   "mdf.macro.census.retail": "Retail Sales · 零售销售",
   "mdf.macro.fred-alfred.vintage-bundle": "FRED / ALFRED · 历史修订",
   "mdf.macro.fomc-statement-document": "FOMC · 政策声明",

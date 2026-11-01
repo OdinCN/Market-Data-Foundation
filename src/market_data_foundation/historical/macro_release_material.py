@@ -155,7 +155,7 @@ def official_url(family, url):
         ),
         "retail": ("www.census.gov", r"/retail/sales.html"),
     }
-    host, path = patterns[family]
+    host, path = patterns["pce" if family == "consumption" else family]
     if (
         p.scheme != "https"
         or p.netloc != host
@@ -200,7 +200,7 @@ def parse_material(raw, url, family):
                 m.text,
                 re.I,
             )
-        elif family == "pce":
+        elif family in {"pce", "consumption"}:
             released = _date(m.text[m.text.find("EMBARGOED UNTIL") :])
             names = "(?:" + "|".join(MONTHS) + ")"
             clause = (
@@ -221,7 +221,7 @@ def parse_material(raw, url, family):
             )
         if not title:
             raise CpiTimeSeriesError("release_reference_month_missing")
-        if family == "pce":
+        if family in {"pce", "consumption"}:
             from market_data_foundation.historical.pce_release_schedule import (
                 _reference_months,
             )
@@ -234,6 +234,7 @@ def parse_material(raw, url, family):
             "cpi": "bls:cpi",
             "ppi": "bls:ppi",
             "pce": "bea:personal-income-and-outlays",
+            "consumption": "bea:personal-income-and-outlays",
             "retail": "census:advance-retail",
         }[family]
         doc = dict(
@@ -252,6 +253,7 @@ def parse_material(raw, url, family):
                     "cpi": "BLS CPI archive",
                     "ppi": "BLS PPI archive",
                     "pce": "BEA Personal Income and Outlays archive",
+                    "consumption": "BEA Personal Income and Outlays archive",
                     "retail": "Census retained release material",
                 }[family],
             ),
@@ -262,7 +264,13 @@ def parse_material(raw, url, family):
             consensus=None,
             surprise=None,
         )
-        {"cpi": _cpi, "ppi": _ppi, "pce": _pce, "retail": _retail}[family](m, doc)
+        {
+            "cpi": _cpi,
+            "ppi": _ppi,
+            "pce": _pce,
+            "consumption": _consumption,
+            "retail": _retail,
+        }[family](m, doc)
     unavailable = [c for c in doc["claims"] if c["value"] is None]
     doc["missing_scopes"] = [
         dict(c, reason="official_statistic_null_suppressed_or_unavailable")
@@ -277,13 +285,17 @@ def parse_material(raw, url, family):
         declared = _date(m.text[m.text.lower().find("embargoed until") :][:500])
         if declared.isoformat() != doc["source_version"]["value"]:
             raise CpiTimeSeriesError("release_archive_header_date_conflict")
-    if family == "pce":
+    if family in {"pce", "consumption"}:
         expected = re.sub(r"[^a-z0-9]+", "-", title[0].lower()).strip("-")
         if p.path != f"/news/{released.year}/{expected}":
             raise CpiTimeSeriesError("release_material_url_title_conflict")
     if not any(c["role"] == "actual" for c in doc["claims"]):
         doc["missing"].append(f"{family}_current_scope_not_found_in_material")
-    doc["parser_revision"] = "official-five-family-v3"
+    doc["parser_revision"] = (
+        "official-consumption-income-v1"
+        if family == "consumption"
+        else "official-five-family-v3"
+    )
     doc["reference_months"] = sorted(
         {
             *doc.get("reference_months", []),
@@ -600,6 +612,70 @@ def _pce(m, doc):
     ]
 
 
+def _consumption(m, doc):
+    ref = doc["reference_month"]
+    covered = doc["reference_months"]
+    headers = next(
+        (
+            row
+            for _, row in m.rows
+            if row[0] == ""
+            and 2 <= len(row) <= 5
+            and all(label in MONTHS for label in row[1:])
+        ),
+        None,
+    )
+    mapping = {
+        "Current-dollar DPI": "A067RC",
+        "Real DPI": "A067RX",
+        "Current-dollar PCE": "DPCERC",
+        "Real PCE": "DPCERX",
+    }
+    if headers and "Percent change from preceding month" in m.text:
+        for table, row in m.rows:
+            if row[0] not in mapping or len(row) != len(headers):
+                continue
+            for col, label in enumerate(headers[1:], 1):
+                number = MONTHS.index(label) + 1
+                reference = month(label, int(ref[:4]) - (number > int(ref[5:])))
+                doc["claims"].append(
+                    claim(
+                        mapping[row[0]],
+                        "mom_pct",
+                        reference,
+                        row[col],
+                        table_locator(table, row, reference),
+                        role="actual" if reference in covered else "prior_revised",
+                    )
+                )
+    # Native rate, not percent growth. Never infer levels from rounded changes.
+    pattern = (
+        r"personal saving rate\s*[—–-]\s*personal saving as a percentage "
+        r"of DPI\s*[—–-]\s*was\s+(-?[\d.]+)\s+percent"
+    )
+    for match in re.finditer(pattern, m.text, re.I) if len(covered) == 1 else ():
+        doc["claims"].append(
+            claim(
+                "A072RC",
+                "level",
+                ref,
+                match[1],
+                dict(
+                    kind="normalized_text_span",
+                    start=match.start(),
+                    end=match.end(),
+                    excerpt=match[0],
+                ),
+            )
+        )
+    doc["missing"] += [
+        "native_money_levels_not_in_release_html",
+        "real_goods_services_not_in_release_html",
+        "official_previous_requires_separate_prior_event_material",
+        "historical_comparisons_xlsx_is_not_vintage_revision_table",
+    ]
+
+
 def _retail(m, doc):
     pattern = (
         r"Advance estimates of U.S. retail and food services sales "
@@ -677,6 +753,7 @@ def _retail(m, doc):
 def _scope_absence(doc, family):
     """Machine-readable expected scopes, local to the retained material coverage."""
     from market_data_foundation.historical.bls_timeseries_profile import (
+        CONSUMPTION_PROFILE,
         CPI_PROFILE,
         EMPLOYMENT_PROFILE,
         PCE_PROFILE,
@@ -687,6 +764,7 @@ def _scope_absence(doc, family):
         "cpi": CPI_PROFILE,
         "ppi": PPI_PROFILE,
         "pce": PCE_PROFILE,
+        "consumption": CONSUMPTION_PROFILE,
         "employment": EMPLOYMENT_PROFILE,
     }
     expected = []
@@ -716,17 +794,20 @@ def _scope_absence(doc, family):
                 adjustment = meta["seasonal_adjustment"].lower()
                 stats = (
                     ["level"]
-                    if family == "employment"
+                    if family in {"employment", "consumption"}
                     else ["index", "mom_pct" if adjustment == "sa" else "yoy_pct"]
                 )
                 if family == "pce":
                     stats.append("yoy_pct")
+                if family == "consumption" and series != "A072RC":
+                    stats.append("mom_pct")
                 if family == "employment" and meta.get("value_unit") == "thousand_jobs":
                     stats.append("net_change_1m")
                 for stat in stats:
                     unit = (
                         meta.get("value_unit")
                         if family == "employment"
+                        or (family == "consumption" and stat == "level")
                         else "index"
                         if stat == "index"
                         else "percent"
