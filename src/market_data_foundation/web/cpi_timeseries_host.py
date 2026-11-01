@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.requests import Request
 
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
@@ -98,13 +99,18 @@ class TimeSeriesPackages(PackageHost):
                 host = definitions.get(
                     (revision.definition_ref.identity, revision.definition_ref.revision)
                 )
-                if (
-                    host is None
-                    and revision.definition_ref.identity
-                    == "mdf.macro.bls.employment.ces-cps"
-                ):
+                if host is None and revision.definition_ref.identity in {
+                    "mdf.macro.bls.employment.ces-cps",
+                    "mdf.macro.census.retail",
+                }:
                     unavailable = Eligibility(
-                        allowed=False, reasons=["employment_timeseries_not_enabled"]
+                        allowed=False,
+                        reasons=[
+                            "retail_timeseries_not_enabled"
+                            if revision.definition_ref.identity
+                            == "mdf.macro.census.retail"
+                            else "employment_timeseries_not_enabled"
+                        ],
                     )
                     revision = revision.model_copy(
                         update={
@@ -208,6 +214,18 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         employment_allow_collect=False,
         employment_calendar_fetcher=None,
         employment_reference_fetcher=None,
+        retail_enabled=False,
+        retail_schedule_path=None,
+        retail_request_control_path=None,
+        retail_calendar_fetcher=None,
+        retail_access=CpiQueryAccess(),
+        retail_allow_collect=False,
+        retail_allow_source=False,
+        retail_artifacts_path=None,
+        retail_job_directory=None,
+        retail_read_service_factory=None,
+        retail_write_service_factory=None,
+        retail_query_service_factory=None,
     ):
         super().__init__(
             settings,
@@ -243,6 +261,14 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             credential_replace_enabled=settings.package_config_save,
         )
         self.packages.scoped_credentials = self.scoped_credential_states
+        self.retail_timeseries = None
+        self.accesses["retail"] = retail_access
+        self.retail_artifacts_path = retail_artifacts_path
+        if any(
+            type(v) is not bool
+            for v in (retail_enabled, retail_allow_collect, retail_allow_source)
+        ) or not isinstance(retail_access, CpiQueryAccess):
+            raise ValueError("explicit_timeseries_permissions_required")
         from market_data_foundation.historical.cpi_request_control import (
             CpiRequestControl,
         )
@@ -469,6 +495,208 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             )
             self.packages.timeseries_hosts["employment"] = self.employment_timeseries
 
+        if retail_enabled:
+            from market_data_foundation.web.retail_timeseries_host import (
+                RetailContinuousHost,
+            )
+
+            if retail_job_directory is None or retail_artifacts_path is None:
+                raise ValueError("retail_explicit_paths_required")
+            paths = [Path(retail_job_directory), Path(retail_artifacts_path)]
+            prior = [
+                Path(p)
+                for p in (
+                    job_directory,
+                    schedule_path,
+                    ppi_job_directory,
+                    ppi_schedule_path,
+                    pce_job_directory,
+                    pce_schedule_path,
+                    employment_job_directory,
+                    employment_schedule_path,
+                )
+                if p is not None
+            ]
+            if (
+                any(not p.is_absolute() or ".." in p.parts for p in paths)
+                or "artifacts" not in paths[1].parts
+            ):
+                raise ValueError("retail_independent_artifacts_paths_required")
+            resolved = [p.resolve() for p in paths]
+            if any(
+                a == b or a in b.parents or b in a.parents
+                for a, b in [
+                    (resolved[0], resolved[1]),
+                    *((a, b.resolve()) for a in resolved for b in prior),
+                ]
+            ):
+                raise ValueError("retail_independent_paths_required")
+            from market_data_foundation.historical.retail_release_scheduler import (
+                calendar_fetcher,
+            )
+
+            retail_schedule_path = Path(
+                retail_schedule_path
+                or Path(retail_job_directory).parent / "retail-schedule.json"
+            )
+            retail_request_control_path = Path(
+                retail_request_control_path
+                or Path(retail_job_directory).parent
+                / "retail-census-request-control.json"
+            )
+            new_files = [
+                retail_schedule_path,
+                retail_request_control_path,
+                retail_schedule_path.with_name("retail-strategy.json"),
+            ]
+            isolated = (
+                resolved
+                + [p.resolve() for p in prior]
+                + [self.request_control.state_path.resolve()]
+            )
+            isolated += [
+                Path(p).with_name(name).resolve()
+                for p, name in (
+                    (schedule_path, "strategy.json"),
+                    (ppi_schedule_path, "ppi-strategy.json"),
+                    (pce_schedule_path, "pce-strategy.json"),
+                    (employment_schedule_path, "employment-strategy.json"),
+                )
+                if p is not None
+            ]
+            if hasattr(self, "bea_request_control"):
+                isolated.append(self.bea_request_control.state_path.resolve())
+            if (
+                any(not p.is_absolute() or ".." in p.parts for p in new_files)
+                or len({p.resolve() for p in new_files}) != len(new_files)
+                or any(
+                    a.resolve() == b or b in a.resolve().parents
+                    for a in new_files
+                    for b in isolated
+                )
+            ):
+                raise ValueError("retail_independent_control_paths_required")
+            self.retail_request_control = CpiRequestControl(
+                retail_request_control_path, clock=clock
+            )
+            self.retail_timeseries = RetailContinuousHost(
+                packages=self.packages,
+                read_service_factory=retail_read_service_factory
+                or self.retail_read_service,
+                write_service_factory=(
+                    retail_write_service_factory or self.retail_write_service
+                )
+                if retail_allow_collect
+                else None,
+                query_service_factory=(
+                    retail_query_service_factory or self.retail_query_service
+                )
+                if retail_allow_source
+                else None,
+                schedule_path=retail_schedule_path,
+                history_calendar_fetcher=(
+                    calendar_fetcher(self.retail_request_control)
+                    if retail_calendar_fetcher is None
+                    else None
+                ),
+                calendar_fetcher=retail_calendar_fetcher
+                or calendar_fetcher(self.retail_request_control),
+                job_directory=retail_job_directory,
+                clock=clock,
+                query_allowed=retail_access.metadata_permission == "allowed"
+                and retail_access.read_permission == "allowed",
+                allow_collect=retail_allow_collect,
+                allow_source=retail_allow_source,
+            )
+            self.packages.timeseries_hosts["retail"] = self.retail_timeseries
+
+    def retail_read_service(self):
+        return self.retail_service()
+
+    def retail_query_service(self, *, credential_loader):
+        return self.retail_service(credential_loader=credential_loader)
+
+    def retail_write_service(self, *, credential_loader):
+        return self.retail_service(write=True, credential_loader=credential_loader)
+
+    def retail_service(self, *, write=False, credential_loader=None):
+        from market_data_foundation.historical.census_retail_timeseries_source import (
+            CensusRetailRangeSource,
+        )
+        from market_data_foundation.historical.retail_timeseries import (
+            RetailTimeSeriesService,
+        )
+        from market_data_foundation.historical.retail_timeseries_store import (
+            FileRetailBatchArchive,
+            PostgresRetailStore,
+        )
+        from market_data_foundation.web.retail_timeseries_host import RETAIL_SCHEMA
+
+        if (
+            load_pg_config(self.settings.config_directory / "runtime.toml")
+            != self.profile
+        ):
+            raise WebError("postgres_profile_changed", 503)
+        source = None
+        if credential_loader is not None:
+            from market_data_foundation.historical.census_retail_live import (
+                ExactCensusTransport,
+            )
+            from market_data_foundation.historical.retail_release_scheduler import (
+                CensusControlledTransport,
+            )
+
+            source = CensusRetailRangeSource(
+                transport=CensusControlledTransport(
+                    ExactCensusTransport(), self.retail_request_control
+                ),
+                enabled=True,
+                credential=credential_loader(),
+                clock=self.clock,
+            )
+        if write:
+            password = self._secret("postgres", "password")
+            if password is None:
+                raise WebError("postgres_credential_missing", 503)
+            connection = self.connector(
+                **self.profile.connection_kwargs(),
+                password=password,
+                autocommit=True,
+                connect_timeout=5,
+                options="-c statement_timeout=10000",
+            )
+        else:
+            connection = self.connect(
+                **self.profile.connection_kwargs(),
+                autocommit=True,
+                connect_timeout=5,
+                options="-c statement_timeout=3000",
+            )
+        try:
+            archive = (
+                FileRetailBatchArchive(self.retail_artifacts_path) if write else None
+            )
+            return RetailTimeSeriesService(
+                PostgresRetailStore(
+                    connection, archive, schema=RETAIL_SCHEMA, clock=self.clock
+                ),
+                source,
+                allow_source=source is not None,
+                clock=self.clock,
+            )
+        except BaseException:
+            connection.close()
+            raise
+
+    def load_legacy_key(self, environment_id, package_id, source_id):
+        if (
+            source_id == "Census"
+            and environment_id == self.settings.environment_id
+            and package_id == "macro"
+        ):
+            return self._secret("census", "api_key")
+        return super().load_legacy_key(environment_id, package_id, source_id)
+
     def employment_read_service(self):
         return self.read_service(profile=EMPLOYMENT_PROFILE)
 
@@ -496,13 +724,23 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             raise WebError(capabilities["reason"], 403)
         return host.write_factory(credential_loader=host.effective_credential)
 
+    def credential_states(self, environment_id, package_id, record):
+        sources = {
+            s
+            for cap in self.packages.catalog.package(package_id).capabilities
+            for s in cap.required_sources
+        }
+        return self.scoped_credential_states(
+            environment_id, package_id, record, source_ids=sources
+        )
+
     def scoped_credential_states(
         self, environment_id, package_id, record, *, source_ids
     ):
         states = []
         for source in sorted(source_ids):
             value = "unknown"
-            if source in {"BEA", "BLS"}:
+            if source in {"BEA", "BLS", "Census"}:
                 try:
                     value = (
                         "configured"
@@ -630,7 +868,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             raise
 
     def _history(self, capability, definition, at):
-        if capability not in {"cpi", "ppi", "pce", "employment"} or (
+        if capability not in {"cpi", "ppi", "pce", "employment", "retail"} or (
             capability == "pce" and self.pce_timeseries is None
         ):
             return super()._history(capability, definition, at)
@@ -640,6 +878,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             "ppi": self.ppi_timeseries,
             "pce": self.pce_timeseries,
             "employment": self.employment_timeseries,
+            "retail": self.retail_timeseries,
         }[capability]
         holding = "unknown"
         if access.metadata_permission == "allowed" and host is not None:
@@ -668,7 +907,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         capabilities = {
             (c.definition_ref.identity, c.definition_ref.revision): c
             for c in self.packages.catalog.package("macro").capabilities
-            if c.capability_id in {"ppi", "employment"}
+            if c.capability_id in {"ppi", "employment", "retail"}
         }
         return result.model_copy(
             update={
@@ -723,16 +962,34 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
     app.include_router(
         timeseries_router(runtime.employment_timeseries, profile=EMPLOYMENT_PROFILE)
     )
+    from market_data_foundation.web.retail_timeseries import admitted_retail_job
+    from market_data_foundation.web.retail_timeseries import (
+        timeseries_router as retail_router,
+    )
+
+    app.include_router(
+        retail_router(
+            runtime.retail_timeseries,
+            authorize=lambda request: admitted(request, origin=CANDIDATE_ORIGIN),
+        )
+    )
     app.state.timeseries_runtime = runtime
 
     @app.middleware("http")
     async def boundary(request, call_next):
         config_put = settings.package_config_save and admitted_package_save(request)
-        prefixes = (*PREFIXES, "/api/r5/pce/timeseries")
+        prefixes = (*PREFIXES, "/api/r5/pce/timeseries", "/api/r5/retail/timeseries")
         job_post = any(admitted_job(request, prefix=prefix) for prefix in prefixes)
-        strategy_put = any(
-            admitted_strategy(request, prefix=prefix) for prefix in prefixes
-        )
+        if request.url.path == "/api/r5/retail/timeseries/jobs/resume":
+            job_post = admitted_retail_job(request)
+        strategy_put = (
+            request.method == "POST"
+            and request.url.path == "/api/r5/retail/timeseries/strategy"
+            and admitted_strategy(
+                Request(dict(request.scope, method="PUT")),
+                prefix="/api/r5/retail/timeseries",
+            )
+        ) or any(admitted_strategy(request, prefix=prefix) for prefix in prefixes)
         error = None
         if request.method not in {"GET", "HEAD"} and not (
             config_put or job_post or strategy_put
@@ -744,7 +1001,9 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
             error = (403, "operator_not_authorized")
         else:
             capability = (
-                "pce"
+                "retail"
+                if request.url.path.startswith("/api/r5/retail/")
+                else "pce"
                 if request.url.path.startswith("/api/r5/pce/")
                 else "ppi"
                 if request.url.path.startswith("/api/r5/ppi/")

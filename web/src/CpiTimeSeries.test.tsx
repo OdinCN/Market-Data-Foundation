@@ -480,7 +480,7 @@ it("shows official missing values and available-time evidence without zero filli
   expect(url.searchParams.get("as_of")).toBe("2026-06-01T12:00:00+08:00");
   const missingRow = screen.getByText("未公布 / 来源缺值").closest("tr")!;
   expect(within(missingRow).getAllByText("—")).toHaveLength(5);
-  expect(within(missingRow).getByText("未获取")).toBeTruthy();
+  expect(within(missingRow).getByText("无对应月份记录")).toBeTruthy();
   expect(url.searchParams.get("query_mode")).toBe("history");
   expect(url.searchParams.get("local_only")).toBe("true");
   expect(url.searchParams.get("as_of_basis")).toBe("available");
@@ -1318,7 +1318,9 @@ it.each(["time", "publication_time"])(
     expect(
       within(table).getByRole("columnheader", { name: "官方日历时间" }),
     ).toBeTruthy();
-    expect(within(table).getAllByText("未获取").length).toBeGreaterThan(0);
+    expect(within(table).getAllByText("无对应月份记录").length).toBeGreaterThan(
+      0,
+    );
     expect(within(table).queryByText(/2027-03-01/)).toBeNull();
     expect(screen.getByText(/不表示当前修订值在该时已知/)).toBeTruthy();
   },
@@ -1846,5 +1848,5 @@ it("shows cancellation without retaining its obsolete planned time", () => {
         },
       },
     }),
-  ).toBeNull();
+  ).toBe("计划时间待定（TBA / 未知）");
 });

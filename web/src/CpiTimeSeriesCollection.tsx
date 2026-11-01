@@ -334,6 +334,49 @@ function CpiTimeSeriesCollectionContent({
       ? [receipt]
       : []),
   ].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  async function resumeJob(job: CpiJob) {
+    if (
+      writing.current ||
+      !enabled ||
+      !confirmed ||
+      start !== job.start ||
+      end !== job.end ||
+      (action === "update") !== (job.action === "update")
+    )
+      return;
+    writing.current = true;
+    setBusy(true);
+    try {
+      const next = await cpiRequest<CpiJob>(
+        transport,
+        "/jobs/resume",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            request_id: job.request_id,
+            action: job.action,
+            start: job.start,
+            end: job.end,
+          }),
+        },
+        20000,
+        profile,
+      );
+      if (!validJob(next) || !sameIntent(next, job))
+        throw new Error("retail_resume_unknown");
+      setReceipt(next);
+      setNotice("已按原请求编号恢复；保留已成功批次，不创建另一项采集。");
+    } catch {
+      setNotice("恢复回执未知或尚未到重试时间；保留原请求，请刷新核实。");
+    } finally {
+      writing.current = false;
+      if (mounted.current) {
+        setBusy(false);
+        jobs.refresh();
+      }
+    }
+  }
   if (tab === "periodic")
     return (
       <CpiStrategyWorkbench
@@ -535,6 +578,15 @@ function CpiTimeSeriesCollectionContent({
                     </div>
                   </dl>
                 </button>
+                {profile.id === "retail" &&
+                  ["failed", "unknown"].includes(job.state) && (
+                    <button
+                      disabled={busy || !enabled || !confirmed}
+                      onClick={() => void resumeJob(job)}
+                    >
+                      按原请求恢复采集（{job.start} 至 {job.end}）
+                    </button>
+                  )}
                 {["unknown", "outcome_unknown"].includes(job.state) && (
                   <p role="status">
                     结果未知，保留请求并自动跟踪，请勿重复提交。

@@ -1,5 +1,8 @@
+import type { paths as RetailPaths } from "./retail.generated";
 import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import type { Transport } from "./api";
+import { normalizeRetailResult } from "./retailTimeSeriesAdapter";
+import { isDecimalString } from "./decimalValue";
 import { useVisiblePolling } from "./useVisiblePolling";
 
 export const CPI_TIMESERIES = CPI_PROFILE.basePath;
@@ -258,6 +261,7 @@ export type CpiPoint = {
   // Employment omits index_value; only AHE carries ratios and percent changes.
   // Inflation response validation below still requires its complete field set.
   index_value?: string | number | null;
+  official_mpcsm_percent?: string | null;
   mom_pct?: string | number | null;
   yoy_pct?: string | number | null;
   change_1m_ratio?: string | number | null;
@@ -272,6 +276,18 @@ export type CpiPoint = {
 };
 export type CpiGap = { series_id: string; month: string; reason?: string };
 export type CpiResult = {
+  source_no_content?: {
+    classification: "census_retail_no_content";
+    http_status: 204;
+    response_bytes: 0;
+    start_month: string;
+    end_month: string;
+  }[];
+  source_failure?: {
+    classification: string;
+    http_status: number | null;
+    retry_at: string | null;
+  } | null;
   start_month: string;
   end_month: string;
   series_ids: string[];
@@ -301,10 +317,12 @@ export function buildCpiQueryRequest(
   const parameters = new URLSearchParams({
     start: scope.start,
     end: scope.end,
-    ...(profile.id === "employment"
-      ? { series: scope.series ?? profile.series.map((s) => s[0]).join(",") }
-      : { basket: scope.basket, adjustment: scope.adjustment }),
-    measure: scope.measure,
+    ...(profile.id === "retail"
+      ? {}
+      : profile.id === "employment"
+        ? { series: scope.series ?? profile.series.map((s) => s[0]).join(",") }
+        : { basket: scope.basket, adjustment: scope.adjustment }),
+    ...(profile.id === "retail" ? {} : { measure: scope.measure }),
     query_mode: history ? "history" : "current",
     local_only: history ? "true" : "false",
     ...(history
@@ -327,13 +345,14 @@ export async function queryCpiRange(
   const history = scope.query_mode === "history" || !!scope.as_of;
   const basis = history ? "available" : "observed";
   const request = buildCpiQueryRequest(scope, profile);
-  const result = await requestCpiJson<CpiResult>(
+  let result = await requestCpiJson<CpiResult>(
     transport,
     request.path,
     { method: request.method, signal },
     history ? 20000 : 180000,
     onExchange,
   );
+  if (profile.id === "retail") result = normalizeRetailResult(result, scope);
   const selected = profile.series
     .filter((s) =>
       profile.id === "employment"
@@ -353,7 +372,7 @@ export async function queryCpiRange(
   const numeric = (v: unknown) =>
     v === null ||
     (typeof v === "number" && Number.isFinite(v)) ||
-    (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v));
+    isDecimalString(v);
   if (
     !result ||
     result.start_month !== scope.start ||
@@ -597,7 +616,9 @@ export async function saveCpiStrategy(
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({
+        enabled,
+      } satisfies RetailPaths["/api/r5/retail/timeseries/strategy"]["put"]["requestBody"]["content"]["application/json"]),
       signal,
     },
     20000,

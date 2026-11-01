@@ -286,6 +286,7 @@ class PceReleaseScheduler:
             "calendar_publications": [
                 {
                     "reference_month": month,
+                    "acquired_at": state["calendar"].get("acquired_at"),
                     "release_at": event["release_at"],
                     "publication_status": "cancelled"
                     if event["status"] == "CANCELLED"

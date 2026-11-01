@@ -59,6 +59,32 @@ function result(selected: CpiScope = scope): CpiResult {
 const transportFor = (bodyText: string, status = 200) =>
   vi.fn<Transport>(async () => new Response(bodyText, { status }));
 
+it.each(["0E-9", "-1.25e+3", "1E-1000", "12345678901234567890.123456789"])(
+  "preserves shared query Decimal wire value %s",
+  async (value) => {
+    const body = result();
+    body.points[0].index_value = value;
+    body.points[0].change_1m_ratio = value;
+    const raw = JSON.stringify(body);
+    const observer = vi.fn();
+    await expect(
+      queryCpiRange(transportFor(raw), scope, signal(), observer),
+    ).resolves.toEqual(body);
+    expect(observer.mock.calls[0][0].bodyText).toBe(raw);
+  },
+);
+
+it.each(["NaN", "Infinity", "-Infinity", "1e", "1e2junk", "", "0x10", "1\n"])(
+  "rejects invalid shared query decimal %j",
+  async (value) => {
+    const body = result();
+    body.points[0].index_value = value;
+    await expect(
+      queryCpiRange(transportFor(JSON.stringify(body)), scope, signal()),
+    ).rejects.toThrow("cpi_result_scope_unknown");
+  },
+);
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();

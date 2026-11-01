@@ -1,3 +1,4 @@
+import { decimalDisplayText, retailDecimalText } from "./decimalValue";
 import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import { formatBeijingTime, beijingInputToIso } from "./beijingTime";
 import { DateField } from "./DateField";
@@ -63,15 +64,19 @@ export const missingText = (reason?: string) =>
     withdrawn: "来源已撤回",
     availability_evidence_insufficient: "当时可用证据不足",
     not_observed: "本地尚无记录",
+    source_operand_unavailable: "金额输入缺值（见原始响应状态）",
+    comparison_level_unavailable: "比较基期金额缺值",
+    current_level_unavailable: "当前金额缺值",
+    comparison_level_zero: "比较基期金额为0，无法计算变化率",
   })[reason ?? ""] ?? "本地尚无记录";
-const measures = [
+const globalMeasures = [
   { value: "index_value", label: "指数" },
   { value: "change_1m_ratio", label: "1月环比" },
   { value: "change_3m_ratio", label: "3月变化" },
   { value: "change_6m_ratio", label: "6月变化" },
   { value: "change_12m_ratio", label: "12月同比" },
 ] as const;
-const baskets = [
+const globalBaskets = [
   { value: "headline", label: "总体" },
   { value: "core", label: "核心" },
 ];
@@ -97,6 +102,8 @@ export function publicationText(
   )
     return null;
   if ((event.status ?? event.state) === "cancelled") return "已取消";
+  if ((event.status ?? event.state) === "unknown")
+    return "计划时间待定（TBA / 未知）";
   const time = event.time ?? event.publication_time;
   if (typeof time !== "string") return null;
   const formatted = formatBeijingTime(time, "");
@@ -111,13 +118,14 @@ export function publicationText(
   return label ? `${label}：${formatted}` : null;
 }
 const valueText = (
-  value: string | number | null | undefined,
+  value: unknown,
   ratio: boolean,
   unit: string,
+  retail = false,
 ) =>
-  value == null
+  typeof value !== "number" && typeof value !== "string"
     ? "—"
-    : `${ratio ? (Number(value) * 100).toFixed(2) : value}${unit}`;
+    : `${ratio ? (Number(value) * 100).toFixed(2) : retail ? retailDecimalText(value) : decimalDisplayText(value)}${unit}`;
 
 export function CpiTimeSeries(
   props: Parameters<typeof CpiTimeSeriesContent>[0],
@@ -136,6 +144,23 @@ function CpiTimeSeriesContent({
   availability: CpiAvailability;
 }) {
   const employment = profile.id === "employment";
+  const retail = profile.id === "retail";
+  const measures = retail
+    ? [
+        ...globalMeasures.map((item) =>
+          item.value === "index_value"
+            ? { ...item, label: "金额（百万当期美元）" }
+            : item,
+        ),
+        { value: "official_mpcsm_percent", label: "官方 MPCSM（percent）" },
+      ]
+    : globalMeasures;
+  const baskets = retail
+    ? [
+        { value: "headline", label: "总体" },
+        { value: "core", label: "控制组（MDF推导）" },
+      ]
+    : globalBaskets;
   const [series, setSeries] = useState(profile.series.map((s) => s[0]));
   const cpiSeries = profile.series;
   const availableAdjustments = adjustments.filter((item) =>
@@ -435,7 +460,9 @@ function CpiTimeSeriesContent({
         <p className="small">
           {employment
             ? "就业指标选择直接限定请求系列；缺值不补零。"
-            : "显示指标只控制表格列；实际请求固定 measure=index，不发送列选择参数。"}
+            : retail
+              ? "口径和显示指标控制表格展示；请求读取全部六原始输入及两种口径，不发送价格指数参数。"
+              : "显示指标只控制表格列；实际请求固定 measure=index，不发送列选择参数。"}
         </p>
         <RequestPreview request={request} />
         {pending && <p role="status">正在查询 {profile.label}…</p>}
@@ -464,6 +491,23 @@ function CpiTimeSeriesContent({
         {failure && !exchange && (
           <p>未收到可读取的 HTTP 响应，无法提供 HTTP 状态或响应正文。</p>
         )}
+        {profile.id === "retail" && result?.source_failure && (
+          <p role="alert">
+            <strong>Census 补取失败，已保留本地数据，部分返回。</strong>
+            缺口仍为空，不能视为官方缺值。
+            {result.source_failure.classification}
+            {result.source_failure.http_status !== null &&
+              ` · HTTP ${result.source_failure.http_status}`}
+            {result.source_failure.retry_at &&
+              ` · 可重试时间：${formatBeijingTime(result.source_failure.retry_at)}`}
+          </p>
+        )}
+        {profile.id === "retail" && !!result?.source_no_content?.length && (
+          <p role="alert">
+            <strong>Census 本次未返回记录（HTTP 204）。</strong>
+            已保留已有数据和全部月份，缺口仍为空；不代表官方缺值或已发布。
+          </p>
+        )}
         <div hidden={resultTab !== "table"}>
           {result && columns.length > 0 && (
             <section aria-label={`${profile.label} 范围结果`}>
@@ -473,9 +517,12 @@ function CpiTimeSeriesContent({
               <p role="status">
                 共 {rows.length} 条（月 × 口径），有效观测{" "}
                 {result.points.length} 条，缺值 {result.missing.length} 条。
-                {!result.missing.length && !selectedCalculationMissing.length
-                  ? "所选指标数据完整。"
-                  : "所选指标存在缺值。"}
+                {profile.id === "retail" &&
+                (result.source_failure || result.source_no_content?.length)
+                  ? "来源补取未完成，当前为部分返回。"
+                  : !result.missing.length && !selectedCalculationMissing.length
+                    ? "所选指标数据完整。"
+                    : "所选指标存在缺值。"}
               </p>
               <p className="small">
                 {employment
@@ -524,7 +571,7 @@ function CpiTimeSeriesContent({
                             {columns.map(({ value: field }) => (
                               <td key={field}>
                                 {valueText(
-                                  row.point?.[field],
+                                  row.point?.[field as keyof CpiPoint],
                                   field.endsWith("ratio"),
                                   employment
                                     ? field === "mom_pct" || field === "yoy_pct"
@@ -533,6 +580,7 @@ function CpiTimeSeriesContent({
                                     : field === "index_value"
                                       ? ""
                                       : "%",
+                                  retail,
                                 )}
                               </td>
                             ))}
@@ -545,7 +593,7 @@ function CpiTimeSeriesContent({
                                     (event) =>
                                       event.reference_month === row.month,
                                   ),
-                              }) ?? "未获取"}
+                              }) ?? "无对应月份记录"}
                             </td>
                             <td>
                               {!row.point

@@ -229,6 +229,78 @@ export function CpiQueryApiHelp({
   request: RequestDescription;
   profile?: MacroProfile;
 }) {
+  if (profile.id === "retail")
+    return (
+      <section aria-label="零售销售 API说明" className="cpi-api-help">
+        <h4>GET {profile.basePath}/query</h4>
+        <p>{profile.historyNotice}</p>
+        <CompactTable
+          label="查询参数"
+          headers={["参数", "语义"]}
+          rows={[
+            ["start/end", "必填 YYYY-MM，含首尾；自动加入12个月比较缓冲"],
+            ["local_only", "true 禁止上游；GET 不入库、不创建表"],
+            ["query_mode", "current / history；历史只读本地"],
+            [
+              "as_of",
+              "带时区截止时间；北京时间 +08:00 在 URL 中编码为 %2B08%3A00",
+            ],
+            [
+              "as_of_basis / vintage_mode",
+              "observed / available；历史默认 available，同一截止约束全部输入及基期",
+            ],
+          ]}
+        />
+        <CompactTable
+          label="响应字段"
+          headers={["字段", "含义 / 单位"]}
+          rows={[
+            [
+              "status/source_failure",
+              "PARTIAL 表示来源未返回记录或补取临时失败；source_failure 的 classification/http_status/retry_at 为失败诊断。OK 不保证无缺口。",
+            ],
+            [
+              "source_no_content",
+              "HTTP 204 空正文及请求起止月；表示本次未返回记录，不是服务故障、官方null或发布时间证据；不生成批次、不落库。",
+            ],
+            [
+              "missing_input_count/last_completed_month/source_skipped_months",
+              "含12月缓冲的缺失输入数 / UTC上个完整月 / 未请求的未结束或未来月份；响应保留所选全部月份，不推定官方发布时间。",
+            ],
+            [
+              "headline_level/control_level",
+              "Decimal字符串或null；million_current_usd；控制组为MDF推导",
+            ],
+            [
+              "headline_rates/control_rates",
+              "1/3/6/12月 Decimal ratio，0.01=1%；未经年化",
+            ],
+            [
+              "official_headline_mpcsm",
+              "Census官方 percent；与推导 ratio 独立；0.8 显示为 0.8%，不再乘100",
+            ],
+            [
+              "publication_events/points.publication_event",
+              "留存的官方月份日历；总体及控制组含空值行均显示北京时间计划。无记录、TBA/未知不推算；as_of 早于日历获取时间时隐藏该日历；GET 不刷新或写入。",
+            ],
+            [
+              "source_cells/input_versions",
+              "六输入、原始值、状态/原因、修订、原始哈希与指针、观察/入库时间；缺值不补0",
+            ],
+            [
+              "observed_at/available_at",
+              "采集/本地提交时间，不是官方发布时间；revision 1 不代表官方首发",
+            ],
+          ]}
+        />
+        <RequestPreview request={request} />
+        <p>
+          GET {profile.basePath}/api-help 提供完整接口合同。POST{" "}
+          {profile.basePath}/jobs 提交后台串行采集；request_id 与 collection_id
+          相同。恢复保留原请求及范围。周期策略未启用。
+        </p>
+      </section>
+    );
   const employment = profile.id === "employment";
   const permission = availability.data?.web_capabilities.query;
   return (

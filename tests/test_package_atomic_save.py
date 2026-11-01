@@ -109,10 +109,11 @@ def test_one_snapshot_publishes_capabilities_and_private_reference_and_reopens(
     with TestClient(create_package_app(worker)) as client:
         response = client.get(PATH)
         assert response.status_code == 200
-        assert all(
-            s["credential_state"] == "configured"
+        states = {
+            s["source_id"]: s["credential_state"]
             for s in response.json()["credential_states"]
-        )
+        }
+        assert states == {"BLS": "configured", "BEA": "configured", "Census": "unknown"}
         assert all(
             s["authentication"] == "unknown"
             for s in response.json()["credential_states"]

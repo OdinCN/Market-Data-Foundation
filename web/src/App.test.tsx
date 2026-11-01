@@ -1209,7 +1209,8 @@ it.each(["periodic", "executions"])(
     ).findByRole("button", {
       name: tab === "periodic" ? /选择 f2-plan/ : /选择 .*失败/,
     });
-    if (tab === "executions") expect(row.textContent).toBe("CPI · 自动阶段");
+    if (tab === "executions")
+      await waitFor(() => expect(row.textContent).toBe("CPI · 自动阶段"));
     else expect(row.closest("tr")!.textContent).toContain("CPI · 四项核心指标");
     expect(new URLSearchParams(location.hash.slice(1)).has("asset")).toBe(
       false,

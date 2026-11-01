@@ -281,6 +281,7 @@ it("preserves exact manual target through lost durable receipt, explicit resubmi
   fireEvent.click(screen.getByRole("button", { name: "查看关联资产 →" }));
   await screen.findByRole("heading", { name: "CPI · 四项核心指标" });
   const read = await screen.findByRole("button", { name: "读取本地数据" });
+  await waitFor(() => expect((read as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(read);
   await screen.findByText(/读取成功/);
 });

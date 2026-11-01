@@ -11,6 +11,7 @@ from pathlib import Path
 
 from mdf_b3_pce_dev import PreviewHandler
 from mdf_b3_pce_r5_preview import CandidateHandler
+from starlette.requests import Request
 
 from market_data_foundation.canonical.model import require
 from market_data_foundation.web.cpi_pg_readonly_scope import DevReadIdentity
@@ -27,6 +28,12 @@ from market_data_foundation.web.readonly_host import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def admitted_job_resume(request):
+    from market_data_foundation.web.retail_timeseries import admitted_retail_job
+
+    return admitted_retail_job(request)
 
 
 class TimeSeriesHandler(CandidateHandler):
@@ -60,6 +67,18 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_job(request, prefix="/api/r5/ppi/timeseries")
                 or admitted_job(request, prefix="/api/r5/pce/timeseries")
                 or admitted_job(request, prefix="/api/r5/employment/timeseries")
+                or admitted_job(request, prefix="/api/r5/retail/timeseries")
+                or (
+                    request.url.path == "/api/r5/retail/timeseries/strategy"
+                    and admitted_strategy(
+                        Request(dict(request.scope, method="PUT")),
+                        prefix="/api/r5/retail/timeseries",
+                    )
+                )
+                or (
+                    request.url.path == "/api/r5/retail/timeseries/jobs/resume"
+                    and admitted_job_resume(request)
+                )
             )
         if request.method == "PUT":
             return (
@@ -68,6 +87,7 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_strategy(request, prefix="/api/r5/ppi/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/pce/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/employment/timeseries")
+                or admitted_strategy(request, prefix="/api/r5/retail/timeseries")
             )
         return super().request_admitted(request)
 
@@ -123,6 +143,14 @@ def main():
     parser.add_argument("--employment-history-start")
     parser.add_argument("--allow-employment-local-read", action="store_true")
     parser.add_argument("--allow-employment-collect", action="store_true")
+    parser.add_argument("--enable-retail-timeseries", action="store_true")
+    parser.add_argument("--allow-retail-local-read", action="store_true")
+    parser.add_argument("--allow-retail-collect", action="store_true")
+    parser.add_argument("--allow-retail-source-query", action="store_true")
+    parser.add_argument("--retail-job-directory", type=Path)
+    parser.add_argument("--retail-artifacts-path", type=Path)
+    parser.add_argument("--retail-schedule-path", type=Path)
+    parser.add_argument("--retail-request-control-path", type=Path)
     args = parser.parse_args()
     if args.enable_ppi_timeseries:
         if not args.ppi_history_start:
@@ -189,6 +217,14 @@ def main():
         pce_history_start=args.pce_history_start,
         pce_request_control_path=args.bea_request_control_path,
         pce_allow_collect=args.allow_pce_collect,
+        retail_enabled=args.enable_retail_timeseries,
+        retail_access=access(args.allow_retail_local_read),
+        retail_allow_collect=args.allow_retail_collect,
+        retail_allow_source=args.allow_retail_source_query,
+        retail_job_directory=args.retail_job_directory,
+        retail_artifacts_path=args.retail_artifacts_path,
+        retail_schedule_path=args.retail_schedule_path,
+        retail_request_control_path=args.retail_request_control_path,
     )
     # Jobs own independent services and a nonblocking execution lock. Readers
     # can inspect the durable running record while one POST waits on a provider.

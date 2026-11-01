@@ -3,6 +3,7 @@ import {
   PPI_PROFILE,
   PCE_PROFILE,
   EMPLOYMENT_PROFILE,
+  RETAIL_PROFILE,
 } from "./macroTimeSeriesProfile";
 import { formatBeijingTime } from "./beijingTime";
 import { DateField } from "./DateField";
@@ -27,6 +28,8 @@ import {
   PPI,
   PCE,
   EMPLOYMENT,
+  RETAIL,
+  retailOperationMatches,
   employmentOperationMatches,
   MANUAL_OPERATION,
   PCE_OPERATION,
@@ -80,6 +83,7 @@ export function CollectionWorkbench({
   ppiAvailability,
   pceAvailability,
   employmentAvailability,
+  retailAvailability,
 }: {
   assets: Asset[];
   asset: Asset | undefined;
@@ -93,6 +97,7 @@ export function CollectionWorkbench({
   ppiAvailability?: CpiAvailability;
   pceAvailability?: CpiAvailability;
   employmentAvailability?: CpiAvailability;
+  retailAvailability?: CpiAvailability;
 }) {
   const tab = tabs.some((t) => t[0] === route.fields.get("tab"))
     ? route.fields.get("tab")!
@@ -174,37 +179,50 @@ export function CollectionWorkbench({
     (sameKey(asset?.key, EMPLOYMENT) ||
       (route.fields.get("asset") === EMPLOYMENT.identity &&
         route.fields.get("asset_revision") === EMPLOYMENT.revision));
+  const retailTarget =
+    !invalidIdentity &&
+    (!route.fields.has("operation") || retailOperationMatches(source?.dto)) &&
+    (sameKey(asset?.key, RETAIL) ||
+      (route.fields.get("asset") === RETAIL.identity &&
+        route.fields.get("asset_revision") === RETAIL.revision));
+  const newRetail = !!retailAvailability?.data && !retailAvailability.legacy;
   const newEmployment =
     !!employmentAvailability?.data && !employmentAvailability.legacy;
-  const macroProfile = employmentTarget
-    ? EMPLOYMENT_PROFILE
-    : pceTarget
-      ? PCE_PROFILE
-      : isPpi
-        ? PPI_PROFILE
-        : CPI_PROFILE;
-  const macroAvailability = employmentTarget
-    ? employmentAvailability
-    : pceTarget
-      ? pceAvailability
-      : isPpi
-        ? ppiAvailability
-        : cpiAvailability;
+  const macroProfile = retailTarget
+    ? RETAIL_PROFILE
+    : employmentTarget
+      ? EMPLOYMENT_PROFILE
+      : pceTarget
+        ? PCE_PROFILE
+        : isPpi
+          ? PPI_PROFILE
+          : CPI_PROFILE;
+  const macroAvailability = retailTarget
+    ? retailAvailability
+    : employmentTarget
+      ? employmentAvailability
+      : pceTarget
+        ? pceAvailability
+        : isPpi
+          ? ppiAvailability
+          : cpiAvailability;
   const newPpi =
     !!ppiAvailability && !ppiAvailability.legacy && !!ppiAvailability.data;
   const newPce =
     !!pceAvailability && !pceAvailability.legacy && !!pceAvailability.data;
-  const newMacro = employmentTarget
-    ? !!employmentAvailability && !employmentAvailability.legacy
-    : pceTarget
-      ? !!pceAvailability &&
-        !pceAvailability.legacy &&
-        (!!pceAvailability.data || !!pceAvailability.failure)
-      : isPpi
-        ? !!ppiAvailability
-        : !!cpiAvailability &&
-          !cpiAvailability.legacy &&
-          (!!cpiAvailability.data || !!cpiAvailability.failure);
+  const newMacro = retailTarget
+    ? !!retailAvailability && !retailAvailability.legacy
+    : employmentTarget
+      ? !!employmentAvailability && !employmentAvailability.legacy
+      : pceTarget
+        ? !!pceAvailability &&
+          !pceAvailability.legacy &&
+          (!!pceAvailability.data || !!pceAvailability.failure)
+        : isPpi
+          ? !!ppiAvailability
+          : !!cpiAvailability &&
+            !cpiAvailability.legacy &&
+            (!!cpiAvailability.data || !!cpiAvailability.failure);
   const macroPending =
     !!macroAvailability &&
     !macroAvailability.legacy &&
@@ -362,7 +380,23 @@ export function CollectionWorkbench({
       !invalidIdentity &&
       (filter === "all" || filter === keyOf(EMPLOYMENT)),
   );
+  const retailRecords = useVisiblePolling(
+    (signal) => readCpiExecutions(transport, signal, RETAIL_PROFILE),
+    [transport, generation, RETAIL_PROFILE.id],
+    newRetail &&
+      tab === "executions" &&
+      !invalidIdentity &&
+      (filter === "all" || filter === keyOf(RETAIL)),
+  );
   const macroRecords = [
+    ...((executionSchedule === "all" || executionSchedule === "retail-auto") &&
+    (filter === "all" || filter === keyOf(RETAIL))
+      ? (retailRecords.data?.executions ?? []).map((e) => ({
+          ...e,
+          profile: RETAIL_PROFILE,
+          rowId: `retail:${e.id}`,
+        }))
+      : []),
     ...(executionSchedule === "all" &&
     (filter === "all" || filter === keyOf(EMPLOYMENT))
       ? (employmentRecords.data?.executions ?? []).map((e) => ({
@@ -959,7 +993,8 @@ export function CollectionWorkbench({
         cpiRecords.failure ||
         ppiRecords.failure ||
         pceRecords.failure ||
-        employmentRecords.failure) && (
+        employmentRecords.failure ||
+        retailRecords.failure) && (
         <div role="alert">
           采集记录已陈旧，保留上次数据并自动重读。
           {ppiRecords.failure && (
@@ -981,7 +1016,7 @@ export function CollectionWorkbench({
       )}
       {tab === "new" &&
       (newMacro || macroPending) &&
-      (cpiTarget || isPpi || pceTarget || employmentTarget) ? (
+      (cpiTarget || isPpi || pceTarget || employmentTarget || retailTarget) ? (
         <>
           <label>
             采集目标
@@ -992,15 +1027,17 @@ export function CollectionWorkbench({
                   (a) => keyOf(a.key) === e.target.value,
                 );
                 const selectedKey =
-                  e.target.value === keyOf(EMPLOYMENT)
-                    ? EMPLOYMENT
-                    : e.target.value === keyOf(PCE)
-                      ? PCE
-                      : e.target.value === keyOf(PPI)
-                        ? PPI
-                        : e.target.value === keyOf(CPI)
-                          ? CPI
-                          : selected?.key;
+                  e.target.value === keyOf(RETAIL)
+                    ? RETAIL
+                    : e.target.value === keyOf(EMPLOYMENT)
+                      ? EMPLOYMENT
+                      : e.target.value === keyOf(PCE)
+                        ? PCE
+                        : e.target.value === keyOf(PPI)
+                          ? PPI
+                          : e.target.value === keyOf(CPI)
+                            ? CPI
+                            : selected?.key;
                 navigate("collection", {
                   asset: selectedKey?.identity ?? null,
                   asset_revision: selectedKey?.revision ?? null,
@@ -1429,7 +1466,12 @@ export function CollectionWorkbench({
           </aside>
         </div>
       ) : tab === "periodic" &&
-        (newCpi || newPpi || newPce || newEmployment) ? (
+        (newCpi ||
+          newPpi ||
+          newPce ||
+          newEmployment ||
+          newRetail ||
+          (filter === keyOf(RETAIL) && retailAvailability)) ? (
         <CpiStrategyWorkbench
           transport={transport}
           availability={
@@ -1451,6 +1493,15 @@ export function CollectionWorkbench({
           thirdAvailability={pceAvailability}
           thirdVisible={
             !invalidIdentity && (filter === "all" || filter === keyOf(PCE))
+          }
+          fifthProfile={
+            (newRetail || filter === keyOf(RETAIL)) && retailAvailability
+              ? RETAIL_PROFILE
+              : undefined
+          }
+          fifthAvailability={retailAvailability}
+          fifthVisible={
+            !invalidIdentity && (filter === "all" || filter === keyOf(RETAIL))
           }
           fourthProfile={newEmployment ? EMPLOYMENT_PROFILE : undefined}
           fourthAvailability={employmentAvailability}
@@ -1543,7 +1594,7 @@ export function CollectionWorkbench({
         <>
           <div className="toolbar">
             <h2>采集执行记录</h2>
-            {!newCpi && !newPpi && !newPce && !newEmployment && (
+            {!newCpi && !newPpi && !newPce && !newEmployment && !newRetail && (
               <button onClick={() => setRefresh((n) => n + 1)}>
                 回查执行记录
               </button>
@@ -1564,7 +1615,10 @@ export function CollectionWorkbench({
             columns={["任务名称", "创建时间（北京时间）", "采集范围", "结果"]}
             pageSize={20}
             locateId={
-              (employmentTarget || isPpi || (pceTarget && newPce)) &&
+              (retailTarget ||
+                employmentTarget ||
+                isPpi ||
+                (pceTarget && newPce)) &&
               (briefTarget || jobId)
                 ? `${macroProfile.id}:${briefTarget || jobId}`
                 : briefTarget
@@ -1654,6 +1708,7 @@ export function CollectionWorkbench({
             !ppiRecords.busy &&
             !pceRecords.busy &&
             !employmentRecords.busy &&
+            !retailRecords.busy &&
             !execution &&
             !cpiExecution && (
               <p role="status">

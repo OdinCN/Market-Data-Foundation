@@ -312,6 +312,9 @@ function CpiStrategyWorkbenchContent({
   fourthProfile,
   fourthAvailability,
   fourthVisible = true,
+  fifthProfile,
+  fifthAvailability,
+  fifthVisible = true,
   selectedId,
   selected: selectedProp,
   onSelect,
@@ -326,6 +329,9 @@ function CpiStrategyWorkbenchContent({
   additionalProfile?: MacroProfile;
   additionalAvailability?: CpiAvailability;
   additionalVisible?: boolean;
+  fifthProfile?: MacroProfile;
+  fifthAvailability?: CpiAvailability;
+  fifthVisible?: boolean;
   fourthProfile?: MacroProfile;
   fourthAvailability?: CpiAvailability;
   fourthVisible?: boolean;
@@ -369,7 +375,24 @@ function CpiStrategyWorkbenchContent({
     fourthAvailability ?? emptyAvailability,
     !!fourthProfile && fourthVisible,
   );
+  const fifth = useStrategyControl(
+    transport,
+    generation,
+    fifthProfile ?? primaryProfile,
+    fifthAvailability ?? emptyAvailability,
+    !!fifthProfile && fifthVisible,
+  );
   const entries = [
+    ...(fifthProfile
+      ? [
+          {
+            profile: fifthProfile,
+            availability: fifthAvailability ?? emptyAvailability,
+            visible: fifthVisible,
+            ...fifth,
+          },
+        ]
+      : []),
     ...(fourthProfile
       ? [
           {
@@ -496,6 +519,14 @@ function CpiStrategyWorkbenchContent({
             ],
           }))}
       >
+        {shown && detailVisible && !data && (
+          <p role="status">
+            {profile.label} 策略
+            {resource.failure || entry.availability.failure
+              ? "读取失败，等待重读。"
+              : "正在读取…"}
+          </p>
+        )}
         {shown && detailVisible && data && (
           <>
             <h3>{profile.label} 策略详情</h3>

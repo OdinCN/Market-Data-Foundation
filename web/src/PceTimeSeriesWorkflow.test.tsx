@@ -112,7 +112,13 @@ function fixture() {
     body?: Record<string, unknown>;
   }[] = [];
   const jobs: CpiJob[] = [];
-  const enabled = { cpi: false, ppi: false, pce: false, employment: false };
+  const enabled = {
+    cpi: false,
+    ppi: false,
+    pce: false,
+    employment: false,
+    retail: false,
+  };
   const transport: Transport = async (input, init) => {
     const url = new URL(String(input), "http://synthetic.invalid");
     const method = init?.method ?? "GET";

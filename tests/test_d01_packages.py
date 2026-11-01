@@ -101,7 +101,7 @@ def test_first_enable_required_keep_and_package_environment_isolation(tmp_path):
         assert ppi["required_sources"] == ["BLS"]
         assert {
             s["source_id"]: s["credential_state"] for s in ppi["credential_states"]
-        } == {"BLS": "configured", "BEA": "missing"}
+        } == {"BLS": "configured", "BEA": "missing", "Census": "configured"}
         assert put(client, ["daily_raw"], package="tdx").status_code == 200
         assert client.get(f"{PATH}/macro").json() == ppi
         other = PackageHost(host.store, "other-environment", authorize=host.authorize)
