@@ -30,6 +30,7 @@ FAMILIES = (
     ("PPI", "美国 PPI", "bls_ppi_final_demand"),
     ("EMPLOYMENT", "美国就业", "bls_employment"),
     ("PCE", "美国 PCE", "bea_pce"),
+    ("CONSUMPTION", "美国消费与收入", "bea_consumption"),
     ("RETAIL", "美国零售", "census_retail"),
     ("FRED_ALFRED", "FRED / ALFRED vintage", "fred_alfred_vintage"),
     ("FOMC", "FOMC 声明", "fomc_statement"),
@@ -81,7 +82,9 @@ class ManagementDTO(DTO):
     instance_scope: Literal["UNCONFIGURED", "TRUSTED_READ"]
     persistence: Literal["DEV_PG_GATE_PENDING"] = "DEV_PG_GATE_PENDING"
     entries: list[DirectoryEntryDTO] = Field(max_length=32)
-    families: list[FamilyDTO] = Field(min_length=9, max_length=9)
+    families: list[FamilyDTO] = Field(
+        min_length=len(FAMILIES), max_length=len(FAMILIES)
+    )
     instances: list[InstanceDTO] = Field(max_length=64)
     deferred: list[Literal["QMT"]] = Field(default_factory=lambda: ["QMT"])
 
