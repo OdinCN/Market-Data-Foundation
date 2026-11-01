@@ -111,7 +111,7 @@ it("one real PUT saves capabilities and replacement, then GET exposes state only
   const view = open(h.transport);
   await ready();
   choose("美国 CPI");
-  choose("美国 PCE");
+  choose("美国 PCE价格指数");
   enterKey();
   expect(screen.queryByLabelText("BEA 新凭据")).toBeNull();
   click("保存配置");
@@ -175,7 +175,7 @@ it("removing the last capability for a source discards that source's pending rep
   enterKey();
   tab("能力配置");
   choose("美国 CPI");
-  choose("美国 PCE");
+  choose("美国 PCE价格指数");
   tab("来源配置");
   expect(screen.queryByRole("button", { name: /BLS 凭据/ })).toBeNull();
   tab("能力配置");
@@ -233,8 +233,11 @@ it("real CAS conflict does not publish password and reread requires fresh input"
   click("重读核对配置");
   await ready();
   expect(
-    (screen.getByRole("checkbox", { name: "美国 PCE" }) as HTMLInputElement)
-      .checked,
+    (
+      screen.getByRole("checkbox", {
+        name: "美国 PCE价格指数",
+      }) as HTMLInputElement
+    ).checked,
   ).toBe(true);
   expect(
     JSON.parse(
