@@ -22,7 +22,7 @@ import { CollectionWorkbench } from "./CollectionWorkbench";
 const flush = () => act(async () => {});
 const response = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status });
-function fixture() {
+function fixture(partial = false, noContent = false) {
   const calls: {
     path: string;
     method: string;
@@ -90,18 +90,41 @@ function fixture() {
         },
       });
     if (url.pathname.endsWith("/query")) {
-      const calc = (value: string) => ({ value, reason: null });
+      const calc = (value: string | null) => ({ value, reason: null });
       const rates = Object.fromEntries(
         [1, 3, 6, 12].map((h) => [h, calc("0.0123456789012345678901234567")]),
       );
       original =
         " \n" +
         JSON.stringify({
+          status: partial ? "PARTIAL" : "OK",
+          source_no_content: noContent
+            ? [
+                {
+                  classification: "census_retail_no_content",
+                  http_status: 204,
+                  response_bytes: 0,
+                  start_month: "2026-10",
+                  end_month: "2026-10",
+                },
+              ]
+            : [],
+          source_failure:
+            partial && !noContent
+              ? {
+                  classification: "census_retail_http_failure",
+                  http_status: 429,
+                  retry_at: "2026-11-01T00:10:00Z",
+                }
+              : null,
           start_month: url.searchParams.get("start"),
           end_month: url.searchParams.get("end"),
           persisted: false,
-          provider_requests: 0,
-          provider_attempts: 0,
+          provider_requests: partial ? 1 : 0,
+          provider_attempts: partial ? 1 : 0,
+          missing_input_count: partial ? 18 : 0,
+          last_completed_month: "2026-10",
+          source_skipped_months: partial ? ["2026-11", "2026-12"] : [],
           as_of: url.searchParams.get("as_of"),
           as_of_basis: url.searchParams.get("as_of") ? "available" : "observed",
           query_mode: url.searchParams.get("query_mode"),
@@ -110,16 +133,43 @@ function fixture() {
             rates: "ratio",
             official_headline_mpcsm: "percent",
           },
-          points: ["2026-08", "2026-09"].map((month) => ({
+          points: (partial
+            ? [
+                "2025-10",
+                "2025-11",
+                "2025-12",
+                "2026-01",
+                "2026-02",
+                "2026-03",
+                "2026-04",
+                "2026-05",
+                "2026-06",
+                "2026-07",
+                "2026-08",
+                "2026-09",
+                "2026-10",
+                "2026-11",
+                "2026-12",
+              ]
+            : ["2026-08", "2026-09"]
+          ).map((month) => ({
             month,
-            headline_level: calc("123456.123456789"),
-            control_level: calc("100001.000000001"),
+            headline_level: calc(
+              partial && month > "2026-09" ? null : "123456.123456789",
+            ),
+            control_level: calc(
+              partial && month > "2026-09" ? null : "100001.000000001",
+            ),
             headline_rates: rates,
             control_rates: rates,
-            official_headline_mpcsm: { value: "1.3", unit: "percent" },
+            official_headline_mpcsm: {
+              value: partial && month > "2026-09" ? null : "1.3",
+              unit: "percent",
+            },
             source_cells: Array.from({ length: 6 }, () => ({
-              value: "1",
-              status: "available",
+              value: partial && month > "2026-09" ? null : "1",
+              status:
+                partial && month > "2026-09" ? "not_provided" : "available",
             })),
           })),
           unknown: "retain raw",
@@ -308,6 +358,7 @@ it("selects retail in the real shared App, preserves amount/raw precision, actua
   expect(query.getAllByText("123456.123456789").length).toBe(2);
   expect(query.getByText("金额（百万当期美元）")).toBeTruthy();
   expect(query.getByText("官方 MPCSM（percent）")).toBeTruthy();
+  expect(query.queryByRole("alert")).toBeNull();
   fireEvent.click(query.getByRole("tab", { name: "原始响应" }));
   expect(query.getByLabelText("原始 HTTP 正文").textContent).toBe(h.raw());
   const actual = h.calls.find((c) => c.path.includes("/query?"))!.path;
@@ -563,3 +614,76 @@ it.each(["loading", "failed"])(
     expect(h.calls.some((c) => /\/cpi\/timeseries/.test(c.path))).toBe(false);
   },
 );
+
+it("shows retail partial warning with the retained shared App table and exact raw body", async () => {
+  const h = fixture(true);
+  location.hash = "ui=r5&view=assets";
+  render(<App transport={h.transport} />);
+  fireEvent.click(await screen.findByRole("row", { name: /美国零售销售/ }));
+  const query = within(
+    await screen.findByRole("region", { name: "零售销售 范围查询" }),
+  );
+  fireEvent.change(query.getByLabelText("开始月份"), {
+    target: { value: "2025-10" },
+  });
+  fireEvent.change(query.getByLabelText("结束月份"), {
+    target: { value: "2026-12" },
+  });
+  fireEvent.click(query.getByRole("button", { name: "查询数据" }));
+  await flush();
+  expect(query.getByRole("alert").textContent).toContain("Census 补取失败");
+  expect(query.getByRole("alert").textContent).toContain("部分返回");
+  expect(query.getByRole("alert").textContent).toContain("HTTP 429");
+  expect(query.getByRole("alert").textContent).toContain("可重试时间");
+  expect(query.getByRole("table", { name: "零售销售 范围数据" })).toBeTruthy();
+  expect(query.getAllByText("123456.123456789")).toHaveLength(12);
+  const rows = within(query.getByRole("table", { name: "零售销售 范围数据" }))
+    .getAllByRole("row")
+    .slice(1);
+  expect(rows).toHaveLength(30);
+  expect(rows.slice(0, 6).map((r) => r.textContent?.slice(0, 7))).toEqual([
+    "2026-12",
+    "2026-12",
+    "2026-11",
+    "2026-11",
+    "2026-10",
+    "2026-10",
+  ]);
+  expect(query.queryByText(/所选指标数据完整/)).toBeNull();
+  fireEvent.click(query.getByRole("tab", { name: "原始响应" }));
+  expect(query.getByLabelText("原始 HTTP 正文").textContent).toBe(h.raw());
+  expect(h.raw()).toContain('"status":"PARTIAL"');
+  expect(h.raw()).toContain('"source_failure"');
+});
+
+it("shows 204 no returned records in the shared App without calling it a service failure", async () => {
+  const h = fixture(true, true);
+  location.hash = "ui=r5&view=assets";
+  render(<App transport={h.transport} />);
+  fireEvent.click(await screen.findByRole("row", { name: /美国零售销售/ }));
+  const query = within(
+    await screen.findByRole("region", { name: "零售销售 范围查询" }),
+  );
+  fireEvent.change(query.getByLabelText("开始月份"), {
+    target: { value: "2025-10" },
+  });
+  fireEvent.change(query.getByLabelText("结束月份"), {
+    target: { value: "2026-12" },
+  });
+  fireEvent.click(query.getByRole("button", { name: "查询数据" }));
+  await flush();
+  expect(query.getByRole("alert").textContent).toContain(
+    "Census 本次未返回记录（HTTP 204）",
+  );
+  expect(query.queryByText(/补取失败/)).toBeNull();
+  expect(query.getAllByText("123456.123456789")).toHaveLength(12);
+  expect(
+    within(
+      query.getByRole("table", { name: "零售销售 范围数据" }),
+    ).getAllByRole("row"),
+  ).toHaveLength(31);
+  fireEvent.click(query.getByRole("tab", { name: "原始响应" }));
+  expect(query.getByLabelText("原始 HTTP 正文").textContent).toBe(h.raw());
+  expect(h.raw()).toContain('"source_failure":null');
+  expect(h.raw()).toContain('"http_status":204');
+});

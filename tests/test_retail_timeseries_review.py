@@ -74,9 +74,12 @@ def test_query_failure_retains_attempt_count_across_two_gap_spans():
     del svc.store.revisions["2005-10", "441", "SM"]
     del svc.store.revisions["2026-10", "441", "SM"]
     wire.calls.clear()
+    # A terminal permission failure must still raise and retain all attempts.
     wire.outcomes = [response(encode(payload("2005-10", "2005-10")))] + [
-        HttpResult(503, b"", {})
-    ] * 3
+        HttpResult(503, b"", {}),
+        HttpResult(503, b"", {}),
+        HttpResult(403, b"", {}),
+    ]
     before = svc.store.status()
     with pytest.raises(RetailSourceError) as failure:
         svc.query_range("2006-10", "2026-10")

@@ -406,3 +406,35 @@ Web CLI 对应 `--retail-schedule-path`、`--retail-request-control-path`。
 原范围核实 retained batch，成功后 worker 只读取已完成回执并解除该月份阻塞，
 不重发已保留响应。预算耗尽需人工检查，停启不重置预算或执行进度。
 T05 `source_qualified=false` 保留；以上不声明完成真实未来发布或 DEV 部署验收。
+
+
+### Current query partial results
+
+A current read retains trusted local target inputs when Census gap filling fails
+with a timeout, transport failure, or retryable HTTP status (408/429/500/502/503/504).
+HTTP 200 then carries `status: PARTIAL` and `source_failure` with safe
+`classification`, nullable `http_status`, and nullable UTC `retry_at` derived from
+Retry-After. Requests/attempts include the failed request. Without trusted local
+target data the source error still fails. Local, permission, binding, parameter
+and source-contract errors are not downgraded.
+
+`missing_input_count` counts absent input cells including comparison buffers.
+Unrequested inputs remain `not_provided` (no evidence), never official missing.
+`last_completed_month` is the previous calendar month in UTC;
+`source_skipped_months` lists absent input months later than this bound.
+These months are never requested from Census, but remain in the full descending
+response frame. This bound does not assert publication: older missing months
+remain eligible regardless of the latest local month or release calendar.
+`OK`/null `source_failure` does not guarantee complete input coverage.
+History and local-only queries never request Census; queries never persist.
+
+
+HTTP 204 with an empty body is handled only by the read-only query projection:
+`status: PARTIAL`, `source_failure: null`, and `source_no_content` entries with
+`classification: census_retail_no_content`, `http_status: 204`, `response_bytes: 0`,
+and the actual requested `start_month`/`end_month`. This means no records were
+returned by this exchange, including when there are no local target inputs. It
+is not a service failure, official null, publication or release-time evidence.
+Absent inputs stay `not_provided`; no synthetic HTTP 200/JSON batch, raw hash,
+revision or persistence is created. Collection retains its previous failure/wait
+behavior. A nonempty 204 body remains a source-contract error.

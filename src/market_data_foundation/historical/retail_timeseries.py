@@ -17,6 +17,7 @@ from market_data_foundation.historical.census_retail_timeseries_source import (
 )
 from market_data_foundation.historical.cpi_timeseries import month_at, month_number
 from market_data_foundation.historical.retail_timeseries_store import collection_key
+from market_data_foundation.source_request_policy import retryable_http_status
 
 
 class RetailServiceError(RuntimeError):
@@ -209,7 +210,29 @@ class RetailTimeSeriesService:
         }
         gaps = {k for k in expected if k not in cells or cells[k].status == "missing"}
         attempts = requests = 0
-        if gaps and not local_only and not historical:
+        source_failure = None
+        source_no_content = []
+        # UTC reference months must have ended before requesting monthly actuals.
+        # This is an eligibility bound, never a claim of official publication.
+        last_completed_month = month_at(
+            month_number(_now(self.clock).strftime("%Y-%m")) - 1
+        )
+        source_skipped_months = sorted(
+            {k[0] for k in gaps if k[0] > last_completed_month}
+        )
+        eligible_gaps = {k for k in gaps if k[0] <= last_completed_month}
+        trusted_local = any(
+            start <= key[0] <= end
+            and cell.status == "available"
+            and cell.value is not None
+            for key, cell in cells.items()
+        )
+        if (
+            start <= last_completed_month
+            and eligible_gaps
+            and not local_only
+            and not historical
+        ):
             source = self._source()
             # Preflight the source's global range budget. Within each admitted
             # window fetch only the span containing gaps, with no extra buffer.
@@ -218,7 +241,7 @@ class RetailTimeSeriesService:
                 months = sorted(
                     {
                         key[0]
-                        for key in gaps
+                        for key in eligible_gaps
                         if request.start_month <= key[0] <= request.end_month
                     }
                 )
@@ -227,12 +250,47 @@ class RetailTimeSeriesService:
                 try:
                     snapshot = source.fetch(months[0], months[-1], buffer_months=0)
                 except RetailSourceError as error:
-                    raise RetailSourceError(
-                        error.classification,
-                        attempts + error.attempts,
-                        http_status=error.http_status,
-                        retry_at=error.retry_at,
-                    ) from None
+                    if (
+                        error.classification == "census_retail_http_failure"
+                        and error.http_status == 204
+                        and error.attempts > 0
+                    ):
+                        attempts += error.attempts
+                        requests += 1
+                        source_no_content.append(
+                            {
+                                "classification": "census_retail_no_content",
+                                "http_status": 204,
+                                "response_bytes": 0,
+                                "start_month": months[0],
+                                "end_month": months[-1],
+                            }
+                        )
+                        continue
+                    transient = error.classification in {
+                        "census_retail_timeout",
+                        "census_retail_transport_failure",
+                    } or (
+                        error.classification == "census_retail_http_failure"
+                        and retryable_http_status(error.http_status)
+                    )
+                    if not trusted_local or not transient or not error.attempts:
+                        raise RetailSourceError(
+                            error.classification,
+                            attempts + error.attempts,
+                            http_status=error.http_status,
+                            retry_at=error.retry_at,
+                        ) from None
+                    attempts += error.attempts
+                    requests += 1
+                    source_failure = {
+                        "classification": error.classification,
+                        "http_status": error.http_status,
+                        "retry_at": error.retry_at,
+                    }
+                    # Stop this bounded query after a transient failure; retain
+                    # local inputs and any earlier successful upstream window.
+                    break
                 attempts += sum(b.attempts for b in snapshot.batches)
                 requests += len(snapshot.batches)
                 for batch in snapshot.batches:
@@ -287,7 +345,14 @@ class RetailTimeSeriesService:
             document["official_headline_mpcsm"]["unit"] = "percent"
             points.append(document)
         return {
-            "status": "OK",
+            "status": "PARTIAL" if source_failure or source_no_content else "OK",
+            "source_failure": source_failure,
+            "source_no_content": source_no_content,
+            "missing_input_count": sum(
+                cell.status in {"missing", "not_provided"} for cell in matrix
+            ),
+            "last_completed_month": last_completed_month,
+            "source_skipped_months": source_skipped_months,
             "provider": "Census",
             "dataset": "MARTS",
             "query_mode": mode,

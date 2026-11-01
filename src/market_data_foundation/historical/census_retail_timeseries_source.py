@@ -322,6 +322,8 @@ class CensusRetailRangeSource:
                     http_status=error.http_status,
                     retry_at=error.retry_at,
                 ) from None
+            except PermissionError:
+                classification, transient = "permission_denied", False
             except Exception as error:
                 classification, transient = classify_source_exception(error)
             else:
@@ -332,6 +334,15 @@ class CensusRetailRangeSource:
                 last_status = response.status
                 if last_status == 200:
                     return response, attempt
+                if last_status == 204:
+                    # Query may report no returned records; never fabricate a
+                    # JSON batch or silently accept an invalid nonempty body.
+                    if response.body != b"":
+                        raise RetailSourceError(
+                            "census_retail_no_content_body_invalid",
+                            attempt,
+                            http_status=204,
+                        )
                 classification, transient = (
                     "http_failure",
                     retryable_http_status(last_status),

@@ -275,6 +275,18 @@ export type CpiPoint = {
 };
 export type CpiGap = { series_id: string; month: string; reason?: string };
 export type CpiResult = {
+  source_no_content?: {
+    classification: "census_retail_no_content";
+    http_status: 204;
+    response_bytes: 0;
+    start_month: string;
+    end_month: string;
+  }[];
+  source_failure?: {
+    classification: string;
+    http_status: number | null;
+    retry_at: string | null;
+  } | null;
   start_month: string;
   end_month: string;
   series_ids: string[];

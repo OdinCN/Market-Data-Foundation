@@ -165,7 +165,23 @@ class RetailTimeSeriesHost:
                 "reconcile; never backdated",
                 "snapshot_identity": "query projection identity; not atomic "
                 "official vintage",
-                "provider_attempts": "wire attempts during this query only",
+                "status/source_failure": "PARTIAL for no-content or transient fill "
+                "failure. source_failure is null for no-content; otherwise safe "
+                "classification/http_status/retry_at (parsed Retry-After UTC) with "
+                "trusted local target data retained. Without local data transient "
+                "failures still fail. Permission, local and contract errors always "
+                "fail. OK does not guarantee complete coverage",
+                "source_no_content": "HTTP 204 empty-body exchanges: classification "
+                "census_retail_no_content, http_status=204, response_bytes=0 and "
+                "requested start_month/end_month; not a service failure or official "
+                "null/publication evidence. Query only; no synthetic batch or writes",
+                "missing_input_count": "absent input cells including 12-month buffer; "
+                "not_provided is no evidence, missing is official row absent",
+                "last_completed_month/source_skipped_months": "previous UTC calendar "
+                "month / absent input months after it; no source IO for these months, "
+                "full requested response retained; not a publication assertion",
+                "provider_requests/provider_attempts": "logical requests including "
+                "failed request / wire attempts during this query only",
                 "units": "million_current_usd / ratio / percent; Decimal JSON "
                 "strings retain precision",
             },

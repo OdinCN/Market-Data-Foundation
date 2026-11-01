@@ -19,6 +19,9 @@ export function normalizeRetailResult(
   scope: CpiScope,
 ): CpiResult {
   const raw = value as {
+    status?: "OK" | "PARTIAL";
+    source_failure?: CpiResult["source_failure"];
+    source_no_content?: CpiResult["source_no_content"];
     start_month: string;
     end_month: string;
     persisted: boolean;
@@ -40,6 +43,38 @@ export function normalizeRetailResult(
     raw.units?.levels !== "million_current_usd" ||
     raw.units.rates !== "ratio" ||
     raw.units.official_headline_mpcsm !== "percent" ||
+    (raw.status !== undefined && !["OK", "PARTIAL"].includes(raw.status)) ||
+    (raw.source_failure != null && raw.status !== "PARTIAL") ||
+    (raw.source_no_content !== undefined &&
+      (!Array.isArray(raw.source_no_content) ||
+        raw.source_no_content.some(
+          (event) =>
+            !event ||
+            event.classification !== "census_retail_no_content" ||
+            event.http_status !== 204 ||
+            event.response_bytes !== 0 ||
+            !/^\d{4}-\d{2}$/.test(event.start_month) ||
+            !/^\d{4}-\d{2}$/.test(event.end_month),
+        ))) ||
+    (raw.status === "PARTIAL" &&
+      !raw.source_failure &&
+      !raw.source_no_content?.length) ||
+    (raw.source_failure != null &&
+      (typeof raw.source_failure.classification !== "string" ||
+        !/^census_retail_(http_failure|timeout|transport_failure)$/.test(
+          raw.source_failure.classification,
+        ) ||
+        !(
+          raw.source_failure.http_status === null ||
+          (Number.isInteger(raw.source_failure.http_status) &&
+            raw.source_failure.http_status >= 100 &&
+            raw.source_failure.http_status <= 599)
+        ) ||
+        !(
+          raw.source_failure.retry_at === null ||
+          (typeof raw.source_failure.retry_at === "string" &&
+            Number.isFinite(Date.parse(raw.source_failure.retry_at)))
+        ))) ||
     !Array.isArray(raw.points)
   )
     throw new Error("retail_result_unknown");
@@ -118,7 +153,7 @@ export function normalizeRetailResult(
     points,
     missing,
     calculation_missing: gaps,
-    complete: !missing.length && !gaps.length,
+    complete: raw.status !== "PARTIAL" && !missing.length && !gaps.length,
     coverage_complete: raw.points.every((p) =>
       p.source_cells.every(
         (c) => c.status !== "missing" && c.status !== "not_provided",

@@ -483,6 +483,23 @@ function CpiTimeSeriesContent({
         {failure && !exchange && (
           <p>未收到可读取的 HTTP 响应，无法提供 HTTP 状态或响应正文。</p>
         )}
+        {profile.id === "retail" && result?.source_failure && (
+          <p role="alert">
+            <strong>Census 补取失败，已保留本地数据，部分返回。</strong>
+            缺口仍为空，不能视为官方缺值。
+            {result.source_failure.classification}
+            {result.source_failure.http_status !== null &&
+              ` · HTTP ${result.source_failure.http_status}`}
+            {result.source_failure.retry_at &&
+              ` · 可重试时间：${formatBeijingTime(result.source_failure.retry_at)}`}
+          </p>
+        )}
+        {profile.id === "retail" && !!result?.source_no_content?.length && (
+          <p role="alert">
+            <strong>Census 本次未返回记录（HTTP 204）。</strong>
+            已保留已有数据和全部月份，缺口仍为空；不代表官方缺值或已发布。
+          </p>
+        )}
         <div hidden={resultTab !== "table"}>
           {result && columns.length > 0 && (
             <section aria-label={`${profile.label} 范围结果`}>
@@ -492,9 +509,12 @@ function CpiTimeSeriesContent({
               <p role="status">
                 共 {rows.length} 条（月 × 口径），有效观测{" "}
                 {result.points.length} 条，缺值 {result.missing.length} 条。
-                {!result.missing.length && !selectedCalculationMissing.length
-                  ? "所选指标数据完整。"
-                  : "所选指标存在缺值。"}
+                {profile.id === "retail" &&
+                (result.source_failure || result.source_no_content?.length)
+                  ? "来源补取未完成，当前为部分返回。"
+                  : !result.missing.length && !selectedCalculationMissing.length
+                    ? "所选指标数据完整。"
+                    : "所选指标存在缺值。"}
               </p>
               <p className="small">
                 {employment

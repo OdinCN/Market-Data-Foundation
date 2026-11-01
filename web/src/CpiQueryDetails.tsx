@@ -256,6 +256,18 @@ export function CpiQueryApiHelp({
           headers={["字段", "含义 / 单位"]}
           rows={[
             [
+              "status/source_failure",
+              "PARTIAL 表示来源未返回记录或补取临时失败；source_failure 的 classification/http_status/retry_at 为失败诊断。OK 不保证无缺口。",
+            ],
+            [
+              "source_no_content",
+              "HTTP 204 空正文及请求起止月；表示本次未返回记录，不是服务故障、官方null或发布时间证据；不生成批次、不落库。",
+            ],
+            [
+              "missing_input_count/last_completed_month/source_skipped_months",
+              "含12月缓冲的缺失输入数 / UTC上个完整月 / 未请求的未结束或未来月份；响应保留所选全部月份，不推定官方发布时间。",
+            ],
+            [
               "headline_level/control_level",
               "Decimal字符串或null；million_current_usd；控制组为MDF推导",
             ],
