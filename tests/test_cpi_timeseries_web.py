@@ -12,7 +12,6 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
-from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
 from market_data_foundation.historical.cpi_release_schedule import CpiReleaseScheduler
 from market_data_foundation.historical.cpi_timeseries import (
     CpiTimeSeriesService,
@@ -23,6 +22,7 @@ from market_data_foundation.historical.cpi_timeseries_source import (
     SourcePoint,
 )
 from market_data_foundation.historical.cpi_timeseries_store import (
+    SERIES_IDS,
     InMemoryTimeSeriesStore,
 )
 from market_data_foundation.web.cpi_api import create_app
@@ -179,7 +179,7 @@ def test_persisted_job_replay_conflict_and_independent_readback(fixture, monkeyp
         job = http.get(PREFIX + "/jobs").json()["jobs"][0]
         assert job["state"] == "complete"
         assert job["result"]["readback"]["verified"] is True
-        assert job["result"]["readback"]["expected_points"] == 4
+        assert job["result"]["readback"]["expected_points"] == len(SERIES_IDS)
         assert (
             http.post(
                 PREFIX + "/jobs", json=request, headers={"Origin": CANDIDATE_ORIGIN}

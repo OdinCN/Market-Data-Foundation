@@ -371,6 +371,8 @@ def test_http_actual_requests_units_decimal_months_offsets_and_help():
         "query_mode",
         "as_of",
         "as_of_basis/vintage_mode",
+        "basket",
+        "columns",
     }
     assert len(help_doc["examples"]) == 3
 

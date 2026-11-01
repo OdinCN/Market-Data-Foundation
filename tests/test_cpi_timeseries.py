@@ -73,10 +73,10 @@ def test_init_shared_comparison_buffer_and_zero_request_repeat(setup):
     service, store, source = setup
     first = service.init_range("2000-01", "2025-12")
     assert first["complete"] and first["persisted"]
-    assert len(first["points"]) == 26 * 12 * 4
+    assert len(first["points"]) == 26 * 12 * len(SERIES_IDS)
     assert first["calculation_missing"] == []
     assert source.calls == [(SERIES_IDS, "1999-01", "2025-12")]
-    assert store.status()["observation_count"] == 27 * 12 * 4
+    assert store.status()["observation_count"] == 27 * 12 * len(SERIES_IDS)
     first_point = first["points"][0]
     assert first_point["mom_pct"] == "-9.82"
     assert first_point["yoy_pct"] == "0.00"
@@ -117,14 +117,14 @@ def test_update_retains_changes_and_repeated_identical_observation(setup):
     source.increment = Decimal(1)
     source.observed_at += timedelta(minutes=2)
     second = service.update_range("2020-01", "2020-01")
-    assert second["saved_revisions"] == 13 * 4
+    assert second["saved_revisions"] == 13 * len(SERIES_IDS)
     assert second["points"][0]["revision"] == 2
     assert first["points"][0]["observed_at"] != second["points"][0]["observed_at"]
     source.observed_at += timedelta(minutes=2)
     third = service.update_range("2020-01", "2020-01")
     assert third["saved_revisions"] == 0 and third["saved_points"] == 0
     assert third["points"][0]["observed_at"] == second["points"][0]["observed_at"]
-    assert store.status()["revision_count"] == 13 * 4
+    assert store.status()["revision_count"] == 13 * len(SERIES_IDS)
 
 
 def test_asof_only_actual_observations_never_fetches_current(setup):
@@ -162,7 +162,7 @@ def test_missing_buffer_reports_null_rate_without_fabricating(setup):
     source.skip = {(s, "2019-01") for s in SERIES_IDS}
     result = service.query_range("2020-01", "2020-01")
     assert result["complete"]
-    assert len(result["calculation_missing"]) == 8
+    assert len(result["calculation_missing"]) == 2 * len(SERIES_IDS)
     assert all(p["yoy_pct"] is None for p in result["points"])
 
 
@@ -431,8 +431,8 @@ def test_explicit_provider_unavailable_is_preserved_not_zero_or_repeated_miss():
     service = CpiTimeSeriesService(store, source)
     first = service.init_range("2025-10", "2025-11")
     assert first["coverage_complete"] and not first["complete"]
-    assert len(first["source_unavailable"]) == 4
-    assert len(first["points"]) == 4
+    assert len(first["source_unavailable"]) == len(SERIES_IDS)
+    assert len(first["points"]) == len(SERIES_IDS)
     assert all(p["availability"] == "available" for p in first["points"])
     assert all(
         p["index_value"] is None
@@ -442,7 +442,7 @@ def test_explicit_provider_unavailable_is_preserved_not_zero_or_repeated_miss():
         for p in first["source_unavailable"]
     )
     assert all(p["mom_pct"] is None for p in first["points"])
-    assert len(first["calculation_missing"]) == 8
+    assert len(first["calculation_missing"]) == 2 * len(SERIES_IDS)
     assert all(m["reason"] == "source_unavailable" for m in first["missing"])
     second = service.init_range("2025-10", "2025-11")
     query = service.query_range("2025-10", "2025-11")
@@ -465,10 +465,10 @@ def test_unavailable_is_not_refreshed_target_and_update_can_restore_numeric_valu
     source.observed_at += timedelta(days=1)
     updated = service.update_range("2025-10", "2025-10")
     assert updated["complete"] and updated["refresh_complete"]
-    assert updated["saved_revisions"] == 4
+    assert updated["saved_revisions"] == len(SERIES_IDS)
     assert all(p["revision"] == 2 for p in updated["points"])
     before = service.query_range(
         "2025-10", "2025-10", as_of=NOW, vintage_mode="observed"
     )
     assert not before["complete"] and before["coverage_complete"]
-    assert len(before["source_unavailable"]) == 4
+    assert len(before["source_unavailable"]) == len(SERIES_IDS)

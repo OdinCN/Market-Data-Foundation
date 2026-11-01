@@ -65,7 +65,9 @@ const scope: CpiScope = {
 };
 function result(query: CpiScope): CpiResult {
   const ids = PCE_PROFILE.series
-    .filter((s) => ["all", s[2]].includes(query.basket))
+    .filter(
+      (s) => query.basket === "all" || query.basket.split(",").includes(s[2]),
+    )
     .map((s) => s[0]);
   const points: CpiResult["points"] = [];
   for (
@@ -267,7 +269,7 @@ it("opens PCE in the shared asset query with two rows, ratios and working exchan
   render(<App transport={h.transport} />);
   await flush();
   expect(
-    screen.getByRole("heading", { name: "美国 PCE · 范围查询" }),
+    screen.getByRole("heading", { name: "美国 PCE价格指数 · 范围查询" }),
   ).toBeTruthy();
   fireEvent.change(screen.getByLabelText("开始月份"), {
     target: { value: "2026-09" },
@@ -280,7 +282,7 @@ it("opens PCE in the shared asset query with two rows, ratios and working exchan
   });
   fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
   await flush();
-  const table = screen.getByRole("table", { name: "PCE 范围数据" });
+  const table = screen.getByRole("table", { name: "PCE价格指数 范围数据" });
   expect(within(table).getAllByRole("row")).toHaveLength(3);
   expect(within(table).getAllByText("3.12%")).toHaveLength(2);
   expect(within(table).getAllByText("123.456789")).toHaveLength(2);
@@ -314,7 +316,7 @@ it("opens PCE in the shared asset query with two rows, ratios and working exchan
     ),
   ).toBe(false);
   fireEvent.click(screen.getByRole("tab", { name: "API说明" }));
-  const help = screen.getByRole("region", { name: "PCE API说明" });
+  const help = screen.getByRole("region", { name: "PCE价格指数 API说明" });
   expect(help.textContent).toContain("2个统计序列");
   expect(help.textContent).toContain("DPCCRG");
   expect(help.textContent).not.toContain("BLS");
@@ -322,7 +324,7 @@ it("opens PCE in the shared asset query with two rows, ratios and working exchan
 
 async function queryPceSeptember() {
   expect(
-    screen.getByRole("heading", { name: "美国 PCE · 范围查询" }),
+    screen.getByRole("heading", { name: "美国 PCE价格指数 · 范围查询" }),
   ).toBeTruthy();
   expect((screen.getByLabelText("结束月份") as HTMLInputElement).value).toBe(
     "2026-09",
@@ -333,7 +335,7 @@ async function queryPceSeptember() {
   });
   fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
   await flush();
-  const table = screen.getByRole("table", { name: "PCE 范围数据" });
+  const table = screen.getByRole("table", { name: "PCE价格指数 范围数据" });
   expect(table.textContent).toContain("2026-09");
   expect(within(table).getAllByText("123.456789")).toHaveLength(2);
 }
@@ -516,9 +518,9 @@ it("uses basket multiselect and an available-time Beijing cutoff without upstrea
     as_of: "2026-10-30T20:30:00+08:00",
   });
   expect(
-    within(screen.getByRole("table", { name: "PCE 范围数据" })).getAllByRole(
-      "row",
-    ),
+    within(
+      screen.getByRole("table", { name: "PCE价格指数 范围数据" }),
+    ).getAllByRole("row"),
   ).toHaveLength(2);
 });
 
@@ -560,9 +562,9 @@ it("edits the 240-month preset and opens the exact PCE brief in the single share
   location.hash = `ui=r5&view=collection&tab=new&asset=${PCE.identity}&asset_revision=${PCE.revision}`;
   render(<App transport={h.transport} />);
   await flush();
-  expect(screen.getAllByRole("heading", { name: "PCE 受控采集" })).toHaveLength(
-    1,
-  );
+  expect(
+    screen.getAllByRole("heading", { name: "PCE价格指数 受控采集" }),
+  ).toHaveLength(1);
   expect(screen.getByText(/共2种口径/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText("采集方式"), {
     target: { value: "initialize" },
@@ -577,7 +579,9 @@ it("edits the 240-month preset and opens the exact PCE brief in the single share
     target: { value: "2026-09" },
   });
   fireEvent.click(screen.getByRole("checkbox"));
-  fireEvent.click(screen.getByRole("button", { name: "提交 PCE 采集" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "提交 PCE价格指数 采集" }),
+  );
   await flush();
   expect(h.calls.find((c) => c.method === "POST")).toMatchObject({
     path: `${PCE_PROFILE.basePath}/jobs`,
@@ -615,9 +619,11 @@ it("lists all three preset strategies in one table and uses explicit BEA calenda
     within(region).getByRole("button", { name: /选择 美国 PCE/ }),
   );
   await flush();
-  expect(screen.getByRole("heading", { name: "PCE 策略详情" })).toBeTruthy();
+  expect(
+    screen.getByRole("heading", { name: "PCE价格指数 策略详情" }),
+  ).toBeTruthy();
   expect(screen.getByText(/共2种口径/)).toBeTruthy();
-  const calendar = screen.getByRole("list", { name: "PCE 月份计划" });
+  const calendar = screen.getByRole("list", { name: "PCE价格指数 月份计划" });
   expect(within(calendar).getAllByRole("listitem")).toHaveLength(2);
   expect(calendar.textContent).toContain("2026-08");
   expect(calendar.textContent).toContain("2026-09");
@@ -651,11 +657,11 @@ it.each([503, "transport"])(
     location.hash = `ui=r5&view=collection&tab=new&asset=${PCE.identity}&asset_revision=${PCE.revision}`;
     render(<App transport={transport} />);
     await flush();
-    expect(screen.getByText(/PCE 服务状态未知/)).toBeTruthy();
+    expect(screen.getByText(/PCE价格指数 服务状态未知/)).toBeTruthy();
     expect(
       (
         screen.getByRole("button", {
-          name: "提交 PCE 采集",
+          name: "提交 PCE价格指数 采集",
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -688,8 +694,11 @@ it("reports a missing initialization preset without inventing a range", async ()
   ).toBe("");
   expect(screen.getByText(/服务暂无默认范围/)).toBeTruthy();
   expect(
-    (screen.getByRole("button", { name: "提交 PCE 采集" }) as HTMLButtonElement)
-      .disabled,
+    (
+      screen.getByRole("button", {
+        name: "提交 PCE价格指数 采集",
+      }) as HTMLButtonElement
+    ).disabled,
   ).toBe(true);
 });
 
@@ -863,7 +872,7 @@ it.each<[boolean, number, string?]>([
         (statusCode === 503 && failureClass !== "pce_timeseries_not_enabled"))
     ) {
       expect(
-        screen.getByRole("heading", { name: "美国 PCE · 范围查询" }),
+        screen.getByRole("heading", { name: "美国 PCE价格指数 · 范围查询" }),
       ).toBeTruthy();
       expect(
         (screen.getByRole("button", { name: "查询数据" }) as HTMLButtonElement)
@@ -876,7 +885,7 @@ it.each<[boolean, number, string?]>([
     }
     if (!exact && statusCode === 200) {
       expect(
-        screen.getByRole("heading", { name: "美国 PCE · 范围查询" }),
+        screen.getByRole("heading", { name: "美国 PCE价格指数 · 范围查询" }),
       ).toBeTruthy();
       expect(reads).toHaveLength(0);
       expect(legacyPaths).toHaveLength(0);
@@ -887,14 +896,14 @@ it.each<[boolean, number, string?]>([
       fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
       await flush();
       expect(
-        screen.getByRole("table", { name: "PCE 范围数据" }).textContent,
+        screen.getByRole("table", { name: "PCE价格指数 范围数据" }).textContent,
       ).toContain("2026-09");
       expect(reads).toHaveLength(0);
       expect(h.calls.some((c) => /\/(cpi|ppi)\//.test(c.path))).toBe(false);
       return;
     }
     expect(
-      screen.queryByRole("heading", { name: "美国 PCE · 范围查询" }),
+      screen.queryByRole("heading", { name: "美国 PCE价格指数 · 范围查询" }),
     ).toBeNull();
     const read = screen.getByRole("button", {
       name: "读取本地数据",

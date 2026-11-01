@@ -7,6 +7,7 @@ import pytest
 
 from market_data_foundation.historical import cpi_timeseries_source as source
 from market_data_foundation.historical.bls_cpi_direct_live import HttpResult
+from market_data_foundation.historical.bls_timeseries_profile import CPI_PROFILE
 
 OBSERVED = datetime(2026, 10, 28, 12, tzinfo=UTC)
 TEST_KEY = "ab" * 16
@@ -104,7 +105,7 @@ def test_service_uses_twelve_month_buffer_across_twenty_year_boundary(monkeypatc
     )
     result = service.init_range("2000-01", "2026-09")
     assert result["complete"] is True
-    assert len(result["points"]) == (26 * 12 + 9) * 4
+    assert len(result["points"]) == (26 * 12 + 9) * len(CPI_PROFILE.series_ids)
     assert [(r["startyear"], r["endyear"]) for r in transport.requests] == [
         ("1999", "2018"),
         ("2019", "2026"),
@@ -146,7 +147,7 @@ def test_as_of_before_first_observation_never_calls_today_source(monkeypatch):
     )
     assert result["complete"] is False
     assert result["points"] == []
-    assert len(result["missing"]) == 4
+    assert len(result["missing"]) == len(CPI_PROFILE.series_ids)
     assert result["provider_requests"] == 0
     assert len(transport.requests) == calls
     assert store.status() == before
@@ -164,7 +165,7 @@ def test_internal_single_series_gap_is_filled_without_persisting(monkeypatch):
     transport = SyntheticYearsTransport()
     upstream = source.BlsRangeSource(transport=transport, clock=lambda: OBSERVED)
     missing_sid = source.SERIES_IDS[2]
-    batches = upstream.fetch(source.SERIES_IDS, "2017-12", "2019-02")
+    batches = upstream.fetch(CPI_PROFILE.series_ids, "2017-12", "2019-02")
     store = InMemoryTimeSeriesStore()
     store.save_batches(
         tuple(
@@ -183,7 +184,7 @@ def test_internal_single_series_gap_is_filled_without_persisting(monkeypatch):
     transport.requests.clear()
     result = CpiTimeSeriesService(store, upstream).query_range("2018-12", "2019-02")
     assert result["complete"] is True
-    assert len(result["points"]) == 12
+    assert len(result["points"]) == len(CPI_PROFILE.series_ids) * 3
     assert result["persisted"] is False
     assert len(transport.requests) == 1
     assert transport.requests[0]["seriesid"] == [missing_sid]

@@ -319,6 +319,7 @@ class RetailTimeSeriesService:
             for calculation in (
                 *point.headline_rates.values(),
                 *point.control_rates.values(),
+                *point.ex_auto_rates.values(),
             ):
                 all_inputs.update((cell.key, cell) for cell in calculation.inputs)
             lineage = {}
@@ -339,6 +340,24 @@ class RetailTimeSeriesService:
                     "source_pointer": cell.source_pointer,
                 }
             document["input_versions"] = lineage
+            document["derivations"] = {
+                basket: {
+                    "identity": "mdf_retail_" + basket + "_v1",
+                    "provider_official": False,
+                    "formula": calculation.formula,
+                    "unit": calculation.unit,
+                    "same_cutoff": {"as_of": at, "basis": basis},
+                    "input_versions": {
+                        "/".join(cell.key): lineage["/".join(cell.key)]
+                        for derived in (calculation, *rates.values())
+                        for cell in derived.inputs
+                    },
+                }
+                for basket, calculation, rates in (
+                    ("control", point.control_level, point.control_rates),
+                    ("ex_auto", point.ex_auto_level, point.ex_auto_rates),
+                )
+            }
             document["source_cells"] = [
                 dict(asdict(cell), unit=cell.unit) for cell in point.source_cells
             ]

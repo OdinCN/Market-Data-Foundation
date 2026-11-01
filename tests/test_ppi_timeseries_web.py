@@ -140,7 +140,9 @@ def test_profile_jobs_and_query_are_independent(dual):
     sources["ppi"].offset = 1
     updated = ppi.submit(command("update"))
     assert updated["state"] == "complete"
-    assert updated["result"]["readback"]["expected_points"] == 4
+    assert updated["result"]["readback"]["expected_points"] == len(
+        PPI_PROFILE.series_ids
+    )
     assert len(ppi.executions()["executions"]) == 2
     assert cpi.executions()["executions"] == []
 
@@ -219,7 +221,7 @@ def test_asgi_dual_status_query_and_help(dual):
             )
             assert result.status_code == 200
             assert set(result.json()["series_ids"]) == set(profile.series_ids)
-            assert len(result.json()["points"]) == 4
+            assert len(result.json()["points"]) == len(profile.series_ids)
             assert http.get(prefix + "/api-help").json()["series_ids"] == list(
                 profile.series_ids
             )

@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesService
 from market_data_foundation.historical.cpi_timeseries_store import (
+    SERIES_IDS,
     InMemoryTimeSeriesStore,
 )
 from market_data_foundation.web.cpi_query import CpiQueryAccess
@@ -108,7 +109,7 @@ def test_new_host_keeps_pce_and_never_projects_timeseries_as_old_cpi(
         result = http.get(
             PREFIX + "/query?start=2026-09&end=2026-09&basket=all&adjustment=all"
         ).json()
-        assert result["complete"] and len(result["points"]) == 4
+        assert result["complete"] and len(result["points"]) == len(SERIES_IDS)
         assert "version_identity" not in result and "publication_identity" not in result
         package = http.get("/api/r5/packages/macro")
         assert package.status_code == 200

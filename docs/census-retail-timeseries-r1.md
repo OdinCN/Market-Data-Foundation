@@ -1,5 +1,7 @@
 # Census MARTS continuous input foundation R1
 
+
+当前研究字段扩展及迁移/补史入口见[五族研究字段扩展 R1](macro-research-fields-r1.md)；下文保留此前合同与验收记录。
 当前代码包含连续来源、独立存储、共享 WebUI、手动任务和官方日历周期 worker 的显式绑定。
 开发与审查共同入口见 [五族基线指南](macro-family-development-review.md)。
 导入模块或 GET 不建库、不启用资产、不启动 worker；代码能力不证明当前运行状态或未来自然发布已验收。

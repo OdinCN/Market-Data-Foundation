@@ -18,6 +18,7 @@ from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
     PCE_PROFILE,
+    PPI_PROFILE,
     validate_profile,
 )
 from market_data_foundation.historical.cpi_timeseries_source import (
@@ -56,7 +57,10 @@ PCE_CALCULATION_METHOD = (
     "change_km_ratio=index[t]/index[t-k]-1 for k=1,3,6,12; "
     "same-cutoff BEA T20804 monthly SA index endpoints; cumulative, "
     "not annualized; Decimal ROUND_HALF_UP to 4 ratio places. "
-    "0.0312 means 3.12%; mom_pct/yoy_pct are derived percent changes."
+    "0.0312 means 3.12%; mom_pct/yoy_pct are derived percent changes. "
+    "annualized_3m_ratio=(index[t]/index[t-3])^4-1; "
+    "annualized_6m_ratio=(index[t]/index[t-6])^2-1; same-cutoff unrounded indexes, "
+    "one final ROUND_HALF_UP to 4 ratio places; distinct from cumulative fields."
 )
 SERIES_METADATA = CPI_PROFILE.series_metadata
 _DEFAULT_SERIES = object()
@@ -149,11 +153,40 @@ def _ratio(current, previous):
         )
 
 
+def _annualized(current, previous, exponent):
+    numerator, denominator = Decimal(current), Decimal(previous)
+    with localcontext() as context:
+        context.prec = max(
+            50,
+            len(numerator.as_tuple().digits)
+            + len(denominator.as_tuple().digits)
+            + abs(numerator.adjusted() - denominator.adjusted()) * exponent
+            + 30,
+        )
+        return str(
+            ((numerator / denominator) ** exponent - 1).quantize(
+                Decimal("0.0001"), rounding=ROUND_HALF_UP
+            )
+        )
+
+
+def _provider_status(footnotes):
+    # Only provider claims establish status; absence never means final.
+    claims = [dict(note) for note in footnotes if note.get("code") or note.get("text")]
+    codes = {str(note.get("code", "")).upper() for note in claims}
+    return {
+        "preliminary": True if "P" in codes else None,
+        "revised": True if "R" in codes else None,
+        "footnotes": claims,
+        "basis": "provider_footnotes_only",
+    }
+
+
 def _metrics(profile, series_id):
     if profile is EMPLOYMENT_PROFILE:
-        if series_id == "CES0000000001":
+        if profile.series_metadata[series_id]["value_unit"] == "thousand_jobs":
             return ((1, "net_change_1m_thousand_jobs"),)
-        if series_id in {"LNS14000000", "LNS11300000"}:
+        if series_id in {"LNS14000000", "LNS11300000", "LNS12300000"}:
             return ((1, "change_1m_percentage_points"),)
         if series_id == "CES0500000002":
             return ((1, "change_1m_hours"),)
@@ -170,6 +203,11 @@ def _metrics(profile, series_id):
         (3, "change_3m_ratio"),
         (6, "change_6m_ratio"),
         (12, "change_12m_ratio"),
+        *(
+            ((3, "annualized_3m_ratio"), (6, "annualized_6m_ratio"))
+            if profile is PCE_PROFILE
+            else ()
+        ),
     )
 
 
@@ -626,8 +664,16 @@ class CpiTimeSeriesService:
                             if metric.endswith("_ratio")
                             else _rate
                         )
-                        point[metric] = calculate(
-                            point["index_value"], previous["index_value"]
+                        point[metric] = (
+                            _annualized(
+                                point["index_value"],
+                                previous["index_value"],
+                                4 if lag == 3 else 2,
+                            )
+                            if metric.startswith("annualized_")
+                            else calculate(
+                                point["index_value"], previous["index_value"]
+                            )
                         )
                         point["calculation_inputs"][metric] = {
                             "numerator_month": month,
@@ -662,6 +708,10 @@ class CpiTimeSeriesService:
                                 ),
                             }
                         )
+                if self.profile is PPI_PROFILE:
+                    point["provider_status"] = _provider_status(
+                        point.get("footnotes", [])
+                    )
                 point.update(self.profile.series_metadata[s])
                 points.append(point)
         result = {
@@ -717,6 +767,9 @@ class CpiTimeSeriesService:
                 k: v for k, v in result["units"].items() if not k.startswith("bls_")
             }
             result["units"]["bea_pct_1m"] = "percent"
+            result["units"].update(
+                annualized_3m_ratio="ratio", annualized_6m_ratio="ratio"
+            )
             result["official_calculation_method"] = (
                 "bea_pct_1m is the BEA T20807 published monthly percent change; "
                 "0.3 means 0.3%; nullable when BEA did not supply a value or the "
@@ -742,8 +795,8 @@ class CpiTimeSeriesService:
                 "change_12m_ratio": "ratio",
             }
             result["calculation_method"] = (
-                "CES total nonfarm: value[t]-value[t-1], thousand jobs, not people. "
-                "CPS unemployment and participation rates: "
+                "CES employee levels: value[t]-value[t-1], thousand jobs, not people. "
+                "CPS unemployment, participation and employment/population rates: "
                 "value[t]-value[t-1], percentage points. "
                 "CES average weekly paid hours: value[t]-value[t-1], hours. "
                 "CES AHE: USD/hour; mom_pct/yoy_pct and 1m/12m ratios derived "

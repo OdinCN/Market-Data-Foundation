@@ -478,6 +478,6 @@ def test_public_jobs_five_defaults_and_subset_readback(
             == 400
         )
         help_doc = http.get(host.prefix + "/api-help").json()
-        assert len(help_doc["series_ids"]) == 5
+        assert len(help_doc["series_ids"]) == len(EMPLOYMENT_PROFILE.series_ids)
         assert help_doc["series"]["LNS11300000"]["fred_alias"] == "CIVPART"
         assert help_doc["series"]["CES0500000002"]["value_unit"] == "hours"

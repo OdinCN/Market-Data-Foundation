@@ -21,7 +21,6 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from zoneinfo import ZoneInfo
 
-from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
@@ -42,6 +41,7 @@ from market_data_foundation.historical.cpi_revision_signals import (
 )
 from market_data_foundation.historical.cpi_timeseries_source import validate_month
 
+SERIES_IDS = CPI_PROFILE.series_ids
 CALENDAR_URL = "https://www.bls.gov/schedule/news_release/cpi.htm"
 ICS_URL = "https://www.bls.gov/schedule/news_release/bls.ics"
 _DEFAULT_FETCHER = object()

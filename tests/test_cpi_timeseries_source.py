@@ -84,7 +84,7 @@ def test_registered_decades_are_two_requests_not_monthly(key_loader):
         (request["startyear"], request["endyear"]) for request in transport.requests
     ] == [("1999", "2018"), ("2019", "2026")]
     points = [point for batch in batches for point in batch.points]
-    assert len(points) == (27 * 12 + 1) * 4
+    assert len(points) == (27 * 12 + 1) * len(source.SERIES_IDS)
     assert len({(p.series_id, p.month) for p in points}) == len(points)
     assert min(point.month for point in points) == "1999-09"
     assert max(point.month for point in points) == "2026-09"
@@ -137,7 +137,9 @@ def test_parser_preserves_original_calculations_and_ignores_annual_average():
     points = source.parse_response(
         encoded(document), source.SERIES_IDS, "2026-01", "2026-09"
     )
-    assert len(points) == 4  # Missing months stay visible to the service as gaps.
+    assert len(points) == len(
+        source.SERIES_IDS
+    )  # Missing months stay visible to the service as gaps.
     assert points[0].index_value == Decimal("320.123")
     assert points[0].provider_calculations == {"pct_changes": {"1": "0.2", "12": "2.9"}}
     assert points[0].footnotes == ({"code": "P", "text": "Preliminary"},)
@@ -329,7 +331,7 @@ def test_explicit_provider_absence_is_retained_with_original_metadata():
     document = unavailable_response()
     raw = encoded(document)
     points = source.parse_response(raw, source.SERIES_IDS, "2026-09", "2026-09")
-    assert len(points) == 4
+    assert len(points) == len(source.SERIES_IDS)
     missing = next(point for point in points if point.series_id == source.SERIES_IDS[0])
     assert missing.index_value is None
     assert missing.provider_calculations == {"pct_changes": {"1": "0.2", "12": "2.9"}}
@@ -339,7 +341,10 @@ def test_explicit_provider_absence_is_retained_with_original_metadata():
             "text": "Data unavailable due to the 2025 lapse in appropriations",
         },
     )
-    assert sum(point.index_value is not None for point in points) == 3
+    assert (
+        sum(point.index_value is not None for point in points)
+        == len(source.SERIES_IDS) - 1
+    )
     assert raw == encoded(document)
 
 

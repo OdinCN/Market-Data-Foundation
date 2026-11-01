@@ -8,10 +8,10 @@ from threading import Event
 
 import pytest
 
-from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
 from market_data_foundation.historical.bls_cpi_direct_live import HttpResult
 from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesService
 from market_data_foundation.historical.cpi_timeseries_source import BlsRangeSource
+from market_data_foundation.historical.cpi_timeseries_store import SERIES_IDS
 from market_data_foundation.web.cpi_timeseries_api import PREFIX
 from market_data_foundation.web.cpi_timeseries_host import LocalOnlySource
 from market_data_foundation.web.pce_dev_host import CANDIDATE_ORIGIN
@@ -103,7 +103,7 @@ def assert_continuous_ratios(host, transport):
     assert result["provider_requests"] == result["provider_attempts"] == 0
     assert result["coverage_complete"] and not result["calculation_missing"]
     points = {(p["series_id"], p["month"]): p for p in result["points"]}
-    assert len(points) == 4 * 321
+    assert len(points) == len(SERIES_IDS) * 321
     for sid in SERIES_IDS:
         for year in (2000, 2019):
             point = points[sid, f"{year}-01"]
@@ -183,8 +183,8 @@ def test_long_collection_running_receipt_readback_replay_and_update(
         job = http.get(PREFIX + "/jobs").json()["jobs"][0]
         assert job["state"] == "complete"
         assert job["result"]["readback"]["verified"] is True
-        assert job["result"]["readback"]["point_count"] == 4 * 321
-        assert job["result"]["saved_points"] == 4 * (321 + 12)
+        assert job["result"]["readback"]["point_count"] == len(SERIES_IDS) * 321
+        assert job["result"]["saved_points"] == len(SERIES_IDS) * (321 + 12)
         assert job["result"]["provider_requests"] == 2
         assert transport.requests == [("1999", "2018"), ("2019", "2026")]
         assert http.get(PREFIX + "/jobs").json()["jobs"] == [job]
@@ -203,9 +203,9 @@ def test_long_collection_running_receipt_readback_replay_and_update(
         assert updated["state"] == "complete", updated
         assert updated["result"]["provider_requests"] == 2
         assert updated["result"]["readback"]["verified"] is True
-        assert updated["result"]["saved_revisions"] == 4 * (321 + 12)
+        assert updated["result"]["saved_revisions"] == len(SERIES_IDS) * (321 + 12)
         assert transport.requests == [("1999", "2018"), ("2019", "2026")] * 2
-        assert store.status()["revision_count"] == 4 * (321 + 12)
+        assert store.status()["revision_count"] == len(SERIES_IDS) * (321 + 12)
         assert_continuous_ratios(host, transport)
 
 
@@ -220,17 +220,14 @@ def test_real_denominator_gaps_remain_null_across_batches(collection, kind):
         result = host.query(
             {"start": start, "end": start, "basket": "all", "adjustment": "all"}
         )
-        assert len(result["points"]) == 4
+        assert len(result["points"]) == len(SERIES_IDS)
         for point in result["points"]:
             assert point["change_12m_ratio"] is None
             assert all(point[f"change_{lag}m_ratio"] is not None for lag in (1, 3, 6))
-        assert (
-            sum(
-                item["metric"] == "change_12m_ratio"
-                for item in result["calculation_missing"]
-            )
-            == 4
-        )
+        assert sum(
+            item["metric"] == "change_12m_ratio"
+            for item in result["calculation_missing"]
+        ) == len(SERIES_IDS)
     assert len(transport.requests) == 2
 
 

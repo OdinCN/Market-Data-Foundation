@@ -25,6 +25,7 @@ from market_data_foundation.web.cpi_timeseries_api import (
 )
 from market_data_foundation.web.cpi_timeseries_dispatch import dispatch_job
 from market_data_foundation.web.cpi_timeseries_jobs import WebError
+from market_data_foundation.web.macro_query_contract import query_openapi
 
 PREFIX = "/api/r5/retail/timeseries"
 
@@ -89,6 +90,8 @@ class RetailTimeSeriesHost:
             "query_mode",
             "as_of_basis",
             "vintage_mode",
+            "basket",
+            "columns",
         }
         if set(params) - allowed:
             raise RetailServiceError("unsupported_parameters")
@@ -97,18 +100,71 @@ class RetailTimeSeriesHost:
         local = params.get("local_only", "false")
         if local not in {"true", "false"}:
             raise RetailServiceError("retail_local_only_invalid")
+        from market_data_foundation.historical.cpi_timeseries_cli import InterfaceError
+        from market_data_foundation.historical.macro_research_fields import (
+            selected_columns,
+        )
+
+        basket = params.get("basket")
+        baskets = (
+            ["headline", "control"]
+            if basket is None
+            else basket.replace("core", "control").split(",")
+        )
+        if baskets == ["all"]:
+            baskets = ["headline", "control", "ex_auto"]
+        if (
+            not baskets
+            or not set(baskets) <= {"headline", "control", "ex_auto"}
+            or len(set(baskets)) != len(baskets)
+        ):
+            raise RetailServiceError("invalid_basket")
+        try:
+            columns = selected_columns(params.get("columns"), "retail")
+        except InterfaceError:
+            raise RetailServiceError("invalid_columns") from None
         service = self._service()
         options = {
-            k: v for k, v in params.items() if k not in {"start", "end", "local_only"}
+            k: v
+            for k, v in params.items()
+            if k not in {"start", "end", "local_only", "basket", "columns"}
         }
         # Host and service must independently admit Census access. A read host
         # with source disabled still serves existing data and visible gaps.
-        return service.query_range(
+        result = service.query_range(
             params["start"],
             params["end"],
             local_only=local == "true" or self.allow_source is not True,
             **options,
         )
+        points = []
+        for original in result["points"]:
+            point = dict(original)
+            for name in ("headline", "control", "ex_auto"):
+                if name not in baskets:
+                    point.pop(name + "_level", None)
+                    point.pop(name + "_rates", None)
+                elif columns is not None:
+                    if "index_value" not in columns:
+                        point.pop(name + "_level", None)
+                    point[name + "_rates"] = {
+                        k: v
+                        for k, v in point[name + "_rates"].items()
+                        if f"change_{k}m_ratio" in columns
+                    }
+            if columns is not None and "official_mpcsm_percent" not in columns:
+                point.pop("official_headline_mpcsm", None)
+            if "derivations" in point:
+                point["derivations"] = {
+                    k: v for k, v in point["derivations"].items() if k in baskets
+                }
+            points.append(point)
+        return {
+            **result,
+            "points": points,
+            **({"baskets": baskets} if basket is not None else {}),
+            **({"selected_columns": columns} if columns is not None else {}),
+        }
 
     def releases(self, params):
         self._service()
@@ -128,7 +184,25 @@ class RetailTimeSeriesHost:
                 "coverage": "retail_release_material_adapter_not_implemented",
                 "history_basis": "no latest fallback; as_of is MDF availability",
             },
+            "baskets": ["headline", "control", "ex_auto", "all"],
+            "columns": [
+                "index_value",
+                "change_1m_ratio",
+                "change_3m_ratio",
+                "change_6m_ratio",
+                "change_12m_ratio",
+                "official_mpcsm_percent",
+            ],
             "parameters": {
+                "basket": (
+                    "optional CSV headline/control/ex_auto or all; core aliases "
+                    "control; default headline,control"
+                ),
+                "columns": (
+                    "optional CSV response columns; omitted preserves existing "
+                    "columns; index_value selects *_level; change_km_ratio selects "
+                    "*_rates[k]; provenance remains"
+                ),
                 "start/end": "required inclusive YYYY-MM; max 2520 input "
                 "months including 12 month buffer",
                 "local_only": "true/false; default false; host and service "
@@ -155,6 +229,14 @@ class RetailTimeSeriesHost:
                 "local evidence); original "
                 "text/null retained",
                 "headline_level": "44X72 SM; million_current_usd, SA, not annualized",
+                "ex_auto_level/ex_auto_rates": (
+                    "MDF derivation 44X72 SM minus 441 SM; same-cutoff inputs, no "
+                    "added source request"
+                ),
+                "derivations": (
+                    "control/ex_auto identity, formula, unit, same cutoff and exact "
+                    "operand input_versions (including comparison months)"
+                ),
                 "control_level": "MDF formula SM44X72-SM441-SM444-SM447-SM722; "
                 "never official Census control",
                 "headline_rates/control_rates": "1/3/6/12 month level ratios; "
@@ -306,6 +388,7 @@ def timeseries_router(host=None, *, authorize=None):
             endpoint(operation),
             methods=["GET"],
             name="retail_timeseries_" + operation,
+            openapi_extra=query_openapi("retail") if operation == "query" else None,
         )
     if host is None or hasattr(host, "journal"):
 

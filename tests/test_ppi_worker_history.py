@@ -223,7 +223,9 @@ def test_partial_history_requires_every_returned_key_confirmed(tmp_path, auto, f
         assert action == "history_updated"
         assert stage["classification"] == "historical_source_gaps"
         assert stage["coverage_complete"] is False
-        assert len(stage["source_missing"]) == 36
+        assert len(stage["source_missing"]) == len(scheduler.series_ids) * 10 - len(
+            result["source_returned_series_months"]
+        )
 
 
 def test_history_confirmation_only_touches_returned_scope(tmp_path):
@@ -286,6 +288,8 @@ def test_real_service_partial_response_and_source_null(tmp_path, auto, empty):
         "2026-01", "2026-10", allow_upstream=False, vintage_mode="available"
     )
     assert available["coverage_complete"] is False
-    assert len(available["points"]) == (0 if empty else 4)
-    assert len(available["source_unavailable"]) == (0 if empty else 4)
+    assert len(available["points"]) == (0 if empty else len(scheduler.series_ids))
+    assert len(available["source_unavailable"]) == (
+        0 if empty else len(scheduler.series_ids)
+    )
     assert all(p["available_at"] for p in available["source_unavailable"])

@@ -1,5 +1,7 @@
 # PPI 连续时间序列速览（开发验证）
 
+
+当前研究字段扩展及迁移/补史入口见[五族研究字段扩展 R1](macro-research-fields-r1.md)；下文保留此前合同与验收记录。
 共同入口与审查路径见 [五族基线指南](macro-family-development-review.md)；本文保留 PPI 差异及历史验证证据。
 
 截至 2026-10-30，PPI 已完成开发环境真实初始化、重复更新及有界 worker 验证。

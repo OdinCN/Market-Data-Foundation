@@ -130,7 +130,8 @@ function fixture(statusValue: CpiStatus = status) {
         end = params.get("end")!;
       const selected = cpiSeries.filter(
         (s) =>
-          ["all", s[2]].includes(params.get("basket")!) &&
+          (params.get("basket") === "all" ||
+            params.get("basket")!.split(",").includes(s[2])) &&
           ["all", s[3]].includes(params.get("adjustment")!),
       );
       const points = [],
@@ -341,7 +342,9 @@ it("uses real App asset selection, four series, status-derived dates and paginat
   const table = await screen.findByRole("table", { name: "CPI 范围数据" });
   expect(within(table).getAllByRole("row")).toHaveLength(41);
   expect(screen.getByText(/共 48 条/)).toBeTruthy();
-  for (const title of cpiSeries.map((s) => s[1]))
+  for (const title of cpiSeries
+    .filter((s) => ["headline", "core"].includes(s[2]))
+    .map((s) => s[1]))
     expect(within(table).getAllByText(title).length).toBe(10);
   fireEvent.click(btn("下一页"));
   expect(within(table).getAllByRole("row")).toHaveLength(9);
@@ -1215,7 +1218,9 @@ it.each([
     expect(within(table).getAllByRole("row")).toHaveLength(Number(count) + 1);
     expect(h.calls).toHaveLength(1);
     const url = new URL(h.calls[0].path, "http://fixture.invalid");
-    expect(url.searchParams.get("basket")).toBe(basket);
+    expect(url.searchParams.get("basket")).toBe(
+      basket === "all" ? "headline,core" : basket,
+    );
     expect(url.searchParams.get("adjustment")).toBe(adjustment);
   },
 );

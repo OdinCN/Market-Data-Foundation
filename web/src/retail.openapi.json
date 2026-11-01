@@ -34,7 +34,92 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            },
+            "description": "Inclusive reference month YYYY-MM."
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            },
+            "description": "Inclusive reference month YYYY-MM; descending result presentation."
+          },
+          {
+            "in": "query",
+            "name": "local_only",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "true/false; CPI default true, other families false. History always local; GET never writes."
+          },
+          {
+            "in": "query",
+            "name": "query_mode",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "current/history; inferred history with as_of or available basis."
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Aware ISO8601 inclusive MDF cutoff; every operand and comparison uses this same cutoff. +08:00 is accepted."
+          },
+          {
+            "in": "query",
+            "name": "as_of_basis",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "observed/available; history defaults available. Must agree with vintage_mode."
+          },
+          {
+            "in": "query",
+            "name": "vintage_mode",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Alias of as_of_basis. Never official vintage."
+          },
+          {
+            "in": "query",
+            "name": "columns",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional comma-separated numeric fields: index_value,change_1m_ratio,change_3m_ratio,change_6m_ratio,change_12m_ratio,official_mpcsm_percent. Omitted preserves existing fields and metadata."
+          },
+          {
+            "in": "query",
+            "name": "basket",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "CSV headline/control/ex_auto or all; core aliases control. Default headline,control. Six shared source inputs; ex_auto=44X72-441."
+          }
+        ]
       }
     },
     "/api/r5/retail/timeseries/api-help": {

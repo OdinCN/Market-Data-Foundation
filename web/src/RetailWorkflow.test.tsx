@@ -33,7 +33,7 @@ function decimalWire() {
 const decimalScope: CpiScope = {
   start: "2025-10",
   end: "2026-12",
-  basket: "all",
+  basket: "headline,core",
   adjustment: "sa",
   measure: "index",
   query_mode: "current",
@@ -453,7 +453,7 @@ it("builds retail history with encoded Beijing cutoff and no price-index paramet
   expect(request.path).toContain("%2B08%3A00");
   const p = new URL(request.path, "http://fixture").searchParams;
   expect(p.get("local_only")).toBe("true");
-  expect(p.has("basket")).toBe(false);
+  expect(p.get("basket")).toBe("all");
   expect(p.has("measure")).toBe(false);
 });
 

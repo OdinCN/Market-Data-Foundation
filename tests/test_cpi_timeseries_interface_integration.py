@@ -6,7 +6,6 @@ from decimal import Decimal
 
 import pytest
 
-from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
 from market_data_foundation.historical.cpi_timeseries import (
     CpiTimeSeriesService,
     month_range,
@@ -18,6 +17,7 @@ from market_data_foundation.historical.cpi_timeseries_source import (
     SourcePoint,
 )
 from market_data_foundation.historical.cpi_timeseries_store import (
+    SERIES_IDS,
     InMemoryTimeSeriesStore,
 )
 

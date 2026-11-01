@@ -73,7 +73,7 @@ const availability = (profile = PPI_PROFILE): CpiAvailability => ({
 function result(profile: MacroProfile, query: CpiScope): CpiResult {
   const series = profile.series.filter(
     (s) =>
-      ["all", s[2]].includes(query.basket) &&
+      (query.basket === "all" || query.basket.split(",").includes(s[2])) &&
       ["all", s[3]].includes(query.adjustment),
   );
   const points: CpiResult["points"] = [];
@@ -244,15 +244,19 @@ it("preserves the CPI default and orders the four PPI definitions with the exact
     "WPUFD4",
     "WPSFD49104",
     "WPUFD49104",
+    "WPSFD49116",
+    "WPUFD49116",
   ]);
   expect(PPI_PROFILE.series.map((s) => s.slice(2))).toEqual([
     ["headline", "sa"],
     ["headline", "nsa"],
     ["core", "sa"],
     ["core", "nsa"],
+    ["core_ex_trade", "sa"],
+    ["core_ex_trade", "nsa"],
   ]);
-  expect(PPI_PROFILE.historyNotice).toBe(
-    "核心指剔除食品和能源的最终需求。初始化范围可修改，实际历史覆盖以来源返回为准。",
+  expect(PPI_PROFILE.historyNotice).toContain(
+    "核心指剔除食品和能源的最终需求，仍含贸易服务",
   );
 });
 it("validates PPI JSON against PPI series and refuses a CPI result", async () => {
@@ -315,7 +319,9 @@ it("opens the PPI asset with copied actual URL/cURL, ordered rows and original J
     .getAllByRole("row")
     .slice(1);
   expect(rows.map((r) => r.textContent)).toEqual(
-    PPI_PROFILE.series.map(([, label]) => expect.stringContaining(label)),
+    PPI_PROFILE.series
+      .filter(([id]) => PPI_PROFILE.defaultQuerySeries?.includes(id))
+      .map(([, label]) => expect.stringContaining(label)),
   );
   fireEvent.click(query.getByRole("tab", { name: "原始响应" }));
   expect(query.getByText(/"index_value":"141.12345"/)).toBeTruthy();

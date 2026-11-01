@@ -32,6 +32,9 @@ MEASURES = {
         for months in (1, 3, 6, 12)
     },
 }
+MEASURES.update(
+    {f"annualized_{k}m_ratio": (f"annualized_{k}m_ratio", "ratio") for k in (3, 6)}
+)
 VINTAGE_MODES = ("observed", "available", "official")
 
 
@@ -72,7 +75,11 @@ def selected_series(params, *, query=False, profile=CPI_PROFILE):
         if basket is not None or adjustment is not None:
             if basket != "all" or adjustment != "all":
                 raise InterfaceError("employment_series_filter_required")
-        return profile.series_ids
+        return (
+            profile.default_query_series_ids
+            if query and basket is None
+            else profile.series_ids
+        )
     basket = ("headline" if query else "all") if basket is None else basket
     adjustment = ("sa" if query else "all") if adjustment is None else adjustment
     if not isinstance(basket, str) or not isinstance(adjustment, str):
@@ -80,14 +87,19 @@ def selected_series(params, *, query=False, profile=CPI_PROFILE):
     basket, adjustment = basket.lower(), adjustment.lower()
     if basket == "overall":
         basket = "headline"
-    if basket not in {"headline", "core", "all"}:
+    baskets = basket.split(",")
+    if (
+        not baskets
+        or not set(baskets) <= {*profile.baskets, "all"}
+        or ("all" in baskets and len(baskets) != 1)
+    ):
         raise InterfaceError("invalid_basket")
     if adjustment not in {"sa", "nsa", "all"}:
         raise InterfaceError("invalid_adjustment")
     selected = tuple(
         series
         for series, metadata in profile.series_metadata.items()
-        if basket in {"all", metadata["indicator"]}
+        if ("all" in baskets or metadata["indicator"] in baskets)
         and adjustment in {"all", metadata["seasonal_adjustment"].lower()}
     )
     if not selected:
@@ -266,7 +278,15 @@ def execute(service, action, params=None, *, scheduler=None):
     if action not in {"init", "update", "query", "confirm-availability"}:
         raise InterfaceError("unknown_operation")
     allowed = common | (
-        {"measure", "local_only", "as_of", "vintage_mode", "query_mode", "as_of_basis"}
+        {
+            "measure",
+            "columns",
+            "local_only",
+            "as_of",
+            "vintage_mode",
+            "query_mode",
+            "as_of_basis",
+        }
         if action == "query"
         else set()
     )
@@ -290,6 +310,15 @@ def execute(service, action, params=None, *, scheduler=None):
         return service.confirm_current_availability(start, end, series_ids=selected)
     measure = params.get("measure", "index")
     validate_query(params)
+    profile = getattr(service, "profile", CPI_PROFILE)
+    if measure.startswith("annualized_") and profile is not PCE_PROFILE:
+        raise InterfaceError("invalid_measure")
+    from market_data_foundation.historical.macro_research_fields import (
+        project_columns,
+        selected_columns,
+    )
+
+    columns = selected_columns(params.get("columns"), profile.key)
     local_only = params.get("local_only", False)
     as_of = params.get("as_of")
     query_mode = params.get("query_mode") or (
@@ -314,27 +343,31 @@ def execute(service, action, params=None, *, scheduler=None):
     if getattr(service, "profile", CPI_PROFILE).key == "employment":
         if measure != "index":
             raise InterfaceError("employment_measure_not_supported")
-        return result
+        return project_columns(result, columns, profile.key)
     field, unit = MEASURES[measure]
     points = [{**point, "value": point.get(field)} for point in result["points"]]
-    return {
-        **result,
-        "points": points,
-        "measure": measure,
-        "query_mode": query_mode,
-        "as_of_basis": result.get(
-            "as_of_basis",
-            basis
-            or (
-                "available"
-                if query_mode == "history" or as_of is not None
-                else "observed"
+    return project_columns(
+        {
+            **result,
+            "points": points,
+            "measure": measure,
+            "query_mode": query_mode,
+            "as_of_basis": result.get(
+                "as_of_basis",
+                basis
+                or (
+                    "available"
+                    if query_mode == "history" or as_of is not None
+                    else "observed"
+                ),
             ),
-        ),
-        "unit": unit,
-        "measure_complete": result["complete"]
-        and all(point["value"] is not None for point in points),
-    }
+            "unit": unit,
+            "measure_complete": result["complete"]
+            and all(point["value"] is not None for point in points),
+        },
+        columns,
+        profile.key,
+    )
 
 
 def error_document(error):
@@ -396,12 +429,19 @@ def build_parser(*, profile=CPI_PROFILE):
         command.add_argument("--start", required=required)
         command.add_argument("--end", required=required)
         command.add_argument("--series", action="append")
-        command.add_argument("--basket", choices=("headline", "overall", "core", "all"))
+        command.add_argument(
+            "--basket",
+            help="comma-separated baskets: " + ",".join(profile.baskets) + ",all",
+        )
         command.add_argument(
             "--adjustment", type=str.lower, choices=("sa", "nsa", "all")
         )
         if name == "query":
             command.add_argument("--measure", choices=tuple(MEASURES), default="index")
+            command.add_argument(
+                "--columns",
+                help="comma-separated response columns; omitted preserves all fields",
+            )
             command.add_argument("--local-only", action="store_true")
             command.add_argument("--as-of")
             command.add_argument("--query-mode", choices=("current", "history"))
@@ -789,6 +829,7 @@ def main(
                     "basket",
                     "adjustment",
                     "measure",
+                    "columns",
                     "local_only",
                     "as_of",
                     "vintage_mode",

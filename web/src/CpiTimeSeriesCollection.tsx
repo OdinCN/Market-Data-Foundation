@@ -64,7 +64,8 @@ const sameIntent = (a: CpiJobIntent, b: CpiJobIntent) =>
   a.request_id === b.request_id &&
   a.action === b.action &&
   a.start === b.start &&
-  a.end === b.end;
+  a.end === b.end &&
+  a.series === b.series;
 export function CpiTimeSeriesCollection(
   props: Parameters<typeof CpiTimeSeriesCollectionContent>[0],
 ) {
@@ -95,6 +96,13 @@ function CpiTimeSeriesCollectionContent({
   const [start, setStart] = useState(latest);
   const [end, setEnd] = useState(latest);
   const [action, setAction] = useState<"initialize" | "update">("update");
+  const [researchOnly, setResearchOnly] = useState(false);
+  const researchSeries = profile.series
+    .filter((s) => !profile.defaultQuerySeries?.includes(s[0]))
+    .map((s) => s[0]);
+  const supportsResearchBackfill = ["cpi", "ppi", "employment"].includes(
+    profile.id,
+  );
   const [confirmed, setConfirmed] = useState(false);
   const [initial] = useState(() => {
     try {
@@ -128,7 +136,7 @@ function CpiTimeSeriesCollectionContent({
   }, [latest, action, intent]);
   useEffect(() => {
     setConfirmed(false);
-  }, [start, end, action]);
+  }, [start, end, action, researchOnly]);
   useEffect(() => {
     const update = () => {
       try {
@@ -219,6 +227,9 @@ function CpiTimeSeriesCollectionContent({
       }
       reserved = {
         request_id: requestId(),
+        ...(researchOnly && supportsResearchBackfill
+          ? { series: researchSeries.join(",") }
+          : {}),
         action,
         start: requestedStart,
         end: requestedEnd,
@@ -427,6 +438,23 @@ function CpiTimeSeriesCollectionContent({
                 <option value="initialize">初始化采集</option>
               </select>
             </label>
+            {supportsResearchBackfill && (
+              <label>
+                采集系列范围
+                <select
+                  value={researchOnly ? "research" : "all"}
+                  disabled={busy || unresolved}
+                  onChange={(event) =>
+                    setResearchOnly(event.target.value === "research")
+                  }
+                >
+                  <option value="all">全部批准系列</option>
+                  <option value="research">
+                    仅补齐本轮新增系列历史（保留已有系列）
+                  </option>
+                </select>
+              </label>
+            )}
             <div className="field-grid">
               <DateField
                 key={`${action}-start`}
@@ -461,8 +489,7 @@ function CpiTimeSeriesCollectionContent({
             )}
             {initializing && !preset?.available && (
               <p role="status">
-                服务暂无默认范围（{preset?.reason || "尚未确认"}
-                ），请自行填写合法月份范围。
+                服务暂无默认范围（尚未确认可用锚点 ），请自行填写合法月份范围。
               </p>
             )}
             {start && end && !validRange && (

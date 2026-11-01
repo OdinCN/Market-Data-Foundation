@@ -194,7 +194,26 @@ export interface operations {
   };
   retail_timeseries_query_api_r5_retail_timeseries_query_get: {
     parameters: {
-      query?: never;
+      query: {
+        /** @description Inclusive reference month YYYY-MM. */
+        start: string;
+        /** @description Inclusive reference month YYYY-MM; descending result presentation. */
+        end: string;
+        /** @description true/false; CPI default true, other families false. History always local; GET never writes. */
+        local_only?: string;
+        /** @description current/history; inferred history with as_of or available basis. */
+        query_mode?: string;
+        /** @description Aware ISO8601 inclusive MDF cutoff; every operand and comparison uses this same cutoff. +08:00 is accepted. */
+        as_of?: string;
+        /** @description observed/available; history defaults available. Must agree with vintage_mode. */
+        as_of_basis?: string;
+        /** @description Alias of as_of_basis. Never official vintage. */
+        vintage_mode?: string;
+        /** @description Optional comma-separated numeric fields: index_value,change_1m_ratio,change_3m_ratio,change_6m_ratio,change_12m_ratio,official_mpcsm_percent. Omitted preserves existing fields and metadata. */
+        columns?: string;
+        /** @description CSV headline/control/ex_auto or all; core aliases control. Default headline,control. Six shared source inputs; ex_auto=44X72-441. */
+        basket?: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;

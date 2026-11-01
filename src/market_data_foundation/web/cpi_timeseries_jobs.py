@@ -23,7 +23,7 @@ class WebError(ValueError):
 
 def validate_command(command, max_months, *, profile=CPI_PROFILE):
     if not isinstance(command, dict) or set(command) - (
-        {"series"} if profile.key == "employment" else set()
+        {"series"} if profile.key in {"cpi", "ppi", "employment"} else set()
     ) != {
         "request_id",
         "action",

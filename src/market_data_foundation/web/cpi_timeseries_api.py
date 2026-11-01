@@ -25,6 +25,7 @@ from market_data_foundation.historical.cpi_timeseries_cli import (
 )
 from market_data_foundation.historical.cpi_timeseries_http import error_status
 from market_data_foundation.historical.macro_release_records import ReleaseRecords
+from market_data_foundation.historical.macro_research_fields import query_columns
 from market_data_foundation.web.cpi_timeseries_dispatch import dispatch_job
 from market_data_foundation.web.cpi_timeseries_jobs import (
     JobJournal,
@@ -38,6 +39,7 @@ from market_data_foundation.web.cpi_timeseries_policy import (
     initialization_preset,
     strategy_projection,
 )
+from market_data_foundation.web.macro_query_contract import job_openapi, query_openapi
 from market_data_foundation.web.package_catalog import PackageError
 from market_data_foundation.web.pce_dev_host import CANDIDATE_ORIGIN, admitted
 from market_data_foundation.web.ppi_timeseries import execute_profile
@@ -204,6 +206,25 @@ class TimeSeriesHost:
                 "surprise": "null: no qualified stable pre-release consensus source",
             },
             "series_ids": list(self.profile.series_ids),
+            "series": self.profile.series_metadata,
+            "baskets": [*self.profile.baskets, "all"],
+            "columns": query_columns(self.profile.key),
+            "column_selection": (
+                "optional columns CSV; omitted preserves full response; "
+                "metadata/value alias retained; calculation_missing scoped to "
+                "selected columns"
+            ),
+            "basket_selection": (
+                "single or comma-separated baskets, or all; omitted headline/sa "
+                "(employment uses original five series)"
+            ),
+            "research_presentation": (
+                "CPI short-term SA and annual NSA remain separate series; no splice"
+            ),
+            "provider_status": (
+                "PPI preliminary/revised only from official footnotes; absent "
+                "means unknown, never inferred from MDF revision"
+            ),
             "query_defaults": {
                 "local_only": self.profile is CPI_PROFILE,
                 "query_mode": "current",
@@ -318,6 +339,7 @@ class TimeSeriesHost:
                 "basket",
                 "adjustment",
                 "measure",
+                "columns",
                 "vintage_mode",
                 "as_of",
                 "local_only",
@@ -659,6 +681,9 @@ def timeseries_router(host, *, profile=CPI_PROFILE):
             endpoint(operation),
             methods=["GET"],
             name="timeseries_" + operation,
+            openapi_extra=query_openapi((host.profile if host else profile).key)
+            if operation == "query"
+            else None,
         )
 
     @router.put("/strategy")
@@ -684,7 +709,9 @@ def timeseries_router(host, *, profile=CPI_PROFILE):
         except Exception as error:
             return failure(error)
 
-    @router.post("/jobs")
+    @router.post(
+        "/jobs", openapi_extra=job_openapi((host.profile if host else profile).key)
+    )
     async def submit(request: Request):
         try:
             if not admitted_job(request, prefix=prefix):

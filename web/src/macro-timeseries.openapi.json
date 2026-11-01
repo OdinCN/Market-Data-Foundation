@@ -1,0 +1,1168 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FastAPI",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/r5/cpi/timeseries/status": {
+      "get": {
+        "summary": "Timeseries Status",
+        "operationId": "timeseries_status_api_r5_cpi_timeseries_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/cpi/timeseries/query": {
+      "get": {
+        "summary": "Timeseries Query",
+        "operationId": "timeseries_query_api_r5_cpi_timeseries_query_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            },
+            "description": "Inclusive reference month YYYY-MM."
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            },
+            "description": "Inclusive reference month YYYY-MM; descending result presentation."
+          },
+          {
+            "in": "query",
+            "name": "local_only",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "true/false; CPI default true, other families false. History always local; GET never writes."
+          },
+          {
+            "in": "query",
+            "name": "query_mode",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "current/history; inferred history with as_of or available basis."
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Aware ISO8601 inclusive MDF cutoff; every operand and comparison uses this same cutoff. +08:00 is accepted."
+          },
+          {
+            "in": "query",
+            "name": "as_of_basis",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "observed/available; history defaults available. Must agree with vintage_mode."
+          },
+          {
+            "in": "query",
+            "name": "vintage_mode",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Alias of as_of_basis. Never official vintage."
+          },
+          {
+            "in": "query",
+            "name": "columns",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional comma-separated numeric fields: index_value,change_1m_ratio,change_3m_ratio,change_6m_ratio,change_12m_ratio,mom_pct,yoy_pct. Omitted preserves existing fields and metadata."
+          },
+          {
+            "in": "query",
+            "name": "basket",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "CSV headline,core,shelter,food,energy,core_goods,services_less_energy or all; default headline."
+          },
+          {
+            "in": "query",
+            "name": "adjustment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "sa/nsa/all; default sa. PCE has SA only. CPI SA short-term and NSA annual stay separate series."
+          },
+          {
+            "in": "query",
+            "name": "measure",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "index/mom/yoy/change_{1,3,6,12}m_ratio; default index."
+          }
+        ]
+      }
+    },
+    "/api/r5/cpi/timeseries/schedule": {
+      "get": {
+        "summary": "Timeseries Schedule",
+        "operationId": "timeseries_schedule_api_r5_cpi_timeseries_schedule_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/cpi/timeseries/strategy": {
+      "get": {
+        "summary": "Timeseries Strategy",
+        "operationId": "timeseries_strategy_api_r5_cpi_timeseries_strategy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Strategy",
+        "operationId": "update_strategy_api_r5_cpi_timeseries_strategy_put",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/cpi/timeseries/jobs": {
+      "get": {
+        "summary": "Timeseries Jobs",
+        "operationId": "timeseries_jobs_api_r5_cpi_timeseries_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Submit",
+        "operationId": "submit_api_r5_cpi_timeseries_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "request_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": ["init", "initialize", "update"]
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                  },
+                  "end": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                  },
+                  "series": {
+                    "type": "string",
+                    "description": "Optional allowlisted CSV subset; omitted collects every profile input. Use only newly admitted IDs for historical backfill."
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["request_id", "action", "start", "end"]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/cpi/timeseries/executions": {
+      "get": {
+        "summary": "Timeseries Executions",
+        "operationId": "timeseries_executions_api_r5_cpi_timeseries_executions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/cpi/timeseries/api-help": {
+      "get": {
+        "summary": "Timeseries Api-Help",
+        "operationId": "timeseries_api_help_api_r5_cpi_timeseries_api_help_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/cpi/timeseries/releases": {
+      "get": {
+        "summary": "Timeseries Releases",
+        "operationId": "timeseries_releases_api_r5_cpi_timeseries_releases_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/ppi/timeseries/status": {
+      "get": {
+        "summary": "Timeseries Status",
+        "operationId": "timeseries_status_api_r5_ppi_timeseries_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/ppi/timeseries/query": {
+      "get": {
+        "summary": "Timeseries Query",
+        "operationId": "timeseries_query_api_r5_ppi_timeseries_query_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            },
+            "description": "Inclusive reference month YYYY-MM."
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            },
+            "description": "Inclusive reference month YYYY-MM; descending result presentation."
+          },
+          {
+            "in": "query",
+            "name": "local_only",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "true/false; CPI default true, other families false. History always local; GET never writes."
+          },
+          {
+            "in": "query",
+            "name": "query_mode",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "current/history; inferred history with as_of or available basis."
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Aware ISO8601 inclusive MDF cutoff; every operand and comparison uses this same cutoff. +08:00 is accepted."
+          },
+          {
+            "in": "query",
+            "name": "as_of_basis",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "observed/available; history defaults available. Must agree with vintage_mode."
+          },
+          {
+            "in": "query",
+            "name": "vintage_mode",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Alias of as_of_basis. Never official vintage."
+          },
+          {
+            "in": "query",
+            "name": "columns",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional comma-separated numeric fields: index_value,change_1m_ratio,change_3m_ratio,change_6m_ratio,change_12m_ratio,mom_pct,yoy_pct. Omitted preserves existing fields and metadata."
+          },
+          {
+            "in": "query",
+            "name": "basket",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "CSV headline,core,core_ex_trade or all; default headline."
+          },
+          {
+            "in": "query",
+            "name": "adjustment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "sa/nsa/all; default sa. PCE has SA only. CPI SA short-term and NSA annual stay separate series."
+          },
+          {
+            "in": "query",
+            "name": "measure",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "index/mom/yoy/change_{1,3,6,12}m_ratio; default index."
+          }
+        ]
+      }
+    },
+    "/api/r5/ppi/timeseries/schedule": {
+      "get": {
+        "summary": "Timeseries Schedule",
+        "operationId": "timeseries_schedule_api_r5_ppi_timeseries_schedule_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/ppi/timeseries/strategy": {
+      "get": {
+        "summary": "Timeseries Strategy",
+        "operationId": "timeseries_strategy_api_r5_ppi_timeseries_strategy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Strategy",
+        "operationId": "update_strategy_api_r5_ppi_timeseries_strategy_put",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/ppi/timeseries/jobs": {
+      "get": {
+        "summary": "Timeseries Jobs",
+        "operationId": "timeseries_jobs_api_r5_ppi_timeseries_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Submit",
+        "operationId": "submit_api_r5_ppi_timeseries_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "request_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": ["init", "initialize", "update"]
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                  },
+                  "end": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                  },
+                  "series": {
+                    "type": "string",
+                    "description": "Optional allowlisted CSV subset; omitted collects every profile input. Use only newly admitted IDs for historical backfill."
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["request_id", "action", "start", "end"]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/ppi/timeseries/executions": {
+      "get": {
+        "summary": "Timeseries Executions",
+        "operationId": "timeseries_executions_api_r5_ppi_timeseries_executions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/ppi/timeseries/api-help": {
+      "get": {
+        "summary": "Timeseries Api-Help",
+        "operationId": "timeseries_api_help_api_r5_ppi_timeseries_api_help_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/ppi/timeseries/releases": {
+      "get": {
+        "summary": "Timeseries Releases",
+        "operationId": "timeseries_releases_api_r5_ppi_timeseries_releases_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/pce/timeseries/status": {
+      "get": {
+        "summary": "Timeseries Status",
+        "operationId": "timeseries_status_api_r5_pce_timeseries_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/pce/timeseries/query": {
+      "get": {
+        "summary": "Timeseries Query",
+        "operationId": "timeseries_query_api_r5_pce_timeseries_query_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            },
+            "description": "Inclusive reference month YYYY-MM."
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            },
+            "description": "Inclusive reference month YYYY-MM; descending result presentation."
+          },
+          {
+            "in": "query",
+            "name": "local_only",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "true/false; CPI default true, other families false. History always local; GET never writes."
+          },
+          {
+            "in": "query",
+            "name": "query_mode",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "current/history; inferred history with as_of or available basis."
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Aware ISO8601 inclusive MDF cutoff; every operand and comparison uses this same cutoff. +08:00 is accepted."
+          },
+          {
+            "in": "query",
+            "name": "as_of_basis",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "observed/available; history defaults available. Must agree with vintage_mode."
+          },
+          {
+            "in": "query",
+            "name": "vintage_mode",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Alias of as_of_basis. Never official vintage."
+          },
+          {
+            "in": "query",
+            "name": "columns",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional comma-separated numeric fields: index_value,change_1m_ratio,change_3m_ratio,change_6m_ratio,change_12m_ratio,mom_pct,yoy_pct,annualized_3m_ratio,annualized_6m_ratio. Omitted preserves existing fields and metadata."
+          },
+          {
+            "in": "query",
+            "name": "basket",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "CSV headline,core or all; default headline."
+          },
+          {
+            "in": "query",
+            "name": "adjustment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "sa/nsa/all; default sa. PCE has SA only. CPI SA short-term and NSA annual stay separate series."
+          },
+          {
+            "in": "query",
+            "name": "measure",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "index/mom/yoy/change_{1,3,6,12}m_ratio; default index. PCE also annualized_3m_ratio/annualized_6m_ratio: unrounded same-cutoff index ratios raised to 4/2, minus one."
+          }
+        ]
+      }
+    },
+    "/api/r5/pce/timeseries/schedule": {
+      "get": {
+        "summary": "Timeseries Schedule",
+        "operationId": "timeseries_schedule_api_r5_pce_timeseries_schedule_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/pce/timeseries/strategy": {
+      "get": {
+        "summary": "Timeseries Strategy",
+        "operationId": "timeseries_strategy_api_r5_pce_timeseries_strategy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Strategy",
+        "operationId": "update_strategy_api_r5_pce_timeseries_strategy_put",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/pce/timeseries/jobs": {
+      "get": {
+        "summary": "Timeseries Jobs",
+        "operationId": "timeseries_jobs_api_r5_pce_timeseries_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Submit",
+        "operationId": "submit_api_r5_pce_timeseries_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "request_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": ["init", "initialize", "update"]
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                  },
+                  "end": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["request_id", "action", "start", "end"]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/pce/timeseries/executions": {
+      "get": {
+        "summary": "Timeseries Executions",
+        "operationId": "timeseries_executions_api_r5_pce_timeseries_executions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/pce/timeseries/api-help": {
+      "get": {
+        "summary": "Timeseries Api-Help",
+        "operationId": "timeseries_api_help_api_r5_pce_timeseries_api_help_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/pce/timeseries/releases": {
+      "get": {
+        "summary": "Timeseries Releases",
+        "operationId": "timeseries_releases_api_r5_pce_timeseries_releases_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/employment/timeseries/status": {
+      "get": {
+        "summary": "Timeseries Status",
+        "operationId": "timeseries_status_api_r5_employment_timeseries_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/employment/timeseries/query": {
+      "get": {
+        "summary": "Timeseries Query",
+        "operationId": "timeseries_query_api_r5_employment_timeseries_query_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            },
+            "description": "Inclusive reference month YYYY-MM."
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+            },
+            "description": "Inclusive reference month YYYY-MM; descending result presentation."
+          },
+          {
+            "in": "query",
+            "name": "local_only",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "true/false; CPI default true, other families false. History always local; GET never writes."
+          },
+          {
+            "in": "query",
+            "name": "query_mode",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "current/history; inferred history with as_of or available basis."
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Aware ISO8601 inclusive MDF cutoff; every operand and comparison uses this same cutoff. +08:00 is accepted."
+          },
+          {
+            "in": "query",
+            "name": "as_of_basis",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "observed/available; history defaults available. Must agree with vintage_mode."
+          },
+          {
+            "in": "query",
+            "name": "vintage_mode",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Alias of as_of_basis. Never official vintage."
+          },
+          {
+            "in": "query",
+            "name": "columns",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional comma-separated numeric fields: value,net_change_1m_thousand_jobs,change_1m_percentage_points,change_1m_hours,mom_pct,yoy_pct,change_1m_ratio,change_12m_ratio. Omitted preserves existing fields and metadata."
+          },
+          {
+            "in": "query",
+            "name": "series",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "CSV allowlisted CES/CPS IDs; omitted preserves original five. Includes private/EPOP/eleven non-overlapping major sectors; no summation of aggregates."
+          },
+          {
+            "in": "query",
+            "name": "measure",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "index only; native value and per-series units, not a price index."
+          }
+        ]
+      }
+    },
+    "/api/r5/employment/timeseries/schedule": {
+      "get": {
+        "summary": "Timeseries Schedule",
+        "operationId": "timeseries_schedule_api_r5_employment_timeseries_schedule_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/employment/timeseries/strategy": {
+      "get": {
+        "summary": "Timeseries Strategy",
+        "operationId": "timeseries_strategy_api_r5_employment_timeseries_strategy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Strategy",
+        "operationId": "update_strategy_api_r5_employment_timeseries_strategy_put",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/employment/timeseries/jobs": {
+      "get": {
+        "summary": "Timeseries Jobs",
+        "operationId": "timeseries_jobs_api_r5_employment_timeseries_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Submit",
+        "operationId": "submit_api_r5_employment_timeseries_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "request_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": ["init", "initialize", "update"]
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                  },
+                  "end": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+                  },
+                  "series": {
+                    "type": "string",
+                    "description": "Optional allowlisted CSV subset; omitted collects every profile input. Use only newly admitted IDs for historical backfill."
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["request_id", "action", "start", "end"]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/employment/timeseries/executions": {
+      "get": {
+        "summary": "Timeseries Executions",
+        "operationId": "timeseries_executions_api_r5_employment_timeseries_executions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/employment/timeseries/api-help": {
+      "get": {
+        "summary": "Timeseries Api-Help",
+        "operationId": "timeseries_api_help_api_r5_employment_timeseries_api_help_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/employment/timeseries/releases": {
+      "get": {
+        "summary": "Timeseries Releases",
+        "operationId": "timeseries_releases_api_r5_employment_timeseries_releases_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,3 +1,6 @@
+import type { paths as MacroPaths } from "./macro-timeseries.generated";
+type MacroQuery =
+  MacroPaths["/api/r5/cpi/timeseries/query"]["get"]["parameters"]["query"];
 import type { paths as RetailPaths } from "./retail.generated";
 import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import type { Transport } from "./api";
@@ -235,6 +238,7 @@ export type CpiScope = {
   end: string;
   series?: string;
   basket: string;
+  columns?: string;
   adjustment: string;
   measure: string;
   vintage_mode?: string;
@@ -253,6 +257,13 @@ export type CpiPublicationEvent = {
 export type CpiPoint = {
   series_id: string;
   month: string;
+  annualized_3m_ratio?: string | number | null;
+  annualized_6m_ratio?: string | number | null;
+  provider_status?: {
+    preliminary: boolean | null;
+    revised: boolean | null;
+    footnotes: { code?: string; text?: string }[];
+  };
   value?: string | number | null;
   net_change_1m_thousand_jobs?: string | number | null;
   change_1m_percentage_points?: string | number | null;
@@ -276,6 +287,7 @@ export type CpiPoint = {
 };
 export type CpiGap = { series_id: string; month: string; reason?: string };
 export type CpiResult = {
+  selected_columns?: string[];
   source_no_content?: {
     classification: "census_retail_no_content";
     http_status: 204;
@@ -318,11 +330,26 @@ export function buildCpiQueryRequest(
     start: scope.start,
     end: scope.end,
     ...(profile.id === "retail"
-      ? {}
+      ? {
+          basket:
+            scope.basket === "all"
+              ? "all"
+              : scope.basket
+                  .split(",")
+                  .map((b) => (b === "core" ? "control" : b))
+                  .join(","),
+        }
       : profile.id === "employment"
-        ? { series: scope.series ?? profile.series.map((s) => s[0]).join(",") }
+        ? {
+            series:
+              scope.series ??
+              (
+                profile.defaultQuerySeries ?? profile.series.map((s) => s[0])
+              ).join(","),
+          }
         : { basket: scope.basket, adjustment: scope.adjustment }),
     ...(profile.id === "retail" ? {} : { measure: scope.measure }),
+    ...(scope.columns ? { columns: scope.columns } : {}),
     query_mode: history ? "history" : "current",
     local_only: history ? "true" : "false",
     ...(history
@@ -332,7 +359,7 @@ export function buildCpiQueryRequest(
           ...(scope.as_of ? { as_of: scope.as_of } : {}),
         }
       : {}),
-  });
+  } satisfies MacroQuery);
   return { method: "GET", path: `${profile.basePath}/query?${parameters}` };
 }
 export async function queryCpiRange(
@@ -357,9 +384,11 @@ export async function queryCpiRange(
     .filter((s) =>
       profile.id === "employment"
         ? (
-            scope.series?.split(",") ?? profile.series.map((item) => item[0])
+            scope.series?.split(",") ??
+            profile.defaultQuerySeries ??
+            profile.series.map((item) => item[0])
           ).includes(s[0])
-        : ["all", s[2]].includes(scope.basket) &&
+        : (scope.basket === "all" || scope.basket.split(",").includes(s[2])) &&
           ["all", s[3]].includes(scope.adjustment),
     )
     .map((s) => s[0] as string);
@@ -410,26 +439,31 @@ export async function queryCpiRange(
         typeof gap.metric === "string" &&
         monthValid(gap.required_month),
     ) ||
-    !result.points.every((p) =>
-      (profile.id === "employment"
-        ? [
-            p.value,
-            p.net_change_1m_thousand_jobs ?? null,
-            p.change_1m_percentage_points ?? null,
-            p.change_1m_hours ?? null,
-            p.mom_pct ?? null,
-            p.yoy_pct ?? null,
-          ]
-        : [
-            p.index_value,
-            p.mom_pct,
-            p.yoy_pct,
-            p.change_1m_ratio,
-            p.change_3m_ratio,
-            p.change_6m_ratio,
-            p.change_12m_ratio,
-          ]
-      ).every(numeric),
+    !result.points.every(
+      (p) =>
+        (profile.id === "employment"
+          ? [
+              p.value,
+              p.net_change_1m_thousand_jobs ?? null,
+              p.change_1m_percentage_points ?? null,
+              p.change_1m_hours ?? null,
+              p.mom_pct ?? null,
+              p.yoy_pct ?? null,
+            ]
+          : [
+              p.index_value,
+              p.mom_pct,
+              p.yoy_pct,
+              p.change_1m_ratio,
+              p.change_3m_ratio,
+              p.change_6m_ratio,
+              p.change_12m_ratio,
+            ]
+        ).every((v) => numeric(v === undefined && scope.columns ? null : v)) &&
+        (!scope.columns ||
+          scope.columns
+            .split(",")
+            .every((column) => column in p || profile.id === "employment")),
     )
   )
     throw new CpiServiceFailure("cpi_result_scope_unknown");
@@ -443,13 +477,7 @@ export async function queryCpiRange(
     throw new CpiServiceFailure("cpi_result_scope_unknown");
   return result;
 }
-export type CpiJobIntent = {
-  series?: string;
-  request_id: string;
-  action: "init" | "initialize" | "update";
-  start: string;
-  end: string;
-};
+export type CpiJobIntent = MacroPaths["/api/r5/cpi/timeseries/jobs"]["post"]["requestBody"]["content"]["application/json"];
 export type CpiJob = CpiJobIntent & {
   job_id: string;
   state: "running" | "complete" | "failed" | "unknown";

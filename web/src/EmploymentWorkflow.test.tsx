@@ -192,7 +192,7 @@ it("keeps employment source nulls and missing comparisons distinct, with Beijing
   const result: CpiResult = {
     start_month: "2025-10",
     end_month: "2025-10",
-    series_ids: profile.series.map((s) => s[0]),
+    series_ids: [...profile.defaultQuerySeries!],
     points: [
       {
         series_id: "CES0000000001",
@@ -603,7 +603,7 @@ it.each(["ui=r5&view=collection", "page=4"])(
     expect(
       within(region).getByRole("complementary", { name: "执行简报" }),
     ).toBeTruthy();
-    expect(region.textContent).toContain("共5种口径");
+    expect(region.textContent).toContain(`共${profile.series.length}种口径`);
     expect(region.textContent).toContain("劳动参与率");
     expect(region.textContent).toContain("平均每周计薪工时");
     expect(

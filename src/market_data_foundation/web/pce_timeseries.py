@@ -39,9 +39,16 @@ class PceTimeSeriesHost(TimeSeriesHost):
                 "change_3m_ratio",
                 "change_6m_ratio",
                 "change_12m_ratio",
+                "annualized_3m_ratio",
+                "annualized_6m_ratio",
                 "mom",
                 "yoy",
             ],
+            "annualized_semantics": (
+                "3m: (index[t]/index[t-3])^4-1; 6m: (index[t]/index[t-6])^2-1; "
+                "unrounded same-cutoff inputs, final ratio rounded HALF_UP to 4 "
+                "places"
+            ),
             "ratio_semantics": (
                 "index[t]/index[t-k]-1; same_cutoff; not_annualized; 0.0312=3.12%"
             ),

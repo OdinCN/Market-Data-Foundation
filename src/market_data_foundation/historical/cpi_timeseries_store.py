@@ -296,7 +296,8 @@ def _revision_ddl(*, profile=CPI_PROFILE):
     )
     comparison = ">=" if profile is EMPLOYMENT_PROFILE else ">"
     zero_guard = (
-        "AND (index_value > 0 OR series_id IN ('LNS14000000','LNS11300000'))"
+        "AND (index_value > 0 OR series_id IN "
+        "('LNS14000000','LNS11300000','LNS12300000'))"
         if profile is EMPLOYMENT_PROFILE
         else ""
     )
@@ -335,6 +336,12 @@ def _rates_view_sql(*, profile=CPI_PROFILE):
         f"round(c.index_value / nullif(p{k}.index_value,0) - 1,4) AS change_{k}m_ratio"
         for k in (1, 3, 6, 12)
     )
+    if profile is PCE_PROFILE:
+        rates += "," + ",".join(
+            f"round(power(c.index_value/nullif(p{k}.index_value,0),{exponent})-1,4) "
+            f"AS annualized_{k}m_ratio"
+            for k, exponent in ((3, 4), (6, 2))
+        )
     joins = " ".join(
         f"LEFT JOIN {profile.schema}.latest p{k} ON p{k}.series_id=c.series_id "
         f"AND p{k}.month=(c.month - interval '{k} months')::date "

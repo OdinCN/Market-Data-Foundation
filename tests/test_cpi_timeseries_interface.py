@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
 from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
 from market_data_foundation.historical.cpi_timeseries_cli import (
     InterfaceError,
@@ -18,6 +17,7 @@ from market_data_foundation.historical.cpi_timeseries_http import (
     admitted,
     handle_request,
 )
+from market_data_foundation.historical.cpi_timeseries_store import SERIES_IDS
 
 
 class Service:
@@ -83,7 +83,9 @@ class Scheduler:
 def test_init_defaults_to_four_series_query_defaults_headline_sa():
     service = Service()
     execute(service, "init", {"start": "2010-01", "end": "2026-09"})
-    assert set(service.calls[-1][3]["series_ids"]) == set(SERIES_IDS)
+    from market_data_foundation.historical.bls_timeseries_profile import CPI_PROFILE
+
+    assert set(service.calls[-1][3]["series_ids"]) == set(CPI_PROFILE.series_ids)
     result = execute(service, "query", {"start": "2026-09", "end": "2026-09"})
     assert service.calls[-1][3]["series_ids"] == ("CUSR0000SA0",)
     assert result["persisted"] is False

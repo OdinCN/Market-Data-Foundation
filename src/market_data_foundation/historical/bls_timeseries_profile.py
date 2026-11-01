@@ -22,19 +22,89 @@ class BlsTimeSeriesProfile:
             return {
                 series: dict(values) for series, values in self.explicit_series_metadata
             }
-        return {
-            series: {
-                "indicator": "headline" if position < 2 else "core",
-                "seasonal_adjustment": "SA" if position % 2 == 0 else "NSA",
-            }
-            for position, series in enumerate(self.series_ids)
-        }
+        raise ValueError("series_metadata_required")
+
+    @property
+    def baskets(self):
+        return tuple(
+            dict.fromkeys(m["indicator"] for m in self.series_metadata.values())
+        )
+
+    @property
+    def default_query_series_ids(self):
+        # Preserve the original unfiltered employment query; collection uses all.
+        return (
+            EMPLOYMENT_DEFAULT_SERIES if self.key == "employment" else self.series_ids
+        )
+
+
+def _price_metadata(sa, nsa, indicator, *, qualified=False):
+    common = {
+        "indicator": indicator,
+        "value_unit": "index",
+        "index_base": None,
+        "start_month": None,
+        "coverage_basis": "unknown",
+    }
+    if qualified:
+        common.update(
+            evidence_start_month="2026-01",
+            evidence_end_month="2026-09",
+            coverage_basis="retained_bls_2026_qualification_not_series_start",
+        )
+    return tuple(
+        (sid, tuple({**common, "seasonal_adjustment": adjustment}.items()))
+        for sid, adjustment in ((sa, "SA"), (nsa, "NSA"))
+    )
+
+
+_CPI_METADATA = (
+    *_price_metadata("CUSR0000SA0", "CUUR0000SA0", "headline"),
+    *_price_metadata("CUSR0000SA0L1E", "CUUR0000SA0L1E", "core"),
+    *_price_metadata("CUSR0000SAH1", "CUUR0000SAH1", "shelter", qualified=True),
+    *_price_metadata("CUSR0000SAF1", "CUUR0000SAF1", "food", qualified=True),
+    *_price_metadata("CUSR0000SA0E", "CUUR0000SA0E", "energy", qualified=True),
+    *_price_metadata("CUSR0000SACL1E", "CUUR0000SACL1E", "core_goods", qualified=True),
+    *_price_metadata(
+        "CUSR0000SASLE", "CUUR0000SASLE", "services_less_energy", qualified=True
+    ),
+)
+_PPI_METADATA = (
+    *_price_metadata("WPSFD4", "WPUFD4", "headline"),
+    *_price_metadata("WPSFD49104", "WPUFD49104", "core"),
+    *_price_metadata("WPSFD49116", "WPUFD49116", "core_ex_trade", qualified=True),
+)
+
+EMPLOYMENT_DEFAULT_SERIES = (
+    "CES0000000001",
+    "LNS14000000",
+    "CES0500000003",
+    "LNS11300000",
+    "CES0500000002",
+)
+
+EMPLOYMENT_RESEARCH_SERIES = (
+    ("CES0500000001", "total_private", "aggregate"),
+    ("LNS12300000", "employment_population_ratio", "rate"),
+    ("CES1000000001", "mining_logging", "major_sector"),
+    ("CES2000000001", "construction", "major_sector"),
+    ("CES3000000001", "manufacturing", "major_sector"),
+    ("CES4000000001", "trade_transportation_utilities", "major_sector"),
+    ("CES5000000001", "information", "major_sector"),
+    ("CES5500000001", "financial_activities", "major_sector"),
+    ("CES6000000001", "professional_business_services", "major_sector"),
+    ("CES6500000001", "private_education_health", "major_sector"),
+    ("CES7000000001", "leisure_hospitality", "major_sector"),
+    ("CES8000000001", "other_services", "major_sector"),
+    ("CES9000000001", "government", "major_sector"),
+)
 
 
 CPI_PROFILE = BlsTimeSeriesProfile(
     key="cpi",
     label="CPI",
-    series_ids=("CUSR0000SA0", "CUUR0000SA0", "CUSR0000SA0L1E", "CUUR0000SA0L1E"),
+    series_ids=tuple(sid for sid, _ in _CPI_METADATA),
+    explicit_series_metadata=_CPI_METADATA,
     schema="mdf_cpi_timeseries_dev_r1",
     raw_prefix="cpi-timeseries/dev-r1/sha256/",
     earliest_month=None,
@@ -44,7 +114,8 @@ CPI_PROFILE = BlsTimeSeriesProfile(
 PPI_PROFILE = BlsTimeSeriesProfile(
     key="ppi",
     label="PPI final demand; core excludes foods and energy",
-    series_ids=("WPSFD4", "WPUFD4", "WPSFD49104", "WPUFD49104"),
+    series_ids=tuple(sid for sid, _ in _PPI_METADATA),
+    explicit_series_metadata=_PPI_METADATA,
     schema="mdf_ppi_timeseries_dev_r1",
     raw_prefix="ppi-timeseries/dev-r1/sha256/",
     earliest_month=None,
@@ -100,6 +171,7 @@ EMPLOYMENT_PROFILE = BlsTimeSeriesProfile(
         "CES0500000003",
         "LNS11300000",
         "CES0500000002",
+        *(sid for sid, _, _ in EMPLOYMENT_RESEARCH_SERIES),
     ),
     schema="mdf_employment_timeseries_dev_r1",
     raw_prefix="employment-timeseries/dev-r1/sha256/",
@@ -153,6 +225,29 @@ EMPLOYMENT_PROFILE = BlsTimeSeriesProfile(
                 ("value_unit", "hours"),
                 ("fred_alias", "AWHAETP"),
             ),
+        ),
+        *(
+            (
+                sid,
+                tuple(
+                    {
+                        "indicator": indicator,
+                        "seasonal_adjustment": "SA",
+                        "survey": "CPS" if sid == "LNS12300000" else "CES",
+                        "value_unit": "percent"
+                        if sid == "LNS12300000"
+                        else "thousand_jobs",
+                        "aggregation_role": role,
+                        "start_month": None,
+                        "coverage_basis": (
+                            "retained_bls_2026_qualification_not_series_start"
+                        ),
+                        "evidence_start_month": "2026-01",
+                        "evidence_end_month": "2026-09",
+                    }.items()
+                ),
+            )
+            for sid, indicator, role in EMPLOYMENT_RESEARCH_SERIES
         ),
     ),
 )
