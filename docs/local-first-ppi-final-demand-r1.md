@@ -1,5 +1,8 @@
 # BLS PPI final-demand local-first vertical
 
+> 历史适用范围：本文保留 T01 两序列固定发布快照原合同，不描述当前四序列连续服务。
+> 当前开发与审查入口见 [五族基线指南](macro-family-development-review.md)，PPI 差异见 [连续速览](ppi-timeseries-quickstart-zh.md)。
+
 This T01 candidate is an explicitly operated, nonproduction vertical for the
 September 2026 BLS Producer Price Index final-demand release. It is not a
 scheduler, active SourceBinding, MBO admission, general macro lifecycle, or

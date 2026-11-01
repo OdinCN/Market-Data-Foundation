@@ -1,7 +1,7 @@
-"""Offline calendar display contracts shared by CPI/PPI/PCE."""
+"""Offline calendar display contracts shared by the five continuous families."""
 
 import copy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import FastAPI
@@ -244,15 +244,23 @@ def test_bls_conflicting_month_evidence_never_assigns_one_event_twice(request):
     assert scheduler.status()["targets"] == []
 
 
-@pytest.mark.parametrize("asset", ["cpi", "ppi", "pce", "employment"])
+@pytest.mark.parametrize("asset", ["cpi", "ppi", "pce", "employment", "retail"])
+@pytest.mark.parametrize("basis", ["observed", "available"])
 def test_real_provider_snapshot_cutoff_without_asgi(
-    asset, request, tmp_path, monkeypatch
+    asset, basis, request, tmp_path, monkeypatch
 ):
     if asset == "pce":
         _, host, _, _, _ = request.getfixturevalue("pce_fixture")
         raw = bea_ics(
             "Personal Income and Outlays, October 2026", at="20261125T133000Z"
         )
+    elif asset == "retail":
+        from tests.test_census_retail_release_schedule import table
+        from tests.test_retail_timeseries_web import retail
+
+        _, runtime, _, _, _ = retail(tmp_path, monkeypatch)
+        host = runtime.retail_timeseries
+        raw = table([("October 2026", "November 17, 2026")]).encode()
     elif asset == "employment":
         from tests.test_employment_web import setup
 
@@ -264,16 +272,23 @@ def test_real_provider_snapshot_cutoff_without_asgi(
         host = hosts[asset]
         raw = html(("October 2026", "Nov. 10, 2026", "08:30 AM"))
     host.scheduler.import_calendar(raw, host.clock())
-    saved = host.scheduler.state_path.read_bytes()
-    for at, expected in ((datetime(2026, 1, 1, tzinfo=UTC), 0), (host.clock(), 1)):
+    saved = files(tmp_path)
+    acquired = host.clock()
+    for at, expected in (
+        (acquired - timedelta(microseconds=1), 0),
+        (acquired, 1),
+    ):
         result = host.query(
             {
                 "start": "2026-10",
                 "end": "2026-10",
                 "local_only": "true",
                 "query_mode": "history",
+                "as_of_basis": basis,
                 "as_of": at.isoformat(),
             }
         )
         assert len(result["publication_events"]) == expected
-    assert host.scheduler.state_path.read_bytes() == saved
+        assert result["provider_requests"] == 0
+        assert result["persisted"] is False
+    assert files(tmp_path) == saved

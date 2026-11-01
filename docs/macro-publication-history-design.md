@@ -1,7 +1,8 @@
 # MACRO 发布历史设计：CPI 样本基线
 
 本基线描述已实现的 CPI 当前查询、四期限 ratio、本地修订回放与事件调度合同；
-共用 WebUI 保持既有 PCE 读取兼容，不代表所有 MACRO 能力已完成或生产部署。
+本文件前述数值与信号合同以 CPI 为范围；五族当前实现与来源差异统一见
+[五族开发与审查指南](macro-family-development-review.md)，不据 CPI 推广所有来源字段。
 历史 live 验收仅是历史事实，不承诺当前行数、数据范围、权限、服务或 worker 状态。
 使用入口见 [Web 快速上手](cpi-webui-quickstart-zh.md) 与 [CLI / 本机 API](cpi-timeseries-cli-zh.md)。
 
@@ -63,11 +64,11 @@ ICS 不含参考月：优先复用已确认映射，仅在必要时获取官方�
 - [Errata](https://www.bls.gov/errata/)、[ICS 日历](https://www.bls.gov/schedule/news_release/bls.ics)、[CPI 参考月日历](https://www.bls.gov/schedule/news_release/cpi.htm)
 - [CPI 计算说明](https://www.bls.gov/cpi/factsheets/cpi-math-calculations.pdf)
 
-## CPI/PPI/PCE 官方日历展示
+## 五族官方日历展示
 
-三族查询共用“官方日历时间”：参考月份必须来自明确官方证据，历史和未来事件
+五族连续查询共用“官方日历时间”：参考月份必须来自各族明确官方证据，历史和未来事件
 均可从本地日历缓存展示，与采集任务是否存在或执行无关。普通 GET 不刷新来源、
-不写 state、不创建任务；无证据显示“未获取”，取消显示“已取消”，冲突不展示时间。
+不写 state、不创建任务；无记录与待定时间分别显示，取消保留取消状态，冲突不展示时间。
 保留 `publication_event` API 字段；`scheduled` 不随时钟流逝自动变为 `published`。
 日历时间不代表当前修订值当时已知；历史截止仍使用入库可用时间，Web 时间为北京时间。
 
@@ -76,4 +77,8 @@ BLS 历史展示证据可通过 `scripts/import_official_calendar_history.py` �
 仅接受已经过去的日历时间。证据保存在现有 calendar 的 `display_history`，不会把
 历史月份加入可执行队列，也不会修改已有采集/重试进度；正常日历刷新保留此证据。
 下载、来源核验和 state 导入由操作者执行，命令本身不联网；未知月份、缺失时间、
-无法解析的取消行和互相冲突的官方材料不作推算。具体调用见根目录 IMPLEMENTATION_REPLY.md。
+无法解析的取消行和互相冲突的官方材料不作推算。
+就业复用明确 Employment Situation 绑定；PCE 使用 BEA 日历，零售使用 Census
+Data Month / 年度 Period Covered，不能套用 BLS ICS 字段。
+零售历史与未来日历、证据截止和只读查询边界见
+[连续零售合同](census-retail-timeseries-r1.md)；共同检查与测试见上述五族入口。

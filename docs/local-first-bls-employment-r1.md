@@ -1,5 +1,8 @@
 # BLS Employment retained candidate R1
 
+> 历史适用范围：本文保留 T03 固定快照原合同，不作为当前五项连续就业的运行或资格声明。
+> 当前共同入口见 [五族基线指南](macro-family-development-review.md)，就业差异见 [连续核心](employment-continuous-core-r1.md)。
+
 T03 is an unqualified, producer-local CES/CPS candidate. Its explicit bounded
 [live acquirer](bls-employment-live-edge-r1.md) uses the existing MDF BLS Source
 capability without an additional grant/verifier or per-attempt approval. It has no
