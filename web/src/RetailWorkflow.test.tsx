@@ -378,7 +378,7 @@ it("selects retail in the real shared App, preserves amount/raw precision, actua
       .slice(1)
       .map((r) => r.textContent?.slice(0, 7)),
   ).toEqual(["2026-09", "2026-09", "2026-08", "2026-08"]);
-  expect(query.getAllByText("123456.123456789").length).toBe(2);
+  expect(query.getAllByText("123,456.123456789").length).toBe(2);
   expect(query.getByText("金额（百万当期美元）")).toBeTruthy();
   expect(query.getByText("官方 MPCSM（percent）")).toBeTruthy();
   expect(query.queryByRole("alert")).toBeNull();
@@ -659,7 +659,7 @@ it("shows retail partial warning with the retained shared App table and exact ra
   expect(query.getByRole("alert").textContent).toContain("HTTP 429");
   expect(query.getByRole("alert").textContent).toContain("可重试时间");
   expect(query.getByRole("table", { name: "零售销售 范围数据" })).toBeTruthy();
-  expect(query.getAllByText("123456.123456789")).toHaveLength(12);
+  expect(query.getAllByText("123,456.123456789")).toHaveLength(12);
   const rows = within(query.getByRole("table", { name: "零售销售 范围数据" }))
     .getAllByRole("row")
     .slice(1);
@@ -699,7 +699,7 @@ it("shows 204 no returned records in the shared App without calling it a service
     "Census 本次未返回记录（HTTP 204）",
   );
   expect(query.queryByText(/补取失败/)).toBeNull();
-  expect(query.getAllByText("123456.123456789")).toHaveLength(12);
+  expect(query.getAllByText("123,456.123456789")).toHaveLength(12);
   expect(
     within(
       query.getByRole("table", { name: "零售销售 范围数据" }),
@@ -729,6 +729,13 @@ it("validates backend-serialized Decimal values through the complete retail quer
   expect(result.points[0].official_mpcsm_percent).toBe("0E-9");
   expect(result.points[0].change_1m_ratio).toBe("0E-9");
   expect(result.points[1].index_value).toBe("1.00000000000000000001E+30");
+  expect(result.points[0].index_value).toBe("745021.000000000");
+  expect(result.points[2].index_value).toBe(
+    "12345678901234567890.123456789000",
+  );
+  expect(
+    result.points.find((p) => p.month === "2026-09")?.publication_event,
+  ).toMatchObject({ status: "scheduled", time: "2026-10-15T12:30:00+00:00" });
   expect(result.points[2].change_1m_ratio).toBe("1.25E-7");
   expect(result).toHaveProperty("backend_extension", {
     exact: "12345678901234567890.123456789",
@@ -787,52 +794,80 @@ it.each(["range", "units", "duplicate", "incomplete", "attempts"])(
   },
 );
 
-it("renders backend Decimal zero and exponents in the shared App with exact raw HTTP", async () => {
-  const raw = decimalWire();
-  const h = fixture(false, false, raw);
-  location.hash = "ui=r5&view=assets";
-  render(<App transport={h.transport} />);
-  fireEvent.click(await screen.findByRole("row", { name: /美国零售销售/ }));
-  const query = within(
-    await screen.findByRole("region", { name: "零售销售 范围查询" }),
-  );
-  fireEvent.change(query.getByLabelText("开始月份"), {
-    target: { value: decimalScope.start },
-  });
-  fireEvent.change(query.getByLabelText("结束月份"), {
-    target: { value: decimalScope.end },
-  });
-  fireEvent.click(query.getByRole("button", { name: "查询数据" }));
-  await flush();
-  const rows = within(query.getByRole("table", { name: "零售销售 范围数据" }))
-    .getAllByRole("row")
-    .slice(1);
-  expect(rows).toHaveLength(30);
-  const months = rows.map(
-    (row) => within(row).getAllByRole("cell")[0].textContent,
-  );
-  expect(months).toEqual([...months].sort().reverse());
-  expect(query.getAllByText("123456.123456789")).toHaveLength(12);
-  expect(query.getAllByText("1.00000000000000000001E+30")).toHaveLength(12);
-  expect(
-    rows.slice(0, 6).every((row) => row.textContent?.includes("金额输入缺值")),
-  ).toBe(true);
-  const zero = within(
-    rows.find(
-      (row) =>
-        row.textContent?.startsWith("2025-10") &&
-        row.textContent.includes("总体"),
-    )!,
-  );
-  expect(zero.getByText("0%")).toBeTruthy();
-  expect(zero.getByText("0.00%")).toBeTruthy();
-  expect(zero.getAllByText("1.23%")).toHaveLength(3);
-  expect(query.getAllByText("1.25E-7%")).toHaveLength(11);
-  expect(query.queryByText(/结果未知/)).toBeNull();
-  fireEvent.click(query.getByRole("tab", { name: "原始响应" }));
-  expect(query.getByLabelText("原始 HTTP 正文").textContent).toBe(raw);
-  expect(query.getByLabelText("本次请求 URL").textContent).toContain(
-    h.calls.find((c) => c.path.includes("/query?"))!.path,
-  );
-  expect(raw).toContain('"exact":"12345678901234567890.123456789"');
-});
+it.each(["OK", "PARTIAL"])(
+  "renders %s backend Decimal values and calendar through the shared App with exact raw HTTP",
+  async (status) => {
+    const body = JSON.parse(decimalWire());
+    body.status = status;
+    if (status === "OK") body.source_no_content = [];
+    const raw = JSON.stringify(body);
+    const h = fixture(false, false, raw);
+    location.hash = "ui=r5&view=assets";
+    render(<App transport={h.transport} />);
+    fireEvent.click(await screen.findByRole("row", { name: /美国零售销售/ }));
+    const query = within(
+      await screen.findByRole("region", { name: "零售销售 范围查询" }),
+    );
+    fireEvent.change(query.getByLabelText("开始月份"), {
+      target: { value: decimalScope.start },
+    });
+    fireEvent.change(query.getByLabelText("结束月份"), {
+      target: { value: decimalScope.end },
+    });
+    fireEvent.click(query.getByRole("button", { name: "查询数据" }));
+    await flush();
+    const rows = within(query.getByRole("table", { name: "零售销售 范围数据" }))
+      .getAllByRole("row")
+      .slice(1);
+    expect(rows).toHaveLength(30);
+    const months = rows.map(
+      (row) => within(row).getAllByRole("cell")[0].textContent,
+    );
+    expect(months).toEqual([...months].sort().reverse());
+    expect(query.getAllByText("123,456.123456789")).toHaveLength(10);
+    expect(query.getByText("745,021")).toBeTruthy();
+    expect(
+      query.getByText("12,345,678,901,234,567,890.123456789"),
+    ).toBeTruthy();
+    expect(query.getByText("0.8%")).toBeTruthy();
+    expect(query.getByText("-0.4%")).toBeTruthy();
+    expect(query.getAllByText("1.00000000000000000001E+30")).toHaveLength(12);
+    expect(
+      rows
+        .slice(0, 6)
+        .every((row) => row.textContent?.includes("金额输入缺值")),
+    ).toBe(true);
+    const zero = within(
+      rows.find(
+        (row) =>
+          row.textContent?.startsWith("2025-10") &&
+          row.textContent.includes("总体"),
+      )!,
+    );
+    expect(zero.getByText("0%")).toBeTruthy();
+    expect(zero.getByText("0.00%")).toBeTruthy();
+    expect(zero.getAllByText("1.23%")).toHaveLength(3);
+    expect(query.getAllByText("1.25E-7%")).toHaveLength(9);
+    expect(
+      query.getAllByText("计划发布：2026-10-15 20:30:00 北京时间"),
+    ).toHaveLength(2);
+    expect(
+      query.getAllByText("计划发布：2026-11-17 21:30:00 北京时间"),
+    ).toHaveLength(2);
+    expect(
+      query.getAllByText("计划发布：2026-12-16 21:30:00 北京时间"),
+    ).toHaveLength(2);
+    expect(
+      query.getAllByText("计划发布：2027-01-15 21:30:00 北京时间"),
+    ).toHaveLength(2);
+    expect(query.getAllByText("计划时间待定（TBA / 未知）")).toHaveLength(2);
+    expect(query.getAllByText("无对应月份记录")).toHaveLength(20);
+    expect(query.queryByText(/结果未知/)).toBeNull();
+    fireEvent.click(query.getByRole("tab", { name: "原始响应" }));
+    expect(query.getByLabelText("原始 HTTP 正文").textContent).toBe(raw);
+    expect(query.getByLabelText("本次请求 URL").textContent).toContain(
+      h.calls.find((c) => c.path.includes("/query?"))!.path,
+    );
+    expect(raw).toContain('"exact":"12345678901234567890.123456789"');
+  },
+);

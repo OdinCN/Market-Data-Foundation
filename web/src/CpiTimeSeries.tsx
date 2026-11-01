@@ -1,4 +1,4 @@
-import { decimalDisplayText } from "./decimalValue";
+import { decimalDisplayText, retailDecimalText } from "./decimalValue";
 import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import { formatBeijingTime, beijingInputToIso } from "./beijingTime";
 import { DateField } from "./DateField";
@@ -93,6 +93,7 @@ const hasEvidence = (value: unknown): boolean => {
 };
 export function publicationText(
   point: Pick<CpiPoint, "month" | "publication_event">,
+  retail = false,
 ): string | null {
   const event = point.publication_event;
   if (
@@ -102,6 +103,8 @@ export function publicationText(
   )
     return null;
   if ((event.status ?? event.state) === "cancelled") return "已取消";
+  if (retail && (event.status ?? event.state) === "unknown")
+    return "计划时间待定（TBA / 未知）";
   const time = event.time ?? event.publication_time;
   if (typeof time !== "string") return null;
   const formatted = formatBeijingTime(time, "");
@@ -115,10 +118,15 @@ export function publicationText(
         : null;
   return label ? `${label}：${formatted}` : null;
 }
-const valueText = (value: unknown, ratio: boolean, unit: string) =>
+const valueText = (
+  value: unknown,
+  ratio: boolean,
+  unit: string,
+  retail = false,
+) =>
   typeof value !== "number" && typeof value !== "string"
     ? "—"
-    : `${ratio ? (Number(value) * 100).toFixed(2) : decimalDisplayText(value)}${unit}`;
+    : `${ratio ? (Number(value) * 100).toFixed(2) : retail ? retailDecimalText(value) : decimalDisplayText(value)}${unit}`;
 
 export function CpiTimeSeries(
   props: Parameters<typeof CpiTimeSeriesContent>[0],
@@ -573,19 +581,23 @@ function CpiTimeSeriesContent({
                                     : field === "index_value"
                                       ? ""
                                       : "%",
+                                  retail,
                                 )}
                               </td>
                             ))}
                             <td>
-                              {publicationText({
-                                month: row.month,
-                                publication_event:
-                                  row.point?.publication_event ??
-                                  events.find(
-                                    (event) =>
-                                      event.reference_month === row.month,
-                                  ),
-                              }) ?? "未获取"}
+                              {publicationText(
+                                {
+                                  month: row.month,
+                                  publication_event:
+                                    row.point?.publication_event ??
+                                    events.find(
+                                      (event) =>
+                                        event.reference_month === row.month,
+                                    ),
+                                },
+                                retail,
+                              ) ?? (retail ? "无对应月份记录" : "未获取")}
                             </td>
                             <td>
                               {!row.point

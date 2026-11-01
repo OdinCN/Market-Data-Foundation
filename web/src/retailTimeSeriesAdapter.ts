@@ -4,6 +4,7 @@ import { isDecimalString } from "./decimalValue";
 type Calculation = { value: string | null; reason: string | null };
 type RetailMonth = {
   month: string;
+  publication_event?: CpiPoint["publication_event"];
   headline_level: Calculation;
   control_level: Calculation;
   headline_rates: Record<string, Calculation>;
@@ -126,6 +127,7 @@ export function normalizeRetailResult(
         available_at: null,
         series_id: id,
         month: month.month,
+        publication_event: month.publication_event,
         index_value: level.value,
         mom_pct: null,
         yoy_pct: null,

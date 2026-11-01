@@ -1,6 +1,7 @@
 """Synthetic shared-app retail admission, durable jobs and read-only composition."""
 
 from copy import deepcopy
+from datetime import timedelta
 from threading import Event
 from unittest.mock import Mock
 
@@ -374,3 +375,97 @@ def test_wrong_family_or_schema_factory_fails_closed(tmp_path, monkeypatch):
         with host.service():
             pytest.fail("wrong schema admitted")
     connection.close.assert_called_once()
+
+
+@pytest.mark.parametrize("partial", [False, True])
+def test_query_projects_calendar_for_past_and_empty_future_months_read_only(
+    tmp_path, monkeypatch, partial
+):
+    from market_data_foundation.historical.census_retail_live import HttpResult
+    from tests.test_census_retail_release_schedule import table
+
+    app, runtime, data, wire, calls = retail(
+        tmp_path, monkeypatch, retail_allow_source=partial
+    )
+    host = runtime.retail_timeseries
+    if partial:
+        wire.outcomes = [HttpResult(204, b"", {})]
+        host.query_factory = lambda **_: RetailTimeSeriesService(
+            data,
+            reader(wire, sleep=lambda _: None),
+            allow_source=True,
+            clock=lambda: AT,
+        )
+    host.scheduler._accept(
+        host.scheduler._read(),
+        table(
+            [
+                ("September 2026", "October 15, 2026"),
+                ("October 2026", "November 17, 2026"),
+                ("November 2026", "December 16, 2026"),
+                ("December 2026", "January 15, 2027"),
+                ("January 2027", "TBA"),
+            ]
+        ).encode(),
+        AT,
+    )
+    # The already-past September release has no execution target.
+    assert "2026-09" not in {
+        t["reference_month"] for t in host.scheduler.status()["targets"]
+    }
+    retained = host.scheduler.state_path.read_bytes()
+    host.scheduler.calendar_fetcher = Mock(
+        side_effect=AssertionError("GET calendar IO")
+    )
+    host.scheduler._save = Mock(side_effect=AssertionError("GET schedule write"))
+    data.save_batch = Mock(side_effect=AssertionError("GET database write"))
+    data.ensure_schema = Mock(side_effect=AssertionError("GET DDL"))
+
+    def query(params):
+        with client(app) as http:
+            response = http.get(PREFIX + "/query", params=params)
+            assert response.status_code == 200
+            return response.json()
+
+    params = {"start": "2026-08", "end": "2027-01"}
+    result = query(params)
+    assert result["status"] == ("PARTIAL" if partial else "OK")
+    points = {p["month"]: p for p in result["points"]}
+    assert points["2026-08"]["publication_event"] is None
+    expected = {
+        "2026-09": "2026-10-15T12:30:00+00:00",
+        "2026-10": "2026-11-17T13:30:00+00:00",
+        "2026-11": "2026-12-16T13:30:00+00:00",
+        "2026-12": "2027-01-15T13:30:00+00:00",
+    }
+    for month, at in expected.items():
+        event = points[month]["publication_event"]
+        assert event["time"] == at and event["status"] == "scheduled"
+        assert event["evidence"]["source"].startswith("https://www.census.gov/")
+    assert points["2026-12"]["headline_level"]["value"] is None
+    assert points["2026-12"]["control_level"]["value"] is None
+    tba = points["2027-01"]["publication_event"]
+    assert tba["status"] == "unknown" and tba["time"] is None
+    assert len(result["publication_events"]) == 5
+    assert result["metadata"]["publication_event"]["binds_current_revision"] is False
+    for basis in ("available", "observed"):
+        for delta, visible in ((-1, False), (0, True)):
+            history = query(
+                dict(
+                    params,
+                    query_mode="history",
+                    as_of_basis=basis,
+                    as_of=(AT + timedelta(microseconds=delta)).isoformat(),
+                )
+            )
+            assert bool(history["publication_events"]) is visible
+            assert all(p["publication_event"] is None for p in history["points"]) is (
+                not visible
+            )
+            assert history["provider_requests"] == 0
+    assert host.scheduler.state_path.read_bytes() == retained
+    host.scheduler.calendar_fetcher.assert_not_called()
+    host.scheduler._save.assert_not_called()
+    data.save_batch.assert_not_called()
+    data.ensure_schema.assert_not_called()
+    assert "write" not in calls

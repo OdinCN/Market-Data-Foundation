@@ -277,7 +277,11 @@ export function CpiQueryApiHelp({
             ],
             [
               "official_headline_mpcsm",
-              "Census官方 percent；与推导 ratio 独立",
+              "Census官方 percent；与推导 ratio 独立；0.8 显示为 0.8%，不再乘100",
+            ],
+            [
+              "publication_events/points.publication_event",
+              "留存的官方月份日历；总体及控制组含空值行均显示北京时间计划。无记录、TBA/未知不推算；as_of 早于日历获取时间时隐藏该日历；GET 不刷新或写入。",
             ],
             [
               "source_cells/input_versions",

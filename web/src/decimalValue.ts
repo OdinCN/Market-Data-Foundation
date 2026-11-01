@@ -16,3 +16,14 @@ export function decimalDisplayText(value: string | number): string {
     ? "0"
     : text;
 }
+
+// Retail levels and official percent are already in their display units.
+// Work on digits only: Number would round high-precision source values.
+export function retailDecimalText(value: string | number): string {
+  const text = decimalDisplayText(value);
+  if (!isDecimalString(text) || /[eE]/.test(text)) return text;
+  const [integer, fraction = ""] = text.split(".");
+  const tail = fraction.replace(/0+$/, "");
+  if (/^[+-]?0*$/.test(integer) && !tail) return "0";
+  return `${(integer || "0").replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${tail ? `.${tail}` : ""}`;
+}

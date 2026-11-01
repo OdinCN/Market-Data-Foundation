@@ -338,8 +338,11 @@ class TimeSeriesHost:
             raise WebError(self.source_id.lower() + "_credential_missing", 403)
         return value
 
-    def publication_metadata(self, result):
-        events = publication_events(self.scheduler.status(), self.official_origin)
+    def publication_metadata(self, result, *, snapshot=None):
+        events = publication_events(
+            self.scheduler.status() if snapshot is None else snapshot,
+            self.official_origin,
+        )
         result["points"] = [
             dict(point, publication_event=events.get(point["month"]))
             for point in result["points"]

@@ -134,6 +134,26 @@ TBA stays null and visible. Every event retains source URL and raw SHA-256;
 publication or readiness. No release time, calendar worker or UI entry is
 hardcoded or enabled by this candidate.
 
+The bound DEV retail query adds `publication_events` and each month's nullable
+`publication_event` using the retained Census `calendar.events`, including past
+events absent from the execution queue and future months without numeric inputs.
+The shared calendar projection retains official source/digest evidence and labels
+times as scheduled plans, never actual publication or revision availability.
+No matching month remains null; TBA/unknown retains an `unknown` event with null
+time. The table shows both headline and MDF control rows in Beijing time, with
+explicit no-record and pending-time labels. No date is extrapolated. When an
+`as_of` cutoff applies (observed or available), a calendar acquired after that
+inclusive cutoff is withheld in full; the current cache cannot reconstruct an
+earlier calendar version. GET only reads the cache, without refresh, collection,
+schedule writes or database writes.
+
+Retail table amounts use exact string digit grouping and trim only insignificant
+fractional zeros (`745021.000000000` → `745,021`). Official MPCSM is already
+percent (`0.800000000` → `0.8%`, `-0.400000000` → `-0.4%`, `0E-9` → `0%`),
+without multiplying by 100. Nonzero scientific notation remains exact. These
+display rules leave the raw HTTP body, stored values, ratio formatting and other
+product families unchanged.
+
 ## Bounded storage/service/HTTP implementation (2026-11-01)
 
 `historical/retail_timeseries_store.py` provides independent in-memory and

@@ -6,8 +6,13 @@ No DEV response, database, ASGI bridge, provider or credentials are used.
 import json
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
+from market_data_foundation.historical.census_retail_release_schedule import (
+    CALENDAR_URL,
+)
 from market_data_foundation.web.retail_timeseries import json_value
+from market_data_foundation.web.retail_timeseries_host import RetailContinuousHost
 
 
 def body():
@@ -33,7 +38,15 @@ def body():
             {
                 "month": f"{year:04d}-{month + 1:02d}",
                 "headline_level": calc(
-                    None if missing else Decimal("123456.123456789")
+                    None
+                    if missing
+                    else Decimal(
+                        "745021.000000000"
+                        if index == 0
+                        else "12345678901234567890.123456789000"
+                        if index == 1
+                        else "123456.123456789"
+                    )
                 ),
                 "control_level": calc(
                     None if missing else Decimal("1.00000000000000000001E+30")
@@ -43,7 +56,11 @@ def body():
                 "official_headline_mpcsm": {
                     "value": None
                     if missing
-                    else Decimal("0.000000000" if index == 0 else "1.25E-7"),
+                    else Decimal(
+                        {0: "0.000000000", 1: "0.800000000", 2: "-0.400000000"}.get(
+                            index, "1.25E-7"
+                        )
+                    ),
                     "unit": "percent",
                 },
                 "source_cells": [
@@ -55,7 +72,7 @@ def body():
                 ],
             }
         )
-    return {
+    result = {
         "status": "PARTIAL",
         "source_no_content": [
             {
@@ -83,6 +100,26 @@ def body():
         "points": points,
         "backend_extension": {"exact": Decimal("12345678901234567890.123456789")},
     }
+    calendar = {
+        "source": CALENDAR_URL,
+        "sha256": "a" * 64,
+        "acquired_at": "2026-11-01T03:56:22.565612+00:00",
+        "events": {
+            month: {"reference_month": month, "release_at": at, "status": status}
+            for month, at, status in (
+                ("2026-08", None, "TBA"),
+                ("2026-09", "2026-10-15T12:30:00+00:00", "scheduled"),
+                ("2026-10", "2026-11-17T13:30:00+00:00", "scheduled"),
+                ("2026-11", "2026-12-16T13:30:00+00:00", "scheduled"),
+                ("2026-12", "2027-01-15T13:30:00+00:00", "scheduled"),
+            )
+        },
+    }
+    host = SimpleNamespace(
+        scheduler=SimpleNamespace(status=lambda: {"calendar": calendar}),
+        official_origin=CALENDAR_URL,
+    )
+    return RetailContinuousHost.publication_metadata(host, result)
 
 
 def serialized_body():
