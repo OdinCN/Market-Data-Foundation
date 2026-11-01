@@ -5,6 +5,7 @@ import { DateField } from "./DateField";
 import { MultiSelect } from "./MultiSelect";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
+import { MacroReleaseRecords } from "./MacroReleaseRecords";
 import {
   buildCpiQueryRequest,
   latestMonth,
@@ -322,10 +323,14 @@ function CpiTimeSeriesContent({
         values={[
           ["query", "查询数据"],
           ["api", "API说明"],
+          ["releases", "发布记录"],
         ]}
         value={tab}
         onChange={setTab}
       />
+      {tab === "releases" && (
+        <MacroReleaseRecords transport={transport} profile={profile} />
+      )}
       <div hidden={tab !== "api"}>
         <CpiQueryApiHelp
           profile={profile}

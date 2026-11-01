@@ -53,6 +53,22 @@
         }
       }
     },
+    "/api/r5/retail/timeseries/releases": {
+      "get": {
+        "summary": "Retail Timeseries Releases",
+        "operationId": "retail_timeseries_releases_api_r5_retail_timeseries_releases_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/r5/retail/timeseries/jobs": {
       "get": {
         "summary": "Retail Timeseries Jobs",

@@ -1,7 +1,7 @@
 """Explicit retail read routes and optional durable manual collection binding."""
 
 from dataclasses import asdict, is_dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, FastAPI, Request
@@ -11,6 +11,10 @@ from starlette.concurrency import run_in_threadpool
 
 from market_data_foundation.historical.census_retail_timeseries_source import (
     RetailSourceError,
+)
+from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
+from market_data_foundation.historical.macro_release_records import (
+    unsupported_release_records,
 )
 from market_data_foundation.historical.retail_timeseries import RetailServiceError
 from market_data_foundation.historical.retail_timeseries_store import RetailStorageError
@@ -106,13 +110,24 @@ class RetailTimeSeriesHost:
             **options,
         )
 
+    def releases(self, params):
+        self._service()
+        return unsupported_release_records("retail", params, now=datetime.now(UTC))
+
     def api_help(self):
         self._service()
         return {
             "prefix": "/api/r5/retail/timeseries",
             "provider": "Census",
             "dataset": "MARTS",
-            "routes": ["status", "query", "api-help"],
+            "routes": ["status", "query", "api-help", "releases"],
+            "release_records": {
+                "path": PREFIX + "/releases",
+                "parameters": ["event_id", "as_of", "read_mode", "source_version"],
+                "read_only": True,
+                "coverage": "retail_release_material_adapter_not_implemented",
+                "history_basis": "no latest fallback; as_of is MDF availability",
+            },
             "parameters": {
                 "start/end": "required inclusive YYYY-MM; max 2520 input "
                 "months including 12 month buffer",
@@ -239,17 +254,17 @@ def timeseries_router(host=None, *, authorize=None):
                 pairs = request.query_params.multi_items()
                 if len(dict(pairs)) != len(pairs):
                     raise RetailServiceError("duplicate_parameter")
-                if operation != "query" and pairs:
+                if operation not in {"query", "releases"} and pairs:
                     raise RetailServiceError("unsupported_parameters")
                 result = (
-                    host.query(dict(pairs))
-                    if operation == "query"
+                    getattr(host, operation)(dict(pairs))
+                    if operation in {"query", "releases"}
                     else {"jobs": host.journal.list()}
                     if operation == "jobs"
                     else getattr(host, operation.replace("-", "_"))()
                 )
                 return JSONResponse(json_value(result))
-            except WebError as error:
+            except (WebError, CpiTimeSeriesError) as error:
                 return failure(error)
             except Exception as error:
                 if isinstance(
@@ -273,9 +288,18 @@ def timeseries_router(host=None, *, authorize=None):
         return get
 
     for operation in (
-        ("status", "query", "api-help", "jobs", "executions", "strategy", "schedule")
+        (
+            "status",
+            "query",
+            "api-help",
+            "releases",
+            "jobs",
+            "executions",
+            "strategy",
+            "schedule",
+        )
         if host is None or hasattr(host, "journal")
-        else ("status", "query", "api-help")
+        else ("status", "query", "api-help", "releases")
     ):
         router.add_api_route(
             "/" + operation,

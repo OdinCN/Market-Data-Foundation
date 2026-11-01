@@ -232,6 +232,12 @@ export function CpiQueryApiHelp({
   if (profile.id === "retail")
     return (
       <section aria-label="零售销售 API说明" className="cpi-api-help">
+        <h4>GET {profile.basePath}/releases</h4>
+        <p>
+          发布记录支持
+          event_id、as_of、read_mode=event/source_history、source_version。只读本地，不联网、不写入；本轮零售发布材料适配尚未接入，返回
+          retail_release_material_adapter_not_implemented，不回退 latest。
+        </p>
         <h4>GET {profile.basePath}/query</h4>
         <p>{profile.historyNotice}</p>
         <CompactTable
@@ -305,6 +311,15 @@ export function CpiQueryApiHelp({
   const permission = availability.data?.web_capabilities.query;
   return (
     <section aria-label={`${profile.label} API说明`} className="cpi-api-help">
+      <h4>GET {profile.basePath}/releases</h4>
+      <p>
+        发布记录只读本地证据，不联网、不写入、不自动建表。参数：event_id（精确事件）、as_of（含时区的MDF可用截止）、read_mode=event/source_history、source_version（YYYY-MM-DD档案日期）。日期精度保留；历史证据晚取得不会倒填。缺少正式材料、修订或共识时返回具体
+        missing，不回退最新值。
+      </p>
+      <p>
+        claims.role：actual=本次官方公布值；official_previous=官方此前公布的前值；prior_revised=上期值（本次修订后）。value_identity是内容身份，continuous_version尚未绑定时为空。完整合同见{" "}
+        {profile.basePath}/api-help 的 release_records。
+      </p>
       <h4>GET {profile.basePath}/query</h4>
       {profile.historyNotice && <p>{profile.historyNotice}</p>}
       <p>

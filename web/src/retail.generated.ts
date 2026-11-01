@@ -55,6 +55,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/r5/retail/timeseries/releases": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Retail Timeseries Releases */
+    get: operations["retail_timeseries_releases_api_r5_retail_timeseries_releases_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/r5/retail/timeseries/jobs": {
     parameters: {
       query?: never;
@@ -196,6 +213,26 @@ export interface operations {
     };
   };
   retail_timeseries_api_help_api_r5_retail_timeseries_api_help_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  retail_timeseries_releases_api_r5_retail_timeseries_releases_get: {
     parameters: {
       query?: never;
       header?: never;

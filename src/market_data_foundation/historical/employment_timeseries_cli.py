@@ -17,6 +17,7 @@ from market_data_foundation.historical.cpi_timeseries_cli import (
     validate_range,
 )
 from market_data_foundation.historical.employment_timeseries import build_service
+from market_data_foundation.historical.macro_release_records import ReleaseRecords
 
 
 def build_parser():
@@ -41,6 +42,26 @@ def build_parser():
             command.add_argument("--as-of")
     commands.add_parser("status")
     commands.add_parser("prepare-schema")
+    commands.add_parser("prepare-release-schema")
+    release = commands.add_parser("import-release")
+    release.add_argument("--file", type=Path, required=True)
+    release.add_argument("--source-url", required=True)
+    release.add_argument(
+        "--material-format",
+        choices=(
+            "retained_document",
+            "original_http_body",
+            "official_summary_projection",
+        ),
+        default="retained_document",
+    )
+    records = commands.add_parser("releases")
+    records.add_argument("--event-id")
+    records.add_argument("--as-of")
+    records.add_argument(
+        "--read-mode", choices=("event", "source_history"), default="event"
+    )
+    records.add_argument("--source-version")
     return parser
 
 
@@ -48,7 +69,7 @@ def main(argv=None, *, service_factory=build_service, clock=lambda: datetime.now
     service = None
     try:
         args = build_parser().parse_args(argv)
-        if args.command not in {"status", "prepare-schema"}:
+        if args.command in {"init", "update", "query"}:
             start, end = args.start, args.end
             if args.command == "init":
                 if not 1 <= args.months < 2400:
@@ -86,6 +107,25 @@ def main(argv=None, *, service_factory=build_service, clock=lambda: datetime.now
             with service.store.operation():
                 service.store.ensure_schema()
             result = {"schema": EMPLOYMENT_PROFILE.schema, "prepared": True}
+        elif args.command == "prepare-release-schema":
+            ReleaseRecords(service.store).prepare()
+            result = {
+                "schema": EMPLOYMENT_PROFILE.schema,
+                "release_schema_prepared": True,
+            }
+        elif args.command == "import-release":
+            with args.file.open("rb") as material:
+                raw = material.read(2_000_001)
+            result = ReleaseRecords(service.store).import_employment(
+                raw, args.source_url, material_format=args.material_format
+            )
+        elif args.command == "releases":
+            result = ReleaseRecords(service.store).read(
+                event_id=args.event_id,
+                as_of=args.as_of,
+                read_mode=args.read_mode,
+                source_version=args.source_version,
+            )
         else:
             options = {
                 "series_ids": tuple(args.series or EMPLOYMENT_PROFILE.series_ids)

@@ -24,6 +24,7 @@ from market_data_foundation.historical.cpi_timeseries_cli import (
     validate_range,
 )
 from market_data_foundation.historical.cpi_timeseries_http import error_status
+from market_data_foundation.historical.macro_release_records import ReleaseRecords
 from market_data_foundation.web.cpi_timeseries_dispatch import dispatch_job
 from market_data_foundation.web.cpi_timeseries_jobs import (
     JobJournal,
@@ -174,7 +175,34 @@ class TimeSeriesHost:
                 "executions",
                 "schedule",
                 "api-help",
+                "releases",
             ],
+            "release_records": {
+                "path": self.prefix + "/releases",
+                "parameters": {
+                    "event_id": "optional exact independent official event identity",
+                    "as_of": "optional aware MDF availability cutoff; inclusive",
+                    "read_mode": "event (default) / source_history",
+                    "source_version": "optional exact YYYY-MM-DD archive version date",
+                },
+                "read_only": True,
+                "provider_requests": 0,
+                "schema_preparation": "explicit prepare-release-schema CLI only",
+                "source_history": "named archive evidence; no latest fallback",
+                "time_precision": "date stays date; unknown actual_at stays null",
+                "roles": {
+                    "actual": "official current statistic in this material",
+                    "official_previous": (
+                        "previously published value reported by this material"
+                    ),
+                    "prior_revised": "上期值（本次修订后）",
+                },
+                "continuous_version": (
+                    "null until explicitly evidence-bound; "
+                    "local revision=1 is not first release"
+                ),
+                "surprise": "null: no qualified stable pre-release consensus source",
+            },
             "series_ids": list(self.profile.series_ids),
             "query_defaults": {
                 "local_only": self.profile is CPI_PROFILE,
@@ -273,6 +301,13 @@ class TimeSeriesHost:
                 "initialization_preset_months": PRESET_MONTHS,
             },
         }
+
+    def releases(self, params):
+        require_parameters(params, {"event_id", "as_of", "read_mode", "source_version"})
+        if not self.query_allowed:
+            raise WebError("local_read_not_authorized", 403)
+        with self.service() as service:
+            return ReleaseRecords(service.store).read(**params)
 
     def query(self, params):
         require_parameters(
@@ -590,13 +625,13 @@ def timeseries_router(host, *, profile=CPI_PROFILE):
         pairs = request.query_params.multi_items()
         if len(dict(pairs)) != len(pairs):
             raise WebError("duplicate_parameter")
-        if operation != "query" and pairs:
+        if operation not in {"query", "releases"} and pairs:
             raise WebError("unsupported_parameters")
         if operation == "jobs":
             return {"jobs": host.journal.list()}
         return (
-            host.query(dict(pairs))
-            if operation == "query"
+            getattr(host, operation)(dict(pairs))
+            if operation in {"query", "releases"}
             else getattr(host, operation.replace("-", "_"))()
         )
 
@@ -617,6 +652,7 @@ def timeseries_router(host, *, profile=CPI_PROFILE):
         "jobs",
         "executions",
         "api-help",
+        "releases",
     ):
         router.add_api_route(
             "/" + operation,
