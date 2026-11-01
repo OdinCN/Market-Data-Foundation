@@ -1,0 +1,217 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FastAPI",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/r5/retail/timeseries/status": {
+      "get": {
+        "summary": "Retail Timeseries Status",
+        "operationId": "retail_timeseries_status_api_r5_retail_timeseries_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/retail/timeseries/query": {
+      "get": {
+        "summary": "Retail Timeseries Query",
+        "operationId": "retail_timeseries_query_api_r5_retail_timeseries_query_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/retail/timeseries/api-help": {
+      "get": {
+        "summary": "Retail Timeseries Api-Help",
+        "operationId": "retail_timeseries_api_help_api_r5_retail_timeseries_api_help_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/retail/timeseries/jobs": {
+      "get": {
+        "summary": "Retail Timeseries Jobs",
+        "operationId": "retail_timeseries_jobs_api_r5_retail_timeseries_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Submit",
+        "operationId": "submit_api_r5_retail_timeseries_jobs_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/retail/timeseries/executions": {
+      "get": {
+        "summary": "Retail Timeseries Executions",
+        "operationId": "retail_timeseries_executions_api_r5_retail_timeseries_executions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/retail/timeseries/strategy": {
+      "get": {
+        "summary": "Retail Timeseries Strategy",
+        "operationId": "retail_timeseries_strategy_api_r5_retail_timeseries_strategy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Strategy",
+        "operationId": "update_strategy_api_r5_retail_timeseries_strategy_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "title": "Enabled"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["enabled"],
+                "title": "RetailStrategyCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Update Strategy",
+        "operationId": "update_strategy_api_r5_retail_timeseries_strategy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "title": "Enabled"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["enabled"],
+                "title": "RetailStrategyCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/retail/timeseries/schedule": {
+      "get": {
+        "summary": "Retail Timeseries Schedule",
+        "operationId": "retail_timeseries_schedule_api_r5_retail_timeseries_schedule_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/retail/timeseries/jobs/resume": {
+      "post": {
+        "summary": "Submit",
+        "operationId": "submit_api_r5_retail_timeseries_jobs_resume_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

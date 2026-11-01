@@ -315,6 +315,13 @@ class CensusRetailRangeSource:
                     timeout=20.0,
                     max_response_bytes=MAX_RESPONSE_BYTES,
                 )
+            except RetailSourceError as error:
+                raise RetailSourceError(
+                    error.classification,
+                    max(error.attempts, attempt - 1),
+                    http_status=error.http_status,
+                    retry_at=error.retry_at,
+                ) from None
             except Exception as error:
                 classification, transient = classify_source_exception(error)
             else:

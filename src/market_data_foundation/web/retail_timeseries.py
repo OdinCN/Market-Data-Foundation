@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, StrictBool
 from starlette.concurrency import run_in_threadpool
 
 from market_data_foundation.historical.census_retail_timeseries_source import (
@@ -13,11 +14,30 @@ from market_data_foundation.historical.census_retail_timeseries_source import (
 )
 from market_data_foundation.historical.retail_timeseries import RetailServiceError
 from market_data_foundation.historical.retail_timeseries_store import RetailStorageError
-from market_data_foundation.web.cpi_timeseries_api import admitted_job
+from market_data_foundation.web.cpi_timeseries_api import (
+    admitted_job,
+    admitted_strategy,
+    failure,
+)
 from market_data_foundation.web.cpi_timeseries_dispatch import dispatch_job
 from market_data_foundation.web.cpi_timeseries_jobs import WebError
 
 PREFIX = "/api/r5/retail/timeseries"
+
+
+class RetailStrategyCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: StrictBool
+
+
+STRATEGY_BODY = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "application/json": {"schema": RetailStrategyCommand.model_json_schema()}
+        },
+    }
+}
 
 
 def json_value(value):
@@ -213,6 +233,8 @@ def timeseries_router(host=None, *, authorize=None):
                     else getattr(host, operation.replace("-", "_"))()
                 )
                 return JSONResponse(json_value(result))
+            except WebError as error:
+                return failure(error)
             except Exception as error:
                 if isinstance(
                     error, (RetailServiceError, RetailSourceError, RetailStorageError)
@@ -235,8 +257,8 @@ def timeseries_router(host=None, *, authorize=None):
         return get
 
     for operation in (
-        ("status", "query", "api-help", "jobs", "executions")
-        if hasattr(host, "journal")
+        ("status", "query", "api-help", "jobs", "executions", "strategy", "schedule")
+        if host is None or hasattr(host, "journal")
         else ("status", "query", "api-help")
     ):
         router.add_api_route(
@@ -245,7 +267,43 @@ def timeseries_router(host=None, *, authorize=None):
             methods=["GET"],
             name="retail_timeseries_" + operation,
         )
-    if hasattr(host, "journal"):
+    if host is None or hasattr(host, "journal"):
+
+        @router.put("/strategy", openapi_extra=STRATEGY_BODY)
+        @router.post("/strategy", openapi_extra=STRATEGY_BODY)
+        async def update_strategy(request: Request):
+            try:
+                check = Request(dict(request.scope, method="PUT"))
+                if not admitted_strategy(check, prefix=PREFIX):
+                    raise WebError("operator_not_authorized", 403)
+                body = bytearray()
+                async for part in request.stream():
+                    body.extend(part)
+                    if len(body) > 4096:
+                        raise WebError("request_body_too_large", 413)
+                import json
+
+                from market_data_foundation.web.cpi_timeseries_api import (
+                    reject_json_constant,
+                    unique_json_object,
+                )
+
+                command = json.loads(
+                    body,
+                    object_pairs_hook=unique_json_object,
+                    parse_constant=reject_json_constant,
+                )
+                if (
+                    not isinstance(command, dict)
+                    or set(command) != {"enabled"}
+                    or type(command["enabled"]) is not bool
+                ):
+                    raise WebError("invalid_strategy_parameters")
+                if host is None:
+                    raise WebError("retail_timeseries_not_enabled", 503)
+                return await run_in_threadpool(host.update_strategy, command)
+            except Exception as error:
+                return failure(error)
 
         @router.post("/jobs")
         @router.post("/jobs/resume")

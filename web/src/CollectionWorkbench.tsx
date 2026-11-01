@@ -389,7 +389,7 @@ export function CollectionWorkbench({
       (filter === "all" || filter === keyOf(RETAIL)),
   );
   const macroRecords = [
-    ...(executionSchedule === "all" &&
+    ...((executionSchedule === "all" || executionSchedule === "retail-auto") &&
     (filter === "all" || filter === keyOf(RETAIL))
       ? (retailRecords.data?.executions ?? []).map((e) => ({
           ...e,
@@ -1465,12 +1465,13 @@ export function CollectionWorkbench({
             </Technical>
           </aside>
         </div>
-      ) : tab === "periodic" && filter === keyOf(RETAIL) ? (
-        <p role="status">
-          零售销售周期策略尚未启用；请使用新建采集手动初始化或更新。
-        </p>
       ) : tab === "periodic" &&
-        (newCpi || newPpi || newPce || newEmployment) ? (
+        (newCpi ||
+          newPpi ||
+          newPce ||
+          newEmployment ||
+          newRetail ||
+          (filter === keyOf(RETAIL) && retailAvailability)) ? (
         <CpiStrategyWorkbench
           transport={transport}
           availability={
@@ -1492,6 +1493,15 @@ export function CollectionWorkbench({
           thirdAvailability={pceAvailability}
           thirdVisible={
             !invalidIdentity && (filter === "all" || filter === keyOf(PCE))
+          }
+          fifthProfile={
+            (newRetail || filter === keyOf(RETAIL)) && retailAvailability
+              ? RETAIL_PROFILE
+              : undefined
+          }
+          fifthAvailability={retailAvailability}
+          fifthVisible={
+            !invalidIdentity && (filter === "all" || filter === keyOf(RETAIL))
           }
           fourthProfile={newEmployment ? EMPLOYMENT_PROFILE : undefined}
           fourthAvailability={employmentAvailability}

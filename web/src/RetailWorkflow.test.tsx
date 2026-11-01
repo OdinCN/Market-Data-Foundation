@@ -6,6 +6,7 @@ import {
   fireEvent,
   within,
   act,
+  waitFor,
 } from "@testing-library/react";
 import App from "./App";
 import { asgi, closeBridges } from "./workflowTestBridge";
@@ -458,3 +459,107 @@ it("retains a lost submission across remount and explicitly resumes the same dur
   expect(posts[1].body?.request_id).toBe(id);
   expect(h.jobs).toHaveLength(1);
 });
+
+it("uses the real shared App retail periodic row with start/pause and truthful details", async () => {
+  const h = fixture();
+  let enabled = false;
+  const strategyCalls: string[] = [];
+  const transport: Transport = async (input, init) => {
+    const path = String(input);
+    if (path === `${profile.basePath}/strategy`) {
+      strategyCalls.push(init?.method ?? "GET");
+      if (init?.method === "PUT")
+        enabled = JSON.parse(String(init.body)).enabled;
+      return response({
+        exists: strategyCalls.includes("PUT"),
+        enabled,
+        history_start: "1992-01",
+        next_due: null,
+        next_release_at: "2026-11-17T13:30:00Z",
+        execution_state: enabled ? "idle" : "paused",
+        worker: { state: "paused", last_heartbeat_at: "2026-11-01T03:00:00Z" },
+        policy: {},
+        last_result: null,
+      });
+    }
+    if (path === `${profile.basePath}/schedule`)
+      return response({
+        calendar_status: "fresh",
+        calendar: {
+          acquired_at: "2026-11-01T02:00:00Z",
+          error: "census_retail_calendar_failure",
+        },
+        targets: [
+          {
+            reference_month: "2026-10",
+            release_at: "2026-11-17T13:30:00Z",
+            target: {
+              state: "awaiting_provider",
+              classification: "target_month_not_returned",
+              next_attempt_at: "2026-11-17T13:31:00Z",
+            },
+            history: { state: "blocked" },
+          },
+        ],
+      });
+    return h.transport(input, init);
+  };
+  location.hash = `ui=r5&view=collection&tab=periodic&periodic_asset=${keyOf(RETAIL)}`;
+  render(<App transport={transport} />);
+  const row = await screen.findByRole("row", {
+    name: /官方发布自动采集.*美国 零售销售/,
+  });
+  await waitFor(() =>
+    expect(
+      within(row)
+        .getByRole("button", { name: "启动" })
+        .hasAttribute("disabled"),
+    ).toBe(false),
+  );
+  expect(strategyCalls.every((m) => m === "GET")).toBe(true);
+  fireEvent.click(row);
+  expect(await screen.findByText("零售销售 策略详情")).toBeTruthy();
+  expect(screen.getByText("2026-11-17 21:30:00 北京时间")).toBeTruthy();
+  expect(screen.getByText("target_month_not_returned")).toBeTruthy();
+  expect(screen.getByText(/继续使用有效缓存/)).toBeTruthy();
+  fireEvent.click(within(row).getByRole("button", { name: "启动" }));
+  await screen.findByRole("button", { name: "暂停" });
+  fireEvent.click(screen.getByRole("button", { name: "暂停" }));
+  await screen.findByRole("button", { name: "启动" });
+  expect(strategyCalls.filter((m) => m === "PUT")).toHaveLength(2);
+  expect(h.calls.some((c) => /\/cpi\/timeseries/.test(c.path))).toBe(false);
+});
+
+it.each(["loading", "failed"])(
+  "keeps retail periodic identity when availability is %s",
+  async (state) => {
+    const h = fixture();
+    const transport: Transport = async (input, init) => {
+      if (String(input) === `${profile.basePath}/status`) {
+        if (state === "loading") return new Promise<Response>(() => {});
+        return response({ classification: "retail_not_bound" }, 503);
+      }
+      return h.transport(input, init);
+    };
+    location.hash = `ui=r5&view=collection&tab=periodic&periodic_asset=${keyOf(RETAIL)}`;
+    render(<App transport={transport} />);
+    const row = await screen.findByRole("row", {
+      name: /官方发布自动采集.*美国 零售销售/,
+    });
+    expect(
+      within(row)
+        .getByRole("button", { name: "启动" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    fireEvent.click(row);
+    expect(
+      await screen.findByText(
+        state === "loading"
+          ? "零售销售 策略正在读取…"
+          : "零售销售 策略读取失败，等待重读。",
+      ),
+    ).toBeTruthy();
+    expect(h.calls.every((c) => c.method === "GET")).toBe(true);
+    expect(h.calls.some((c) => /\/cpi\/timeseries/.test(c.path))).toBe(false);
+  },
+);

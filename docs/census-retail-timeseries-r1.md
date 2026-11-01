@@ -363,3 +363,46 @@ shared new-collection and execution list/detail are the only retail workbench.
 ### Execution accounting
 
 Manual execution coverage counts the six source inputs in the requested range; the preceding 12 months are reported separately as calculation buffers. Confirmed source row absence completes with a source-coverage gap, while local readback or collection failures remain unsuccessful. New observations and changes to existing inputs are separate counters. The service retains `saved_points` as total appended versions and adds `saved_observations` / `saved_revisions`; shared execution details display the latter two. Logical provider requests are counted separately from wire attempts and retained batches.
+
+## 官方日历周期采集（DEV 显式绑定）
+
+共享周期任务页预置零售单行，只有启动/暂停。策略、真实 worker 心跳、
+官方下次事件、月份计划和真实执行分别显示；启动策略不等于 worker 已运行。
+GET strategy/schedule/executions/status 不启动、不请求 Census、不建表、不补历史。
+`PUT` 或 `POST /api/r5/retail/timeseries/strategy` 只接受 `{"enabled":true/false}`；
+沿用共享的 Origin、权限与凭据准入。零售 OpenAPI/生成 TS 位于
+`web/src/retail.openapi.json` / `retail.generated.ts`。
+
+官方表只解析 Advance Monthly Retail Trade Report 的 Data Month；08:30
+America/New_York 随 DST 转 UTC 持久化，页面显示北京时间。TBA、移除、失效日历
+阻止执行，不推算日期。日历六小时刷新，缓存最多有效24小时；失败记录保留，
+成功获取时间不前移。刷新失败按5/15/30/60分钟退避，429遵守共享 Retry-After。
+过去且未跟踪的发布不排入旧历史队列，已跟踪同月改期保留执行身份与完成状态。
+
+当期一次采集六原始输入和12个月比较缓冲。请求成功但目标月任一输入缺席，
+继续等待，不能以旧月份或已有本地值判当期成功。每阶段最多10次、每事件最多
+预留30次 HTTP；15/30/60/120/300/900/1800/3600秒退避加0–2秒抖动。
+日历、手动、周期和当前补缺口请求共用独立 Census 控制文件：滚动24小时400次
+实际请求、串行准入、最小间隔及429冷却。失败和超时也计预算，不回退 provider。
+当期完成后只做一次最近12个月历史核实（另加12月缓冲），不重跑240月初始化；
+更早修订需手动指定范围。原控制组/比率/官方 MPCSM 和版本时间语义保持。
+计划时间不是实际发布时间，响应观察与本地入库确认分别记录。
+
+Runtime 新可选参数 `retail_schedule_path`、`retail_request_control_path`；省略时
+在既有 retail_job_directory 的父目录分别使用 `retail-schedule.json`、
+`retail-census-request-control.json`，策略为 schedule 同目录 `retail-strategy.json`。
+保留原零售 jobs/artifacts 和四族路径，拒绝复用其他族状态或请求控制文件。
+Web CLI 对应 `--retail-schedule-path`、`--retail-request-control-path`。
+独立共享 worker 使用 `scripts/mdf_cpi_timeseries_worker.py --asset retail
+--opt-in-retail-worker --allow-collect`，并显式传入 `--retail-schedule-path`、
+`--retail-job-directory`、`--retail-artifacts-path`（必须含 artifacts 目录）、
+`--retail-request-control-path`；其他 config/package/environment/pg 及原 CPI
+占位路径参数沿用已有 worker CLI。Web 与 worker 必须指向同一套零售路径。
+暂停 worker 仍写真实心跳，但不刷新日历或采集；UI 暂停返回后没有新的来源调用。
+
+手动与周期共用零售 journal 串行锁，每次尝试记录 request_id=collection_id。
+已知来源未就绪使用新尝试身份，保留旧结果；中断/本地提交未知停止自动重写。
+先查 executions 的真实身份和分类，通过既有 `POST jobs/resume` 显式用原身份、
+原范围核实 retained batch，成功后 worker 只读取已完成回执并解除该月份阻塞，
+不重发已保留响应。预算耗尽需人工检查，停启不重置预算或执行进度。
+T05 `source_qualified=false` 保留；以上不声明完成真实未来发布或 DEV 部署验收。

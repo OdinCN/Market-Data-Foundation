@@ -2,9 +2,13 @@
 
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from types import SimpleNamespace
 
 from market_data_foundation.historical.cpi_timeseries import month_at, month_number
+from market_data_foundation.historical.retail_release_scheduler import (
+    RETAIL_PROFILE,
+    RetailAutoStrategy,
+    RetailReleaseScheduler,
+)
 from market_data_foundation.historical.retail_timeseries import RetailTimeSeriesService
 from market_data_foundation.historical.retail_timeseries_store import (
     PostgresRetailStore,
@@ -21,7 +25,6 @@ from market_data_foundation.web.retail_timeseries import (
 )
 
 RETAIL_SCHEMA = "mdf_retail_timeseries_dev_r1"
-RETAIL_PROFILE = SimpleNamespace(key="retail", label="零售销售")
 
 
 class RetailContinuousHost:
@@ -45,6 +48,8 @@ class RetailContinuousHost:
         allow_collect=False,
         allow_source=False,
         clock=lambda: datetime.now(UTC),
+        schedule_path=None,
+        calendar_fetcher=None,
     ):
         if any(
             type(v) is not bool for v in (query_allowed, allow_collect, allow_source)
@@ -62,6 +67,17 @@ class RetailContinuousHost:
         )
         self.clock = clock
         self.journal = JobJournal(job_directory, profile=self.profile)
+        self.scheduler = RetailReleaseScheduler(
+            self,
+            schedule_path or self.journal.directory.parent / "retail-schedule.json",
+            clock=clock,
+            calendar_fetcher=calendar_fetcher,
+        )
+        self.auto_strategy = RetailAutoStrategy(
+            self.scheduler,
+            self.scheduler.state_path.with_name("retail-strategy.json"),
+            clock=clock,
+        )
 
     def upstream_access(self, source):
         allowed = (
@@ -131,7 +147,7 @@ class RetailContinuousHost:
             "web_capabilities": self.capabilities(source),
             "source": source,
             "collection_scope": {"max_months": 2400, "series": "all_six_raw_inputs"},
-            "periodic": {"enabled": False, "worker": "not_enabled"},
+            "periodic": self.strategy(),
         }
 
     def query(self, params):
@@ -159,7 +175,7 @@ class RetailContinuousHost:
         return {
             **result,
             "boundary": (
-                "DEV manual collection only; periodic worker not enabled; "
+                "DEV manual and official-calendar periodic collection; "
                 "T05 is not continuous qualification"
             ),
             "collection": (
@@ -169,14 +185,25 @@ class RetailContinuousHost:
             ),
         }
 
+    strategy = TimeSeriesHost.strategy
+
+    def update_strategy(self, command):
+        with self.scheduler._locked():
+            return TimeSeriesHost.update_strategy(self, command)
+
+    schedule = TimeSeriesHost.schedule
+
     def executions(self):
         return {
             "executions": [
-                dict(j, id=j["job_id"], origin="manual") for j in self.journal.list()
+                dict(j, id=j["job_id"], origin=j.get("origin", "manual"))
+                for j in self.journal.list()
             ]
         }
 
-    def submit(self, command, *, on_started=None, resume=False):
+    def submit(
+        self, command, *, on_started=None, resume=False, origin="manual", stage=None
+    ):
         validate_command(command, 2400)
         existing = self.journal.read(command["request_id"])
         if existing is not None:
@@ -206,6 +233,8 @@ class RetailContinuousHost:
             now = self.clock().isoformat()
             job = dict(
                 command,
+                origin=existing.get("origin", origin) if existing else origin,
+                stage=existing.get("stage", stage) if existing else stage,
                 job_id=command["request_id"],
                 collection_id=command["request_id"],
                 state="running",

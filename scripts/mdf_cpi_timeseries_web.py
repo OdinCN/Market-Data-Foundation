@@ -11,6 +11,7 @@ from pathlib import Path
 
 from mdf_b3_pce_dev import PreviewHandler
 from mdf_b3_pce_r5_preview import CandidateHandler
+from starlette.requests import Request
 
 from market_data_foundation.canonical.model import require
 from market_data_foundation.web.cpi_pg_readonly_scope import DevReadIdentity
@@ -68,6 +69,13 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_job(request, prefix="/api/r5/employment/timeseries")
                 or admitted_job(request, prefix="/api/r5/retail/timeseries")
                 or (
+                    request.url.path == "/api/r5/retail/timeseries/strategy"
+                    and admitted_strategy(
+                        Request(dict(request.scope, method="PUT")),
+                        prefix="/api/r5/retail/timeseries",
+                    )
+                )
+                or (
                     request.url.path == "/api/r5/retail/timeseries/jobs/resume"
                     and admitted_job_resume(request)
                 )
@@ -79,6 +87,7 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_strategy(request, prefix="/api/r5/ppi/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/pce/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/employment/timeseries")
+                or admitted_strategy(request, prefix="/api/r5/retail/timeseries")
             )
         return super().request_admitted(request)
 
@@ -140,6 +149,8 @@ def main():
     parser.add_argument("--allow-retail-source-query", action="store_true")
     parser.add_argument("--retail-job-directory", type=Path)
     parser.add_argument("--retail-artifacts-path", type=Path)
+    parser.add_argument("--retail-schedule-path", type=Path)
+    parser.add_argument("--retail-request-control-path", type=Path)
     args = parser.parse_args()
     if args.enable_ppi_timeseries:
         if not args.ppi_history_start:
@@ -212,6 +223,8 @@ def main():
         retail_allow_source=args.allow_retail_source_query,
         retail_job_directory=args.retail_job_directory,
         retail_artifacts_path=args.retail_artifacts_path,
+        retail_schedule_path=args.retail_schedule_path,
+        retail_request_control_path=args.retail_request_control_path,
     )
     # Jobs own independent services and a nonblocking execution lock. Readers
     # can inspect the durable running record while one POST waits on a provider.

@@ -4,6 +4,7 @@ import { format } from "prettier";
 
 for (const [source, output] of [
   ["../openapi.json", "../src/api.generated.ts"],
+  ["../src/retail.openapi.json", "../src/retail.generated.ts"],
   ["../src/management.openapi.json", "../src/management.generated.ts"],
 ]) {
   const target = new URL(output, import.meta.url);

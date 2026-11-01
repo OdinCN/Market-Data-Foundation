@@ -21,12 +21,17 @@ from market_data_foundation.web.readonly_host import ReadonlySettings
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--asset", choices=("cpi", "ppi", "pce", "employment"), default="cpi"
+        "--asset", choices=("cpi", "ppi", "pce", "employment", "retail"), default="cpi"
     )
     parser.add_argument("--opt-in-cpi-worker", action="store_true")
     parser.add_argument("--opt-in-ppi-worker", action="store_true")
     parser.add_argument("--opt-in-pce-worker", action="store_true")
     parser.add_argument("--opt-in-employment-worker", action="store_true")
+    parser.add_argument("--opt-in-retail-worker", action="store_true")
+    parser.add_argument("--retail-schedule-path", type=Path)
+    parser.add_argument("--retail-job-directory", type=Path)
+    parser.add_argument("--retail-artifacts-path", type=Path)
+    parser.add_argument("--retail-request-control-path", type=Path)
     parser.add_argument("--employment-schedule-path", type=Path)
     parser.add_argument("--employment-job-directory", type=Path)
     parser.add_argument("--employment-history-start")
@@ -57,6 +62,17 @@ def build_runtime(args):
     paths = [args.schedule_path, args.job_directory]
     ppi = args.asset == "ppi"
     pce = args.asset == "pce"
+    retail = args.asset == "retail"
+    if retail:
+        retail_paths = [
+            args.retail_schedule_path,
+            args.retail_job_directory,
+            args.retail_artifacts_path,
+            args.retail_request_control_path,
+        ]
+        if any(p is None for p in retail_paths):
+            raise ValueError("retail_independent_paths_required")
+        paths += retail_paths
     if ppi:
         if args.ppi_schedule_path is None or args.ppi_job_directory is None:
             raise ValueError("ppi_independent_paths_required")
@@ -88,6 +104,16 @@ def build_runtime(args):
             metadata_permission="allowed", read_permission="allowed"
         ),
         allow_collect=args.allow_collect and args.asset == "cpi",
+        retail_enabled=retail,
+        retail_schedule_path=args.retail_schedule_path,
+        retail_job_directory=args.retail_job_directory,
+        retail_artifacts_path=args.retail_artifacts_path,
+        retail_request_control_path=args.retail_request_control_path,
+        retail_access=CpiQueryAccess(
+            metadata_permission="allowed" if retail else "denied",
+            read_permission="allowed" if retail else "denied",
+        ),
+        retail_allow_collect=args.allow_collect and retail,
         employment_enabled=args.asset == "employment",
         employment_schedule_path=args.employment_schedule_path,
         employment_job_directory=args.employment_job_directory,
@@ -139,6 +165,8 @@ def main(argv=None):
             host = runtime.timeseries
         elif args.asset == "ppi":
             host = runtime.ppi_timeseries
+        elif args.asset == "retail":
+            host = runtime.retail_timeseries
         elif args.asset == "employment":
             host = runtime.employment_timeseries
         else:

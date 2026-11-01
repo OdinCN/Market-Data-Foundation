@@ -227,6 +227,9 @@ export default function App({
     transport,
     generation,
     !page.invalid &&
+      (!collectionList ||
+        page.fields.get("tab") !== "periodic" ||
+        collectionFilter !== keyOf(RETAIL)) &&
       (macroIdentity !== RETAIL.identity ||
         (collectionList && collectionFilter !== keyOf(RETAIL))) &&
       (macroIdentity !== EMPLOYMENT.identity ||

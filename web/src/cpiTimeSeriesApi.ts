@@ -1,3 +1,4 @@
+import type { paths as RetailPaths } from "./retail.generated";
 import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import type { Transport } from "./api";
 import { normalizeRetailResult } from "./retailTimeSeriesAdapter";
@@ -602,7 +603,9 @@ export async function saveCpiStrategy(
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled }),
+      body: JSON.stringify({
+        enabled,
+      } satisfies RetailPaths["/api/r5/retail/timeseries/strategy"]["put"]["requestBody"]["content"]["application/json"]),
       signal,
     },
     20000,

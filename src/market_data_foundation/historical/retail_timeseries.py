@@ -157,6 +157,9 @@ class RetailTimeSeriesService:
             "provider_attempts": attempts,
             "retained_provider_attempts": sum(b.attempts for b in completed),
             "retry_at": retry_at if failure else None,
+            "response_observed_at": min(
+                (b.observed_at for b in completed), default=None
+            ),
             "resume": "reuse collection_id and exact range; successful inputs are "
             "reconciled locally",
         }

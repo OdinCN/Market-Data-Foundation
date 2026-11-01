@@ -49,7 +49,9 @@ def official_releases(snapshot, *, exclude_absent=False, profile=CPI_PROFILE):
             and evidence.get("reference_month") == month
             and isinstance(source, str)
             and source.startswith(
-                "https://www.bea.gov/"
+                "https://www.census.gov/"
+                if profile.key == "retail"
+                else "https://www.bea.gov/"
                 if profile.key == "pce"
                 else "https://www.bls.gov/"
             )
@@ -161,7 +163,11 @@ def next_release_at(snapshot, now, *, profile=CPI_PROFILE):
     # Official ICS dates remain valid even while reference-month mapping waits.
     calendar = snapshot.get("calendar", {})
     if str(calendar.get("source", "")).startswith(
-        "https://www.bea.gov/" if profile.key == "pce" else "https://www.bls.gov/"
+        "https://www.census.gov/"
+        if profile.key == "retail"
+        else "https://www.bea.gov/"
+        if profile.key == "pce"
+        else "https://www.bls.gov/"
     ):
         for event in calendar.get("events", {}).values():
             at = instant(event.get("release_at"))

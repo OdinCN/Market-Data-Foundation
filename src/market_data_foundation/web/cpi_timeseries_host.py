@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.requests import Request
 
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
@@ -214,6 +215,9 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         employment_calendar_fetcher=None,
         employment_reference_fetcher=None,
         retail_enabled=False,
+        retail_schedule_path=None,
+        retail_request_control_path=None,
+        retail_calendar_fetcher=None,
         retail_access=CpiQueryAccess(),
         retail_allow_collect=False,
         retail_allow_source=False,
@@ -527,6 +531,54 @@ class TimeSeriesRuntime(ReadonlyRuntime):
                 ]
             ):
                 raise ValueError("retail_independent_paths_required")
+            from market_data_foundation.historical.retail_release_scheduler import (
+                calendar_fetcher,
+            )
+
+            retail_schedule_path = Path(
+                retail_schedule_path
+                or Path(retail_job_directory).parent / "retail-schedule.json"
+            )
+            retail_request_control_path = Path(
+                retail_request_control_path
+                or Path(retail_job_directory).parent
+                / "retail-census-request-control.json"
+            )
+            new_files = [
+                retail_schedule_path,
+                retail_request_control_path,
+                retail_schedule_path.with_name("retail-strategy.json"),
+            ]
+            isolated = (
+                resolved
+                + [p.resolve() for p in prior]
+                + [self.request_control.state_path.resolve()]
+            )
+            isolated += [
+                Path(p).with_name(name).resolve()
+                for p, name in (
+                    (schedule_path, "strategy.json"),
+                    (ppi_schedule_path, "ppi-strategy.json"),
+                    (pce_schedule_path, "pce-strategy.json"),
+                    (employment_schedule_path, "employment-strategy.json"),
+                )
+                if p is not None
+            ]
+            if hasattr(self, "bea_request_control"):
+                isolated.append(self.bea_request_control.state_path.resolve())
+            if (
+                any(not p.is_absolute() or ".." in p.parts for p in new_files)
+                or len({p.resolve() for p in new_files}) != len(new_files)
+                or any(
+                    a.resolve() == b or b in a.resolve().parents
+                    for a in new_files
+                    for b in isolated
+                )
+            ):
+                raise ValueError("retail_independent_control_paths_required")
+            self.retail_request_control = CpiRequestControl(
+                retail_request_control_path, clock=clock
+            )
             self.retail_timeseries = RetailContinuousHost(
                 packages=self.packages,
                 read_service_factory=retail_read_service_factory
@@ -541,6 +593,9 @@ class TimeSeriesRuntime(ReadonlyRuntime):
                 )
                 if retail_allow_source
                 else None,
+                schedule_path=retail_schedule_path,
+                calendar_fetcher=retail_calendar_fetcher
+                or calendar_fetcher(self.retail_request_control),
                 job_directory=retail_job_directory,
                 clock=clock,
                 query_allowed=retail_access.metadata_permission == "allowed"
@@ -579,8 +634,20 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             raise WebError("postgres_profile_changed", 503)
         source = None
         if credential_loader is not None:
+            from market_data_foundation.historical.census_retail_live import (
+                ExactCensusTransport,
+            )
+            from market_data_foundation.historical.retail_release_scheduler import (
+                CensusControlledTransport,
+            )
+
             source = CensusRetailRangeSource(
-                enabled=True, credential=credential_loader(), clock=self.clock
+                transport=CensusControlledTransport(
+                    ExactCensusTransport(), self.retail_request_control
+                ),
+                enabled=True,
+                credential=credential_loader(),
+                clock=self.clock,
             )
         if write:
             password = self._secret("postgres", "password")
@@ -910,9 +977,14 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
         job_post = any(admitted_job(request, prefix=prefix) for prefix in prefixes)
         if request.url.path == "/api/r5/retail/timeseries/jobs/resume":
             job_post = admitted_retail_job(request)
-        strategy_put = any(
-            admitted_strategy(request, prefix=prefix) for prefix in prefixes
-        )
+        strategy_put = (
+            request.method == "POST"
+            and request.url.path == "/api/r5/retail/timeseries/strategy"
+            and admitted_strategy(
+                Request(dict(request.scope, method="PUT")),
+                prefix="/api/r5/retail/timeseries",
+            )
+        ) or any(admitted_strategy(request, prefix=prefix) for prefix in prefixes)
         error = None
         if request.method not in {"GET", "HEAD"} and not (
             config_put or job_post or strategy_put
