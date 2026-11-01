@@ -179,10 +179,12 @@ class InMemoryRetailStore:
         return self.pending.get(batch_id(collection, request))
 
     def save_batch(self, collection, batch):
+        self.last_write_counts = None
         bid = batch_id(collection, batch.request)
         self.stage_batch(collection, batch)
         with self.lock:
             if bid in self.batches:
+                self.last_write_counts = (0, 0)
                 return 0
             changes = []
             for cell in batch.cells:
@@ -201,6 +203,10 @@ class InMemoryRetailStore:
                     RetailRevision(cell, revision, bid, batch.observed_at, available)
                 )
             self.batches[bid] = batch
+            self.last_write_counts = (
+                sum(revision == 1 for _, revision in changes),
+                sum(revision > 1 for _, revision in changes),
+            )
             return len(changes)
 
     def read_range(self, start, end, *, as_of=None, basis="observed"):
@@ -327,6 +333,7 @@ class PostgresRetailStore:
         return self.archive.load(collection, request)
 
     def save_batch(self, collection, batch):
+        self.last_write_counts = None
         info = getattr(self.connection, "info", None)
         if (
             info is not None
@@ -335,6 +342,7 @@ class PostgresRetailStore:
             raise RetailStorageError("retail_top_level_transaction_required")
         locator = self.stage_batch(collection, batch)
         bid, changed = batch_id(collection, batch.request), 0
+        observations = revisions = 0
         c, s = self.connection, self.s
         try:
             with c.transaction():
@@ -400,6 +408,8 @@ class PostgresRetailStore:
                             ),
                         )
                         changed += 1
+                        observations += old is None
+                        revisions += old is not None
             # Confirmation is sampled after acknowledged commit; replay confirms
             # unknown outcomes now, never fabricates an earlier availability time.
             available = _now(self.clock)
@@ -422,6 +432,7 @@ class PostgresRetailStore:
             raise RetailStorageError("retail_storage_outcome_unknown") from None
         except Exception:
             raise RetailStorageError("retail_storage_write_failed") from None
+        self.last_write_counts = (observations, revisions)
         return changed
 
     def read_range(self, start, end, *, as_of=None, basis="observed"):

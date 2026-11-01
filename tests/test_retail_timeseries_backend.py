@@ -65,7 +65,9 @@ def test_revisions_content_only_and_raw_lineage():
     store = InMemoryRetailStore(clock=lambda: AT + timedelta(days=10))
     first = batch()
     assert store.save_batch("one", first) == 78
+    assert store.last_write_counts == (78, 0)
     assert store.save_batch("one", first) == 0
+    assert store.last_write_counts == (0, 0)
     # Different whitespace/hash/observation alone does not invent revisions.
     raw = first.raw + b"\n"
     from market_data_foundation.historical.census_retail_timeseries_source import (
@@ -82,6 +84,7 @@ def test_revisions_content_only_and_raw_lineage():
     table = payload("2025-09", "2026-09")
     target(table, "2026-09", "441")[table[0].index("cell_value")] = "11"
     assert store.save_batch("three", batch(table, observed=AT + timedelta(days=2))) == 1
+    assert store.last_write_counts == (0, 1)
     assert store.status() == dict(
         batch_count=3, observation_count=79, revision_count=1, latest_month="2026-09"
     )
@@ -698,3 +701,15 @@ def test_store_cutoff_requires_aware_time_and_status_excludes_missing_headline(
     store = InMemoryRetailStore(clock=lambda: AT + timedelta(days=1))
     store.save_batch("missing", batch(table, start="2026-08"))
     assert store.status()["latest_month"] == "2026-08"
+
+
+def test_collection_execution_counters_do_not_count_retained_requests():
+    svc = service()
+    first = svc.initialize("2026-09", "2026-09", collection_id="counter-case")
+    assert first["saved_points"] == first["saved_observations"] == 78
+    assert first["saved_revisions"] == 0
+    assert first["provider_requests"] == first["provider_attempts"] == 1
+    replay = svc.initialize("2026-09", "2026-09", collection_id="counter-case")
+    assert replay["saved_points"] == replay["saved_observations"] == 0
+    assert replay["saved_revisions"] == 0
+    assert replay["provider_requests"] == replay["provider_attempts"] == 0

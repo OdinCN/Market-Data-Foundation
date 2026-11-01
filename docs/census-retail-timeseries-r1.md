@@ -291,3 +291,75 @@ three revisions; unchanged recollection created none. Read-only ASGI requests,
 historical cutoffs, unknown-confirmation masking and reconciliation passed.
 The temporary schema was removed; all four existing family schemas and grants
 were unchanged. A long-lived retail schema and shared runtime remain unbound.
+
+## Shared DEV Web candidate (2026-11-01, offline implementation)
+
+The shared `create_timeseries_preview` / `TimeSeriesRuntime` now accepts explicit
+retail bindings. This code has not switched the running DEV service, created its
+long-lived schema, granted privileges or made a real Census request. T05 remains
+`source_qualified=False`; its fixed snapshot is navigation metadata, never proof
+of continuous qualification. Retail periodic policy/calendar worker is not enabled.
+The existing four families retain their own factories, schemas and strategy state.
+
+Root extends its existing `scripts/mdf_cpi_timeseries_web.py` invocation (including
+all existing four-family arguments) with:
+
+```text
+--enable-retail-timeseries --allow-retail-local-read
+--retail-job-directory /ABS/retail-jobs
+--retail-artifacts-path /ABS/artifacts/retail-timeseries
+```
+
+`--allow-retail-collect` separately enables manual collection;
+`--allow-retail-source-query` separately permits nonpersisting current-gap reads.
+Both also require the stored `macro/retail` capability and effective **Census**
+credential. Enable `retail` through the existing package UI/API while preserving
+the current enabled capability set and CAS revision. Do not replace the entire
+set with only retail. Existing `[census].api_key` is the legacy trusted reference;
+a package-scoped private Census reference takes precedence, without fallback on
+failure. No browser may select a config directory, schema or secret reference.
+Construction loads no credentials, connects nowhere and creates no directories.
+
+The trusted in-process factory is `create_timeseries_preview(settings,
+enabled=True, ..., retail_enabled=True, retail_access=explicit_access,
+retail_job_directory=absolute_jobs, retail_artifacts_path=absolute_artifacts,
+retail_allow_collect=True)`. Its `app.state.timeseries_runtime.retail_timeseries`
+is the bound Host; `runtime.retail_read_service()` yields local-only storage with
+no archive/source, while `runtime.retail_write_service(credential_loader=...)`
+constructs `PostgresRetailStore` plus `FileRetailBatchArchive` and the exact Census
+range source. Injected retail read/write/query factories are also supported for
+trusted Host tests. Readers use the existing DEV config and enforced PostgreSQL
+session read-only connection. Only collection constructs a write connection.
+
+Root first reviews/applies `schema_sql("mdf_retail_timeseries_dev_r1")`, supplies
+DEV ownership and `odin_dba` USAGE/SELECT/default SELECT grants, and verifies no
+write/schema CREATE grants. This task executed none of those actions. Root then
+starts the shared app with the flags above, verifies `/status`, and submits:
+
+```text
+POST /api/r5/retail/timeseries/jobs
+Origin: http://192.168.10.20:18761
+Content-Type: application/json
+{"request_id":"ROOT-GENERATED-CANONICAL-UUID","action":"initialize","start":"2006-10","end":"2026-09"}
+```
+
+Replace the UUID placeholder; ranges are editable, and status supplies the current
+240-month suggestion. The response returns 202 once `running` is durable, while
+the existing single-host journal lock serializes work. Repeating the same command
+reads its existing outcome; conflicting reuse returns 409. Refresh GET `/jobs`
+and `/executions`; each job's id is exactly its service `collection_id`. A failed
+or interrupted job can be explicitly POSTed to `/jobs/resume` with the **same**
+command. Retained successful inputs reconcile locally; persisted `retry_at` is
+honored. Unknown submission is not automatically reissued. Archives and jobs must
+be retained across restarts. There is no automatic retry worker.
+
+Read back via GET `/query?start=2026-08&end=2026-09&local_only=true` and optionally
+history with URL-encoded `as_of=...%2B08%3A00`. GET never performs DDL or writes.
+Six-input coverage includes the comparison buffer; absent Census rows fail the
+job's completeness check, explicit null/suppression remains visible, never zero.
+The shared asset page reuses query/help/raw response/copy/calendar/table controls;
+shared new-collection and execution list/detail are the only retail workbench.
+
+### Execution accounting
+
+Manual execution coverage counts the six source inputs in the requested range; the preceding 12 months are reported separately as calculation buffers. Confirmed source row absence completes with a source-coverage gap, while local readback or collection failures remain unsuccessful. New observations and changes to existing inputs are separate counters. The service retains `saved_points` as total appended versions and adds `saved_observations` / `saved_revisions`; shared execution details display the latter two. Logical provider requests are counted separately from wire attempts and retained batches.

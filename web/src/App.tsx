@@ -3,6 +3,7 @@ import {
   PPI_PROFILE,
   PCE_PROFILE,
   EMPLOYMENT_PROFILE,
+  RETAIL_PROFILE,
 } from "./macroTimeSeriesProfile";
 import { beijingToday, nowBeijingIso, toBeijingIso } from "./beijingTime";
 import { useEffect, useMemo, useState } from "react";
@@ -45,6 +46,8 @@ import {
   project,
   keyOf,
   EMPLOYMENT,
+  RETAIL,
+  retailOperationMatches,
   employmentOperationMatches,
   sameKey,
 } from "./workflowModel";
@@ -202,13 +205,15 @@ export default function App({
     ((!identity && !operation) || sameKey(key, CPI));
   const macroIdentity = identity ?? operationEntry?.asset?.identity;
   const macroProfile =
-    macroIdentity === EMPLOYMENT.identity
-      ? EMPLOYMENT_PROFILE
-      : macroIdentity === PCE.identity
-        ? PCE_PROFILE
-        : macroIdentity === PPI.identity
-          ? PPI_PROFILE
-          : CPI_PROFILE;
+    macroIdentity === RETAIL.identity
+      ? RETAIL_PROFILE
+      : macroIdentity === EMPLOYMENT.identity
+        ? EMPLOYMENT_PROFILE
+        : macroIdentity === PCE.identity
+          ? PCE_PROFILE
+          : macroIdentity === PPI.identity
+            ? PPI_PROFILE
+            : CPI_PROFILE;
   const collectionList =
     page.view === "collection" &&
     ["periodic", "executions"].includes(page.fields.get("tab") ?? "new");
@@ -222,6 +227,8 @@ export default function App({
     transport,
     generation,
     !page.invalid &&
+      (macroIdentity !== RETAIL.identity ||
+        (collectionList && collectionFilter !== keyOf(RETAIL))) &&
       (macroIdentity !== EMPLOYMENT.identity ||
         (collectionList && collectionFilter !== keyOf(EMPLOYMENT))) &&
       (macroIdentity !== PCE.identity ||
@@ -279,14 +286,29 @@ export default function App({
     page.view === "collection",
     EMPLOYMENT_PROFILE,
   );
+  const retailAvailability = useCpiAvailability(
+    transport,
+    generation,
+    !page.invalid &&
+      ["assets", "collection"].includes(page.view) &&
+      (!operation || retailOperationMatches(operationEntry)) &&
+      ((macroIdentity === RETAIL.identity &&
+        (!revision || revision === RETAIL.revision)) ||
+        (collectionList &&
+          (collectionFilter === "all" || collectionFilter === keyOf(RETAIL)))),
+    page.view === "collection",
+    RETAIL_PROFILE,
+  );
   const macroAvailability =
-    macroProfile.id === "employment"
-      ? employmentAvailability
-      : macroProfile.id === "pce"
-        ? pceAvailability
-        : macroProfile.id === "ppi"
-          ? ppiAvailability
-          : cpiAvailability;
+    macroProfile.id === "retail"
+      ? retailAvailability
+      : macroProfile.id === "employment"
+        ? employmentAvailability
+        : macroProfile.id === "pce"
+          ? pceAvailability
+          : macroProfile.id === "ppi"
+            ? ppiAvailability
+            : cpiAvailability;
   const catalog = useResource<Catalog>(
     (signal) => request(transport, "/api/r5/cpi", query, signal),
     [transport, generation, query, wantsCatalog, page.view, page.invalid],
@@ -367,7 +389,8 @@ export default function App({
           !asset &&
           !sameKey(key, PPI) &&
           !sameKey(key, PCE) &&
-          !sameKey(key, EMPLOYMENT)) ||
+          !sameKey(key, EMPLOYMENT) &&
+          !sameKey(key, RETAIL)) ||
           (!revision &&
             (page.view !== "assets" ||
               !!operation ||
@@ -610,12 +633,14 @@ export default function App({
                         (!revision ||
                           revision === macroProfile.asset.revision) &&
                         (!operation ||
-                          (macroProfile.id === "employment"
-                            ? employmentOperationMatches(operationEntry)
-                            : sameKey(
-                                selectedAsset?.key,
-                                macroProfile.asset,
-                              ))) ? (
+                          (macroProfile.id === "retail"
+                            ? retailOperationMatches(operationEntry)
+                            : macroProfile.id === "employment"
+                              ? employmentOperationMatches(operationEntry)
+                              : sameKey(
+                                  selectedAsset?.key,
+                                  macroProfile.asset,
+                                ))) ? (
                           <>
                             <CpiTimeSeries
                               profile={macroProfile}
@@ -707,6 +732,7 @@ export default function App({
                       ppiAvailability={ppiAvailability}
                       pceAvailability={pceAvailability}
                       employmentAvailability={employmentAvailability}
+                      retailAvailability={retailAvailability}
                     />
                   )}
                   {page.view === "platform" && (

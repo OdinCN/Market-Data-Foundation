@@ -1,9 +1,9 @@
-import { CPI, PPI, PCE, EMPLOYMENT, type Key } from "./workflowModel";
+import { CPI, PPI, PCE, EMPLOYMENT, RETAIL, type Key } from "./workflowModel";
 
 export type MacroProfile = Readonly<{
-  id: "cpi" | "ppi" | "pce" | "employment";
+  id: "cpi" | "ppi" | "pce" | "employment" | "retail";
   label: string;
-  provider: "BLS" | "BEA";
+  provider: "BLS" | "BEA" | "Census";
   asset: Key;
   basePath: string;
   series: readonly (readonly [string, string, string, string])[];
@@ -83,3 +83,17 @@ export const EMPLOYMENT_PROFILE: MacroProfile = Object.freeze({
 });
 export const profileScopeText = (profile: MacroProfile) =>
   `${profile.series.map(([, title]) => title).join("、")}，共${profile.series.length}种口径。`;
+
+export const RETAIL_PROFILE: MacroProfile = Object.freeze({
+  id: "retail",
+  label: "零售销售",
+  provider: "Census",
+  asset: RETAIL,
+  basePath: "/api/r5/retail/timeseries",
+  series: [
+    ["headline", "总体 · 季调", "headline", "sa"],
+    ["control", "控制组（MDF推导）· 季调", "core", "sa"],
+  ] as const,
+  historyNotice:
+    "仅季调（SA）。金额单位为百万当期美元；控制组为 MDF 推导：44X72−441−444−447−722，包含445。1/3/6/12月变化为未年化比率，官方 MPCSM 另以 percent 保留。六原始输入一起采集。初始化默认240个月可编辑；首次本地修订不是官方首发。自动周期策略尚未启用。",
+});

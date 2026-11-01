@@ -88,6 +88,16 @@ class RetailTimeSeriesService:
         plan = source.plan(start, end)
         collection = collection_key(collection_id or uuid4().hex)
         completed, staged, saved, attempts = [], [], 0, 0
+        requests = observations = revisions = 0
+
+        def save(batch):
+            nonlocal observations, revisions
+            count = self.store.save_batch(collection, batch)
+            added, revised = self.store.last_write_counts
+            observations += added
+            revisions += revised
+            return count
+
         failure = persist_failure = None
         try:
             self.store.ensure_schema()
@@ -96,18 +106,19 @@ class RetailTimeSeriesService:
                 batch = self.store.retained_batch(collection, request)
                 if batch is not None:
                     staged.append(batch)
-                    saved += self.store.save_batch(collection, batch)
+                    saved += save(batch)
                     completed.append(batch)
 
             def persist(batch):
-                nonlocal saved, attempts, persist_failure
+                nonlocal saved, attempts, requests, persist_failure
                 # Count and stage before attempting DB: uncertain commits replay
                 # this exact guarded response without another source request.
+                requests += 1
                 attempts += batch.attempts
                 try:
                     self.store.stage_batch(collection, batch)
                     staged.append(batch)
-                    saved += self.store.save_batch(collection, batch)
+                    saved += save(batch)
                     completed.append(batch)
                 except Exception as error:
                     persist_failure = getattr(
@@ -122,6 +133,8 @@ class RetailTimeSeriesService:
             )
             # Source includes all newly attempted exchanges, including successful
             # response followed by local persistence failure.
+            if not persist_failure and getattr(error, "attempts", 0) > attempts:
+                requests += 1
             attempts = max(attempts, getattr(error, "attempts", 0))
             retry_at = getattr(error, "retry_at", None)
         return {
@@ -138,6 +151,9 @@ class RetailTimeSeriesService:
             "staged_batches": len({b.request for b in completed + staged}),
             "planned_batches": len(plan.requests),
             "saved_points": saved,
+            "saved_observations": observations,
+            "saved_revisions": revisions,
+            "provider_requests": requests,
             "provider_attempts": attempts,
             "retained_provider_attempts": sum(b.attempts for b in completed),
             "retry_at": retry_at if failure else None,

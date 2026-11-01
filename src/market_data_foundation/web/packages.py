@@ -90,9 +90,19 @@ class PackageHost:
             raise PackageError("illegal_source_change", 422, "REJECTED")
         references = record.credential_refs if record else {}
         inherited = wanted - set(references)
+        enabled = set(record.enabled_capability_ids) if record else set()
+        required = {
+            s
+            for c in self.catalog.package(package_id).capabilities
+            if c.capability_id in enabled
+            for s in c.required_sources
+        }
+        # Effective references for every enabled capability need no legacy
+        # inspection of an unrelated inactive source. That source stays unknown.
+        inspect_legacy = inherited and (not references or required & inherited)
         states = (
             self.credentials(self.environment_id, package_id, record)
-            if inherited and self.credentials
+            if inspect_legacy and self.credentials
             else []
         )
         if not isinstance(states, (list, tuple)) or not all(

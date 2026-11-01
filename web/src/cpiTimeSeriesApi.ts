@@ -1,5 +1,6 @@
 import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import type { Transport } from "./api";
+import { normalizeRetailResult } from "./retailTimeSeriesAdapter";
 import { useVisiblePolling } from "./useVisiblePolling";
 
 export const CPI_TIMESERIES = CPI_PROFILE.basePath;
@@ -258,6 +259,7 @@ export type CpiPoint = {
   // Employment omits index_value; only AHE carries ratios and percent changes.
   // Inflation response validation below still requires its complete field set.
   index_value?: string | number | null;
+  official_mpcsm_percent?: string | null;
   mom_pct?: string | number | null;
   yoy_pct?: string | number | null;
   change_1m_ratio?: string | number | null;
@@ -301,10 +303,12 @@ export function buildCpiQueryRequest(
   const parameters = new URLSearchParams({
     start: scope.start,
     end: scope.end,
-    ...(profile.id === "employment"
-      ? { series: scope.series ?? profile.series.map((s) => s[0]).join(",") }
-      : { basket: scope.basket, adjustment: scope.adjustment }),
-    measure: scope.measure,
+    ...(profile.id === "retail"
+      ? {}
+      : profile.id === "employment"
+        ? { series: scope.series ?? profile.series.map((s) => s[0]).join(",") }
+        : { basket: scope.basket, adjustment: scope.adjustment }),
+    ...(profile.id === "retail" ? {} : { measure: scope.measure }),
     query_mode: history ? "history" : "current",
     local_only: history ? "true" : "false",
     ...(history
@@ -327,13 +331,14 @@ export async function queryCpiRange(
   const history = scope.query_mode === "history" || !!scope.as_of;
   const basis = history ? "available" : "observed";
   const request = buildCpiQueryRequest(scope, profile);
-  const result = await requestCpiJson<CpiResult>(
+  let result = await requestCpiJson<CpiResult>(
     transport,
     request.path,
     { method: request.method, signal },
     history ? 20000 : 180000,
     onExchange,
   );
+  if (profile.id === "retail") result = normalizeRetailResult(result, scope);
   const selected = profile.series
     .filter((s) =>
       profile.id === "employment"

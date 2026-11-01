@@ -229,6 +229,62 @@ export function CpiQueryApiHelp({
   request: RequestDescription;
   profile?: MacroProfile;
 }) {
+  if (profile.id === "retail")
+    return (
+      <section aria-label="零售销售 API说明" className="cpi-api-help">
+        <h4>GET {profile.basePath}/query</h4>
+        <p>{profile.historyNotice}</p>
+        <CompactTable
+          label="查询参数"
+          headers={["参数", "语义"]}
+          rows={[
+            ["start/end", "必填 YYYY-MM，含首尾；自动加入12个月比较缓冲"],
+            ["local_only", "true 禁止上游；GET 不入库、不创建表"],
+            ["query_mode", "current / history；历史只读本地"],
+            [
+              "as_of",
+              "带时区截止时间；北京时间 +08:00 在 URL 中编码为 %2B08%3A00",
+            ],
+            [
+              "as_of_basis / vintage_mode",
+              "observed / available；历史默认 available，同一截止约束全部输入及基期",
+            ],
+          ]}
+        />
+        <CompactTable
+          label="响应字段"
+          headers={["字段", "含义 / 单位"]}
+          rows={[
+            [
+              "headline_level/control_level",
+              "Decimal字符串或null；million_current_usd；控制组为MDF推导",
+            ],
+            [
+              "headline_rates/control_rates",
+              "1/3/6/12月 Decimal ratio，0.01=1%；未经年化",
+            ],
+            [
+              "official_headline_mpcsm",
+              "Census官方 percent；与推导 ratio 独立",
+            ],
+            [
+              "source_cells/input_versions",
+              "六输入、原始值、状态/原因、修订、原始哈希与指针、观察/入库时间；缺值不补0",
+            ],
+            [
+              "observed_at/available_at",
+              "采集/本地提交时间，不是官方发布时间；revision 1 不代表官方首发",
+            ],
+          ]}
+        />
+        <RequestPreview request={request} />
+        <p>
+          GET {profile.basePath}/api-help 提供完整接口合同。POST{" "}
+          {profile.basePath}/jobs 提交后台串行采集；request_id 与 collection_id
+          相同。恢复保留原请求及范围。周期策略未启用。
+        </p>
+      </section>
+    );
   const employment = profile.id === "employment";
   const permission = availability.data?.web_capabilities.query;
   return (

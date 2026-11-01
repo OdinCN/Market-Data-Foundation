@@ -29,6 +29,12 @@ from market_data_foundation.web.readonly_host import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def admitted_job_resume(request):
+    from market_data_foundation.web.retail_timeseries import admitted_retail_job
+
+    return admitted_retail_job(request)
+
+
 class TimeSeriesHandler(CandidateHandler):
     body_methods = {"POST", "PUT"}
     body_limit = 16384
@@ -60,6 +66,11 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_job(request, prefix="/api/r5/ppi/timeseries")
                 or admitted_job(request, prefix="/api/r5/pce/timeseries")
                 or admitted_job(request, prefix="/api/r5/employment/timeseries")
+                or admitted_job(request, prefix="/api/r5/retail/timeseries")
+                or (
+                    request.url.path == "/api/r5/retail/timeseries/jobs/resume"
+                    and admitted_job_resume(request)
+                )
             )
         if request.method == "PUT":
             return (
@@ -123,6 +134,12 @@ def main():
     parser.add_argument("--employment-history-start")
     parser.add_argument("--allow-employment-local-read", action="store_true")
     parser.add_argument("--allow-employment-collect", action="store_true")
+    parser.add_argument("--enable-retail-timeseries", action="store_true")
+    parser.add_argument("--allow-retail-local-read", action="store_true")
+    parser.add_argument("--allow-retail-collect", action="store_true")
+    parser.add_argument("--allow-retail-source-query", action="store_true")
+    parser.add_argument("--retail-job-directory", type=Path)
+    parser.add_argument("--retail-artifacts-path", type=Path)
     args = parser.parse_args()
     if args.enable_ppi_timeseries:
         if not args.ppi_history_start:
@@ -189,6 +206,12 @@ def main():
         pce_history_start=args.pce_history_start,
         pce_request_control_path=args.bea_request_control_path,
         pce_allow_collect=args.allow_pce_collect,
+        retail_enabled=args.enable_retail_timeseries,
+        retail_access=access(args.allow_retail_local_read),
+        retail_allow_collect=args.allow_retail_collect,
+        retail_allow_source=args.allow_retail_source_query,
+        retail_job_directory=args.retail_job_directory,
+        retail_artifacts_path=args.retail_artifacts_path,
     )
     # Jobs own independent services and a nonblocking execution lock. Readers
     # can inspect the durable running record while one POST waits on a provider.

@@ -1,0 +1,347 @@
+import { afterEach, expect, it, vi } from "vitest";
+import {
+  cleanup,
+  render,
+  screen,
+  fireEvent,
+  within,
+  act,
+} from "@testing-library/react";
+import App from "./App";
+import { asgi, closeBridges } from "./workflowTestBridge";
+import { RETAIL, keyOf } from "./workflowModel";
+import { RETAIL_PROFILE as profile } from "./macroTimeSeriesProfile";
+import { buildCpiQueryRequest, type CpiJob } from "./cpiTimeSeriesApi";
+import type { Transport } from "./api";
+const flush = () => act(async () => {});
+const response = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), { status });
+function fixture() {
+  const calls: {
+    path: string;
+    method: string;
+    body?: Record<string, string>;
+  }[] = [];
+  const jobs: CpiJob[] = [];
+  let original = "";
+  let loseReceipt = false;
+  const transport: Transport = async (path, init) => {
+    const url = new URL(String(path), "http://fixture");
+    const method = init?.method ?? "GET";
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    calls.push({ path: String(path), method, body });
+    if (url.pathname === "/api/r5/packages")
+      return response({
+        status: "OK",
+        packages: [
+          {
+            package_id: "macro",
+            name: "宏观",
+            history_completeness: "COMPLETE",
+            capabilities: [{ title: "美国零售销售", definition_ref: RETAIL }],
+            assets: [
+              {
+                identity: RETAIL.identity,
+                revisions: [
+                  {
+                    definition_ref: RETAIL,
+                    capability_enabled: true,
+                    local_holding: "PRESENT",
+                    source_entries: [],
+                    metadata_view_permission: "allowed",
+                    upstream_read: { allowed: true },
+                    local_read: { allowed: true },
+                    collect: { allowed: true },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+    if (
+      url.pathname === "/api/r5/sources" ||
+      url.pathname === "/api/r3/management"
+    )
+      return response({ status: "OK", entries: [], instances: [] });
+    if (!url.pathname.startsWith(profile.basePath))
+      return response({ classification: "not_enabled" }, 503);
+    if (url.pathname.endsWith("/status"))
+      return response({
+        latest_months: { headline: "2026-09", control: "2026-09" },
+        observation_count: 78,
+        revision_count: 0,
+        batch_count: 1,
+        web_capabilities: { query: true, collect: true, reason: null },
+        initialization: {
+          preset_id: "retail_240",
+          months: 240,
+          start: "2006-10",
+          end: "2026-09",
+          available: true,
+          reason: null,
+          anchor_basis: "previous_month",
+        },
+      });
+    if (url.pathname.endsWith("/query")) {
+      const calc = (value: string) => ({ value, reason: null });
+      const rates = Object.fromEntries(
+        [1, 3, 6, 12].map((h) => [h, calc("0.0123456789012345678901234567")]),
+      );
+      original =
+        " \n" +
+        JSON.stringify({
+          start_month: url.searchParams.get("start"),
+          end_month: url.searchParams.get("end"),
+          persisted: false,
+          provider_requests: 0,
+          provider_attempts: 0,
+          as_of: url.searchParams.get("as_of"),
+          as_of_basis: url.searchParams.get("as_of") ? "available" : "observed",
+          query_mode: url.searchParams.get("query_mode"),
+          units: {
+            levels: "million_current_usd",
+            rates: "ratio",
+            official_headline_mpcsm: "percent",
+          },
+          points: ["2026-08", "2026-09"].map((month) => ({
+            month,
+            headline_level: calc("123456.123456789"),
+            control_level: calc("100001.000000001"),
+            headline_rates: rates,
+            control_rates: rates,
+            official_headline_mpcsm: { value: "1.3", unit: "percent" },
+            source_cells: Array.from({ length: 6 }, () => ({
+              value: "1",
+              status: "available",
+            })),
+          })),
+          unknown: "retain raw",
+        }) +
+        "\n";
+      return new Response(original);
+    }
+    if (url.pathname.endsWith("/jobs/resume")) {
+      const job = jobs.find((j) => j.request_id === body.request_id)!;
+      job.state = "running";
+      return response(job, 202);
+    }
+    if (url.pathname.endsWith("/jobs")) {
+      if (method === "POST")
+        jobs.push({
+          ...body,
+          job_id: body.request_id,
+          state: "running",
+          created_at: "2026-11-01T00:00:00Z",
+          started_at: "2026-11-01T00:00:00Z",
+          finished_at: null,
+          classification: null,
+          result: null,
+        });
+      if (method === "POST" && loseReceipt) {
+        loseReceipt = false;
+        throw new Error("synthetic_lost_receipt");
+      }
+      return response(
+        method === "POST" ? jobs.at(-1) : { jobs },
+        method === "POST" ? 202 : 200,
+      );
+    }
+    if (url.pathname.endsWith("/executions"))
+      return response({
+        executions: jobs.map((j) => ({ ...j, id: j.job_id, origin: "manual" })),
+      });
+    return response({ classification: "not_found" }, 404);
+  };
+  return {
+    transport,
+    calls,
+    jobs,
+    raw: () => original,
+    loseNext: () => {
+      loseReceipt = true;
+    },
+  };
+}
+afterEach(() => {
+  closeBridges();
+  cleanup();
+  localStorage.clear();
+  sessionStorage.clear();
+  location.hash = "";
+  vi.restoreAllMocks();
+});
+it("selects retail in the real shared App, preserves amount/raw precision, actual URL and descending months", async () => {
+  const h = fixture();
+  location.hash = "ui=r5&view=assets";
+  render(<App transport={h.transport} />);
+  fireEvent.click(await screen.findByRole("row", { name: /美国零售销售/ }));
+  const query = within(
+    await screen.findByRole("region", { name: "零售销售 范围查询" }),
+  );
+  fireEvent.change(query.getByLabelText("开始月份"), {
+    target: { value: "2026-08" },
+  });
+  fireEvent.click(query.getByRole("button", { name: "查询数据" }));
+  await flush();
+  const table = query.getByRole("table", { name: "零售销售 范围数据" });
+  expect(
+    within(table)
+      .getAllByRole("row")
+      .slice(1)
+      .map((r) => r.textContent?.slice(0, 7)),
+  ).toEqual(["2026-09", "2026-09", "2026-08", "2026-08"]);
+  expect(query.getAllByText("123456.123456789").length).toBe(2);
+  expect(query.getByText("金额（百万当期美元）")).toBeTruthy();
+  expect(query.getByText("官方 MPCSM（percent）")).toBeTruthy();
+  fireEvent.click(query.getByRole("tab", { name: "原始响应" }));
+  expect(query.getByLabelText("原始 HTTP 正文").textContent).toBe(h.raw());
+  const actual = h.calls.find((c) => c.path.includes("/query?"))!.path;
+  expect(query.getByLabelText("本次请求 URL").textContent).toContain(actual);
+  expect(new URL(actual, "http://fixture").searchParams.has("measure")).toBe(
+    false,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "展开窗体" }));
+  expect(screen.getByRole("button", { name: "收起窗体" })).toBeTruthy();
+  fireEvent.click(query.getByRole("tab", { name: "API说明" }));
+  expect(query.getByText("GET /api/r5/retail/timeseries/query")).toBeTruthy();
+  expect(
+    h.calls.some(
+      (c) =>
+        /\/cpi\/(timeseries\/)?(query|jobs)/.test(c.path) ||
+        c.path.includes("retail-2026-09"),
+    ),
+  ).toBe(false);
+});
+it("uses shared new collection, editable 240-month preset, single submission and selected execution detail", async () => {
+  const h = fixture();
+  location.hash = `ui=r5&view=collection&tab=new&asset=${RETAIL.identity}&asset_revision=${RETAIL.revision}`;
+  render(<App transport={h.transport} />);
+  const form = within(
+    await screen.findByRole("region", { name: "零售销售 受控采集" }),
+  );
+  fireEvent.change(form.getByLabelText("采集方式"), {
+    target: { value: "initialize" },
+  });
+  await flush();
+  expect((form.getByLabelText("采集开始月份") as HTMLInputElement).value).toBe(
+    "2006-10",
+  );
+  fireEvent.change(form.getByLabelText("采集开始月份"), {
+    target: { value: "2026-08" },
+  });
+  fireEvent.click(form.getByRole("checkbox"));
+  const submit = form.getByRole("button", { name: "提交 零售销售 采集" });
+  fireEvent.click(submit);
+  fireEvent.click(submit);
+  await flush();
+  expect(h.calls.filter((c) => c.method === "POST")).toHaveLength(1);
+  expect(h.jobs[0].start).toBe("2026-08");
+  expect(h.jobs[0].job_id).toBe(h.jobs[0].request_id);
+  fireEvent.click(
+    form.getByRole("button", { name: /美国 零售销售 · 初始化采集/ }),
+  );
+  await screen.findByRole("heading", { name: "采集执行记录" });
+  expect(location.hash).toContain(`job=${h.jobs[0].job_id}`);
+  expect(location.hash).toContain(encodeURIComponent(keyOf(RETAIL)));
+  expect(
+    screen.queryByRole("region", { name: "零售销售 受控采集" }),
+  ).toBeNull();
+  expect(await screen.findByText(h.jobs[0].request_id)).toBeTruthy();
+});
+it("builds retail history with encoded Beijing cutoff and no price-index parameters", () => {
+  const request = buildCpiQueryRequest(
+    {
+      start: "2026-08",
+      end: "2026-09",
+      basket: "all",
+      adjustment: "sa",
+      measure: "index",
+      query_mode: "history",
+      as_of: "2026-11-01T08:00:00+08:00",
+    },
+    profile,
+  );
+  expect(request.path).toContain("%2B08%3A00");
+  const p = new URL(request.path, "http://fixture").searchParams;
+  expect(p.get("local_only")).toBe("true");
+  expect(p.has("basket")).toBe(false);
+  expect(p.has("measure")).toBe(false);
+});
+
+it.each(["matching", "wrong_source", "wrong_binding"])(
+  "retail real catalog exact operation %s guards the shared form",
+  async (variant) => {
+    const bridge = asgi();
+    const catalog = await bridge.exchange({
+      method: "GET",
+      path: "/api/r5/sources",
+    });
+    const entry = catalog.body.entries.find(
+      (e: { asset?: { identity: string } }) =>
+        e.asset?.identity === RETAIL.identity,
+    );
+    expect(entry).toBeTruthy();
+    if (variant === "wrong_source") entry.source_contract.revision = "other";
+    if (variant === "wrong_binding")
+      entry.binding_contract.source.revision = "other";
+    const h = fixture();
+    location.hash = `ui=r5&view=collection&tab=new&asset=${RETAIL.identity}&asset_revision=${RETAIL.revision}&operation=${entry.identity}`;
+    render(
+      <App
+        transport={async (input, init) =>
+          new URL(String(input), "http://fixture").pathname ===
+          "/api/r5/sources"
+            ? response({ ...catalog.body, entries: [entry] })
+            : h.transport(input, init)
+        }
+      />,
+    );
+    if (variant === "matching")
+      await screen.findByRole("region", { name: "零售销售 受控采集" });
+    else {
+      await screen.findByLabelText("采集目标");
+      await flush();
+      expect(
+        screen.queryByRole("region", { name: "零售销售 受控采集" }),
+      ).toBeNull();
+      expect(h.calls.some((c) => c.path.startsWith(profile.basePath))).toBe(
+        false,
+      );
+    }
+  },
+);
+
+it("retains a lost submission across remount and explicitly resumes the same durable retail id", async () => {
+  const h = fixture();
+  location.hash = `ui=r5&view=collection&tab=new&asset=${RETAIL.identity}&asset_revision=${RETAIL.revision}`;
+  const view = render(<App transport={h.transport} />);
+  let form = within(
+    await screen.findByRole("region", { name: "零售销售 受控采集" }),
+  );
+  h.loseNext();
+  fireEvent.click(form.getByRole("checkbox"));
+  fireEvent.click(form.getByRole("button", { name: "提交 零售销售 采集" }));
+  await flush();
+  expect(h.jobs).toHaveLength(1);
+  const id = h.jobs[0].request_id;
+  expect(localStorage.getItem("mdf.retail.timeseries.pending.v1")).toContain(
+    id,
+  );
+  view.unmount();
+  h.jobs[0].state = "unknown";
+  render(<App transport={h.transport} />);
+  form = within(
+    await screen.findByRole("region", { name: "零售销售 受控采集" }),
+  );
+  const resume = await form.findByRole("button", { name: /按原请求恢复采集/ });
+  expect((resume as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(form.getByRole("checkbox"));
+  fireEvent.click(resume);
+  await flush();
+  const posts = h.calls.filter((c) => c.method === "POST");
+  expect(posts).toHaveLength(2);
+  expect(posts[1].path).toBe(profile.basePath + "/jobs/resume");
+  expect(posts[1].body?.request_id).toBe(id);
+  expect(h.jobs).toHaveLength(1);
+});

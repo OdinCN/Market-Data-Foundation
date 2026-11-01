@@ -50,6 +50,32 @@ export function employmentOperationMatches(entry?: DirectoryEntry): boolean {
     binding.mappings.some((mapping) => sameKey(mapping.definition, EMPLOYMENT))
   );
 }
+export const RETAIL: Key = {
+  identity: "mdf.macro.census.retail",
+  revision: "t05-r1",
+};
+export const RETAIL_OPERATION =
+  "mdf.source-candidate.census-marts.retail-2026-09@t05-snapshot-2026-09-r1";
+export function retailOperationMatches(entry?: DirectoryEntry): boolean {
+  const binding = entry?.binding_contract;
+  const source = {
+    identity: "mdf.source-candidate.census-marts.retail-2026-09",
+    revision: "t05-snapshot-2026-09-r1",
+  };
+  return (
+    !!entry &&
+    entry.identity === RETAIL_OPERATION &&
+    sameKey(entry.asset, RETAIL) &&
+    sameKey(entry.source_contract, source) &&
+    sameKey(binding, {
+      identity: "mdf.binding-candidate.census-marts.retail-2026-09",
+      revision: source.revision,
+    }) &&
+    sameKey(binding?.source, source) &&
+    binding?.silent_fallback === false &&
+    binding.mappings.some((mapping) => sameKey(mapping.definition, RETAIL))
+  );
+}
 export const PPI: Key = {
   identity: "mdf.macro.bls.ppi.final-demand",
   revision: "t01-r1",

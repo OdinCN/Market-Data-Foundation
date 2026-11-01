@@ -63,15 +63,19 @@ export const missingText = (reason?: string) =>
     withdrawn: "来源已撤回",
     availability_evidence_insufficient: "当时可用证据不足",
     not_observed: "本地尚无记录",
+    source_operand_unavailable: "金额输入缺值（见原始响应状态）",
+    comparison_level_unavailable: "比较基期金额缺值",
+    current_level_unavailable: "当前金额缺值",
+    comparison_level_zero: "比较基期金额为0，无法计算变化率",
   })[reason ?? ""] ?? "本地尚无记录";
-const measures = [
+const globalMeasures = [
   { value: "index_value", label: "指数" },
   { value: "change_1m_ratio", label: "1月环比" },
   { value: "change_3m_ratio", label: "3月变化" },
   { value: "change_6m_ratio", label: "6月变化" },
   { value: "change_12m_ratio", label: "12月同比" },
 ] as const;
-const baskets = [
+const globalBaskets = [
   { value: "headline", label: "总体" },
   { value: "core", label: "核心" },
 ];
@@ -110,12 +114,8 @@ export function publicationText(
         : null;
   return label ? `${label}：${formatted}` : null;
 }
-const valueText = (
-  value: string | number | null | undefined,
-  ratio: boolean,
-  unit: string,
-) =>
-  value == null
+const valueText = (value: unknown, ratio: boolean, unit: string) =>
+  typeof value !== "number" && typeof value !== "string"
     ? "—"
     : `${ratio ? (Number(value) * 100).toFixed(2) : value}${unit}`;
 
@@ -136,6 +136,23 @@ function CpiTimeSeriesContent({
   availability: CpiAvailability;
 }) {
   const employment = profile.id === "employment";
+  const retail = profile.id === "retail";
+  const measures = retail
+    ? [
+        ...globalMeasures.map((item) =>
+          item.value === "index_value"
+            ? { ...item, label: "金额（百万当期美元）" }
+            : item,
+        ),
+        { value: "official_mpcsm_percent", label: "官方 MPCSM（percent）" },
+      ]
+    : globalMeasures;
+  const baskets = retail
+    ? [
+        { value: "headline", label: "总体" },
+        { value: "core", label: "控制组（MDF推导）" },
+      ]
+    : globalBaskets;
   const [series, setSeries] = useState(profile.series.map((s) => s[0]));
   const cpiSeries = profile.series;
   const availableAdjustments = adjustments.filter((item) =>
@@ -435,7 +452,9 @@ function CpiTimeSeriesContent({
         <p className="small">
           {employment
             ? "就业指标选择直接限定请求系列；缺值不补零。"
-            : "显示指标只控制表格列；实际请求固定 measure=index，不发送列选择参数。"}
+            : retail
+              ? "口径和显示指标控制表格展示；请求读取全部六原始输入及两种口径，不发送价格指数参数。"
+              : "显示指标只控制表格列；实际请求固定 measure=index，不发送列选择参数。"}
         </p>
         <RequestPreview request={request} />
         {pending && <p role="status">正在查询 {profile.label}…</p>}
@@ -524,7 +543,7 @@ function CpiTimeSeriesContent({
                             {columns.map(({ value: field }) => (
                               <td key={field}>
                                 {valueText(
-                                  row.point?.[field],
+                                  row.point?.[field as keyof CpiPoint],
                                   field.endsWith("ratio"),
                                   employment
                                     ? field === "mom_pct" || field === "yoy_pct"

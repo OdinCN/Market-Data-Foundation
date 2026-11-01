@@ -1,4 +1,4 @@
-"""Composable retail read API. No shared UI, worker, credentials or implicit binding."""
+"""Explicit retail read routes and optional durable manual collection binding."""
 
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime
@@ -6,12 +6,16 @@ from decimal import Decimal
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from market_data_foundation.historical.census_retail_timeseries_source import (
     RetailSourceError,
 )
 from market_data_foundation.historical.retail_timeseries import RetailServiceError
 from market_data_foundation.historical.retail_timeseries_store import RetailStorageError
+from market_data_foundation.web.cpi_timeseries_api import admitted_job
+from market_data_foundation.web.cpi_timeseries_dispatch import dispatch_job
+from market_data_foundation.web.cpi_timeseries_jobs import WebError
 
 PREFIX = "/api/r5/retail/timeseries"
 
@@ -162,6 +166,13 @@ class RetailTimeSeriesHost:
         }
 
 
+def admitted_retail_job(request):
+    path = request.url.path
+    if path == PREFIX + "/jobs/resume":
+        request = Request(dict(request.scope, path=PREFIX + "/jobs"))
+    return admitted_job(request, prefix=PREFIX)
+
+
 def timeseries_router(host=None, *, authorize=None):
     router = APIRouter(prefix=PREFIX)
 
@@ -197,6 +208,8 @@ def timeseries_router(host=None, *, authorize=None):
                 result = (
                     host.query(dict(pairs))
                     if operation == "query"
+                    else {"jobs": host.journal.list()}
+                    if operation == "jobs"
                     else getattr(host, operation.replace("-", "_"))()
                 )
                 return JSONResponse(json_value(result))
@@ -221,13 +234,65 @@ def timeseries_router(host=None, *, authorize=None):
 
         return get
 
-    for operation in ("status", "query", "api-help"):
+    for operation in (
+        ("status", "query", "api-help", "jobs", "executions")
+        if hasattr(host, "journal")
+        else ("status", "query", "api-help")
+    ):
         router.add_api_route(
             "/" + operation,
             endpoint(operation),
             methods=["GET"],
             name="retail_timeseries_" + operation,
         )
+    if hasattr(host, "journal"):
+
+        @router.post("/jobs")
+        @router.post("/jobs/resume")
+        async def submit(request: Request):
+            try:
+                if not admitted_retail_job(request):
+                    raise WebError("operator_not_authorized", 403)
+                body = bytearray()
+                async for part in request.stream():
+                    body.extend(part)
+                    if len(body) > 4096:
+                        raise WebError("request_body_too_large", 413)
+                import json
+
+                from market_data_foundation.web.cpi_timeseries_api import (
+                    reject_json_constant,
+                    unique_json_object,
+                )
+
+                command = json.loads(
+                    body,
+                    object_pairs_hook=unique_json_object,
+                    parse_constant=reject_json_constant,
+                )
+
+                def execute(command, *, on_started):
+                    return host.submit(
+                        command,
+                        on_started=on_started,
+                        resume=request.url.path.endswith("/resume"),
+                    )
+
+                result = await run_in_threadpool(dispatch_job, execute, command)
+                return JSONResponse(
+                    json_value(result), 202 if result["state"] == "running" else 200
+                )
+            except WebError as error:
+                return JSONResponse(
+                    {"status": "ERROR", "classification": error.classification},
+                    error.status,
+                )
+            except Exception:
+                return JSONResponse(
+                    {"status": "ERROR", "classification": "retail_submission_unknown"},
+                    503,
+                )
+
     return router
 
 
