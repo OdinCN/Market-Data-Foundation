@@ -12,6 +12,10 @@ from starlette.concurrency import run_in_threadpool
 from market_data_foundation.historical.census_retail_timeseries_source import (
     RetailSourceError,
 )
+from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
+from market_data_foundation.historical.macro_release_records import (
+    ReleaseRecords,
+)
 from market_data_foundation.historical.retail_timeseries import RetailServiceError
 from market_data_foundation.historical.retail_timeseries_store import RetailStorageError
 from market_data_foundation.web.cpi_timeseries_api import (
@@ -21,6 +25,10 @@ from market_data_foundation.web.cpi_timeseries_api import (
 )
 from market_data_foundation.web.cpi_timeseries_dispatch import dispatch_job
 from market_data_foundation.web.cpi_timeseries_jobs import WebError
+from market_data_foundation.web.macro_query_contract import (
+    query_openapi,
+    release_openapi,
+)
 
 PREFIX = "/api/r5/retail/timeseries"
 
@@ -85,6 +93,8 @@ class RetailTimeSeriesHost:
             "query_mode",
             "as_of_basis",
             "vintage_mode",
+            "basket",
+            "columns",
         }
         if set(params) - allowed:
             raise RetailServiceError("unsupported_parameters")
@@ -93,18 +103,86 @@ class RetailTimeSeriesHost:
         local = params.get("local_only", "false")
         if local not in {"true", "false"}:
             raise RetailServiceError("retail_local_only_invalid")
+        from market_data_foundation.historical.cpi_timeseries_cli import InterfaceError
+        from market_data_foundation.historical.macro_research_fields import (
+            selected_columns,
+        )
+
+        basket = params.get("basket")
+        baskets = (
+            ["headline", "control"]
+            if basket is None
+            else basket.replace("core", "control").split(",")
+        )
+        if baskets == ["all"]:
+            baskets = ["headline", "control", "ex_auto"]
+        if (
+            not baskets
+            or not set(baskets) <= {"headline", "control", "ex_auto"}
+            or len(set(baskets)) != len(baskets)
+        ):
+            raise RetailServiceError("invalid_basket")
+        try:
+            columns = selected_columns(params.get("columns"), "retail")
+        except InterfaceError:
+            raise RetailServiceError("invalid_columns") from None
         service = self._service()
         options = {
-            k: v for k, v in params.items() if k not in {"start", "end", "local_only"}
+            k: v
+            for k, v in params.items()
+            if k not in {"start", "end", "local_only", "basket", "columns"}
         }
         # Host and service must independently admit Census access. A read host
         # with source disabled still serves existing data and visible gaps.
-        return service.query_range(
+        result = service.query_range(
             params["start"],
             params["end"],
             local_only=local == "true" or self.allow_source is not True,
             **options,
         )
+        points = []
+        for original in result["points"]:
+            point = dict(original)
+            for name in ("headline", "control", "ex_auto"):
+                if name not in baskets:
+                    point.pop(name + "_level", None)
+                    point.pop(name + "_rates", None)
+                elif columns is not None:
+                    if "index_value" not in columns:
+                        point.pop(name + "_level", None)
+                    point[name + "_rates"] = {
+                        k: v
+                        for k, v in point[name + "_rates"].items()
+                        if f"change_{k}m_ratio" in columns
+                    }
+            if columns is not None and "official_mpcsm_percent" not in columns:
+                point.pop("official_headline_mpcsm", None)
+            if "derivations" in point:
+                point["derivations"] = {
+                    k: v for k, v in point["derivations"].items() if k in baskets
+                }
+            points.append(point)
+        if hasattr(service, "store"):
+            result = ReleaseRecords(service.store).link_result(
+                dict(result, points=points)
+            )
+        return {
+            **result,
+            "points": points,
+            **({"baskets": baskets} if basket is not None else {}),
+            **({"selected_columns": columns} if columns is not None else {}),
+        }
+
+    def releases(self, params):
+        if set(params) - {
+            "event_id",
+            "as_of",
+            "read_mode",
+            "source_version",
+            "reference_month",
+        }:
+            raise WebError("unsupported_parameters")
+        return ReleaseRecords(self._service().store).read(**params)
 
     def api_help(self):
         self._service()
@@ -112,8 +190,42 @@ class RetailTimeSeriesHost:
             "prefix": "/api/r5/retail/timeseries",
             "provider": "Census",
             "dataset": "MARTS",
-            "routes": ["status", "query", "api-help"],
+            "routes": ["status", "query", "api-help", "releases"],
+            "release_records": {
+                "path": PREFIX + "/releases",
+                "parameters": [
+                    "event_id",
+                    "as_of",
+                    "read_mode",
+                    "source_version",
+                    "reference_month",
+                ],
+                "read_only": True,
+                "coverage": (
+                    "retained Census release date/reference month, sales amount, "
+                    "MPCSM and explicit prior change revisions"
+                ),
+                "history_basis": "no latest fallback; as_of is MDF availability",
+            },
+            "baskets": ["headline", "control", "ex_auto", "all"],
+            "columns": [
+                "index_value",
+                "change_1m_ratio",
+                "change_3m_ratio",
+                "change_6m_ratio",
+                "change_12m_ratio",
+                "official_mpcsm_percent",
+            ],
             "parameters": {
+                "basket": (
+                    "optional CSV headline/control/ex_auto or all; core aliases "
+                    "control; default headline,control"
+                ),
+                "columns": (
+                    "optional CSV response columns; omitted preserves existing "
+                    "columns; index_value selects *_level; change_km_ratio selects "
+                    "*_rates[k]; provenance remains"
+                ),
                 "start/end": "required inclusive YYYY-MM; max 2520 input "
                 "months including 12 month buffer",
                 "local_only": "true/false; default false; host and service "
@@ -140,6 +252,14 @@ class RetailTimeSeriesHost:
                 "local evidence); original "
                 "text/null retained",
                 "headline_level": "44X72 SM; million_current_usd, SA, not annualized",
+                "ex_auto_level/ex_auto_rates": (
+                    "MDF derivation 44X72 SM minus 441 SM; same-cutoff inputs, no "
+                    "added source request"
+                ),
+                "derivations": (
+                    "control/ex_auto identity, formula, unit, same cutoff and exact "
+                    "operand input_versions (including comparison months)"
+                ),
                 "control_level": "MDF formula SM44X72-SM441-SM444-SM447-SM722; "
                 "never official Census control",
                 "headline_rates/control_rates": "1/3/6/12 month level ratios; "
@@ -239,17 +359,17 @@ def timeseries_router(host=None, *, authorize=None):
                 pairs = request.query_params.multi_items()
                 if len(dict(pairs)) != len(pairs):
                     raise RetailServiceError("duplicate_parameter")
-                if operation != "query" and pairs:
+                if operation not in {"query", "releases"} and pairs:
                     raise RetailServiceError("unsupported_parameters")
                 result = (
-                    host.query(dict(pairs))
-                    if operation == "query"
+                    getattr(host, operation)(dict(pairs))
+                    if operation in {"query", "releases"}
                     else {"jobs": host.journal.list()}
                     if operation == "jobs"
                     else getattr(host, operation.replace("-", "_"))()
                 )
                 return JSONResponse(json_value(result))
-            except WebError as error:
+            except (WebError, CpiTimeSeriesError) as error:
                 return failure(error)
             except Exception as error:
                 if isinstance(
@@ -273,15 +393,29 @@ def timeseries_router(host=None, *, authorize=None):
         return get
 
     for operation in (
-        ("status", "query", "api-help", "jobs", "executions", "strategy", "schedule")
+        (
+            "status",
+            "query",
+            "api-help",
+            "releases",
+            "jobs",
+            "executions",
+            "strategy",
+            "schedule",
+        )
         if host is None or hasattr(host, "journal")
-        else ("status", "query", "api-help")
+        else ("status", "query", "api-help", "releases")
     ):
         router.add_api_route(
             "/" + operation,
             endpoint(operation),
             methods=["GET"],
             name="retail_timeseries_" + operation,
+            openapi_extra=query_openapi("retail")
+            if operation == "query"
+            else release_openapi()
+            if operation == "releases"
+            else None,
         )
     if host is None or hasattr(host, "journal"):
 

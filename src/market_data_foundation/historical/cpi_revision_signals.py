@@ -13,13 +13,14 @@ from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit
 
-from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
+from market_data_foundation.historical.bls_timeseries_profile import CPI_PROFILE
 from market_data_foundation.historical.bls_web_transport import (
     BlsWebError,
     fetch_bls_page,
 )
 from market_data_foundation.historical.cpi_timeseries_source import validate_month
 
+SERIES_IDS = CPI_PROFILE.series_ids
 ERRATA_URL = "https://www.bls.gov/errata/"
 MAX_SIGNAL_BYTES = 2_000_000
 

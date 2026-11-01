@@ -18,6 +18,8 @@ export function route(): Route {
     "periodic_asset",
     "execution_schedule",
     "asset_revision",
+    "release_event",
+    "release_evidence",
     "operation",
     "reference",
     "as_of",

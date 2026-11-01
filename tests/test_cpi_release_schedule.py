@@ -6,7 +6,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
+from market_data_foundation.historical.bls_timeseries_profile import CPI_PROFILE
 from market_data_foundation.historical.cpi_release_schedule import (
     CALENDAR_MAX_AGE,
     CpiReleaseScheduler,
@@ -16,6 +16,8 @@ from market_data_foundation.historical.cpi_release_schedule import (
     update_window,
 )
 from market_data_foundation.historical.cpi_timeseries import month_range
+
+SERIES_IDS = CPI_PROFILE.series_ids
 
 
 def calendar_html(*rows):
@@ -584,7 +586,9 @@ def test_actual_service_explicit_unavailable_is_not_confused_with_release(
     result = obj.due_check()
     assert result["action"] == expected_action
     target = result["targets"][0]
-    assert len(target["source_unavailable"]) == (4 if missing_month == "2027-01" else 0)
+    assert len(target["source_unavailable"]) == (
+        len(SERIES_IDS) if missing_month == "2027-01" else 0
+    )
     assert target["target_refreshed"] == (expected_action == "updated")
     if expected_action == "updated":
         assert target["last_refresh_complete"] is True

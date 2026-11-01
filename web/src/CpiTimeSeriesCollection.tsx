@@ -64,7 +64,8 @@ const sameIntent = (a: CpiJobIntent, b: CpiJobIntent) =>
   a.request_id === b.request_id &&
   a.action === b.action &&
   a.start === b.start &&
-  a.end === b.end;
+  a.end === b.end &&
+  a.series === b.series;
 export function CpiTimeSeriesCollection(
   props: Parameters<typeof CpiTimeSeriesCollectionContent>[0],
 ) {
@@ -461,8 +462,7 @@ function CpiTimeSeriesCollectionContent({
             )}
             {initializing && !preset?.available && (
               <p role="status">
-                服务暂无默认范围（{preset?.reason || "尚未确认"}
-                ），请自行填写合法月份范围。
+                服务暂无默认范围（尚未确认可用锚点 ），请自行填写合法月份范围。
               </p>
             )}
             {start && end && !validRange && (

@@ -60,8 +60,8 @@ class RecordingService:
         ("overall", "NSA", ("WPUFD4",)),
         ("core", "SA", ("WPSFD49104",)),
         ("core", "NSA", ("WPUFD49104",)),
-        ("all", "SA", ("WPSFD4", "WPSFD49104")),
-        ("all", "NSA", ("WPUFD4", "WPUFD49104")),
+        ("all", "SA", ("WPSFD4", "WPSFD49104", "WPSFD49116")),
+        ("all", "NSA", ("WPUFD4", "WPUFD49104", "WPUFD49116")),
         ("core", "all", ("WPSFD49104", "WPUFD49104")),
     ],
 )

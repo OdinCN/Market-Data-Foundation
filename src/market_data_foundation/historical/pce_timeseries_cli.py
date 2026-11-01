@@ -73,6 +73,7 @@ def main(argv=None, *, service_factory=None, scheduler_factory=None):
                     "basket",
                     "adjustment",
                     "measure",
+                    "columns",
                     "local_only",
                     "as_of",
                     "vintage_mode",

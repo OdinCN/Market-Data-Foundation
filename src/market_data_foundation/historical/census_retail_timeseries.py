@@ -37,6 +37,8 @@ class RetailMonth:
     official_headline_mpcsm: RetailCell
     headline_rates: dict[int, RetailCalculation]
     control_rates: dict[int, RetailCalculation]
+    ex_auto_level: RetailCalculation
+    ex_auto_rates: dict[int, RetailCalculation]
 
 
 def calculate_snapshot(snapshot: RetailInputSnapshot) -> tuple[RetailMonth, ...]:
@@ -78,9 +80,21 @@ def calculate_inputs(plan, source_cells, identity):
             )
         inputs = tuple(
             cells[month, category, "SM"]
-            for category in (CATEGORY_CODES if control else ("44X72",))
+            for category in (
+                ("44X72", "441")
+                if control == "ex_auto"
+                else CATEGORY_CODES
+                if control
+                else ("44X72",)
+            )
         )
-        formula = FORMULA_REVISION if control else "source_SM_44X72"
+        formula = (
+            "SM44X72-SM441:v1"
+            if control == "ex_auto"
+            else FORMULA_REVISION
+            if control
+            else "source_SM_44X72"
+        )
         if any(cell.value is None for cell in inputs):
             return RetailCalculation(
                 None,
@@ -131,6 +145,15 @@ def calculate_inputs(plan, source_cells, identity):
                     },
                     {
                         h: rate(control, level(month_at(n - h), True), h)
+                        for h in HORIZONS
+                    },
+                    level(month, "ex_auto"),
+                    {
+                        h: rate(
+                            level(month, "ex_auto"),
+                            level(month_at(n - h), "ex_auto"),
+                            h,
+                        )
                         for h in HORIZONS
                     },
                 )

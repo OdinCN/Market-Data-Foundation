@@ -21,7 +21,6 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from zoneinfo import ZoneInfo
 
-from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
@@ -42,6 +41,7 @@ from market_data_foundation.historical.cpi_revision_signals import (
 )
 from market_data_foundation.historical.cpi_timeseries_source import validate_month
 
+SERIES_IDS = CPI_PROFILE.series_ids
 CALENDAR_URL = "https://www.bls.gov/schedule/news_release/cpi.htm"
 ICS_URL = "https://www.bls.gov/schedule/news_release/bls.ics"
 _DEFAULT_FETCHER = object()
@@ -1595,6 +1595,7 @@ class CpiReleaseScheduler:
                 month, month, series_ids=self.series_ids, include_buffer=False
             )
             target.update(
+                release_material=result.get("release_material"),
                 last_provider_requests=result.get("provider_requests", 0),
                 last_provider_attempts=result.get("provider_attempts", 0),
                 last_result_complete=result.get("complete") is True,
@@ -1653,6 +1654,7 @@ class CpiReleaseScheduler:
             result = self.service.update_range(
                 start, end, series_ids=self.series_ids, include_buffer=False
             )
+            stage["release_material"] = result.get("release_material")
             stage["source_missing"] = result.get("source_missing", [])
             readback = self._history_readback(start, end, result, stage)
             self._finish(stage, _aware(self.clock()))
@@ -2171,6 +2173,9 @@ class CpiReleaseScheduler:
             result = self.service.update_range(
                 month, month, series_ids=self.series_ids, include_buffer=False
             )
+            stage["release_material"] = result.get("release_material")
+            target["release_material"] = result.get("release_material")
+            target["auto"]["release_material"] = result.get("release_material")
             count = self._actual_http(result)
             if count is None:
                 raise CpiScheduleError("schedule_actual_http_unknown")
@@ -2241,6 +2246,7 @@ class CpiReleaseScheduler:
             result = self.service.update_range(
                 start, batch_end, series_ids=self.series_ids, include_buffer=False
             )
+            stage["release_material"] = result.get("release_material")
             count = self._actual_http(result)
             if count is None:
                 raise CpiScheduleError("schedule_actual_http_unknown")

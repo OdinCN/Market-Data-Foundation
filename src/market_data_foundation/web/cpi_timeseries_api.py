@@ -24,6 +24,8 @@ from market_data_foundation.historical.cpi_timeseries_cli import (
     validate_range,
 )
 from market_data_foundation.historical.cpi_timeseries_http import error_status
+from market_data_foundation.historical.macro_release_records import ReleaseRecords
+from market_data_foundation.historical.macro_research_fields import query_columns
 from market_data_foundation.web.cpi_timeseries_dispatch import dispatch_job
 from market_data_foundation.web.cpi_timeseries_jobs import (
     JobJournal,
@@ -36,6 +38,11 @@ from market_data_foundation.web.cpi_timeseries_policy import (
     automatic_executions,
     initialization_preset,
     strategy_projection,
+)
+from market_data_foundation.web.macro_query_contract import (
+    job_openapi,
+    query_openapi,
+    release_openapi,
 )
 from market_data_foundation.web.package_catalog import PackageError
 from market_data_foundation.web.pce_dev_host import CANDIDATE_ORIGIN, admitted
@@ -123,6 +130,8 @@ class TimeSeriesHost:
         self.max_collect_months, self.clock = max_collect_months, clock
         self.journal = JobJournal(job_directory, profile=profile)
         self.query_factory = query_service_factory
+        if hasattr(getattr(self.scheduler, "service", None), "_call"):
+            self.scheduler.service.material_capture = self.capture_material
         self.auto_strategy = strategy or CpiAutoStrategy(
             scheduler,
             scheduler.state_path.with_name(
@@ -174,8 +183,79 @@ class TimeSeriesHost:
                 "executions",
                 "schedule",
                 "api-help",
+                "releases",
             ],
+            "release_records": {
+                "path": self.prefix + "/releases",
+                "parameters": {
+                    "event_id": "optional exact independent official event identity",
+                    "as_of": "optional aware MDF availability cutoff; inclusive",
+                    "read_mode": "event (default) / source_history",
+                    "source_version": "optional exact YYYY-MM-DD archive version date",
+                    "reference_month": (
+                        "optional YYYY-MM event coverage filter "
+                        "(multiple months supported)"
+                    ),
+                },
+                "read_only": True,
+                "provider_requests": 0,
+                "schema_preparation": "explicit prepare-release-schema CLI only",
+                "source_history": "named archive evidence; no latest fallback",
+                "time_precision": "date stays date; unknown actual_at stays null",
+                "roles": {
+                    "actual": "official current statistic in this material",
+                    "official_previous": (
+                        "previously published value reported by this material"
+                    ),
+                    "prior_revised": "上期值（本次修订后）",
+                },
+                "continuous_version": (
+                    "null until explicitly evidence-bound; "
+                    "local revision=1 is not first release"
+                ),
+                "surprise": (
+                    "per claim actual - qualified named frozen "
+                    "consensus; null + reason otherwise; no "
+                    "official-prior gate"
+                ),
+                "claims": (
+                    "per-scope selected proof; later partial "
+                    "material preserves earlier claims; conflicts "
+                    "and explicit parser corrections traceable"
+                ),
+                "mdf_values": (
+                    "first captured and pre-event last consumable "
+                    "prior use numeric version/batch refs at one "
+                    "cutoff; association requires official "
+                    "version proof"
+                ),
+                "material_acquisition": (
+                    "manual and automatic executions select at "
+                    "most one latest due mapped event; durable "
+                    "dedup/cooldown; material outcome separate "
+                    "from numeric success"
+                ),
+            },
             "series_ids": list(self.profile.series_ids),
+            "series": self.profile.series_metadata,
+            "baskets": [*self.profile.baskets, "all"],
+            "columns": query_columns(self.profile.key),
+            "column_selection": (
+                "optional columns CSV; omitted preserves full response; "
+                "metadata/value alias retained; calculation_missing scoped to "
+                "selected columns"
+            ),
+            "basket_selection": (
+                "single or comma-separated baskets, or all; omitted headline/sa "
+                "(employment uses original five series)"
+            ),
+            "research_presentation": (
+                "CPI short-term SA and annual NSA remain separate series; no splice"
+            ),
+            "provider_status": (
+                "PPI preliminary/revised only from official footnotes; absent "
+                "means unknown, never inferred from MDF revision"
+            ),
             "query_defaults": {
                 "local_only": self.profile is CPI_PROFILE,
                 "query_mode": "current",
@@ -274,6 +354,32 @@ class TimeSeriesHost:
             },
         }
 
+    def capture_material(self, service, start, end, numeric_result):
+        from market_data_foundation.historical.macro_release_acquisition import (
+            capture_for_execution,
+        )
+
+        return capture_for_execution(
+            service,
+            snapshot=self.scheduler.status(),
+            start=start,
+            end=end,
+            state_path=self.scheduler.state_path.with_name(
+                self.profile.key + "-release-material.json"
+            ),
+            numeric_result=numeric_result,
+        )
+
+    def releases(self, params):
+        require_parameters(
+            params,
+            {"event_id", "as_of", "read_mode", "source_version", "reference_month"},
+        )
+        if not self.query_allowed:
+            raise WebError("local_read_not_authorized", 403)
+        with self.service() as service:
+            return ReleaseRecords(service.store).read(**params)
+
     def query(self, params):
         require_parameters(
             params,
@@ -283,6 +389,7 @@ class TimeSeriesHost:
                 "basket",
                 "adjustment",
                 "measure",
+                "columns",
                 "vintage_mode",
                 "as_of",
                 "local_only",
@@ -326,6 +433,8 @@ class TimeSeriesHost:
             upstream=upstream, credential_loader=self.effective_credential
         ) as service:
             result = execute_profile(service, "query", params, profile=self.profile)
+            if hasattr(service, "store"):
+                ReleaseRecords(service.store).link_result(result)
         return self.publication_metadata(result)
 
     def effective_credential(self):
@@ -494,6 +603,9 @@ class TimeSeriesHost:
                         },
                         profile=self.profile,
                     )
+                    material = self.capture_material(
+                        service, command["start"], command["end"], written
+                    )
                 read_start, read_end = command["start"], command["end"]
                 if self.profile.key in {"ppi", "pce", "employment"}:
                     months = [
@@ -528,6 +640,7 @@ class TimeSeriesHost:
                 verified, result = verify_readback(
                     written, readback, command, profile=self.profile
                 )
+                result["release_material"] = material
                 job.update(
                     state="complete" if verified else "failed",
                     result=result,
@@ -590,13 +703,13 @@ def timeseries_router(host, *, profile=CPI_PROFILE):
         pairs = request.query_params.multi_items()
         if len(dict(pairs)) != len(pairs):
             raise WebError("duplicate_parameter")
-        if operation != "query" and pairs:
+        if operation not in {"query", "releases"} and pairs:
             raise WebError("unsupported_parameters")
         if operation == "jobs":
             return {"jobs": host.journal.list()}
         return (
-            host.query(dict(pairs))
-            if operation == "query"
+            getattr(host, operation)(dict(pairs))
+            if operation in {"query", "releases"}
             else getattr(host, operation.replace("-", "_"))()
         )
 
@@ -617,12 +730,18 @@ def timeseries_router(host, *, profile=CPI_PROFILE):
         "jobs",
         "executions",
         "api-help",
+        "releases",
     ):
         router.add_api_route(
             "/" + operation,
             endpoint(operation),
             methods=["GET"],
             name="timeseries_" + operation,
+            openapi_extra=query_openapi((host.profile if host else profile).key)
+            if operation == "query"
+            else release_openapi()
+            if operation == "releases"
+            else None,
         )
 
     @router.put("/strategy")
@@ -648,7 +767,9 @@ def timeseries_router(host, *, profile=CPI_PROFILE):
         except Exception as error:
             return failure(error)
 
-    @router.post("/jobs")
+    @router.post(
+        "/jobs", openapi_extra=job_openapi((host.profile if host else profile).key)
+    )
     async def submit(request: Request):
         try:
             if not admitted_job(request, prefix=prefix):

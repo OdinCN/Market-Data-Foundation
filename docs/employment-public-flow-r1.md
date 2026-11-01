@@ -1,5 +1,7 @@
 # 美国就业公共 DEV 流程 R1
 
+
+当前研究字段扩展及迁移/补史入口见[五族研究字段扩展 R1](macro-research-fields-r1.md)；下文保留此前合同与验收记录。
 开发与审查先读 [五族基线指南](macro-family-development-review.md)；本文保留就业公共流程及迁移证据。
 
 连续就业能力通过显式 `EmploymentTimeSeriesHost` 接入 MACRO 公共流程，前缀

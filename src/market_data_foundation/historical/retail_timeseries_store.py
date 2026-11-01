@@ -251,7 +251,7 @@ class InMemoryRetailStore:
         }
 
 
-def schema_sql(schema=SCHEMA):
+def rates_view_sql(schema=SCHEMA):
     s = identifier(schema)
     levels = ",".join(
         f"max(value) FILTER(WHERE category_code='{c}' AND data_type_code='SM') AS v{i}"
@@ -266,6 +266,27 @@ def schema_sql(schema=SCHEMA):
         f"LEFT JOIN levels p{h} ON p{h}.month=(c.month-interval '{h} month')::date"
         for h in (1, 3, 6, 12)
     )
+    extra_rates = ",".join(
+        f"c.ex_auto::numeric(64,32)/nullif(p{h}.ex_auto,0)-1 "
+        f"AS ex_auto_change_{h}m_ratio"
+        for h in (1, 3, 6, 12)
+    )
+    return f"""CREATE OR REPLACE VIEW {s}.retail_timeseries_rates AS
+ WITH inputs AS (SELECT month,{levels},
+ max(value) FILTER(WHERE data_type_code='MPCSM') AS official_headline_mpcsm_percent
+ FROM {s}.latest GROUP BY month),
+ levels AS (SELECT month,v0 AS headline,v0-v1-v2-v3-v4 AS control,
+ official_headline_mpcsm_percent,v0-v1 AS ex_auto FROM inputs)
+ SELECT c.month,c.headline,c.control,c.official_headline_mpcsm_percent,{rates},
+ c.ex_auto,{extra_rates},'mdf_retail_control_v1'::text AS control_derivation_identity,
+ 'SM44X72-SM441-SM444-SM447-SM722'::text AS control_formula,
+ 'mdf_retail_ex_auto_v1'::text AS ex_auto_derivation_identity,
+ 'SM44X72-SM441:v1'::text AS ex_auto_formula
+ FROM levels c {joins};"""
+
+
+def schema_sql(schema=SCHEMA):
+    s = identifier(schema)
     return f"""CREATE SCHEMA IF NOT EXISTS {s};
 CREATE TABLE IF NOT EXISTS {s}.batches (
  batch_id TEXT PRIMARY KEY, collection_id TEXT NOT NULL, request_identity TEXT NOT NULL,
@@ -295,13 +316,7 @@ CREATE TABLE IF NOT EXISTS {s}.revisions (
 CREATE OR REPLACE VIEW {s}.latest AS
  SELECT DISTINCT ON(month,category_code,data_type_code) * FROM {s}.revisions
  ORDER BY month,category_code,data_type_code,revision DESC;
-CREATE OR REPLACE VIEW {s}.retail_timeseries_rates AS
- WITH inputs AS (SELECT month,{levels},
- max(value) FILTER(WHERE data_type_code='MPCSM') AS official_headline_mpcsm_percent
- FROM {s}.latest GROUP BY month),
- levels AS (SELECT month,v0 AS headline,v0-v1-v2-v3-v4 AS control,
- official_headline_mpcsm_percent FROM inputs)
- SELECT c.*,{rates} FROM levels c {joins};"""
+{rates_view_sql(schema)}"""
 
 
 class PostgresRetailStore:

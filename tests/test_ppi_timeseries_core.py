@@ -119,10 +119,20 @@ def fixture_service(profile=PPI_PROFILE, *, now=None):
 def test_profiles_are_frozen_and_core_is_food_energy_exclusion():
     with pytest.raises(FrozenInstanceError):
         PPI_PROFILE.schema = "other"
-    assert PPI_PROFILE.series_ids == ("WPSFD4", "WPUFD4", "WPSFD49104", "WPUFD49104")
+    assert PPI_PROFILE.series_ids == (
+        "WPSFD4",
+        "WPUFD4",
+        "WPSFD49104",
+        "WPUFD49104",
+        "WPSFD49116",
+        "WPUFD49116",
+    )
     assert PPI_PROFILE.earliest_month is None
     assert "foods and energy" in PPI_PROFILE.label
-    assert PPI_PROFILE.series_metadata["WPSFD49104"] == {
+    assert {
+        key: PPI_PROFILE.series_metadata["WPSFD49104"][key]
+        for key in ("indicator", "seasonal_adjustment")
+    } == {
         "indicator": "core",
         "seasonal_adjustment": "SA",
     }
@@ -133,7 +143,7 @@ def test_ppi_four_series_parser_retains_null_footnotes_and_provider_values():
     points = parse_response(
         raw, PPI_PROFILE.series_ids, "2026-09", "2026-09", profile=PPI_PROFILE
     )
-    assert len(points) == 4
+    assert len(points) == len(PPI_PROFILE.series_ids)
     assert all(p.index_value is None for p in points)
     assert points[0].footnotes == ({"code": "P", "text": "Preliminary"},)
     assert points[0].provider_calculations == {"pct_changes": {"1": "9.9"}}
@@ -191,7 +201,7 @@ def test_default_cpi_and_ppi_in_same_process_do_not_change_each_other():
     for service, profile in ((cpi_service, CPI_PROFILE), (ppi_service, PPI_PROFILE)):
         result = service.init_range("2026-09", "2026-09")
         assert result["series_ids"] == list(profile.series_ids)
-        assert len(result["points"]) == 4
+        assert len(result["points"]) == len(profile.series_ids)
         assert all(profile.raw_prefix in p["raw_locator"] for p in result["points"])
         assert service.status()["schema"] == profile.schema
         repeated = service.init_range("2026-09", "2026-09")
@@ -199,11 +209,13 @@ def test_default_cpi_and_ppi_in_same_process_do_not_change_each_other():
         assert repeated["source_returned_series_months"] == []
     now[0] += timedelta(days=1)
     ppi_service.withdraw_range("2026-09", "2026-09", evidence_url=NOTICE)
-    assert len(ppi_service.query_range("2026-09", "2026-09")["withdrawn"]) == 4
+    assert len(ppi_service.query_range("2026-09", "2026-09")["withdrawn"]) == len(
+        PPI_PROFILE.series_ids
+    )
     assert cpi_service.query_range("2026-09", "2026-09")["complete"]
     assert len(cpi_wire.calls) == len(ppi_wire.calls) == 1
     assert cpi_memory.status()["revision_count"] == 0
-    assert ppi_memory.status()["revision_count"] == 4
+    assert ppi_memory.status()["revision_count"] == len(PPI_PROFILE.series_ids)
     for store, other in ((cpi_memory, PPI_PROFILE), (ppi_memory, CPI_PROFILE)):
         with pytest.raises(CpiStorageError, match="series_invalid"):
             store.read_range(other.series_ids, "2026-09", "2026-09")
@@ -253,7 +265,7 @@ def test_ppi_source_returned_keys_include_null_targets_and_calculation_buffer(
     wire.absent = {"2025-09", "2026-09"}
     result = getattr(service, operation)("2026-09", "2026-09")
     returned = result["source_returned_series_months"]
-    assert len(returned) == 4 * 13
+    assert len(returned) == len(PPI_PROFILE.series_ids) * 13
     for series in PPI_PROFILE.series_ids:
         assert {"series_id": series, "month": "2025-09"} in returned
         assert {"series_id": series, "month": "2026-09"} in returned
@@ -286,7 +298,9 @@ def test_ppi_source_returned_keys_survive_store_readback_row_loss(
     result = getattr(service, operation)("2026-09", "2026-09")
     assert not result["complete"] and not result["coverage_complete"]
     assert not result["points"]
-    assert len(result["source_returned_series_months"]) == 4 * 13
+    assert (
+        len(result["source_returned_series_months"]) == len(PPI_PROFILE.series_ids) * 13
+    )
     for series in PPI_PROFILE.series_ids:
         assert {"series_id": series, "month": "2026-09"} in result[
             "source_returned_series_months"
@@ -339,7 +353,7 @@ def test_ppi_gap_fill_is_ephemeral_and_null_metadata_survives_revision():
     wire.absent.clear()
     now[0] += timedelta(days=1)
     result = service.update_range("2026-09", "2026-09")
-    assert result["saved_revisions"] == 4
+    assert result["saved_revisions"] == len(PPI_PROFILE.series_ids)
     old = store.read_range(PPI_PROFILE.series_ids, "2026-08", "2026-08", as_of=AT)
     assert all(
         p["index_value"] is None and p["footnotes"][0]["code"] == "P" for p in old
@@ -347,7 +361,9 @@ def test_ppi_gap_fill_is_ephemeral_and_null_metadata_survives_revision():
     assert all(p["change_1m_ratio"] is not None for p in result["points"])
     temporary = service.query_range("2026-10", "2026-10")
     assert all(p["raw_locator"] is None for p in temporary["points"])
-    assert store.status()["observation_count"] == saved_count + 4
+    assert store.status()["observation_count"] == saved_count + len(
+        PPI_PROFILE.series_ids
+    )
     assert not service.query_range("2026-10", "2026-10", allow_upstream=False)[
         "complete"
     ]
@@ -639,7 +655,7 @@ def test_ppi_and_cpi_share_provider_daily_limit_across_control_instances(
 def test_ppi_unknown_earliest_month_keeps_existing_query_input_contract():
     service, wire, _ = fixture_service()
     result = service.query_range("1901-01", "1901-01", allow_upstream=False)
-    assert len(result["missing"]) == 4
+    assert len(result["missing"]) == len(PPI_PROFILE.series_ids)
     for start, end, classification in (
         ("1900-12", "1901-01", "range_invalid"),
         ("2026-13", "2026-13", "month_invalid"),

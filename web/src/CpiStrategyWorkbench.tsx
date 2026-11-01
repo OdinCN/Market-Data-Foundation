@@ -7,6 +7,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
 import { formatBeijingTime } from "./beijingTime";
+import { releaseLink, releaseReasonText } from "./macroReleaseLinks";
 import { Fact, WorkflowTable } from "./WorkflowTable";
 import { useVisiblePolling } from "./useVisiblePolling";
 import {
@@ -177,9 +178,41 @@ export function CpiExecutionDetail({
   execution: CpiExecution;
   profile?: MacroProfile;
 }) {
+  const result =
+    e.result?.result && typeof e.result.result === "object"
+      ? (e.result.result as Record<string, unknown>)
+      : e.result;
+  const material = result?.release_material as
+    | {
+        state?: string;
+        reasons?: string[];
+        event_ids?: string[];
+        evidence_ids?: string[];
+      }
+    | undefined;
   return (
     <>
       <h3>执行详情</h3>
+      {material && (
+        <section aria-label="发布材料执行结果">
+          <h4>发布材料</h4>
+          <p>
+            {material.state === "retained"
+              ? "材料已留存；支持范围见事件详情"
+              : "材料尚未完整确认；连续数值结果另列"}
+          </p>
+          {material.reasons?.map((reason) => (
+            <p key={reason}>{releaseReasonText(reason)}</p>
+          ))}
+          {material.event_ids?.map((id, i) => (
+            <p key={id}>
+              <a href={releaseLink(profile, id, material.evidence_ids?.[i])}>
+                打开发布事件与证据
+              </a>
+            </p>
+          ))}
+        </section>
+      )}
       <dl>
         <Fact name="记录编号">{e.id}</Fact>
         <Fact name="关联资产">美国 {profile.label}</Fact>

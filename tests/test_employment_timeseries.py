@@ -8,6 +8,7 @@ import pytest
 
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
+    EMPLOYMENT_DEFAULT_SERIES,
     EMPLOYMENT_PROFILE,
 )
 from market_data_foundation.historical.cpi_timeseries import month_number, month_range
@@ -55,7 +56,12 @@ class Source:
                     SERIES_IDS[2]: Decimal(30) + n / 10,
                     SERIES_IDS[3]: Decimal(62) + n / 10,
                     SERIES_IDS[4]: Decimal(34) + n / 10,
-                }[sid]
+                }.get(
+                    sid,
+                    Decimal(1000) + n * 10
+                    if sid.startswith("CES")
+                    else Decimal(59) + n / 10,
+                )
                 points.append(
                     SourcePoint(
                         sid,
@@ -87,7 +93,8 @@ def test_five_series_have_distinct_units_and_same_series_comparisons(setup):
     service, store, source = setup
     result = service.init_range("2025-01", "2026-01")
     jobs, rate, ahe, participation, hours = [
-        next(p for p in result["points"] if p["series_id"] == sid) for sid in SERIES_IDS
+        next(p for p in result["points"] if p["series_id"] == sid)
+        for sid in EMPLOYMENT_DEFAULT_SERIES
     ]
     assert jobs["value"] == "150000" and jobs["value_unit"] == "thousand_jobs"
     assert jobs["net_change_1m_thousand_jobs"] == "10"
@@ -120,7 +127,7 @@ def test_query_fills_only_gaps_without_saving_and_history_never_fetches(setup):
     assert result["points"][1]["raw_locator"] is None
     calls = len(source.calls)
     result = service.query_range("2025-01", "2025-01", as_of=source.at)
-    assert len(source.calls) == calls and len(result["missing"]) == 4
+    assert len(source.calls) == calls and len(result["missing"]) == len(SERIES_IDS) - 1
 
 
 def test_changed_only_and_same_cutoff_comparison_inputs(setup):
@@ -191,7 +198,17 @@ def test_parser_keeps_official_calculations_footnotes_decimal_and_null():
                     }
                     for sid, value in zip(
                         SERIES_IDS,
-                        ("150000.123456789", "0", "-", "62.5", "34.3"),
+                        (
+                            "150000.123456789",
+                            "0",
+                            "-",
+                            "62.5",
+                            "34.3",
+                            *(
+                                ["100"]
+                                * (len(SERIES_IDS) - len(EMPLOYMENT_DEFAULT_SERIES))
+                            ),
+                        ),
                         strict=True,
                     )
                 ]
@@ -329,7 +346,7 @@ def test_migration_preserves_existing_view_columns_and_only_extends_checks():
     assert "pg_advisory_xact_lock" in sql
     rates = rates_view_sql()
     assert (
-        "c.series_id='LNS14000000'\n                "
+        "c.series_id IN ('LNS14000000','LNS12300000')\n                "
         "THEN c.index_value-p1.index_value END AS change_1m_percentage_points" in rates
     )
     assert rates.index("AS ahe_yoy_percent") < rates.index(

@@ -6,7 +6,6 @@ from decimal import Decimal
 
 import pytest
 
-from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
 from market_data_foundation.historical.cpi_release_schedule import CpiReleaseScheduler
 from market_data_foundation.historical.cpi_revision_signals import CpiSignalError
 from market_data_foundation.historical.cpi_timeseries import (
@@ -19,6 +18,7 @@ from market_data_foundation.historical.cpi_timeseries_source import (
     SourcePoint,
 )
 from market_data_foundation.historical.cpi_timeseries_store import (
+    SERIES_IDS,
     InMemoryTimeSeriesStore,
 )
 
@@ -129,7 +129,9 @@ def test_committed_target_retry_requires_confirmation_and_strict_readback(
     failed = scheduler.run_due()
     assert failed["action"] == "awaiting_provider"
     assert not failed["targets"][0]["target_available"]
-    assert len(store._history) == 4  # values really persisted before the failure
+    assert len(store._history) == len(
+        SERIES_IDS
+    )  # values really persisted before the failure
     assert strict(service, "2026-10")["points"] == []
     assert strict(service, "2026-10")["source_unavailable"] == []
     committed = service.status()

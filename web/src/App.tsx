@@ -647,6 +647,12 @@ export default function App({
                           <>
                             <CpiTimeSeries
                               profile={macroProfile}
+                              initialReleaseEvent={page.fields.get(
+                                "release_event",
+                              )}
+                              initialReleaseEvidence={page.fields.get(
+                                "release_evidence",
+                              )}
                               transport={transport}
                               availability={macroAvailability}
                             />

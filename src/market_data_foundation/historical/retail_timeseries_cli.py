@@ -6,7 +6,10 @@ import importlib
 import json
 import sys
 
-from market_data_foundation.web.retail_timeseries import json_value
+from market_data_foundation.web.retail_timeseries import (
+    RetailTimeSeriesHost,
+    json_value,
+)
 
 
 def main(argv=None, *, service_factory=None):
@@ -22,6 +25,8 @@ def main(argv=None, *, service_factory=None):
     )
     parser.add_argument("--local-only", action="store_true")
     parser.add_argument("--as-of")
+    parser.add_argument("--basket")
+    parser.add_argument("--columns")
     parser.add_argument("--query-mode", choices=("current", "history"))
     parser.add_argument("--as-of-basis", choices=("observed", "available"))
     args = parser.parse_args(argv)
@@ -35,13 +40,25 @@ def main(argv=None, *, service_factory=None):
         if args.command == "status":
             result = service.status()
         elif args.command == "query":
-            result = service.query_range(
-                args.start,
-                args.end,
-                local_only=args.local_only,
-                as_of=args.as_of,
-                query_mode=args.query_mode,
-                as_of_basis=args.as_of_basis,
+            result = RetailTimeSeriesHost(
+                service, query_allowed=True, allow_source=True
+            ).query(
+                {
+                    "start": args.start,
+                    "end": args.end,
+                    "local_only": "true" if args.local_only else "false",
+                    **{
+                        key: value
+                        for key, value in {
+                            "as_of": args.as_of,
+                            "query_mode": args.query_mode,
+                            "as_of_basis": args.as_of_basis,
+                            "basket": args.basket,
+                            "columns": args.columns,
+                        }.items()
+                        if value is not None
+                    },
+                }
             )
         else:
             method = service.update if args.command == "update" else service.initialize

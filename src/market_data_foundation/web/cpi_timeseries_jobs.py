@@ -23,7 +23,7 @@ class WebError(ValueError):
 
 def validate_command(command, max_months, *, profile=CPI_PROFILE):
     if not isinstance(command, dict) or set(command) - (
-        {"series"} if profile.key == "employment" else set()
+        {"series"} if profile.key in {"cpi", "ppi", "employment"} else set()
     ) != {
         "request_id",
         "action",
@@ -166,7 +166,8 @@ def verify_ppi_readback(written, readback, command, *, profile):
         and p.get("availability") in {"available", "source_unavailable"}
         and p.get("available_at") is not None
     }
-    source_gaps = keys(written.get("source_missing", [])) - returned
+    attempted = keys(written.get("source_attempted_series_months", []))
+    source_gaps = (keys(written.get("source_missing", [])) & attempted) - returned
     missing = expected - available
     matched = all(
         key in available
@@ -182,7 +183,14 @@ def verify_ppi_readback(written, readback, command, *, profile):
     )
     verified = (
         written.get("persisted") is True
-        and bool(returned)
+        and (
+            bool(returned)
+            or (
+                command["action"] == "init"
+                and bool(produced)
+                and missing <= source_gaps
+            )
+        )
         and returned <= available
         and matched
         and missing <= source_gaps

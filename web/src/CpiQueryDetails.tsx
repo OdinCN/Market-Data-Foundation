@@ -5,7 +5,7 @@ import { formatBeijingTime } from "./beijingTime";
 
 type RequestDescription = { method: "GET"; path: string };
 
-function CodeBlock({
+export function CodeBlock({
   text,
   copyLabel,
   label,
@@ -232,6 +232,11 @@ export function CpiQueryApiHelp({
   if (profile.id === "retail")
     return (
       <section aria-label="零售销售 API说明" className="cpi-api-help">
+        <h4>GET {profile.basePath}/releases</h4>
+        <p>
+          发布记录支持
+          event_id、reference_month、as_of、read_mode=event/source_history、source_version。只读本地，不联网、不写入。材料支持官方销售额、MPCSM及明确的前值修订；缺失口径逐项说明，不回退最新值。
+        </p>
         <h4>GET {profile.basePath}/query</h4>
         <p>{profile.historyNotice}</p>
         <CompactTable
@@ -239,7 +244,15 @@ export function CpiQueryApiHelp({
           headers={["参数", "语义"]}
           rows={[
             ["start/end", "必填 YYYY-MM，含首尾；自动加入12个月比较缓冲"],
-            ["local_only", "true 禁止上游；GET 不入库、不创建表"],
+            [
+              "basket",
+              "可选 headline、control（core别名）、ex_auto、all 或逗号多选；API和表单省略保留总体/控制组",
+            ],
+            [
+              "columns",
+              "可选 index_value、change_1m_ratio、change_3m_ratio、change_6m_ratio、change_12m_ratio、official_mpcsm_percent；逗号多选，省略保留完整字段",
+            ],
+            ["local_only", "默认false；true 禁止上游；GET 不入库、不创建表"],
             ["query_mode", "current / history；历史只读本地"],
             [
               "as_of",
@@ -268,11 +281,11 @@ export function CpiQueryApiHelp({
               "含12月缓冲的缺失输入数 / UTC上个完整月 / 未请求的未结束或未来月份；响应保留所选全部月份，不推定官方发布时间。",
             ],
             [
-              "headline_level/control_level",
+              "headline_level/control_level/ex_auto_level",
               "Decimal字符串或null；million_current_usd；控制组为MDF推导",
             ],
             [
-              "headline_rates/control_rates",
+              "headline_rates/control_rates/ex_auto_rates",
               "1/3/6/12月 Decimal ratio，0.01=1%；未经年化",
             ],
             [
@@ -282,6 +295,10 @@ export function CpiQueryApiHelp({
             [
               "publication_events/points.publication_event",
               "留存的官方月份日历；总体及控制组含空值行均显示北京时间计划。无记录、TBA/未知不推算；as_of 早于日历获取时间时隐藏该日历；GET 不刷新或写入。",
+            ],
+            [
+              "derivations",
+              "控制组与除汽车为MDF派生；保留identity、公式、单位及同截止的全部当前/比较输入版本",
             ],
             [
               "source_cells/input_versions",
@@ -305,6 +322,15 @@ export function CpiQueryApiHelp({
   const permission = availability.data?.web_capabilities.query;
   return (
     <section aria-label={`${profile.label} API说明`} className="cpi-api-help">
+      <h4>GET {profile.basePath}/releases</h4>
+      <p>
+        发布记录只读本地证据，不联网、不写入、不自动建表。参数：event_id（精确事件）、as_of（含时区的MDF可用截止）、read_mode=event/source_history、reference_month（事件覆盖月，可多月）、source_version（YYYY-MM-DD档案日期）。日期精度保留；历史证据晚取得不会倒填。缺少正式材料、修订或共识时返回具体
+        missing，不回退最新值。
+      </p>
+      <p>
+        claims.role：actual=本次官方公布值；official_previous=官方此前公布的前值；prior_revised=上期值（本次修订后）。value_identity是内容身份；连续版本仅在明确版本证据支持时关联，数值相等不构成证明。MDF首次捕获、发布前最后可消费值、具名冻结共识与预期差逐口径返回，缺前值不阻断合格预期差。完整合同见{" "}
+        {profile.basePath}/api-help 的 release_records。
+      </p>
       <h4>GET {profile.basePath}/query</h4>
       {profile.historyNotice && <p>{profile.historyNotice}</p>}
       <p>
@@ -331,15 +357,15 @@ export function CpiQueryApiHelp({
             ? [
                 [
                   "series",
-                  "否 / 全部五系列",
-                  "string；逗号分隔 CES0000000001、LNS14000000、CES0500000003、LNS11300000、CES0500000002；拒绝 basket / adjustment",
+                  "否 / 原有五系列",
+                  `string；逗号分隔下表允许的${profile.series.length}个系列；省略保留原有五项；拒绝 basket / adjustment`,
                 ],
               ]
             : [
                 [
                   "basket",
                   "否 / headline",
-                  "string；headline（overall 为别名）、core、all；本表单默认 all",
+                  `string；${[...new Set(profile.series.map((s) => s[2]))].join("、")}、all；支持逗号多选；本表单保留总体与核心默认`,
                 ],
                 [
                   "adjustment",
@@ -352,7 +378,12 @@ export function CpiQueryApiHelp({
             "否 / index",
             employment
               ? "string；仅接受 index，返回各序列原生单位的 value，不是通胀指数"
-              : "string；index、mom、yoy、change_1m_ratio、change_3m_ratio、change_6m_ratio、change_12m_ratio；本界面固定 index",
+              : "string；index、mom、yoy、change_1m_ratio、change_3m_ratio、change_6m_ratio、change_12m_ratio；本界面固定 index；PCE价格另支持 annualized_3m_ratio、annualized_6m_ratio",
+          ],
+          [
+            "columns",
+            "否 / 原有完整字段",
+            "string；逗号分隔数值字段；与显示指标对应，元数据与measure选择的value别名保留",
           ],
           [
             "local_only",
@@ -418,7 +449,7 @@ export function CpiQueryApiHelp({
               "string；非空",
               employment
                 ? "序列 / 归属月 / 指标 / SA / CES|CPS / 原生单位"
-                : "序列 / 归属月 / headline|core / SA|NSA",
+                : "序列 / 归属月 / 明确篮子身份 / SA|NSA",
             ],
             [
               employment
@@ -435,12 +466,12 @@ export function CpiQueryApiHelp({
               ? [
                   [
                     "points[].net_change_1m_thousand_jobs",
-                    "decimal string|null；仅非农",
+                    "decimal string|null；非农、私营和主要行业",
                     "value[t]−value[t−1]，千岗位",
                   ],
                   [
                     "points[].change_1m_percentage_points",
-                    "decimal string|null；失业率 / 劳动参与率",
+                    "decimal string|null；失业率 / 劳动参与率 / 就业人口比",
                     "value[t]−value[t−1]，百分点",
                   ],
                   [
@@ -466,6 +497,24 @@ export function CpiQueryApiHelp({
                 : "decimal string|null",
               "percent：0.24=0.24%，不能再乘100；本地端点计算，不替代官方变化",
             ],
+            ...(profile.id === "pce"
+              ? [
+                  [
+                    "points[].annualized_3m_ratio / annualized_6m_ratio",
+                    "decimal string|null；ratio",
+                    "同截止未舍入指数比值的4/2次方减1；最后舍入4位，独立于累计变化",
+                  ],
+                ]
+              : []),
+            ...(profile.id === "ppi"
+              ? [
+                  [
+                    "points[].provider_status",
+                    "object；preliminary/revised可null",
+                    "仅官方脚注确认初步/修订；无脚注不推断最终值，不使用MDF revision",
+                  ],
+                ]
+              : []),
             [
               "points[].origin / availability / revision",
               "string / string / integer|null",

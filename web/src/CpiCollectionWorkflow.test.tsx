@@ -322,7 +322,7 @@ it("shows two actions and leaves an unavailable default empty until the user ent
     target: { value: "initialize" },
   });
   expect(screen.getAllByRole("option")).toHaveLength(2);
-  expect(screen.getByText(/no_confirmed_anchor/)).toBeTruthy();
+  expect(screen.getByText(/服务暂无默认范围（尚未确认可用锚点/)).toBeTruthy();
   expect(
     screen.getByText(/初始化服务预置范围：240个月，可自行修改/),
   ).toBeTruthy();

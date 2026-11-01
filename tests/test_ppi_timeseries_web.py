@@ -140,7 +140,9 @@ def test_profile_jobs_and_query_are_independent(dual):
     sources["ppi"].offset = 1
     updated = ppi.submit(command("update"))
     assert updated["state"] == "complete"
-    assert updated["result"]["readback"]["expected_points"] == 4
+    assert updated["result"]["readback"]["expected_points"] == len(
+        PPI_PROFILE.series_ids
+    )
     assert len(ppi.executions()["executions"]) == 2
     assert cpi.executions()["executions"] == []
 
@@ -219,7 +221,7 @@ def test_asgi_dual_status_query_and_help(dual):
             )
             assert result.status_code == 200
             assert set(result.json()["series_ids"]) == set(profile.series_ids)
-            assert len(result.json()["points"]) == 4
+            assert len(result.json()["points"]) == len(profile.series_ids)
             assert http.get(prefix + "/api-help").json()["series_ids"] == list(
                 profile.series_ids
             )
@@ -568,7 +570,8 @@ def test_ppi_refresh_preserves_source_gap_for_saved_null(dual, omit_old_null):
     "lost",
     [False, "value", "null", "buffer", "empty", "revision", "confirmation", "upstream"],
 )
-def test_ppi_source_coverage_partial_and_returned_points_required(dual, lost):
+@pytest.mark.parametrize("action", ["init", "initialize"])
+def test_ppi_source_coverage_partial_and_returned_points_required(dual, lost, action):
     _, hosts, _, stores = dual
     host = hosts["ppi"]
 
@@ -619,7 +622,7 @@ def test_ppi_source_coverage_partial_and_returned_points_required(dual, lost):
 
         host.read_factory = read
     start = "2026-01" if lost == "buffer" else "2006-01"
-    receipt = host.submit(command("initialize", start=start))
+    receipt = host.submit(command(action, start=start))
     if lost:
         assert receipt["state"] != "complete", receipt
     else:

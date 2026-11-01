@@ -26,15 +26,17 @@
 ## 五族真实差异表
 
 数量按每参考月计；批次是来源请求边界，不是原子官方 vintage。表内合同依据为代码和仓库既有来源说明，
-本轮未联网取样。各族精确历史起点以来源证据为准，预置 240 月不承诺 240 月覆盖。
+本轮未由实现CLI联网取样；Root留存新增系列资格见[五族研究字段扩展](macro-research-fields-r1.md)。各族精确历史起点以来源证据为准，预置 240 月不承诺 240 月覆盖。
 
 | 族 / 来源、系列、季调 | 单位与官方 / 派生指标 | 数量、批次与比较缓冲 | 修订与官方日历依据 |
 | --- | --- | --- | --- |
-| CPI / BLS v2；总体 `CUSR0000SA0` SA、`CUUR0000SA0` NSA；核心 `CUSR0000SA0L1E` SA、`CUUR0000SA0L1E` NSA | 指数；BLS `bls_pct_*` 保留官方百分数。派生 mom/yoy 为 percent，1/3/6/12 月变化为累计 ratio，ROUND_HALF_UP 至 ratio 四位 | 4 序列；[BLS source](../src/market_data_foundation/historical/cpi_timeseries_source.py) 注册请求每窗最多20日历年，未注册10年；计算向前12月，跨窗合并后计算 | 季调历史修订、Errata 信号和本地 changed-only 版本分开；BLS ICS 加明确参考月证据，不能按发布月减一。[CPI 合同](macro-publication-history-design.md) |
-| PPI / BLS v2；`WPSFD4/WPUFD4` 总量 SA/NSA，`WPSFD49104/WPUFD49104` 核心 SA/NSA | 最终需求指数；核心剔除食品、能源，仍含贸易服务。官方百分数及派生 percent/ratio 同共享数值合同；不拼接旧 SOP | 4 序列；同 BLS 有界批次和12月缓冲，不能用 CPI 的历史起点承诺 PPI 覆盖 | 月度初步值与年度季调回修；不靠本地 revision 或时间流逝认定最终值；BLS PPI ICS/参考月证据；未实现 CPI Errata 通道。[PPI 合同及官方引用](ppi-timeseries-quickstart-zh.md) |
-| PCE / BEA NIPA `T20804` 月度；`DPCERG` line1 总体、`DPCCRG` line25 核心，均 SA，无 NSA | Fisher price index；官方 `T20807` 的 `DPCERGM/DPCCRGM` 映射为 `bea_pct_1m`，percent。指数派生 mom/yoy percent 与1/3/6/12月 ratio 分别保留，不替代官方值 | 2 指数系列，加2官方环比；[source](../src/market_data_foundation/historical/pce_timeseries_source.py) 每5日历年窗分别取两表，逻辑配对批次含2次 HTTP，重试另计；常规采集前12月，发布目标快采仅当月 | 当前返回可含历史修订，不重建未观察 vintage；BEA Personal Income and Outlays ICS 的明确参考月；不把 LastRevised/DTSTAMP 当发布时间。[PCE 双表合同](pce-timeseries-quickstart-zh.md) |
-| 美国就业 / BLS v2，均 SA：`CES0000000001` 非农；`LNS14000000` 失业率；`CES0500000003` 时薪；`LNS11300000` 参与率；`CES0500000002` 周工时 | 依次为千岗位、percent、USD/hour、percent、hours；岗位不是人数。派生分别为月净增千岗位、百分点差、时薪 mom/yoy percent及1/12月 ratio、百分点差、小时差。官方 `net_changes/pct_changes` 与脚注独立保留 | 5 序列；共享 BLS 20/10年批次及前12月缓冲；不套 headline/core 或四期限通胀列 | CES 月度/年度基准修订与 CPS 季调规则各自处理；Employment Situation 明确日历绑定，首次本地观察不等于首发。[五项合同](employment-continuous-core-r1.md)、[公共流程](employment-public-flow-r1.md)、[既有官方修订引用](local-first-bls-employment-r1.md) |
-| 零售 / Census MARTS；US、`seasonally_adj=yes`、`error_data=no` | SM 为百万当期美元、SA、非年化水平；headline=`44X72`，MDF control=`44X72−441−444−447−722`，含445。1/3/6/12月为 ratio、Decimal精度28 half-even；官方 `44X72 MPCSM` 已是 percent，不能再乘100或以派生值覆盖 | 6原始输入（5个SM加1个MPCSM）→2结果；[source](../src/market_data_foundation/historical/census_retail_timeseries_source.py) 每窗≤252月、最多10请求；240目标月加12月正好一窗；先合并全输入再跨窗比较 | 月度及年度基准/季调修订；Advance Monthly Retail Trade 的 Data Month / 年度 Period Covered，不混入 Monthly 表。TBA保持未知。[连续合同](census-retail-timeseries-r1.md)、[计算](../src/market_data_foundation/historical/census_retail_timeseries.py) |
+| CPI / BLS v2；总体 `CUSR0000SA0` SA、`CUUR0000SA0` NSA；核心 `CUSR0000SA0L1E` SA、`CUUR0000SA0L1E` NSA | 指数；BLS `bls_pct_*` 保留官方百分数。派生 mom/yoy 为 percent，1/3/6/12 月变化为累计 ratio，ROUND_HALF_UP 至 ratio 四位 | 14 序列（总体/核心及五项研究分篮子各SA/NSA）；[BLS source](../src/market_data_foundation/historical/cpi_timeseries_source.py) 注册请求每窗最多20日历年，未注册10年；计算向前12月，跨窗合并后计算 | 季调历史修订、Errata 信号和本地 changed-only 版本分开；BLS ICS 加明确参考月证据，不能按发布月减一。[CPI 合同](macro-publication-history-design.md) |
+| PPI / BLS v2；`WPSFD4/WPUFD4` 总量 SA/NSA，`WPSFD49104/WPUFD49104` 核心 SA/NSA | 最终需求指数；核心剔除食品、能源，仍含贸易服务。官方百分数及派生 percent/ratio 同共享数值合同；不拼接旧 SOP | 6 序列（新增剔除食品、能源及贸易服务第三篮子）；同 BLS 有界批次和12月缓冲，不能用 CPI 的历史起点承诺 PPI 覆盖 | 月度初步值与年度季调回修；不靠本地 revision 或时间流逝认定最终值；BLS PPI ICS/参考月证据；未实现 CPI Errata 通道。[PPI 合同及官方引用](ppi-timeseries-quickstart-zh.md) |
+| PCE / BEA NIPA `T20804` 月度；`DPCERG` line1 总体、`DPCCRG` line25 核心，均 SA，无 NSA | Fisher price index；官方 `T20807` 的 `DPCERGM/DPCCRGM` 映射为 `bea_pct_1m`，percent。指数派生 mom/yoy percent 与1/3/6/12月 ratio 分别保留，不替代官方值；另有3/6月年化ratio（指数比值4/2次方减1） | 2 指数系列，加2官方环比；[source](../src/market_data_foundation/historical/pce_timeseries_source.py) 每5日历年窗分别取两表，逻辑配对批次含2次 HTTP，重试另计；常规采集前12月，发布目标快采仅当月 | 当前返回可含历史修订，不重建未观察 vintage；BEA Personal Income and Outlays ICS 的明确参考月；不把 LastRevised/DTSTAMP 当发布时间。[PCE 双表合同](pce-timeseries-quickstart-zh.md) |
+| 美国就业 / BLS v2，均 SA：`CES0000000001` 非农；`LNS14000000` 失业率；`CES0500000003` 时薪；`LNS11300000` 参与率；`CES0500000002` 周工时 | 依次为千岗位、percent、USD/hour、percent、hours；岗位不是人数。派生分别为月净增千岗位、百分点差、时薪 mom/yoy percent及1/12月 ratio、百分点差、小时差。官方 `net_changes/pct_changes` 与脚注独立保留 | 18 序列（原五项+私营/EPOP/十一主要行业）；共享 BLS 20/10年批次及前12月缓冲；不套 headline/core 或四期限通胀列 | CES 月度/年度基准修订与 CPS 季调规则各自处理；Employment Situation 明确日历绑定，首次本地观察不等于首发。[五项合同](employment-continuous-core-r1.md)、[公共流程](employment-public-flow-r1.md)、[既有官方修订引用](local-first-bls-employment-r1.md) |
+| 零售 / Census MARTS；US、`seasonally_adj=yes`、`error_data=no` | SM 为百万当期美元、SA、非年化水平；headline=`44X72`，MDF control=`44X72−441−444−447−722`，含445。1/3/6/12月为 ratio、Decimal精度28 half-even；官方 `44X72 MPCSM` 已是 percent，不能再乘100或以派生值覆盖 | 6原始输入（5个SM加1个MPCSM）→3可选结果（新增除汽车=总额−汽车）；[source](../src/market_data_foundation/historical/census_retail_timeseries_source.py) 每窗≤252月、最多10请求；240目标月加12月正好一窗；先合并全输入再跨窗比较 | 月度及年度基准/季调修订；Advance Monthly Retail Trade 的 Data Month / 年度 Period Covered，不混入 Monthly 表。TBA保持未知。[连续合同](census-retail-timeseries-r1.md)、[计算](../src/market_data_foundation/historical/census_retail_timeseries.py) |
+
+新增篮子、单位、列选择、同截止派生、显式迁移与新增系列补史命令见[研究字段扩展说明](macro-research-fields-r1.md)。
 
 ## 一次审查走通的最小路径
 
@@ -113,3 +115,28 @@ npm test -- --configLoader runner
 Vite 使用 `--configLoader runner`，避免配置 bundle 的缓存写入限制。测试若受沙箱、依赖或运行时阻断，
 在本轮交接证据记录准确命令、退出结果和未覆盖部分，不更换版本、不绕开失败；
 人工 DEV 点击、实际数据库权限与未来自然发布仍按上文分别核对。
+
+## 五族发布事件与修订产品链（round03）
+
+共同入口和完整语义见[发布事件/材料合同](macro-release-records-r1.md)。
+五族实际 `/timeseries/releases` 已统一接入资产内列表/详情、来源历史、北京时间 cutoff、
+请求预览/原始 HTTP；不是四族 unsupported stub。读取严格本地，无 DDL/upstream。
+材料/claim、MDF首次捕获、官方原前值、MDF事前最后可消费值、当次报告修订前值和连续版本绑定分别呈现。
+partial 材料按 scope 保留旧证明；冲突和解析修正保留选择轨迹。相同数值的新事件不造经济修订。
+BEA PIO 使用 canonical 日期事件和多参考月 coverage，供独立消费收入包复用。
+
+manual/实际 WorkerService/零售自动 host.submit 都有有界材料调用；execution 中单列材料失败/原因及
+证据、事件和数值批次。初始化不产生 240 个 archive 请求。BLS 现存 archive 403 不据日历修复推断解决，
+人工投影导入不代表自动抓取成功。
+共识是可选具名冻结 snapshot persistence/read；无稳定源，不声称真实交付。
+允许 date/interval 本身足够证明事前关系；无官方前值不阻断合格 surprise。
+
+留存检查覆盖七 CPI 篮子的 NSA index/YoY 与 SA MoM、PPI 总体/第三篮子的官方率、
+PCE 两次 HTML 当前/当次上月率、就业 household/工时/时薪/行业变化及 NFP 两月修订、零售销售额/MPCSM/明确修订。
+PPI仅剔食品能源核心、就业 Summary B 行业水平/贸易运输公用事业聚合、PCE HTML 指数水平及零售派生输入
+仍分别缺材料，不用近似列或最新数值补证。PPI初步/修订状态只据真实脚注，未知保持未知。
+CPI所选NSA行基期有 Table1 明确1982-84依据；不外推原生历史起点或逐项PPI基期。
+
+Root 持有的就业 round01 两个原始 release record 必须 additive upgrade，保留原 evidence/time/digest；
+GET 不迁移，旧回退说明不得用于删除这两张已持有材料的表。
+ASGI HTTP→UI正常环境、PG集成、实际浏览器、worker自然发布分别验收；本轮沙箱不加入 socket/loop 绕过。

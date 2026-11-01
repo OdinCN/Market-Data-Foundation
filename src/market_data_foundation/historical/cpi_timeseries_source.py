@@ -14,7 +14,6 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from market_data_foundation.historical.bls_cpi_direct import ENDPOINT
-from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS as SERIES_IDS
 from market_data_foundation.historical.bls_cpi_direct_live import (
     _KEY_SHAPE,
     DEFAULT_SECRET_PATH,
@@ -43,6 +42,7 @@ from market_data_foundation.source_request_policy import (
 )
 
 MAX_RANGE_RESPONSE_BYTES = 8 * 1024 * 1024
+SERIES_IDS = CPI_PROFILE.series_ids
 MAX_RANGE_REQUESTS = 20
 MAX_SPACING_WAIT_SECONDS = 5.0
 MAX_SPACING_REACQUISITIONS = 2
@@ -262,6 +262,7 @@ def parse_response(
                 zero_rate = profile is EMPLOYMENT_PROFILE and identity in {
                     "LNS14000000",
                     "LNS11300000",
+                    "LNS12300000",
                 }
                 if not index.is_finite() or index < 0 or (index == 0 and not zero_rate):
                     raise CpiSourceError("cpi_timeseries_index_invalid")

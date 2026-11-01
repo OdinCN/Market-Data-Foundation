@@ -5,7 +5,6 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-from market_data_foundation.historical.bls_cpi_direct import SERIES_IDS
 from market_data_foundation.historical.cpi_release_schedule import (
     CpiReleaseScheduler,
     CpiScheduleError,
@@ -26,6 +25,7 @@ from market_data_foundation.historical.cpi_timeseries_source import (
     SourcePoint,
 )
 from market_data_foundation.historical.cpi_timeseries_store import (
+    SERIES_IDS,
     InMemoryTimeSeriesStore,
 )
 
@@ -555,7 +555,7 @@ def test_target_visible_through_core_before_failed_history(tmp_path):
     source.error = RuntimeError("private")
     assert scheduler.run_due()["action"] == "history_awaiting_provider"
     readback = service.query_range("2026-10", "2026-10", allow_upstream=False)
-    assert len(readback["points"]) == 4
+    assert len(readback["points"]) == len(SERIES_IDS)
     assert readback["complete"] is True
     assert scheduler.status()["targets"][0]["target_available"] is True
 

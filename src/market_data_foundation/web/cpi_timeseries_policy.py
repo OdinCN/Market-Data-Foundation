@@ -200,6 +200,8 @@ def automatic_executions(snapshot, *, profile=CPI_PROFILE):
             "summary_scope": "latest_stage_attempt",
             "scheduler_attempts_total": stage.get("attempts"),
         }
+        if "release_material" in stage:
+            result["release_material"] = stage["release_material"]
         if "actual_http" in stage:
             result["actual_http_total"] = stage["actual_http"]
         if "readback" in stage:

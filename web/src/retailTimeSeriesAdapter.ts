@@ -4,11 +4,14 @@ import { isDecimalString } from "./decimalValue";
 type Calculation = { value: string | null; reason: string | null };
 type RetailMonth = {
   month: string;
+  related_release_events?: CpiPoint["related_release_events"];
   publication_event?: CpiPoint["publication_event"];
   headline_level: Calculation;
   control_level: Calculation;
+  ex_auto_level: Calculation;
   headline_rates: Record<string, Calculation>;
   control_rates: Record<string, Calculation>;
+  ex_auto_rates: Record<string, Calculation>;
   official_headline_mpcsm: { value: string | null; unit: string };
   source_cells: { value: string | null; status: string }[];
   input_versions?: Record<
@@ -79,10 +82,10 @@ export function normalizeRetailResult(
     !Array.isArray(raw.points)
   )
     throw new Error("retail_result_unknown");
-  const selected = ["headline", "control"].filter(
+  const selected = ["headline", "control", "ex_auto"].filter(
     (id) =>
       scope.basket === "all" ||
-      (id === "control" ? "core" : id) === scope.basket,
+      scope.basket.split(",").includes(id === "control" ? "core" : id),
   );
   const points: CpiPoint[] = [];
   const missing: CpiResult["missing"] = [];
@@ -94,23 +97,36 @@ export function normalizeRetailResult(
       month.month > scope.end ||
       !Array.isArray(month.source_cells) ||
       month.source_cells.length !== 6 ||
-      !numeric(month.official_headline_mpcsm?.value) ||
-      month.official_headline_mpcsm.unit !== "percent"
+      ((!scope.columns || scope.columns.includes("official_mpcsm_percent")) &&
+        (!numeric(month.official_headline_mpcsm?.value) ||
+          month.official_headline_mpcsm.unit !== "percent"))
     )
       throw new Error("retail_month_unknown");
     for (const id of selected) {
       const level =
-        id === "headline" ? month.headline_level : month.control_level;
+        id === "headline"
+          ? month.headline_level
+          : id === "control"
+            ? month.control_level
+            : month.ex_auto_level;
       const rates =
-        id === "headline" ? month.headline_rates : month.control_rates;
+        id === "headline"
+          ? month.headline_rates
+          : id === "control"
+            ? month.control_rates
+            : month.ex_auto_rates;
       if (
-        !level ||
-        !numeric(level.value) ||
+        ((!scope.columns || scope.columns.includes("index_value")) &&
+          (!level || !numeric(level.value))) ||
         !rates ||
-        ![1, 3, 6, 12].every((h) => rates[h] && numeric(rates[h].value))
+        ![1, 3, 6, 12].every(
+          (h) =>
+            (scope.columns && !scope.columns.includes(`change_${h}m_ratio`)) ||
+            (rates[h] && numeric(rates[h].value)),
+        )
       )
         throw new Error("retail_calculation_unknown");
-      if (level.value === null) {
+      if (level?.value === null) {
         missing.push({
           series_id: id,
           month: month.month,
@@ -128,16 +144,19 @@ export function normalizeRetailResult(
         series_id: id,
         month: month.month,
         publication_event: month.publication_event,
-        index_value: level.value,
+        related_release_events: month.related_release_events,
+        index_value: level?.value ?? null,
         mom_pct: null,
         yoy_pct: null,
         official_mpcsm_percent:
-          id === "headline" ? month.official_headline_mpcsm.value : null,
+          id === "headline"
+            ? (month.official_headline_mpcsm?.value ?? null)
+            : null,
       };
       for (const h of [1, 3, 6, 12] as const) {
         const metric = `change_${h}m_ratio` as const;
-        point[metric] = rates[h].value;
-        if (rates[h].value === null)
+        point[metric] = rates[h]?.value ?? null;
+        if (rates[h]?.value === null)
           gaps.push({
             series_id: id,
             month: month.month,

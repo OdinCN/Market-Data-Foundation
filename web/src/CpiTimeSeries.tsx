@@ -5,6 +5,8 @@ import { DateField } from "./DateField";
 import { MultiSelect } from "./MultiSelect";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
+import { releaseLink, releaseReasonText } from "./macroReleaseLinks";
+import { MacroReleaseRecords } from "./MacroReleaseRecords";
 import {
   buildCpiQueryRequest,
   latestMonth,
@@ -67,6 +69,7 @@ export const missingText = (reason?: string) =>
     source_operand_unavailable: "金额输入缺值（见原始响应状态）",
     comparison_level_unavailable: "比较基期金额缺值",
     current_level_unavailable: "当前金额缺值",
+    comparison_outside_input: "比较基期不在输入范围内",
     comparison_level_zero: "比较基期金额为0，无法计算变化率",
   })[reason ?? ""] ?? "本地尚无记录";
 const globalMeasures = [
@@ -76,9 +79,13 @@ const globalMeasures = [
   { value: "change_6m_ratio", label: "6月变化" },
   { value: "change_12m_ratio", label: "12月同比" },
 ] as const;
-const globalBaskets = [
-  { value: "headline", label: "总体" },
-  { value: "core", label: "核心" },
+const employmentMeasures = [
+  { value: "value", label: "数值（单位见指标）" },
+  { value: "net_change_1m_thousand_jobs", label: "岗位月净增（千岗位）" },
+  { value: "change_1m_percentage_points", label: "比率月变化（百分点）" },
+  { value: "change_1m_hours", label: "周工时月变化（小时）" },
+  { value: "mom_pct", label: "时薪环比（%）" },
+  { value: "yoy_pct", label: "时薪同比（%）" },
 ];
 const adjustments = [
   { value: "sa", label: "季调" },
@@ -138,30 +145,49 @@ function CpiTimeSeriesContent({
   transport,
   profile = CPI_PROFILE,
   availability,
+  initialReleaseEvent,
+  initialReleaseEvidence,
 }: {
   transport: Transport;
   profile?: MacroProfile;
   availability: CpiAvailability;
+  initialReleaseEvent?: string | null;
+  initialReleaseEvidence?: string | null;
 }) {
   const employment = profile.id === "employment";
   const retail = profile.id === "retail";
-  const measures = retail
-    ? [
-        ...globalMeasures.map((item) =>
-          item.value === "index_value"
-            ? { ...item, label: "金额（百万当期美元）" }
-            : item,
-        ),
-        { value: "official_mpcsm_percent", label: "官方 MPCSM（percent）" },
-      ]
-    : globalMeasures;
-  const baskets = retail
-    ? [
-        { value: "headline", label: "总体" },
-        { value: "core", label: "控制组（MDF推导）" },
-      ]
-    : globalBaskets;
-  const [series, setSeries] = useState(profile.series.map((s) => s[0]));
+  const measures = employment
+    ? employmentMeasures
+    : retail
+      ? [
+          ...globalMeasures.map((item) =>
+            item.value === "index_value"
+              ? { ...item, label: "金额（百万当期美元）" }
+              : item,
+          ),
+          { value: "official_mpcsm_percent", label: "官方 MPCSM（percent）" },
+        ]
+      : profile.id === "pce"
+        ? [
+            ...globalMeasures,
+            { value: "annualized_3m_ratio", label: "3月年化变化" },
+            { value: "annualized_6m_ratio", label: "6月年化变化" },
+          ]
+        : globalMeasures;
+  const baskets = [
+    ...new Map(
+      profile.series.map((s) => [
+        s[2],
+        {
+          value: s[2],
+          label: s[2] === "headline" ? "总体" : s[1].split(" · ")[0],
+        },
+      ]),
+    ).values(),
+  ];
+  const [series, setSeries] = useState([
+    ...(profile.defaultQuerySeries ?? profile.series.map((s) => s[0])),
+  ]);
   const cpiSeries = profile.series;
   const availableAdjustments = adjustments.filter((item) =>
     profile.series.some((s) => s[3] === item.value),
@@ -174,15 +200,21 @@ function CpiTimeSeriesContent({
     availableAdjustments.map((item) => item.value),
   );
   const [measure, setMeasure] = useState<string[]>(
-    measures.map((item) => item.value),
+    (profile.id === "pce" ? globalMeasures : measures).map(
+      (item) => item.value,
+    ),
   );
+  const [columnsEdited, setColumnsEdited] = useState(false);
   const [history, setHistory] = useState(false);
   const [asOf, setAsOf] = useState("");
   const [result, setResult] = useState<CpiResult | null>(null);
   const [failure, setFailure] = useState(false);
   const [pending, setPending] = useState(false);
   const [page, setPage] = useState(0);
-  const [tab, setTab] = useState("query");
+  const [tab, setTab] = useState(initialReleaseEvent ? "releases" : "query");
+  useEffect(() => {
+    if (initialReleaseEvent) setTab("releases");
+  }, [initialReleaseEvent]);
   const [resultTab, setResultTab] = useState("table");
   const [exchange, setExchange] = useState<CpiHttpExchange | null>(null);
   const edited = useRef(false);
@@ -223,7 +255,8 @@ function CpiTimeSeriesContent({
     start,
     end,
     ...(employment ? { series: series.join(",") } : {}),
-    basket: basket.length === baskets.length ? "all" : (basket[0] ?? ""),
+    basket: basket.length === baskets.length ? "all" : basket.join(","),
+    ...(columnsEdited ? { columns: measure.join(",") } : {}),
     adjustment:
       adjustment.length === adjustments.length ? "all" : (adjustment[0] ?? ""),
     measure: "index",
@@ -285,19 +318,7 @@ function CpiTimeSeriesContent({
         (row) => row.month,
       )
     : [];
-  const columns = employment
-    ? ([
-        { value: "value", label: "数值（单位见指标）" },
-        { value: "net_change_1m_thousand_jobs", label: "非农月净增（千岗位）" },
-        {
-          value: "change_1m_percentage_points",
-          label: "失业率 / 劳动参与率月变化（百分点）",
-        },
-        { value: "change_1m_hours", label: "周工时月变化（小时）" },
-        { value: "mom_pct", label: "时薪环比（%）" },
-        { value: "yoy_pct", label: "时薪同比（%）" },
-      ] as const)
-    : measures.filter((item) => measure.includes(item.value));
+  const columns = measures.filter((item) => measure.includes(item.value));
   const selectedCalculationMissing =
     result?.calculation_missing.filter((gap) =>
       columns.some((column) => column.value === gap.metric),
@@ -322,10 +343,20 @@ function CpiTimeSeriesContent({
         values={[
           ["query", "查询数据"],
           ["api", "API说明"],
+          ["releases", "发布记录"],
         ]}
         value={tab}
         onChange={setTab}
       />
+      {tab === "releases" && (
+        <MacroReleaseRecords
+          key={initialReleaseEvent ?? "all"}
+          transport={transport}
+          profile={profile}
+          initialEventId={initialReleaseEvent}
+          initialEvidenceId={initialReleaseEvidence}
+        />
+      )}
       <div hidden={tab !== "api"}>
         <CpiQueryApiHelp
           profile={profile}
@@ -407,14 +438,29 @@ function CpiTimeSeriesContent({
                   value={adjustment}
                   onChange={(value) => change(() => setAdjustment(value))}
                 />
-                <MultiSelect
-                  label="显示指标"
-                  options={measures}
-                  value={measure}
-                  onChange={setMeasure}
-                />
               </>
             )}
+            <MultiSelect
+              label="显示指标"
+              options={measures}
+              value={measure}
+              onChange={(value) => {
+                if (
+                  result?.selected_columns &&
+                  value.some(
+                    (column) => !result.selected_columns!.includes(column),
+                  )
+                ) {
+                  change(() => {
+                    setMeasure(value);
+                    setColumnsEdited(true);
+                  });
+                } else {
+                  setMeasure(value);
+                  setColumnsEdited(true);
+                }
+              }}
+            />
           </div>
           <label className="cpi-history-toggle">
             <input
@@ -461,7 +507,7 @@ function CpiTimeSeriesContent({
           {employment
             ? "就业指标选择直接限定请求系列；缺值不补零。"
             : retail
-              ? "口径和显示指标控制表格展示；请求读取全部六原始输入及两种口径，不发送价格指数参数。"
+              ? "按所选口径返回结果；显示指标仅控制表格列。计算复用六项原始输入。"
               : "显示指标只控制表格列；实际请求固定 measure=index，不发送列选择参数。"}
         </p>
         <RequestPreview request={request} />
@@ -508,6 +554,11 @@ function CpiTimeSeriesContent({
             已保留已有数据和全部月份，缺口仍为空；不代表官方缺值或已发布。
           </p>
         )}
+        {result?.release_records_missing?.map((reason) => (
+          <p key={reason} role="status">
+            发布材料状态：{releaseReasonText(reason)}；连续数值结果保留。
+          </p>
+        ))}
         <div hidden={resultTab !== "table"}>
           {result && columns.length > 0 && (
             <section aria-label={`${profile.label} 范围结果`}>
@@ -538,6 +589,7 @@ function CpiTimeSeriesContent({
                       {columns.map((column) => (
                         <th key={column.value}>{column.label}</th>
                       ))}
+                      {profile.id === "ppi" && <th>官方状态</th>}
                       <th>官方日历时间</th>
                       <th>缺值说明</th>
                     </tr>
@@ -554,7 +606,26 @@ function CpiTimeSeriesContent({
                         );
                         return (
                           <tr key={`${row.month}:${row.series_id}`}>
-                            <td>{row.month}</td>
+                            <td>
+                              {row.month}
+                              {row.point?.related_release_events?.map(
+                                (link) => (
+                                  <div key={link.event_id}>
+                                    <a
+                                      href={releaseLink(profile, link.event_id)}
+                                    >
+                                      查看相关发布
+                                    </a>
+                                    <small>
+                                      {link.association ===
+                                      "explicit_version_proof"
+                                        ? " · 版本已有明确证明"
+                                        : " · 仅口径相关，版本未绑定"}
+                                    </small>
+                                  </div>
+                                ),
+                              )}
+                            </td>
                             <td>
                               {
                                 cpiSeries.find(
@@ -584,6 +655,28 @@ function CpiTimeSeriesContent({
                                 )}
                               </td>
                             ))}
+                            {profile.id === "ppi" && (
+                              <td>
+                                {row.point?.provider_status?.preliminary
+                                  ? "初步值（官方脚注）"
+                                  : row.point?.provider_status?.revised
+                                    ? "修订值（官方脚注）"
+                                    : "官方状态未注明"}
+                                {row.point?.provider_status?.footnotes
+                                  ?.length ? (
+                                  <details>
+                                    <summary>官方脚注</summary>
+                                    {row.point.provider_status.footnotes.map(
+                                      (note, i) => (
+                                        <p key={i}>
+                                          {note.code} {note.text}
+                                        </p>
+                                      ),
+                                    )}
+                                  </details>
+                                ) : null}
+                              </td>
+                            )}
                             <td>
                               {publicationText({
                                 month: row.month,

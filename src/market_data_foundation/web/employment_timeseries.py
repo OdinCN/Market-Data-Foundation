@@ -20,7 +20,10 @@ class EmploymentTimeSeriesHost(TimeSeriesHost):
             **super().api_help(),
             "parameters": {
                 "start/end": "required YYYY-MM, at most 2400 months",
-                "series": "comma-separated allowlisted series; default all five",
+                "series": (
+                    "comma-separated allowlisted series; query default original five; "
+                    "allowlist includes private/EPOP/eleven major sectors"
+                ),
                 "query_mode": (
                     "current/history; inferred history with as_of or available"
                 ),
@@ -35,16 +38,26 @@ class EmploymentTimeSeriesHost(TimeSeriesHost):
                 "local_only": (
                     "default false; true forbids source; history always local"
                 ),
+                "columns": (
+                    "optional CSV native numeric fields; omitted preserves existing "
+                    "fields"
+                ),
                 "measure": "index only; basket/adjustment are not employment filters",
             },
             "series": EMPLOYMENT_PROFILE.series_metadata,
             "collection_parameters": {
-                "series": "comma-separated allowlisted subset; default all five",
-                "scope": "query/CLI/jobs subsets; automatic strategy always all five",
+                "series": (
+                    "comma-separated allowlisted subset; collection default all "
+                    "profile series"
+                ),
+                "scope": (
+                    "query/CLI/jobs subsets; automatic strategy always all profile "
+                    "series"
+                ),
             },
             "fields": {
                 "value": (
-                    "CES thousand jobs; CPS unemployment/participation percent; "
+                    "CES thousand jobs; CPS unemployment/participation/EPOP percent; "
                     "CES USD/hour or hours"
                 ),
                 "origin/availability": (
@@ -52,13 +65,15 @@ class EmploymentTimeSeriesHost(TimeSeriesHost):
                     "withdrawn and unknown appear in missing-evidence arrays"
                 ),
                 "calculation_inputs": "same-cutoff comparison value and provenance",
-                "raw_sha256/raw_locator": (
-                    "material digest/nullable retained locator; no HTTP batch_id"
+                "raw_sha256/raw_locator": ("material digest/nullable retained locator"),
+                "batch_id": (
+                    "persisted numeric capture batch identity; "
+                    "not an official release ID"
                 ),
                 "change_1m_ratio/change_12m_ratio": "AHE ratios; 0.01 means 1%",
                 "net_change_1m_thousand_jobs": "CES month difference; thousand jobs",
                 "change_1m_percentage_points": (
-                    "CPS unemployment/participation difference; percentage points"
+                    "CPS unemployment/participation/EPOP difference; percentage points"
                 ),
                 "change_1m_hours": "CES weekly paid hours month difference; hours",
                 "mom_pct/yoy_pct": "AHE same-cutoff endpoint derived percentages only",
