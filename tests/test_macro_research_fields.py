@@ -504,6 +504,17 @@ def test_query_openapi_parameters_match_actual_admitted_filters():
         for path, operations in app.openapi()["paths"].items():
             if path.endswith("/query"):
                 fields = {p["name"] for p in operations["get"]["parameters"]}
+                if path == "/api/r5/claims/timeseries/query":
+                    assert fields == {
+                        "start",
+                        "end",
+                        "series",
+                        "local_only",
+                        "query_mode",
+                        "as_of",
+                        "as_of_basis",
+                    }
+                    continue
                 assert {"start", "end", "columns", "local_only", "as_of"} <= fields
                 assert ("series" in fields) == any(
                     family in path for family in ("employment", "consumption")
