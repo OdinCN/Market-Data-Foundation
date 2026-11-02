@@ -231,7 +231,7 @@ class GdpReleaseRecords:
             not isinstance(event_id, str) or len(event_id) > 160
         ):
             raise _error("event_id_invalid")
-        with self.store.operation():
+        with self.store.read_snapshot():
             try:
                 rows = self._rows(cutoff)
             except GdpTimeSeriesError as error:

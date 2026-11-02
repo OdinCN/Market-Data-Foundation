@@ -633,13 +633,16 @@ class ReleaseRecords:
                 if cutoff is None or instant(r["available_at"]) <= cutoff
             ]
         try:
-            rows = self.store.connection.execute(
-                "SELECT evidence_id,raw_sha256,raw_locator,"
-                "obtained_at,available_at,document "
-                f"FROM {self.schema}.release_evidence WHERE available_at IS NOT NULL "
-                "AND (%s::timestamptz IS NULL OR available_at <= %s::timestamptz)",
-                (cutoff, cutoff),
-            ).fetchall()
+            # A missing optional table must not abort the outer read snapshot.
+            with self.store.connection.transaction():
+                rows = self.store.connection.execute(
+                    "SELECT evidence_id,raw_sha256,raw_locator,"
+                    "obtained_at,available_at,document "
+                    f"FROM {self.schema}.release_evidence "
+                    "WHERE available_at IS NOT NULL "
+                    "AND (%s::timestamptz IS NULL OR available_at <= %s::timestamptz)",
+                    (cutoff, cutoff),
+                ).fetchall()
             return [
                 {
                     **doc,
@@ -656,7 +659,31 @@ class ReleaseRecords:
         except psycopg.Error:
             raise CpiTimeSeriesError("release_storage_failed") from None
 
+    def _read_snapshot(self):
+        snapshot = getattr(self.store, "read_snapshot", None)
+        return snapshot() if snapshot is not None else self._operation()
+
     def read(
+        self,
+        *,
+        event_id=None,
+        as_of=None,
+        read_mode="event",
+        source_version=None,
+        reference_month=None,
+        _include_context=True,
+    ):
+        with self._read_snapshot():
+            return self._read(
+                event_id=event_id,
+                as_of=as_of,
+                read_mode=read_mode,
+                source_version=source_version,
+                reference_month=reference_month,
+                _include_context=_include_context,
+            )
+
+    def _read(
         self,
         *,
         event_id=None,
@@ -893,12 +920,14 @@ class ReleaseRecords:
                 if instant(v["available_at"]) <= cutoff
             ]
         try:
-            rows = self.store.connection.execute(
-                "SELECT record_id,event_id,kind,obtained_at,available_at,document "
-                f"FROM {self.schema}.release_annotations "
-                "WHERE available_at <= %s",
-                (cutoff,),
-            ).fetchall()
+            # A missing optional table must not abort the outer read snapshot.
+            with self.store.connection.transaction():
+                rows = self.store.connection.execute(
+                    "SELECT record_id,event_id,kind,obtained_at,available_at,document "
+                    f"FROM {self.schema}.release_annotations "
+                    "WHERE available_at <= %s",
+                    (cutoff,),
+                ).fetchall()
             return [
                 dict(
                     doc,
@@ -1533,6 +1562,10 @@ class ReleaseRecords:
         event["prior_event_values"] = list(previous_claims.values())
 
     def link_result(self, result):
+        with self._read_snapshot():
+            return self._snapshot_link_result(result)
+
+    def _snapshot_link_result(self, result):
         """Related scope is distinct from a proven numeric-version association."""
         cutoff = (
             instant(result["as_of"]) if result.get("as_of") else instant(self.clock())
@@ -1564,7 +1597,7 @@ class ReleaseRecords:
             self._version_snapshot = None
 
     def _link_result(self, result, cutoff):
-        events = self.read(as_of=cutoff.isoformat(), _include_context=False)["events"]
+        events = self._read(as_of=cutoff.isoformat(), _include_context=False)["events"]
         for point in result.get("points", []):
             if self.profile.key != "retail" and point.get("series_id"):
                 versions = self._versions(point["series_id"], point["month"], cutoff)

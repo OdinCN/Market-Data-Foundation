@@ -687,12 +687,17 @@ def test_twenty_year_fourteen_series_links_after_event_import_use_bounded_select
         for m in refs
     ]
 
+    from contextlib import nullcontext
+
     class Connection:
         autocommit = True
 
         def __init__(self):
             self.queries = []
             self.rows = []
+
+        def transaction(self):
+            return nullcontext()
 
         def execute(self, sql, params=None):
             self.queries.append(sql)
@@ -742,9 +747,12 @@ def test_twenty_year_fourteen_series_links_after_event_import_use_bounded_select
     )
     result = repo.link_result(dict(points=points, as_of=AT.isoformat()))
     assert len(result["points"]) == 3360
-    assert len(connection.queries) <= 5
+    assert len(connection.queries) <= 6
     assert sum(".revisions r " in sql for sql in connection.queries) == 1
-    assert all(sql.lstrip().startswith("SELECT") for sql in connection.queries)
+    assert connection.queries[0] == (
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+    )
+    assert all(sql.lstrip().startswith("SELECT") for sql in connection.queries[1:])
     point = next(
         p
         for p in points

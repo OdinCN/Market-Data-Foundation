@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -341,6 +342,7 @@ class PostgresRetailStore:
     def __init__(
         self, connection, archive, *, schema=SCHEMA, clock=lambda: datetime.now(UTC)
     ):
+        self._lock = RLock()
         self.s = identifier(schema)
         self.schema, self.connection, self.archive, self.clock = (
             schema,
@@ -350,6 +352,21 @@ class PostgresRetailStore:
         )
         if not connection.autocommit:
             raise RetailStorageError("retail_autocommit_required")
+
+    @contextmanager
+    def read_snapshot(self):
+        with self._lock:
+            info = getattr(self.connection, "info", None)
+            if (
+                info is not None
+                and info.transaction_status != psycopg.pq.TransactionStatus.IDLE
+            ):
+                raise RetailStorageError("retail_top_level_transaction_required")
+            with self.connection.transaction():
+                self.connection.execute(
+                    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+                )
+                yield
 
     def ensure_schema(self):
         self.connection.execute(schema_sql(self.schema))
@@ -510,6 +527,10 @@ class PostgresRetailStore:
             raise RetailStorageError("retail_storage_read_failed") from None
 
     def status(self):
+        with self.read_snapshot():
+            return self._status()
+
+    def _status(self):
         try:
             row = self.connection.execute(
                 "SELECT count(*),"

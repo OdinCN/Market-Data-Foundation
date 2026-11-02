@@ -608,6 +608,17 @@ class PostgresTimeSeriesStore:
                                 "cpi_timeseries_lock_release_failed"
                             ) from None
 
+    @contextmanager
+    def read_snapshot(self):
+        """One committed snapshot; readers never take the family writer lock."""
+        with self._lock:
+            self._require_top_level_transaction()
+            with self.connection.transaction():
+                self.connection.execute(
+                    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+                )
+                yield
+
     def ensure_schema(self):
         """Create a new relational schema; an old schema needs explicit migration."""
         try:
@@ -939,6 +950,10 @@ class PostgresTimeSeriesStore:
         return {"saved_points": points, "saved_revisions": revisions}
 
     def status(self):
+        with self.read_snapshot():
+            return self._status()
+
+    def _status(self):
         try:
             latest = self.connection.execute(
                 "SELECT series_id,to_char(max(month),'YYYY-MM') "
@@ -984,6 +999,8 @@ class InMemoryTimeSeriesStore:
     def operation(self):
         with self._lock:
             yield
+
+    read_snapshot = operation
 
     def read_range(
         self, series_ids, start_month, end_month, as_of=None, vintage_mode="observed"
@@ -1117,6 +1134,10 @@ class InMemoryTimeSeriesStore:
         return {"saved_points": saved, "saved_revisions": revised}
 
     def status(self):
+        with self.read_snapshot():
+            return self._status()
+
+    def _status(self):
         latest = {s: None for s in self.profile.series_ids}
         for (s, month), rows in self._history.items():
             if (

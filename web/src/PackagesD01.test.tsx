@@ -270,18 +270,20 @@ it("package filter persists in URL, isolates TDX/KD and clears visibly", async (
     source_changes: [],
   });
   open(h.transport, { view: "assets", package: "tdx" });
-  await screen.findByRole("button", { name: /选择 原始日线/ });
+  await screen.findByRole("button", { name: /选择 TDX · 原始日线/ });
   expect(
     screen.queryByRole("button", { name: /选择 当前排名|选择 美国 PPI/ }),
   ).toBeNull();
   fireEvent.change(screen.getByLabelText("接入包筛选"), {
     target: { value: "kd" },
   });
-  await screen.findByRole("button", { name: /选择 当前排名/ });
+  await screen.findByRole("button", { name: /选择 KD · 板块当前排名/ });
   expect(location.hash).toContain("package=kd");
-  expect(screen.queryByRole("button", { name: /选择 原始日线/ })).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: /选择 TDX · 原始日线/ }),
+  ).toBeNull();
   fireEvent.click(btn("清除包筛选"));
-  await screen.findByRole("button", { name: /选择 原始日线/ });
+  await screen.findByRole("button", { name: /选择 TDX · 原始日线/ });
   expect(new URLSearchParams(location.hash.slice(1)).has("package")).toBe(
     false,
   );

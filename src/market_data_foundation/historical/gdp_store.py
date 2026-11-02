@@ -280,6 +280,8 @@ class InMemoryGdpStore:
         with self._lock:
             yield
 
+    read_snapshot = operation
+
     def read_range(self, series, start, end, as_of=None, basis="observed"):
         as_of = _read_args(series, start, end, as_of, basis)
         with self.operation():
@@ -434,6 +436,17 @@ class PostgresGdpStore:
                         raise GdpStorageError(
                             "gdp_timeseries_lock_release_failed"
                         ) from None
+
+    @contextmanager
+    def read_snapshot(self):
+        """Short read-only MVCC snapshot, independent of the family writer lock."""
+        with self._lock:
+            self._top_level()
+            with self.connection.transaction():
+                self.connection.execute(
+                    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+                )
+                yield
 
     def ensure_schema(self):
         self._top_level()
@@ -634,6 +647,10 @@ class PostgresGdpStore:
             ) from None
 
     def status(self):
+        with self.read_snapshot():
+            return self._status()
+
+    def _status(self):
         try:
             rows = self.connection.execute(
                 f"SELECT series_id,max(quarter) FROM {self.schema}.latest "

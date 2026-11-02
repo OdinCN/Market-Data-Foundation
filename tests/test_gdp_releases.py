@@ -314,3 +314,27 @@ def test_release_cli_read_does_not_prepare_schema(monkeypatch, capsys):
         "gdp_release_schema_not_prepared"
     ]
     assert not hasattr(s.store, "_gdp_release_evidence")
+
+
+def test_release_reads_and_query_links_do_not_acquire_writer_lock(monkeypatch):
+    from contextlib import contextmanager
+
+    candidate, evidence, clock, archive = records()
+    candidate.init_range("2026-Q2", "2026-Q2")
+    imported = evidence.import_material(material(), URL.format("third"))
+    continuous = candidate.query_range("2026-Q2", "2026-Q2")
+
+    @contextmanager
+    def writer_busy():
+        raise GdpStorageError("gdp_timeseries_busy")
+        yield
+
+    monkeypatch.setattr(candidate.store, "operation", writer_busy)
+    assert evidence.read()["events"][0]["event_id"] == imported["event_id"]
+    assert evidence.read(read_mode="source_history")["events"]
+    assert evidence.read(as_of=AT - timedelta(seconds=1))["events"] == []
+    linked = evidence.link_result(continuous)
+    growth = next(p for p in linked["points"] if p["series_id"] == "A191RL")
+    assert growth["related_releases"][0]["continuous_version_bound"] is False
+    with pytest.raises(GdpStorageError, match="gdp_timeseries_busy"):
+        evidence.import_material(material(actual="2.3"), URL.format("third"))

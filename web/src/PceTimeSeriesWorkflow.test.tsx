@@ -429,7 +429,7 @@ it("uses PCE range queries after actual CPI asset navigation, refresh and histor
   fireEvent.click(
     within(screen.getByRole("region", { name: "数据资产" })).getByRole(
       "button",
-      { name: /^选择 美国 PCE / },
+      { name: /^选择 美国 PCE价格指数 / },
     ),
   );
   await flush();

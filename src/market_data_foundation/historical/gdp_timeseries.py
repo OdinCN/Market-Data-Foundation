@@ -117,7 +117,7 @@ class GdpTimeSeriesService:
         if basis not in ("available", "observed"):
             raise GdpTimeSeriesError("gdp_timeseries_cutoff_basis_invalid")
         series, buffer = _request_args(start, end, series_ids)
-        with self.store.operation():
+        with self.store.read_snapshot():
             local = self.store.read_range(series, buffer, end, cutoff, basis)
         indexed = {
             (d["series_id"], d["quarter"]): dict(d, origin="local") for d in local
