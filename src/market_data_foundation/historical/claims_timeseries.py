@@ -265,6 +265,12 @@ class ClaimsTimeSeriesService:
     def __init__(self, store, source=None, *, clock=lambda: datetime.now(UTC)):
         self.store, self.source, self.clock = store, source, clock
 
+    def status(self):
+        return self.store.status()
+
+    def close(self):
+        self.store.close()
+
     def query_range(
         self,
         start,

@@ -196,3 +196,51 @@ def test_reinitialization_only_requests_remaining_tail_and_is_local_when_complet
     known.append(SimpleNamespace(series_id="ICSA", week_ending="2026-09-26"))
     service.init_range("2026-09-19", "2026-09-26", series_ids=("ICSA",))
     assert len(calls) == 1
+
+
+def test_collection_uses_effective_package_credential_without_default_fallback(
+    tmp_path, monkeypatch
+):
+    import market_data_foundation.historical.claims_collection as module
+
+    runtime = tmp_path / "runtime.toml"
+    secret = tmp_path / "secret.toml"
+    runtime.write_text(f'''[storage]
+backend="s3"
+[s3]
+endpoint_url="{module.GARAGE_ENDPOINT}"
+bucket="{module.BUCKET}"
+region="garage"
+key_prefix=""
+addressing_style="path"
+''')
+    secret.write_text(
+        '[s3]\naccess_key_id="synthetic"\nsecret_access_key="synthetic"\n[postgres]\npassword="synthetic"\n'
+    )
+    connection = SimpleNamespace(autocommit=True, close=lambda: None)
+    monkeypatch.setattr(module, "connect_dev", lambda *args, **kwargs: connection)
+    monkeypatch.setattr(
+        module, "GarageClaimsRawStore", lambda *args, **kwargs: object()
+    )
+    monkeypatch.setattr(
+        module, "load_api_key", lambda *args: pytest.fail("package_credential_bypassed")
+    )
+    calls = []
+    service = module.build_service(
+        live_opt_in=True,
+        runtime_path=runtime,
+        secret_path=secret,
+        credential_loader=lambda: calls.append(1) or "synthetic-package-key",
+        request_control_path=tmp_path / "claims-control.json",
+    )
+    assert calls == [1]
+    assert service.source._transport._key == "synthetic-package-key"
+    assert service.source._control.state_path == tmp_path / "claims-control.json"
+    assert not service.source._control.state_path.exists()
+    with pytest.raises(ClaimsError, match="credential_missing"):
+        module.build_service(
+            live_opt_in=True,
+            runtime_path=runtime,
+            secret_path=secret,
+            credential_loader=lambda: None,
+        )

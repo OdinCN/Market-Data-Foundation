@@ -76,8 +76,25 @@ def request_schema(properties, required):
 QUARTER_SCHEMA = {"type": "string", "pattern": "^[0-9]{4}-Q[1-4]$"}
 
 
-def timeseries_router(host):
-    router = APIRouter(prefix=PREFIX)
+def timeseries_router(
+    host,
+    *,
+    prefix=PREFIX,
+    family="gdp",
+    period_schema=QUARTER_SCHEMA,
+    period_description="YYYY-Qn inclusive",
+    series_description="native SeriesCode CSV; all eight by default",
+    basis_description="observed/available; history defaults available",
+    release_fields=(
+        "reference_quarter",
+        "event_id",
+        "source_version",
+        "read_mode",
+        "as_of",
+    ),
+    error_handler=failure,
+):
+    router = APIRouter(prefix=prefix)
 
     def endpoint(operation):
         def get(request: Request):
@@ -90,7 +107,7 @@ def timeseries_router(host):
                 ):
                     raise WebError("get_body_not_supported")
                 if host is None:
-                    raise WebError("gdp_timeseries_not_enabled", 503)
+                    raise WebError(family + "_timeseries_not_enabled", 503)
                 pairs = request.query_params.multi_items()
                 if len(pairs) != len(dict(pairs)):
                     raise WebError("duplicate_parameter")
@@ -108,32 +125,23 @@ def timeseries_router(host):
                     )
                 return JSONResponse(result)
             except Exception as error:
-                return failure(error)
+                return error_handler(error)
 
         return get
 
     query_parameters = {
-        "start": ("YYYY-Qn inclusive", True),
-        "end": ("YYYY-Qn inclusive", True),
-        "series": ("native SeriesCode CSV; all eight by default", False),
+        "start": (period_description, True),
+        "end": (period_description, True),
+        "series": (series_description, False),
         "local_only": (
             "true default; false allows nonpersisted current gap fetch",
             False,
         ),
         "query_mode": ("current/history; history inferred with as_of", False),
         "as_of": ("aware ISO8601 cutoff required in history", False),
-        "as_of_basis": ("observed/available; history defaults available", False),
+        "as_of_basis": (basis_description, False),
     }
-    release_parameters = {
-        k: ("optional " + k, False)
-        for k in (
-            "reference_quarter",
-            "event_id",
-            "source_version",
-            "read_mode",
-            "as_of",
-        )
-    }
+    release_parameters = {k: ("optional " + k, False) for k in release_fields}
     for operation in (
         "status",
         "query",
@@ -155,7 +163,7 @@ def timeseries_router(host):
             "/" + operation,
             endpoint(operation),
             methods=["GET"],
-            name="gdp_timeseries_" + operation,
+            name=family + "_timeseries_" + operation,
             openapi_extra={
                 "parameters": [
                     {
@@ -176,40 +184,40 @@ def timeseries_router(host):
             {
                 "request_id": {"type": "string", "format": "uuid"},
                 "action": {"type": "string", "enum": ["init", "update"]},
-                "start": QUARTER_SCHEMA,
-                "end": QUARTER_SCHEMA,
+                "start": period_schema,
+                "end": period_schema,
             },
             ["request_id", "action", "start", "end"],
         ),
     )
     async def submit(request: Request):
         try:
-            if not admitted_job(request, prefix=PREFIX):
+            if not admitted_job(request, prefix=prefix):
                 raise WebError("operator_not_authorized", 403)
             if host is None:
-                raise WebError("gdp_timeseries_not_enabled", 503)
+                raise WebError(family + "_timeseries_not_enabled", 503)
             command = await body(request)
             result = await run_in_threadpool(dispatch_job, host.submit, command)
             return JSONResponse(result, 202 if result["state"] == "running" else 200)
         except Exception as error:
-            return failure(error)
+            return error_handler(error)
 
     @router.put(
         "/strategy",
         openapi_extra=request_schema(
-            {"enabled": {"type": "boolean"}, "history_start": QUARTER_SCHEMA},
+            {"enabled": {"type": "boolean"}, "history_start": period_schema},
             ["enabled"],
         ),
     )
     async def strategy(request: Request):
         try:
-            if not admitted_strategy(request, prefix=PREFIX):
+            if not admitted_strategy(request, prefix=prefix):
                 raise WebError("operator_not_authorized", 403)
             if host is None:
-                raise WebError("gdp_timeseries_not_enabled", 503)
+                raise WebError(family + "_timeseries_not_enabled", 503)
             result = await run_in_threadpool(host.update_strategy, await body(request))
             return JSONResponse(result)
         except Exception as error:
-            return failure(error)
+            return error_handler(error)
 
     return router

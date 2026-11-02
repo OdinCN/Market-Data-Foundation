@@ -101,7 +101,12 @@ def test_first_enable_required_keep_and_package_environment_isolation(tmp_path):
         assert ppi["required_sources"] == ["BLS"]
         assert {
             s["source_id"]: s["credential_state"] for s in ppi["credential_states"]
-        } == {"BLS": "configured", "BEA": "missing", "Census": "configured"}
+        } == {
+            "BLS": "configured",
+            "BEA": "missing",
+            "Census": "configured",
+            "FRED": "configured",
+        }
         assert put(client, ["daily_raw"], package="tdx").status_code == 200
         assert client.get(f"{PATH}/macro").json() == ppi
         other = PackageHost(host.store, "other-environment", authorize=host.authorize)
@@ -160,7 +165,7 @@ def test_real_identities_source_variants_and_other_code_catalog_are_preserved(tm
         }
         directory = client.get("/api/r5/sources").json()
         assert directory["evidence_mode"] == "CODE_CONTRACTS_ONLY"
-        assert len(directory["entries"]) == 18
+        assert len(directory["entries"]) == 19
         assert (
             len(
                 {
@@ -169,7 +174,7 @@ def test_real_identities_source_variants_and_other_code_catalog_are_preserved(tm
                     if e["asset"]
                 }
             )
-            == 13
+            == 14
         )
 
 

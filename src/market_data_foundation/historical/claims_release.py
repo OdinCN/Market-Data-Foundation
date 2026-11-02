@@ -25,7 +25,7 @@ from market_data_foundation.historical.claims_contract import (
 from market_data_foundation.historical.claims_store import storage_boundary
 from market_data_foundation.historical.cpi_timeseries_store import canonical, digest
 
-PARSER = "dol-regular-state-claims-v2"
+PARSER = "dol-regular-state-claims-v3"
 NUMBER = r"[0-9][0-9,]*(?:\.[0-9]+)?"
 MONTH_DAY = (
     r"(?:January|February|March|April|May|June|July|August|September|"
@@ -38,7 +38,7 @@ def _error(reason):
 
 
 def _number(value):
-    return str(Decimal(value.replace(",", "")))
+    return str(Decimal(value.replace("−", "-").replace(",", "")))
 
 
 def parse_release_pages(pages, source_url):
@@ -46,11 +46,12 @@ def parse_release_pages(pages, source_url):
     if (
         url.scheme != "https"
         or url.netloc not in {"www.dol.gov", "dol.gov"}
-        or url.query
+        or (url.query and not (url.path == "/ui/data.pdf" and url.query == "os=v0"))
         or url.fragment
         or not (
             url.path.startswith("/sites/dolgov/files/OPA/newsreleases/ui-claims/")
             or url.path.startswith("/newsroom/releases/eta/")
+            or url.path == "/ui/data.pdf"
         )
     ):
         raise _error("named_official_url_required")
@@ -247,6 +248,9 @@ def parse_release_pages(pages, source_url):
         official_actual_publication_precision="unknown",
         parser_revision=PARSER,
         source_url=source_url,
+        evidence_kind="official_current_report_snapshot"
+        if url.path == "/ui/data.pdf"
+        else "official_archive",
         original_agency="DOL-ETA",
         claims=claims,
         consensus=None,
@@ -293,6 +297,7 @@ class ClaimsReleaseRecords:
         return [
             dict(
                 doc,
+                evidence_kind=doc.get("evidence_kind", "official_archive"),
                 evidence_id=eid,
                 raw_sha256=sha,
                 raw_locator=locator,

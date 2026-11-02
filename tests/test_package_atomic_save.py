@@ -113,7 +113,12 @@ def test_one_snapshot_publishes_capabilities_and_private_reference_and_reopens(
             s["source_id"]: s["credential_state"]
             for s in response.json()["credential_states"]
         }
-        assert states == {"BLS": "configured", "BEA": "configured", "Census": "unknown"}
+        assert states == {
+            "BLS": "configured",
+            "BEA": "configured",
+            "Census": "unknown",
+            "FRED": "unknown",
+        }
         assert all(
             s["authentication"] == "unknown"
             for s in response.json()["credential_states"]

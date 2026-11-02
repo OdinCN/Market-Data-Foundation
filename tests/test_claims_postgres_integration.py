@@ -169,3 +169,69 @@ def test_claims_changed_values_cutoffs_first_capture_views_and_readonly_grants()
     finally:
         conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         runtime.close()
+
+
+def test_commit_interruption_new_equal_capture_recovers_only_returned_keys():
+    """The first transaction really commits before confirmation is interrupted."""
+    if os.getenv("MDF_CLAIMS_PG_TEST") != "1":
+        pytest.skip("Explicit isolated Claims PostgreSQL opt-in required")
+    import psycopg
+
+    from market_data_foundation.historical.claims_contract import ClaimsError
+
+    runtime = build_service()
+    conn = runtime.store.connection
+    schema = "test_claims_" + uuid4().hex
+    store = PostgresClaimsStore(conn, Archive(), schema=schema)
+
+    class InterruptConfirmation:
+        def __init__(self):
+            self.calls = 0
+
+        def __getattr__(self, key):
+            return getattr(conn, key)
+
+        def transaction(self):
+            self.calls += 1
+            if self.calls == 2:
+                raise psycopg.OperationalError("synthetic private interruption")
+            return conn.transaction()
+
+    try:
+        store.ensure_schema()
+        interrupted = PostgresClaimsStore(
+            InterruptConfirmation(), Archive(), schema=schema
+        )
+        with pytest.raises(
+            ClaimsError, match="claims_commit_or_confirmation_outcome_unknown"
+        ):
+            interrupted.save_batches([batch()])
+        assert store.status()["pending_observation_count"] == 2
+        service = ClaimsTimeSeriesService(store)
+        assert (
+            service.query_range("2026-09-19", "2026-09-26", series_ids=("ICSA",))[
+                "coverage"
+            ]["available"]
+            == 0
+        )
+        recovery_at = conn.execute("SELECT clock_timestamp()").fetchone()[0]
+        # A new capture does not invent a revision and does not confirm a key
+        # merely because its request window includes a missing response row.
+        fresh = batch(
+            values=("100.0",), observed=AT + timedelta(days=1), realtime="2026-10-02"
+        )
+        assert store.save_batches([fresh]) == dict(saved_points=0, saved_revisions=0)
+        assert store.status()["pending_observation_count"] == 1
+        first = service.query_range("2026-09-19", "2026-09-26", series_ids=("ICSA",))
+        actual = next(p for p in first["rows"] if p["week_ending"] == "2026-09-19")
+        assert actual["provenance"]["available_at"] >= recovery_at.isoformat()
+        assert actual["provenance"]["observed_at"] == AT.isoformat()
+        assert (
+            store.save_batches([batch(observed=AT + timedelta(days=2))])["saved_points"]
+            == 0
+        )
+        assert store.status()["pending_observation_count"] == 0
+        assert store.status()["revision_count"] == 0
+    finally:
+        conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        runtime.close()

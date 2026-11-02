@@ -366,18 +366,15 @@ class PostgresClaimsStore:
                 # committed pending rows are confirmed at replay time, never
                 # backdated to the original capture or source realtime date.
                 for b in batches:
-                    p = b.request["parameters"]
-                    self.connection.execute(
-                        f"UPDATE {self.schema}.revisions "
-                        "SET available_at=clock_timestamp() "
-                        "WHERE available_at IS NULL AND series_id=%s "
-                        "AND week_ending BETWEEN %s AND %s",
-                        (
-                            p["series_id"],
-                            day(p["observation_start"]),
-                            day(p["observation_end"]),
-                        ),
-                    )
+                    for p in b.points:
+                        self.connection.execute(
+                            f"UPDATE {self.schema}.revisions "
+                            "SET available_at=clock_timestamp() "
+                            "WHERE available_at IS NULL AND series_id=%s "
+                            "AND week_ending=%s AND value IS NOT DISTINCT FROM %s "
+                            "AND observed_at<=%s",
+                            (p.series_id, day(p.week_ending), p.value, b.observed_at),
+                        )
         return {
             "saved_points": len(inserted),
             "saved_revisions": sum(r > 1 for r in inserted),

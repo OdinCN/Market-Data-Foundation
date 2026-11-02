@@ -3,6 +3,15 @@
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
+from market_data_foundation.canonical.model import (
+    DatasetDefinition,
+    EvidenceRequirement,
+    Grade,
+    OutputMapping,
+    Scope,
+    SourceBindingRevision,
+    SourceOperationRef,
+)
 from market_data_foundation.historical.cpi_timeseries_source import CpiSourceError
 
 ClaimsError = CpiSourceError
@@ -88,3 +97,57 @@ def twenty_year_range(end):
     except ValueError:
         first = last.replace(year=last.year - 20, day=28)
     return first.isoformat(), last.isoformat()
+
+
+# Native FRED operation contract; the original statistical agency remains DOL-ETA.
+CLAIMS_DEFINITION = DatasetDefinition(
+    ASSET_ID,
+    "r1",
+    "Six national regular-state UI weekly series via FRED",
+    "美国初请与续请失业金",
+    True,
+    "native series_id + independent week_ending",
+    "Number; SA/NSA and official four-week means remain separate",
+    "Saturday reference; provider realtime dates; MDF observed/available; DOL event",
+    "changed economic values only; no inferred official first release",
+    "six explicit series; source gaps remain explicit",
+    Scope(),
+)
+CLAIMS_SOURCE = SourceOperationRef(
+    "mdf.source.fred.dol.claims",
+    "r1",
+    "market-data-foundation",
+    "FRED",
+    "fred/series/observations:ICSA,ICNSA,CCSA,CCNSA,IC4WSA,CC4WSA",
+    "fred-dol-claims-weekly-r1",
+    "regular-state-national-weekly",
+    None,
+    None,
+    None,
+    "read",
+    "bounded_weekly_capture",
+    Scope(),
+    "DOL-ETA reference weeks independent; realtime dates not publication instants",
+    "one complete response per native series; missing provider rows retained as gaps",
+    "limit100000; offset0; count must equal rows; no hidden pagination",
+    "retrieval-bound, not complete historical vintage",
+    frozenset({Grade.ORIGINAL}),
+)
+CLAIMS_BINDING = SourceBindingRevision(
+    "mdf.binding.fred.dol.claims",
+    "r1",
+    CLAIMS_SOURCE.key,
+    (
+        OutputMapping(
+            "fred-dol-claims",
+            CLAIMS_DEFINITION.key,
+            "r1",
+            "weekly-observed-available-r1",
+            Scope(),
+            EvidenceRequirement(frozenset({Grade.ORIGINAL}), True, True),
+        ),
+    ),
+    "exact-native-series-weekly-number-and-seasonal-mapping",
+    ("no_provider_fallback", "original_agency_DOL_ETA", "no_inferred_event_binding"),
+    silent_fallback=False,
+)

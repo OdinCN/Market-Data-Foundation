@@ -173,3 +173,20 @@ def test_cli_releases_exposes_real_record_reader(monkeypatch, capsys):
     )
     assert cli.main(["releases"]) == 0
     assert json.loads(capsys.readouterr().out)["events"][0]["event_id"] == "synthetic"
+
+
+def test_unicode_minus_and_true_current_pdf_snapshot_evidence():
+    sample = pages()
+    sample[2] = sample[2].replace("-10", "−10")
+    for url in (
+        "https://www.dol.gov/ui/data.pdf",
+        "https://www.dol.gov/ui/data.pdf?os=v0",
+    ):
+        parsed = parse_release_pages(sample, url)
+        assert parsed["evidence_kind"] == "official_current_report_snapshot"
+        assert parsed["source_url"] == url
+        assert parsed["event_id"] == "dol-claims-2026-10-29"
+        assert parsed["claims"][0]["evidence"]["source_url"] == url
+    assert parse_release_pages(sample, URL)["evidence_kind"] == "official_archive"
+    with pytest.raises(ClaimsError, match="named_official_url_required"):
+        parse_release_pages(sample, "https://www.dol.gov/ui/data.pdf?invented=archive")

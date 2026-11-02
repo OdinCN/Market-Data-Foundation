@@ -26,9 +26,21 @@ from market_data_foundation.historical.claims_store import (
 )
 from market_data_foundation.historical.claims_timeseries import ClaimsTimeSeriesService
 from market_data_foundation.historical.cpi_timeseries import DEFAULT_SECRET_PATH
+from market_data_foundation.historical.cpi_timeseries_store import canonical, digest
 from market_data_foundation.historical.fred_alfred_vintage_live import load_api_key
 from market_data_foundation.storage.market_dataset_postgres import connect_dev
 from market_data_foundation.storage.postgres_runtime_config import DEFAULT_RUNTIME_PATH
+
+
+def readback_digest(result):
+    return digest(
+        canonical(
+            [
+                [r["series_id"], r["week_ending"], r["value"], r.get("provenance")]
+                for r in result["rows"]
+            ]
+        ).encode()
+    )
 
 
 class ClaimsCollectionService(ClaimsTimeSeriesService):
@@ -89,6 +101,7 @@ class ClaimsCollectionService(ClaimsTimeSeriesService):
             provider_attempts=self.source.attempts - attempts,
             start_date=start,
             end_date=end,
+            readback_digest=readback_digest(result),
         )
 
     def init_range(self, start, end, **options):
@@ -107,6 +120,10 @@ def build_service(
     runtime_path=DEFAULT_RUNTIME_PATH,
     secret_path=DEFAULT_SECRET_PATH,
     max_requests=16,
+    credential_loader=None,
+    request_control_path=Path(
+        "/srv/market-data-foundation/config/local/claims-fred-request-control.json"
+    ),
 ):
     connection = None
     try:
@@ -138,13 +155,15 @@ def build_service(
 
         source = (
             ClaimsFredSource(
-                transport=ClaimsHttpsTransport(load_api_key(Path(secret_path))),
+                transport=ClaimsHttpsTransport(
+                    credential_loader()
+                    if credential_loader is not None
+                    else load_api_key(Path(secret_path))
+                ),
                 live_opt_in=True,
                 max_requests=max_requests,
                 raw_sink=sink,
-                request_control_path=Path(
-                    "/srv/market-data-foundation/config/local/claims-fred-request-control.json"
-                ),
+                request_control_path=request_control_path,
             )
             if live_opt_in
             else None

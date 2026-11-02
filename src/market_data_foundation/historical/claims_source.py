@@ -73,6 +73,8 @@ class ClaimsBatch:
 
 class ClaimsHttpsTransport:
     def __init__(self, key):
+        if type(key) is not str or not key.strip():
+            raise ClaimsError("claims_fred_credential_missing")
         self._key = key
 
     def __call__(self, request):

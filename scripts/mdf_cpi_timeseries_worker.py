@@ -12,6 +12,7 @@ from market_data_foundation.historical.cpi_timeseries_cli import (
     error_document,
     run_worker,
 )
+from market_data_foundation.web.claims_runtime import ClaimsOptions
 from market_data_foundation.web.cpi_pg_readonly_scope import DevReadIdentity
 from market_data_foundation.web.cpi_query import CpiQueryAccess
 from market_data_foundation.web.cpi_timeseries_host import TimeSeriesRuntime
@@ -23,9 +24,24 @@ def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--asset",
-        choices=("cpi", "ppi", "pce", "employment", "retail", "consumption", "gdp"),
+        choices=(
+            "cpi",
+            "ppi",
+            "pce",
+            "employment",
+            "retail",
+            "consumption",
+            "gdp",
+            "claims",
+        ),
         default="cpi",
     )
+    parser.add_argument("--opt-in-claims-worker", action="store_true")
+    parser.add_argument("--claims-schedule-path", type=Path)
+    parser.add_argument("--claims-job-directory", type=Path)
+    parser.add_argument("--claims-history-start")
+    parser.add_argument("--claims-artifacts-path", type=Path)
+    parser.add_argument("--claims-request-control-path", type=Path)
     parser.add_argument("--opt-in-gdp-worker", action="store_true")
     parser.add_argument("--gdp-schedule-path", type=Path)
     parser.add_argument("--gdp-job-directory", type=Path)
@@ -76,6 +92,10 @@ def build_runtime(args):
         if args.gdp_schedule_path is None or args.gdp_job_directory is None:
             raise ValueError("gdp_independent_paths_required")
         paths += [args.gdp_schedule_path, args.gdp_job_directory]
+    if args.asset == "claims":
+        if args.claims_schedule_path is None or args.claims_job_directory is None:
+            raise ValueError("claims_independent_paths_required")
+        paths += [args.claims_schedule_path, args.claims_job_directory]
     ppi = args.asset == "ppi"
     pce = args.asset == "pce"
     retail = args.asset == "retail"
@@ -121,6 +141,17 @@ def build_runtime(args):
     )
     return TimeSeriesRuntime(
         settings,
+        claims_options=ClaimsOptions(
+            args.claims_schedule_path,
+            args.claims_job_directory,
+            allow_read=True,
+            allow_collect=args.allow_collect,
+            history_start=args.claims_history_start,
+            artifacts_path=args.claims_artifacts_path,
+            request_control_path=args.claims_request_control_path,
+        )
+        if args.asset == "claims"
+        else None,
         gdp_options=GdpOptions(
             args.gdp_schedule_path,
             args.gdp_job_directory,
@@ -205,7 +236,9 @@ def main(argv=None):
         runtime = build_runtime(args)
         # Construction and heartbeat never create/enable a strategy or collect.
         # tick rereads persistent enabled; even paused workers remain observable.
-        if args.asset == "gdp":
+        if args.asset == "claims":
+            host = runtime.claims_timeseries
+        elif args.asset == "gdp":
             host = runtime.gdp_timeseries
         elif args.asset == "cpi":
             host = runtime.timeseries
