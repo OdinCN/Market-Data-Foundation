@@ -5,6 +5,7 @@ import {
   render,
   screen,
   within,
+  waitFor,
 } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -358,6 +359,30 @@ it("routes the runtime GDP asset through shared compact/expanded panes and its o
     GDP.identity,
   );
   expect(f.calls.some((p) => p.includes("/cpi/timeseries"))).toBe(false);
+});
+
+it("waits for a delayed asset directory before mounting an editable GDP query", async () => {
+  location.hash = `ui=r5&view=assets&asset=${GDP.identity}&asset_revision=r1`;
+  const f = wire();
+  let release!: () => void;
+  const directory = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const transport: Transport = async (path, init) => {
+    if (String(path) === "/api/r5/packages") await directory;
+    return f.transport(path, init);
+  };
+  render(<App transport={transport} />);
+  await waitFor(() => expect(f.calls).toContain(profile.basePath + "/status"));
+  expect(screen.queryByLabelText("开始季度")).toBeNull();
+  release();
+  await screen.findByLabelText("开始季度");
+  setRange();
+  fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
+  await screen.findByRole("table", { name: "GDP与增长 范围数据" });
+  expect((screen.getByLabelText("开始季度") as HTMLInputElement).value).toBe(
+    scope.start,
+  );
 });
 
 it("requests a native series subset and validates its own quarterly coverage", () => {

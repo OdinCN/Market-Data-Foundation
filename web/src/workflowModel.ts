@@ -185,6 +185,7 @@ const titles: Record<string, string> = {
   "mdf.macro.bls.employment.ces-cps": "Employment · 就业",
   "mdf.macro.bea.pce.headline-core": "PCE价格指数",
   "mdf.macro.bea.consumption-income": "美国消费与收入",
+  "mdf.macro.bea.gdp-growth": "美国 GDP 与增长",
   "mdf.macro.census.retail": "Retail Sales · 零售销售",
   "mdf.macro.fred-alfred.vintage-bundle": "FRED / ALFRED · 历史修订",
   "mdf.macro.fomc-statement-document": "FOMC · 政策声明",

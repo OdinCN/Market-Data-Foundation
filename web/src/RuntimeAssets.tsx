@@ -342,7 +342,7 @@ export function RuntimeAssets({
           </WorkflowTable>
         </>
       )}
-      {cpiSelected && !selected && (
+      {cpiSelected && !selected && !busy && (data || failure) && (
         <section>
           <div className="toolbar cpi-asset-title">
             <h3>{macroAssetLabel(profile)}</h3>
