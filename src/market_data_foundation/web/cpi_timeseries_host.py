@@ -569,6 +569,17 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             shared_calendar = calendar_fetcher(
                 shared_dir / "bea-pio-calendar.json", clock=clock
             )
+            from market_data_foundation.historical.pce_release_schedule import (
+                fetch_official_html,
+                parse_official_html,
+            )
+
+            shared_backup = calendar_fetcher(
+                shared_dir / "bea-pio-calendar-html.json",
+                fetcher=fetch_official_html,
+                parser=parse_official_html,
+                clock=clock,
+            )
             for host, explicit in (
                 (self.pce_timeseries, pce_calendar_fetcher),
                 (self.consumption_timeseries, consumption_calendar_fetcher),
@@ -579,6 +590,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
                     )
                     if explicit is None:
                         host.scheduler.calendar_fetcher = shared_calendar
+                        host.scheduler.fallback_fetcher = shared_backup
 
         if employment_enabled:
             paths = (employment_schedule_path, employment_job_directory)

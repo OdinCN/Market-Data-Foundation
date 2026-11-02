@@ -122,11 +122,24 @@ type Schedule = {
     last_refresh_attempt?: string | null;
     acquired_at?: string | null;
     fetched_at?: string | null;
+    source?: string;
+    primary_source?: string;
+    refresh_mode?: "primary" | "fallback" | "cache" | "unavailable";
+    next_refresh_at?: string | null;
+    cache_valid_until?: string | null;
+    primary_error?: string | null;
+    refresh_attempts?: {
+      source: string;
+      outcome: string;
+      classification?: string;
+      http_status?: number | null;
+    }[];
   };
   calendar_error?: string | null;
   calendar_refresh_error?: string | null;
   targets: (Stage & {
     reference_month: string;
+    calendar_execution_blocked?: boolean;
     release_at: string | null;
     target?: Stage;
     history?: Stage;
@@ -518,7 +531,12 @@ function CpiStrategyWorkbenchContent({
   const shown = !!selection;
   const currentCalendarError =
     calendar.data?.calendar?.error ?? calendar.data?.calendar_error;
-  const calendarUsable = calendar.data?.calendar_status === "fresh";
+  const refresh = calendar.data?.calendar;
+  const calendarUsable =
+    calendar.data?.calendar_status === "fresh" ||
+    (calendar.data?.calendar_status === "degraded_cached_calendar" &&
+      refresh?.refresh_mode === "cache" &&
+      !!refresh.cache_valid_until);
   const calendarTime = (value?: string | null) =>
     formatBeijingTime(value, "未记录").replace(" 北京时间", "");
   return (
@@ -613,7 +631,11 @@ function CpiStrategyWorkbenchContent({
               </Fact>
               <Fact name="日历状态">
                 {calendarUsable
-                  ? "日历可用"
+                  ? refresh?.refresh_mode === "fallback"
+                    ? "官方备用日历可用"
+                    : refresh?.refresh_mode === "cache"
+                      ? "使用有效缓存"
+                      : "日历可用"
                   : ((
                       {
                         fresh: "日历可用",
@@ -635,27 +657,70 @@ function CpiStrategyWorkbenchContent({
                 )}
               </Fact>
             </dl>
+            {refresh?.refresh_mode && (
+              <dl>
+                <Fact name="当前日历入口">
+                  {refresh.source ? (
+                    <a
+                      href={refresh.source}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ overflowWrap: "anywhere" }}
+                    >
+                      {refresh.source}
+                    </a>
+                  ) : (
+                    "未获取"
+                  )}
+                </Fact>
+                <Fact name="日历缓存有效期至（北京时间）">
+                  {formatBeijingTime(refresh.cache_valid_until, "未记录")}
+                </Fact>
+                <Fact name="下次日历刷新（北京时间）">
+                  {formatBeijingTime(refresh.next_refresh_at, "未记录")}
+                </Fact>
+              </dl>
+            )}
             {!data.enabled && <p>策略已暂停。</p>}
-            {calendar.data?.calendar_status === "degraded_cached_calendar" ? (
+            {refresh?.refresh_mode === "fallback" ? (
+              <p role="status">
+                主日历入口暂不可用，已切换到同一机构的官方备用入口。存在冲突或未覆盖的月份暂停自动采集，等待主入口确认。
+              </p>
+            ) : calendar.data?.calendar_status === "degraded_cached_calendar" &&
+              !calendarUsable ? (
               <p role="status">
                 本次日历刷新失败，保留已缓存计划，等待刷新确认。
               </p>
             ) : currentCalendarError ? (
               <p role="status">
-                最近刷新失败
-                {currentCalendarError === "calendar_http_403"
-                  ? "（HTTP 403）"
-                  : `（${currentCalendarError}）`}
-                ，
+                最近刷新失败，
                 {calendarUsable
                   ? "继续使用有效缓存。"
-                  : ["unavailable", "missing", "expired", "stale"].includes(
-                        calendar.data?.calendar_status ?? "",
-                      )
-                    ? "无可用的有效日历，等待刷新确认。"
-                    : "保留已缓存计划，等待刷新确认。"}
+                  : "无可用的有效日历，暂停新的日历触发采集，等待刷新确认。"}
               </p>
             ) : null}
+            {refresh?.refresh_attempts?.some((a) => a.outcome === "failed") && (
+              <details>
+                <summary>日历刷新详情</summary>
+                <ul>
+                  {refresh.refresh_attempts.map((a, i) => (
+                    <li key={i} style={{ overflowWrap: "anywhere" }}>
+                      {a.source}：
+                      {a.outcome === "accepted"
+                        ? "已验证"
+                        : `失败${a.http_status ? `（HTTP ${a.http_status}）` : ""}`}{" "}
+                      {a.classification ?? ""}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {currentCalendarError && !refresh?.refresh_attempts?.length && (
+              <details>
+                <summary>日历刷新详情</summary>
+                <p>{currentCalendarError}</p>
+              </details>
+            )}
             <h4>最近真实执行摘要</h4>
             {data.last_result && (
               <dl>
@@ -714,6 +779,11 @@ function CpiStrategyWorkbenchContent({
                       <time>{calendarTime(target.release_at)}</time>
                     </span>
                   </header>
+                  {target.calendar_execution_blocked && (
+                    <p role="status">
+                      此月份的日历信息有冲突或尚未重新确认，暂停新的自动采集。以下保留原计划与执行记录。
+                    </p>
+                  )}
                   <div className="month-stage-grid">
                     <div className="month-stage-state">
                       <strong>当期采集</strong>

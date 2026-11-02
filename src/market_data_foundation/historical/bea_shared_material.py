@@ -11,6 +11,7 @@ import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from market_data_foundation.historical.calendar_resilience import AcquiredCalendar
 from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
 
 
@@ -72,7 +73,9 @@ def cached_material(directory, selection, family, fetcher):
         return raw, fetched
 
 
-def calendar_fetcher(path, *, fetcher=None, clock=lambda: datetime.now(UTC)):
+def calendar_fetcher(
+    path, *, fetcher=None, parser=None, clock=lambda: datetime.now(UTC)
+):
     from market_data_foundation.historical.pce_release_schedule import (
         fetch_official_calendar,
         parse_official_ics,
@@ -94,11 +97,11 @@ def calendar_fetcher(path, *, fetcher=None, clock=lambda: datetime.now(UTC)):
                         obtained <= now < obtained + timedelta(hours=6)
                         and hashlib.sha256(raw).hexdigest() == saved["sha256"]
                     ):
-                        return raw
+                        return AcquiredCalendar(raw, obtained)
                 except ValueError, KeyError, OSError:
                     raise CpiTimeSeriesError("bea_shared_calendar_invalid") from None
             raw = (fetcher or fetch_official_calendar)()
-            parse_official_ics(raw)
+            (parser or parse_official_ics)(raw)
             _write(
                 path,
                 json.dumps(
@@ -109,6 +112,6 @@ def calendar_fetcher(path, *, fetcher=None, clock=lambda: datetime.now(UTC)):
                     }
                 ).encode(),
             )
-            return raw
+            return AcquiredCalendar(raw, now)
 
     return fetch

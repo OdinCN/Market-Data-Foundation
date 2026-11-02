@@ -33,6 +33,12 @@ from market_data_foundation.historical.bls_web_transport import (
 from market_data_foundation.historical.calendar_publications import (
     bls_calendar_publications,
 )
+from market_data_foundation.historical.calendar_resilience import (
+    failure,
+    may_fallback,
+    refresh_metadata,
+    retry_time,
+)
 from market_data_foundation.historical.cpi_revision_signals import (
     CpiSignalError,
     fetch_official_errata,
@@ -86,8 +92,9 @@ def release_probe_at(release_at, after=None):
 
 
 class CpiScheduleError(ValueError):
-    def __init__(self, classification):
+    def __init__(self, classification, *, http_status=None, retry_at=None):
         self.classification = classification
+        self.http_status, self.retry_at = http_status, retry_at
         super().__init__(classification)
 
 
@@ -427,7 +434,11 @@ def _fetch_calendar(url, accept, *, title="CPI"):
             allowed_path="/schedule/news_release/" + url.rsplit("/", 1)[1],
         )
     except BlsWebError as error:
-        raise CpiScheduleError("calendar_" + error.classification) from None
+        raise CpiScheduleError(
+            f"calendar_{error.classification}",
+            http_status=error.http_status,
+            retry_at=error.retry_at,
+        ) from None
     except CpiScheduleError:
         raise
     except HTTPError as error:
@@ -568,6 +579,7 @@ class CpiReleaseScheduler:
         clock=now_utc,
         calendar_fetcher=_DEFAULT_FETCHER,
         reference_fetcher=_DEFAULT_FETCHER,
+        fallback_fetcher=_DEFAULT_FETCHER,
         history_start=None,
         signal_fetcher=_DEFAULT_FETCHER,
         signal_poll_seconds=3600,
@@ -615,6 +627,11 @@ class CpiReleaseScheduler:
             )
             if reference_fetcher is _DEFAULT_FETCHER
             else reference_fetcher
+        )
+        self.fallback_fetcher = (
+            (self.reference_fetcher if calendar_fetcher is _DEFAULT_FETCHER else None)
+            if fallback_fetcher is _DEFAULT_FETCHER
+            else fallback_fetcher
         )
         if history_start is None:
             history_start = profile.earliest_month
@@ -743,6 +760,8 @@ class CpiReleaseScheduler:
         acquired = calendar_state.get("acquired_at", calendar_state.get("fetched_at"))
         if acquired is not None and at < _instant(acquired):
             return "clock_reversal"
+        if acquired is not None and at - _instant(acquired) >= CALENDAR_MAX_AGE:
+            return "stale"
         if calendar_state.get("error"):
             return (
                 "degraded_cached_calendar"
@@ -751,8 +770,6 @@ class CpiReleaseScheduler:
             )
         if acquired is None:
             return "unavailable"
-        if at - _instant(acquired) >= CALENDAR_MAX_AGE:
-            return "stale"
         return "fresh"
 
     def _snapshot(self, state, at):
@@ -807,6 +824,7 @@ class CpiReleaseScheduler:
                 t
                 for t in targets
                 if t["state"] != "calendar_removed"
+                and not t.get("calendar_execution_blocked")
                 and t["history"]["state"] in {"pending", "awaiting_provider", "running"}
                 and t["history"].get("next_attempt_at")
             ]
@@ -1156,6 +1174,10 @@ class CpiReleaseScheduler:
             )
         for month, target in state["targets"].items():
             target["absent_from_latest_calendar"] = month not in present
+            if month not in present and target.get("fallback_validation"):
+                # A successful rolling ICS fetch cannot renew uncovered HTML dates.
+                target["calendar_execution_blocked"] = True
+                target["fallback_validation"] = "awaiting_primary_coverage"
         pending = [e for e in events.values() if e.get("mapping_status") != "verified"]
         dates = [
             events[uid]["release_at"]
@@ -1188,7 +1210,7 @@ class CpiReleaseScheduler:
         return self._snapshot(state, at)
 
     def _accept_html_calendar(
-        self, state, at, raw, *, acquired_at=None, imported=False
+        self, state, at, raw, *, acquired_at=None, imported=False, fallback=False
     ):
         acquired_at = acquired_at or at
         releases = parse_official_calendar(raw)
@@ -1208,10 +1230,26 @@ class CpiReleaseScheduler:
             month = release["reference_month"]
             existing = old.get(month)
             if existing is not None and existing.get("ics_uid"):
-                # HTML is reference-month evidence, never an ICS rollback.
+                # A backup can corroborate a date, never roll back an ICS revision.
+                if fallback:
+                    event = (
+                        state["calendar"].get("events", {}).get(existing["ics_uid"], {})
+                    )
+                    verified = (
+                        event.get("status") == "CONFIRMED"
+                        and event.get("release_at") == release["release_at"]
+                        and not existing.get("cancellation_evidence")
+                    )
+                    existing["fallback_validation"] = (
+                        "matched" if verified else "conflict"
+                    )
+                    existing["calendar_execution_blocked"] = not verified
                 continue
             if existing is None:
+                if fallback and _instant(release["release_at"]) <= at:
+                    continue
                 old[month] = {
+                    **({"fallback_validation": "matched"} if fallback else {}),
                     **release,
                     "state": "pending",
                     "attempts": 0,
@@ -1247,6 +1285,9 @@ class CpiReleaseScheduler:
                     existing["target"]["next_attempt_at"] = release["release_at"]
                 changes["retimed"].append(month)
             existing.update(release)
+            if fallback:
+                existing["calendar_execution_blocked"] = False
+                existing["fallback_validation"] = "matched"
             existing["calendar_sha256"] = sha256
             existing["reference_month_evidence"] = {
                 "source": self.calendar_url,
@@ -1261,6 +1302,9 @@ class CpiReleaseScheduler:
             if month in present:
                 continue
             target["absent_from_latest_calendar"] = True
+            if fallback:
+                target["calendar_execution_blocked"] = True
+                target["fallback_validation"] = "not_covered"
             # Absence from a rolling page/feed is never cancellation evidence.
         reference = min(present)
         missing_references = []
@@ -1303,27 +1347,54 @@ class CpiReleaseScheduler:
     def _refresh(self, state, at):
         if self._calendar_status(state, at) == "clock_reversal":
             raise CpiScheduleError("schedule_clock_reversal")
-        try:
-            raw = self.calendar_fetcher()
-            return self._accept_calendar(state, at, raw, fetch_reference=True)
-        except Exception as error:
-            classification = (
-                error.classification
-                if isinstance(error, CpiScheduleError)
-                else "calendar_refresh_failed"
-            )
-            failures = state["calendar"].get("consecutive_refresh_failures", 0) + 1
-            delay = RETRY_SECONDS[min(failures - 1, len(RETRY_SECONDS) - 1)]
-            state["calendar"] = {
-                **state["calendar"],
-                "error": classification,
-                "last_refresh_error": classification,
-                "consecutive_refresh_failures": failures,
-                "last_refresh_attempt": at.isoformat(),
-                "next_refresh_at": (at + timedelta(seconds=delay)).isoformat(),
-            }
-            self._save(state)
-            return self._snapshot(state, at)
+        attempts, errors = [], []
+        for source, fetch, backup in (
+            (self.ics_url, self.calendar_fetcher, False),
+            (self.calendar_url, self.fallback_fetcher, True),
+        ):
+            if backup and (fetch is None or not may_fallback(errors[0])):
+                break
+            try:
+                raw = fetch()
+                options = {"fallback": True} if backup else {"fetch_reference": True}
+                self._accept_calendar(state, at, raw, **options)
+                attempts.append({"source": source, "outcome": "accepted"})
+                refresh_metadata(
+                    state["calendar"],
+                    at,
+                    primary=self.ics_url,
+                    attempts=attempts,
+                    success=True,
+                )
+                state["calendar"]["consecutive_refresh_failures"] = 0
+                state["calendar"]["next_refresh_at"] = (
+                    at + timedelta(hours=6)
+                ).isoformat()
+                self._save(state)
+                return self._snapshot(state, at)
+            except Exception as error:
+                errors.append(error)
+                attempts.append(
+                    {
+                        "source": source,
+                        "outcome": "failed",
+                        **failure(error, "calendar_refresh_failed"),
+                    }
+                )
+        value = state["calendar"]
+        failures = value.get("consecutive_refresh_failures", 0) + 1
+        delay = RETRY_SECONDS[min(failures - 1, len(RETRY_SECONDS) - 1)]
+        value.update(
+            error=attempts[-1]["classification"],
+            last_refresh_error=attempts[-1]["classification"],
+            consecutive_refresh_failures=failures,
+            next_refresh_at=retry_time(at, delay, *errors),
+        )
+        refresh_metadata(
+            value, at, primary=self.ics_url, attempts=attempts, success=False
+        )
+        self._save(state)
+        return self._snapshot(state, at)
 
     def import_display_history(self, raw, acquired_at, *, source, start, end):
         """Explicit bounded official HTML import, with no executable targets."""
@@ -2319,9 +2390,9 @@ class CpiReleaseScheduler:
                 and not t.get("auto", {}).get("preflight_checked_at")
             ]
             next_refresh = state["calendar"].get("next_refresh_at")
-            if (calendar_status != "fresh" or preflight) and (
-                next_refresh is None or at >= _instant(next_refresh)
-            ):
+            if (
+                calendar_status != "fresh" or preflight or next_refresh is not None
+            ) and (next_refresh is None or at >= _instant(next_refresh)):
                 self._refresh(state, at)
                 if not state["calendar"].get("error"):
                     for target in preflight:
@@ -2331,6 +2402,11 @@ class CpiReleaseScheduler:
                                 self._auto_target_state(current, at)[
                                     "preflight_checked_at"
                                 ] = at.isoformat()
+            if self._calendar_status(state, at) not in {
+                "fresh",
+                "degraded_cached_calendar",
+            }:
+                return dict(action="calendar_unavailable", **self._snapshot(state, at))
             ready = []
             for month, target in state["targets"].items():
                 if target["state"] == "calendar_removed" or target.get(
@@ -2411,6 +2487,7 @@ class CpiReleaseScheduler:
                 (m, t)
                 for m, t in state["targets"].items()
                 if t["state"] != "calendar_removed"
+                and not t.get("calendar_execution_blocked")
                 and t["history"]["state"] in {"pending", "awaiting_provider", "running"}
             ]
             unfinished = [
@@ -2501,6 +2578,11 @@ class CpiReleaseScheduler:
                 next_refresh = state["calendar"].get("next_refresh_at")
                 if next_refresh is None or at >= _instant(next_refresh):
                     self._refresh(state, at)
+            if self._calendar_status(state, at) not in {
+                "fresh",
+                "degraded_cached_calendar",
+            }:
+                return dict(action="calendar_unavailable", **self._snapshot(state, at))
             # Monthly targets have priority over slower history/signals work.
             ready = [
                 (m, t)

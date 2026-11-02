@@ -5,6 +5,7 @@ refresh and data collection have separate budgets; no BLS parser or quota is use
 """
 
 import calendar
+import copy
 import fcntl
 import hashlib
 import json
@@ -12,11 +13,20 @@ import os
 import re
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
+from html.parser import HTMLParser
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from zoneinfo import ZoneInfo
 
 from market_data_foundation.historical.bls_timeseries_profile import PCE_PROFILE
+from market_data_foundation.historical.calendar_resilience import (
+    failure,
+    may_fallback,
+    refresh_metadata,
+    retry_after,
+    retry_time,
+)
 from market_data_foundation.historical.cpi_release_schedule import (
     CpiScheduleError,
     _aware,
@@ -52,12 +62,26 @@ class _NoRedirect(HTTPRedirectHandler):
 
 def fetch_official_calendar():
     """One bounded public request; never loads or transmits an API key."""
-    request = Request(ICS_URL, headers={"Accept": "text/calendar"})
+    return _fetch_calendar(ICS_URL, "text/calendar")
+
+
+def fetch_official_html():
+    return _fetch_calendar(CALENDAR_URL, "text/html")
+
+
+def _fetch_calendar(url, accept):
+    request = Request(url, headers={"Accept": accept})
     try:
         with build_opener(_NoRedirect()).open(request, timeout=15) as response:
             raw = response.read(MAX_CALENDAR_BYTES + 1)
     except PceScheduleError:
         raise
+    except HTTPError as error:
+        raise PceScheduleError(
+            f"bea_calendar_http_{error.code}",
+            http_status=error.code,
+            retry_at=retry_after(error.headers.get("Retry-After")),
+        ) from None
     except Exception:
         raise PceScheduleError("bea_calendar_fetch_failed") from None
     if not raw or len(raw) > MAX_CALENDAR_BYTES:
@@ -179,6 +203,125 @@ def parse_official_ics(raw):
     return events
 
 
+class _BeaTable(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.rows, self.row, self.cell = [], None, None
+        self.active = False
+        self.tables = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "table" and dict(attrs).get("id") == "release-schedule-table":
+            self.active = True
+            self.tables += 1
+        elif self.active and tag == "tr":
+            self.row = []
+        elif self.row is not None and tag in {"td", "th"}:
+            self.cell = []
+
+    def handle_data(self, data):
+        if self.cell is not None:
+            self.cell.append(data)
+
+    def handle_endtag(self, tag):
+        if tag in {"td", "th"} and self.cell is not None:
+            self.row.append(" ".join(" ".join(self.cell).split()))
+            self.cell = None
+        elif tag == "tr" and self.row is not None:
+            self.rows.append(self.row)
+            self.row = None
+        elif tag == "table":
+            self.active = False
+
+
+def parse_official_html(raw):
+    """BEA's explicit Year header and PIO reference clause; Eastern release clock."""
+    if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_CALENDAR_BYTES:
+        raise PceScheduleError("bea_calendar_payload_invalid")
+    try:
+        parser = _BeaTable()
+        parser.feed(raw.decode("utf-8-sig"))
+        if parser.tables != 1 or not parser.rows:
+            raise ValueError
+        year = re.fullmatch(r"Year (\d{4})", parser.rows[0][0])
+        if year is None:
+            raise ValueError
+        events, digest = {}, hashlib.sha256(raw).hexdigest()
+        for row in parser.rows[1:]:
+            if len(row) < 3 or not row[2].startswith("Personal Income and Outlays"):
+                continue
+            months = _reference_months(row[2])
+            if not months:
+                raise ValueError
+            # No guessed year, reference month, release hour or date-only upgrade.
+            match = re.fullmatch(
+                r"([A-Za-z]+) (\d{1,2}) (\d{1,2}):(\d{2}) (AM|PM)", row[0]
+            )
+            if not match or not 1 <= int(match[3]) <= 12:
+                raise ValueError
+            local = datetime(
+                int(year[1]),
+                _MONTHS[match[1].lower()],
+                int(match[2]),
+                int(match[3]) % 12 + (12 if match[5] == "PM" else 0),
+                int(match[4]),
+            )
+            at = _ics_time(
+                "DTSTART;TZID=America/New_York", local.strftime("%Y%m%dT%H%M%S")
+            )
+            if any(local.strftime("%Y-%m") <= m for m in months):
+                raise ValueError
+            uid = "bea-html:" + ":".join(months)
+            if uid in events:
+                raise ValueError
+            events[uid] = {
+                "uid": uid,
+                "summary": row[2],
+                "release_at": at.isoformat(),
+                "reference_months": list(months),
+                "status": "CONFIRMED",
+                "sequence": 0,
+                "sha256": digest,
+                "source": CALENDAR_URL,
+                "classification": None,
+            }
+        if not events:
+            raise ValueError
+        return events
+    except ValueError, KeyError, UnicodeError, IndexError:
+        raise PceScheduleError("bea_calendar_html_invalid") from None
+
+
+def _backup_events(incoming, previous):
+    """Preserve primary UIDs/revisions and tombstones; quarantine disagreements."""
+    result, remaining = {}, dict(incoming)
+    for uid, old in previous.items():
+        candidates = [
+            (key, event)
+            for key, event in remaining.items()
+            if set(event["reference_months"]) & set(old["reference_months"])
+        ]
+        if (
+            len(candidates) == 1
+            and candidates[0][1]["reference_months"] == old["reference_months"]
+        ):
+            key, event = candidates[0]
+            del remaining[key]
+            if (
+                old["status"] == "CONFIRMED"
+                and old["release_at"] == event["release_at"]
+            ):
+                result[uid] = dict(event, uid=uid, sequence=old["sequence"])
+            else:
+                result[uid] = dict(old, classification="calendar_fallback_conflict")
+        else:
+            for key, _ in candidates:
+                del remaining[key]
+            result[uid] = dict(old, classification="calendar_fallback_not_covered")
+    result.update(remaining)
+    return result
+
+
 class PceReleaseScheduler:
     """Persist one five-year history batch or release target per worker tick.
 
@@ -200,6 +343,7 @@ class PceReleaseScheduler:
         *,
         clock=now_utc,
         calendar_fetcher=fetch_official_calendar,
+        fallback_fetcher=None,
         history_start=None,
         auto_mode=True,
         max_attempts=10,
@@ -209,6 +353,9 @@ class PceReleaseScheduler:
         self.service, self.clock = service, clock
         self.state_path = Path(state_path).expanduser().resolve()
         self.calendar_fetcher = calendar_fetcher
+        self.fallback_fetcher = fallback_fetcher or (
+            fetch_official_html if calendar_fetcher is fetch_official_calendar else None
+        )
         now = _aware(clock())
         self.history_start = validate_month(
             history_start or month_at(now.year * 12 + now.month - 1 - 239)
@@ -261,15 +408,13 @@ class PceReleaseScheduler:
 
     def _calendar_status(self, state, at):
         value = state["calendar"]
-        if value.get("error"):
-            return "unavailable"
         fetched = value.get("acquired_at")
         if not fetched:
-            return "missing"
+            return "unavailable" if value.get("error") else "missing"
         age = at - _instant(fetched)
         if age < timedelta(0):
             return "clock_reversal"
-        return "fresh" if age <= timedelta(hours=24) else "stale"
+        return "fresh" if age < timedelta(hours=24) else "stale"
 
     def status(self):
         state, now = self._read(), _aware(self.clock())
@@ -293,7 +438,7 @@ class PceReleaseScheduler:
                     else "scheduled",
                     "reference_month_evidence": {
                         "reference_month": month,
-                        "source": ICS_URL,
+                        "source": event.get("source", ICS_URL),
                         "sha256": event["sha256"],
                     },
                 }
@@ -307,8 +452,8 @@ class PceReleaseScheduler:
             "provider": "BEA",
         }
 
-    def _accept(self, state, raw, acquired):
-        events = parse_official_ics(raw)
+    def _accept(self, state, raw, acquired, *, events=None, source=ICS_URL):
+        events = parse_official_ics(raw) if events is None else events
         previous_events = state["calendar"].get("events", {})
         if any(
             event["sequence"] < previous_events.get(uid, {}).get("sequence", 0)
@@ -358,6 +503,10 @@ class PceReleaseScheduler:
                     ).isoformat(),
                 }
                 cancelled = event["status"] == "CANCELLED"
+                blocked = cancelled or event.get("classification") in {
+                    "calendar_fallback_conflict",
+                    "calendar_fallback_not_covered",
+                }
                 targets.append(
                     {
                         **(old if same else {}),
@@ -376,9 +525,10 @@ class PceReleaseScheduler:
                         ),
                         "publication_status": "cancelled" if cancelled else "scheduled",
                         "state": "calendar_removed" if cancelled else "pending",
-                        "calendar_execution_blocked": cancelled,
+                        "calendar_execution_blocked": blocked,
+                        "calendar_validation": event.get("classification"),
                         "reference_month_evidence": {
-                            "source": ICS_URL,
+                            "source": event.get("source", ICS_URL),
                             "sha256": event["sha256"],
                             "reference_month": month,
                         },
@@ -398,7 +548,7 @@ class PceReleaseScheduler:
         state["targets"] = sorted(targets, key=lambda t: t["reference_month"])
         state["automatic_target_policy_version"] = 1
         state["calendar"] = {
-            "source": ICS_URL,
+            "source": source,
             "events": events,
             "acquired_at": acquired.isoformat(),
             "sha256": hashlib.sha256(raw).hexdigest(),
@@ -444,24 +594,65 @@ class PceReleaseScheduler:
         return self.status()
 
     def _refresh(self, state, now):
-        try:
-            if self.calendar_fetcher is None:
-                raise PceScheduleError("bea_calendar_fetcher_unavailable")
-            self._accept(state, self.calendar_fetcher(), now)
-            return True
-        except Exception:
-            value = state["calendar"]
-            failures = value.get("consecutive_refresh_failures", 0) + 1
-            value.update(
-                error="bea_calendar_unavailable",
-                consecutive_refresh_failures=failures,
-                next_refresh_at=(
-                    now
-                    + timedelta(seconds=CALENDAR_RETRY_SECONDS[min(failures - 1, 3)])
-                ).isoformat(),
-            )
-            self._save(state)
-            return False
+        attempts, errors = [], []
+        for source, fetch, backup in (
+            (ICS_URL, self.calendar_fetcher, False),
+            (CALENDAR_URL, self.fallback_fetcher, True),
+        ):
+            if backup and (fetch is None or not may_fallback(errors[0])):
+                break
+            try:
+                if fetch is None:
+                    raise PceScheduleError("bea_calendar_fetcher_unavailable")
+                raw = fetch()
+                candidate = copy.deepcopy(state)
+                events = (
+                    _backup_events(
+                        parse_official_html(raw), state["calendar"].get("events", {})
+                    )
+                    if backup
+                    else None
+                )
+                self._accept(
+                    candidate,
+                    raw,
+                    _aware(getattr(raw, "obtained_at", self.clock())),
+                    events=events,
+                    source=source,
+                )
+                state.clear()
+                state.update(candidate)
+                attempts.append({"source": source, "outcome": "accepted"})
+                refresh_metadata(
+                    state["calendar"],
+                    now,
+                    primary=ICS_URL,
+                    attempts=attempts,
+                    success=True,
+                )
+                self._save(state)
+                return True
+            except Exception as error:
+                errors.append(error)
+                attempts.append(
+                    {
+                        "source": source,
+                        "outcome": "failed",
+                        **failure(error, "bea_calendar_unavailable"),
+                    }
+                )
+        value = state["calendar"]
+        failures = value.get("consecutive_refresh_failures", 0) + 1
+        value.update(
+            error=attempts[-1]["classification"],
+            consecutive_refresh_failures=failures,
+            next_refresh_at=retry_time(
+                now, CALENDAR_RETRY_SECONDS[min(failures - 1, 3)], *errors
+            ),
+        )
+        refresh_metadata(value, now, primary=ICS_URL, attempts=attempts, success=False)
+        self._save(state)
+        return False
 
     def refresh_calendar(self):
         with self._locked():
@@ -516,9 +707,8 @@ class PceReleaseScheduler:
                 return {"action": "clock_reversal"}
             refresh_at = state["calendar"].get("next_refresh_at")
             if not refresh_at or _instant(refresh_at) <= now:
-                if not self._refresh(state, now):
-                    return {"action": "calendar_unavailable"}
-            elif calendar_state != "fresh":
+                self._refresh(state, now)
+            if self._calendar_status(state, now) != "fresh":
                 return {"action": "calendar_unavailable"}
             # A restarted process cannot infer that an interrupted write failed.
             for target in state["targets"]:

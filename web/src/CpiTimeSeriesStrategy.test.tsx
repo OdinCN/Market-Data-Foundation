@@ -154,9 +154,7 @@ it("has one preset row and one inline toggle; detail has no create, history edit
   expect(detail.getByText("2026-11-10 21:30:00 北京时间")).toBeTruthy();
   expect(detail.getByText("等待当期采集")).toBeTruthy();
   expect(detail.getByText("受阻")).toBeTruthy();
-  expect(
-    detail.getByText(/最近刷新失败.*calendar_refresh_failed/),
-  ).toBeTruthy();
+  expect(detail.getByText(/最近刷新失败/)).toBeTruthy();
 });
 it("preserves selection and last evidence on polling error, blocks toggle until a successful read", async () => {
   vi.useFakeTimers();
@@ -414,3 +412,98 @@ it.each([
     ).toBeTruthy();
   },
 );
+
+it.each([
+  ["fresh", "fallback", "官方备用日历可用"],
+  ["fresh", "cache", "使用有效缓存"],
+  ["stale", "cache", "日历已陈旧，尚未确认可用"],
+] as const)(
+  "shows active calendar source and bounded refresh evidence: %s/%s",
+  async (status, mode, label) => {
+    const h = fixture();
+    const source =
+      "https://www.census.gov/economic-indicators/calendar-listview-2026.html";
+    const transport: Transport = (input, init) =>
+      String(input).endsWith("/schedule")
+        ? Promise.resolve(
+            response({
+              calendar_status: status,
+              targets: [],
+              calendar: {
+                source,
+                refresh_mode: mode,
+                error:
+                  mode === "cache"
+                    ? "census_retail_calendar_http_failure"
+                    : null,
+                primary_error: "census_retail_calendar_http_failure",
+                acquired_at: "2026-11-02T04:00:00Z",
+                cache_valid_until: "2026-11-03T04:00:00Z",
+                next_refresh_at: "2026-11-02T10:00:00Z",
+                refresh_attempts: [
+                  {
+                    source:
+                      "https://www.census.gov/retail/release_schedule.html",
+                    outcome: "failed",
+                    classification: "census_retail_calendar_http_failure",
+                    http_status: 500,
+                  },
+                  { source, outcome: "accepted" },
+                ],
+              },
+            }),
+          )
+        : h.transport(input, init);
+    render(
+      <CpiTimeSeriesStrategy
+        transport={transport}
+        availability={availability}
+      />,
+    );
+    await flush();
+    select();
+    expect(screen.getByText(label)).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: source }).getAttribute("href"),
+    ).toBe(source);
+    expect(screen.getByText("2026-11-02 18:00:00 北京时间")).toBeTruthy();
+    expect(screen.getByText("日历刷新详情")).toBeTruthy();
+    expect(screen.getByText(/HTTP 500/)).toBeTruthy();
+    if (status === "stale")
+      expect(screen.getByText(/暂停新的日历触发采集/)).toBeTruthy();
+  },
+);
+
+it("identifies blocked calendar months without erasing prior execution facts", async () => {
+  const h = fixture();
+  const transport: Transport = (input, init) =>
+    String(input).endsWith("/schedule")
+      ? Promise.resolve(
+          response({
+            calendar_status: "fresh",
+            targets: [
+              {
+                reference_month: "2026-12",
+                release_at: "2027-01-15T13:30:00Z",
+                calendar_execution_blocked: true,
+                target: { state: "complete", result: { saved_points: 4 } },
+                history: { state: "pending" },
+              },
+            ],
+          }),
+        )
+      : h.transport(input, init);
+  render(
+    <CpiTimeSeriesStrategy transport={transport} availability={availability} />,
+  );
+  await flush();
+  select();
+  const card = within(
+    screen.getByRole("list", { name: "CPI 月份计划" }),
+  ).getByRole("listitem");
+  expect(
+    within(card).getByText(/此月份的日历信息有冲突或尚未重新确认/),
+  ).toBeTruthy();
+  expect(within(card).getByText("新增观测")).toBeTruthy();
+  expect(within(card).getByText("4")).toBeTruthy();
+});

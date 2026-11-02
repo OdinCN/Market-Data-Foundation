@@ -54,8 +54,8 @@ def wire(monkeypatch):
             return self.options.get("status", 200)
 
         def getheader(self, name):
-            assert name == "Location"
-            return self.options.get("location")
+            assert name in {"Location", "Retry-After"}
+            return self.options.get("location" if name == "Location" else "retry_after")
 
         def read(self, limit):
             self.events.append("read")

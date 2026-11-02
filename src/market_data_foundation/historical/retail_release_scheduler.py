@@ -1,5 +1,6 @@
 """Census-only durable release queue, using shared locks and bounded retry policy."""
 
+import copy
 import hashlib
 import http.client
 import random
@@ -8,6 +9,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import NAMESPACE_URL, uuid5
 
+from market_data_foundation.historical.calendar_resilience import (
+    failure,
+    may_fallback,
+    refresh_metadata,
+    retry_time,
+)
 from market_data_foundation.historical.census_retail_release_schedule import (
     CALENDAR_URL,
     MAX_CALENDAR_BYTES,
@@ -133,7 +140,7 @@ class RetailReleaseScheduler(PceReleaseScheduler):
             "clock_reversal"
             if age < timedelta(0)
             else "fresh"
-            if age <= timedelta(hours=24)
+            if age < timedelta(hours=24)
             else "expired"
         )
 
@@ -177,8 +184,10 @@ class RetailReleaseScheduler(PceReleaseScheduler):
             "next_due": min(due) if due else state["calendar"].get("next_refresh_at"),
         }
 
-    def _accept(self, state, raw, acquired):
-        events = parse_official_calendar(raw)
+    def _accept(
+        self, state, raw, acquired, *, events=None, source=CALENDAR_URL, fallback=False
+    ):
+        events = parse_official_calendar(raw) if events is None else events
         previous = {t["reference_month"]: t for t in state["targets"]}
         targets = []
         old_calendar = state["calendar"]
@@ -189,7 +198,7 @@ class RetailReleaseScheduler(PceReleaseScheduler):
                 reference_month_evidence=event.get("reference_month_evidence")
                 or {
                     "reference_month": month,
-                    "source": CALENDAR_URL,
+                    "source": old_calendar.get("source", CALENDAR_URL),
                     "sha256": old_calendar.get("sha256"),
                     "acquired_at": old_calendar.get("acquired_at"),
                 },
@@ -199,10 +208,17 @@ class RetailReleaseScheduler(PceReleaseScheduler):
         first_month = min(e["reference_month"] for e in events) if events else None
         present = {e["reference_month"] for e in events}
         for month, old in list(calendar.items()):
-            if month not in present and (
-                not first_month
-                or month >= first_month
-                or (old.get("release_at") and _instant(old["release_at"]) >= acquired)
+            if (
+                not fallback
+                and month not in present
+                and (
+                    not first_month
+                    or month >= first_month
+                    or (
+                        old.get("release_at")
+                        and _instant(old["release_at"]) >= acquired
+                    )
+                )
             ):
                 calendar[month] = dict(
                     old,
@@ -220,6 +236,21 @@ class RetailReleaseScheduler(PceReleaseScheduler):
         for event in events:
             month, release = event["reference_month"], event["release_at"]
             at = release.isoformat() if release else None
+            prior = calendar.get(month)
+            conflict = bool(
+                fallback
+                and prior
+                and (
+                    prior.get("status") != "scheduled" or prior.get("release_at") != at
+                )
+            )
+            if conflict:
+                if month in previous:
+                    previous[month].update(
+                        calendar_execution_blocked=True,
+                        calendar_validation="calendar_fallback_conflict",
+                    )
+                continue
             calendar[month] = dict(
                 reference_month=month,
                 release_at=at,
@@ -228,7 +259,7 @@ class RetailReleaseScheduler(PceReleaseScheduler):
                 acquired_at=acquired.isoformat(),
                 reference_month_evidence={
                     "reference_month": month,
-                    "source": CALENDAR_URL,
+                    "source": event.get("source", source),
                     "sha256": event["sha256"],
                     "acquired_at": acquired.isoformat(),
                 },
@@ -251,7 +282,7 @@ class RetailReleaseScheduler(PceReleaseScheduler):
                 calendar_execution_blocked=release is None,
                 reference_month_evidence={
                     "reference_month": month,
-                    "source": CALENDAR_URL,
+                    "source": event.get("source", source),
                     "sha256": event["sha256"],
                 },
             )
@@ -265,13 +296,18 @@ class RetailReleaseScheduler(PceReleaseScheduler):
             )
             targets.append(target)
         for old in previous.values():
+            if fallback and old["reference_month"] not in present:
+                old.update(
+                    calendar_execution_blocked=True,
+                    calendar_validation="calendar_fallback_not_covered",
+                )
             if calendar.get(old["reference_month"], {}).get("status") == "cancelled":
                 old.update(calendar_execution_blocked=True, state="calendar_removed")
             targets.append(old)
         state["targets"] = sorted(targets, key=lambda t: t["reference_month"])
         state["calendar"] = {
             "history_calendars": old_calendar.get("history_calendars", {}),
-            "source": CALENDAR_URL,
+            "source": source,
             "events": calendar,
             "acquired_at": acquired.isoformat(),
             "sha256": hashlib.sha256(raw).hexdigest(),
@@ -356,30 +392,152 @@ class RetailReleaseScheduler(PceReleaseScheduler):
         return self.status()
 
     def _refresh(self, state, now):
+        attempts, errors = [], []
         try:
             if self.calendar_fetcher is None:
                 raise RetailSourceError("census_retail_calendar_not_bound")
             raw = self.calendar_fetcher()
-            self._accept(state, raw, _aware(self.clock()))
-            return True
+            candidate = copy.deepcopy(state)
+            self._accept(candidate, raw, _aware(self.clock()))
+            state.clear()
+            state.update(candidate)
+            attempts.append({"source": CALENDAR_URL, "outcome": "accepted"})
         except Exception as error:
-            value = state["calendar"]
-            failures = value.get("consecutive_refresh_failures", 0) + 1
-            retry = now + timedelta(
-                seconds=(300, 900, 1800, 3600)[min(failures - 1, 3)]
+            errors.append(error)
+            attempts.append(
+                {
+                    "source": CALENDAR_URL,
+                    "outcome": "failed",
+                    **failure(error, "census_retail_calendar_failure"),
+                }
             )
-            if getattr(error, "retry_at", None):
-                retry = max(retry, _instant(str(error.retry_at)))
-            value.update(
-                error=getattr(
-                    error, "classification", "census_retail_calendar_failure"
-                ),
-                last_refresh_attempt=now.isoformat(),
-                consecutive_refresh_failures=failures,
-                next_refresh_at=retry.isoformat(),
+        if (
+            errors
+            and self.history_calendar_fetcher is not None
+            and may_fallback(errors[0])
+        ):
+            events, raws, sources, history_caches = {}, [], [], {}
+            # Q4 needs the next year's explicit December data-month mapping.
+            for year in (now.year, now.year + 1) if now.month >= 10 else (now.year,):
+                source = annual_calendar_url(year)
+                try:
+                    raw = self.history_calendar_fetcher(year)
+                    incoming = parse_annual_calendar(raw, year=year)
+                    year_events = {}
+                    for item in incoming:
+                        event = {
+                            "reference_month": item["reference_month"],
+                            "release_at": _instant(item["release_at"])
+                            if item["release_at"]
+                            else None,
+                            "status": item["publication_status"],
+                            "source": source,
+                            "sha256": item["reference_month_evidence"]["sha256"],
+                        }
+                        prior = year_events.get(event["reference_month"]) or events.get(
+                            event["reference_month"]
+                        )
+                        if prior is not None and prior != event:
+                            raise RetailSourceError(
+                                "census_retail_calendar_duplicate_conflict"
+                            )
+                        year_events[event["reference_month"]] = event
+                    events.update(year_events)
+                    history_caches[str(year)] = {
+                        "source": source,
+                        "acquired_at": _aware(self.clock()).isoformat(),
+                        "next_refresh_at": (now + timedelta(days=7)).isoformat(),
+                        "events": [
+                            dict(
+                                item,
+                                acquired_at=_aware(self.clock()).isoformat(),
+                                reference_month_evidence=dict(
+                                    item["reference_month_evidence"],
+                                    acquired_at=_aware(self.clock()).isoformat(),
+                                ),
+                            )
+                            for item in incoming
+                        ],
+                    }
+                    raws.append(raw)
+                    sources.append(source)
+                    attempts.append({"source": source, "outcome": "accepted"})
+                except Exception as error:
+                    errors.append(error)
+                    attempts.append(
+                        {
+                            "source": source,
+                            "outcome": "failed",
+                            **failure(error, "census_retail_calendar_failure"),
+                        }
+                    )
+                    if "duplicate_conflict" in getattr(error, "classification", ""):
+                        events.clear()
+                        break
+                    if not may_fallback(error):
+                        break
+            if events:
+                candidate = copy.deepcopy(state)
+                candidate["calendar"].setdefault("history_calendars", {}).update(
+                    history_caches
+                )
+                try:
+                    self._accept(
+                        candidate,
+                        b"\n".join(raws),
+                        _aware(self.clock()),
+                        events=list(events.values()),
+                        source=sources[0],
+                        fallback=True,
+                    )
+                    state.clear()
+                    state.update(candidate)
+                    state["calendar"]["sources"] = sources
+                    refresh_metadata(
+                        state["calendar"],
+                        now,
+                        primary=CALENDAR_URL,
+                        attempts=attempts,
+                        success=True,
+                    )
+                    state["calendar"]["next_refresh_at"] = retry_time(
+                        now, 21600, *errors
+                    )
+                    self._save(state)
+                    return True
+                except Exception as error:
+                    errors.append(error)
+                    attempts.append(
+                        {
+                            "source": sources[0],
+                            "outcome": "failed",
+                            **failure(error, "census_retail_calendar_failure"),
+                        }
+                    )
+        if not errors:
+            refresh_metadata(
+                state["calendar"],
+                now,
+                primary=CALENDAR_URL,
+                attempts=attempts,
+                success=True,
             )
             self._save(state)
-            return False
+            return True
+        value = state["calendar"]
+        failures = value.get("consecutive_refresh_failures", 0) + 1
+        value.update(
+            error=attempts[-1]["classification"],
+            consecutive_refresh_failures=failures,
+            next_refresh_at=retry_time(
+                now, (300, 900, 1800, 3600)[min(failures - 1, 3)], *errors
+            ),
+        )
+        refresh_metadata(
+            value, now, primary=CALENDAR_URL, attempts=attempts, success=False
+        )
+        self._save(state)
+        return False
 
     def due_check(self):
         with self._locked():
