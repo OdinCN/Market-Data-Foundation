@@ -354,9 +354,25 @@ class ClaimsReleaseRecords:
             if row["evidence_id"] == eid
         )
 
-    def read(self, *, as_of=None, read_mode="event"):
+    def read(
+        self,
+        *,
+        as_of=None,
+        read_mode="event",
+        event_id=None,
+        reference_week=None,
+        source_version=None,
+    ):
         if read_mode not in {"event", "source_history"}:
             raise _error("read_mode_invalid")
+        if event_id is not None:
+            if not re.fullmatch(r"dol-claims-\d{4}-\d{2}-\d{2}", event_id):
+                raise _error("event_id_invalid")
+            day(event_id.removeprefix("dol-claims-"))
+        if reference_week is not None and day(reference_week).weekday() != 5:
+            raise _error("reference_week_invalid")
+        if source_version is not None:
+            day(source_version)
         cutoff = instant(
             datetime.fromisoformat(as_of)
             if isinstance(as_of, str)
@@ -366,6 +382,18 @@ class ClaimsReleaseRecords:
         )
         with self.store.read_snapshot():
             rows = self._rows(cutoff)
+        rows = [
+            r
+            for r in rows
+            if (event_id is None or r["event_id"] == event_id)
+            and (
+                source_version is None or r["source_version"]["value"] == source_version
+            )
+            and (
+                reference_week is None
+                or any(c["week_ending"] == reference_week for c in r["claims"])
+            )
+        ]
         if read_mode == "source_history":
             events = rows
         else:
@@ -383,6 +411,26 @@ class ClaimsReleaseRecords:
                 dict(
                     event_id=e["event_id"],
                     evidence_id=e["evidence_id"],
+                    source_version=e["source_version"],
+                    reference_week=row["week_ending"],
+                    roles=sorted(
+                        {
+                            c["role"]
+                            for c in e["claims"]
+                            if c["series_id"] == row["series_id"]
+                            and c["week_ending"] == row["week_ending"]
+                        }
+                    ),
+                    scheduled_publication_at=e.get("scheduled_publication_at")
+                    if any(
+                        c["series_id"] == row["series_id"]
+                        and c["week_ending"] == row["week_ending"]
+                        and c["role"] == "actual"
+                        and c["confirmation_state"] == "confirmed"
+                        for c in e["claims"]
+                    )
+                    else None,
+                    schedule_basis=e.get("schedule_basis"),
                     association="scope_only",
                     continuous_version_bound=False,
                 )

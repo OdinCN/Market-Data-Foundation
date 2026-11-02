@@ -1,3 +1,4 @@
+import { ClaimsCollectionDetails } from "./ClaimsCollectionDetails";
 import { CodeBlock } from "./CpiQueryDetails";
 import { quarterValid } from "./QuarterField";
 import {
@@ -66,6 +67,15 @@ export function cpiExecutionStateText(
   _profile: MacroProfile = CPI_PROFILE,
   scope: { start?: string | null; end?: string | null } = {},
 ) {
+  if (_profile.id === "claims") {
+    const data = (result?.result ?? result) as Record<string, unknown> | null;
+    const c = data?.coverage as Record<string, number> | undefined;
+    return ["complete", "succeeded"].includes(state ?? "") &&
+      c &&
+      c.available < c.expected
+      ? "已完成（各系列存在缺周或提供方缺值）"
+      : cpiStateText(state);
+  }
   if (_profile.id === "gdp")
     return gdpExecutionState(state, result) ?? cpiStateText(state);
   const { data, missing, absent, nulls } = coverageEvidence(result);
@@ -148,6 +158,7 @@ type Schedule = {
   calendar_error?: string | null;
   calendar_refresh_error?: string | null;
   targets: (Stage & {
+    reference_week?: string | null;
     reference_month?: string;
     reference_quarter?: string;
     estimate_kind?: string;
@@ -275,7 +286,9 @@ export function CpiExecutionDetail({
         {e.classification && <Fact name="结果分类">{e.classification}</Fact>}
       </dl>
       <ResultFacts result={e.result} />
-      {profile.id === "gdp" ? (
+      {profile.id === "claims" ? (
+        <ClaimsCollectionDetails result={e.result} />
+      ) : profile.id === "gdp" ? (
         <GdpCollectionDetails result={e.result} />
       ) : (
         <MacroSourceCoverage
@@ -390,6 +403,9 @@ function CpiStrategyWorkbenchContent({
   sixthProfile,
   sixthAvailability,
   sixthVisible = true,
+  eighthProfile,
+  eighthAvailability,
+  eighthVisible = true,
   seventhProfile,
   seventhAvailability,
   seventhVisible = true,
@@ -407,6 +423,9 @@ function CpiStrategyWorkbenchContent({
   additionalProfile?: MacroProfile;
   additionalAvailability?: CpiAvailability;
   additionalVisible?: boolean;
+  eighthProfile?: MacroProfile;
+  eighthAvailability?: CpiAvailability;
+  eighthVisible?: boolean;
   seventhProfile?: MacroProfile;
   seventhAvailability?: CpiAvailability;
   seventhVisible?: boolean;
@@ -480,7 +499,24 @@ function CpiStrategyWorkbenchContent({
     seventhAvailability ?? emptyAvailability,
     !!seventhProfile && seventhVisible,
   );
+  const eighth = useStrategyControl(
+    transport,
+    generation,
+    eighthProfile ?? primaryProfile,
+    eighthAvailability ?? emptyAvailability,
+    !!eighthProfile && eighthVisible,
+  );
   const entries = [
+    ...(eighthProfile
+      ? [
+          {
+            profile: eighthProfile,
+            availability: eighthAvailability ?? emptyAvailability,
+            visible: eighthVisible,
+            ...eighth,
+          },
+        ]
+      : []),
     ...(seventhProfile
       ? [
           {
@@ -586,10 +622,15 @@ function CpiStrategyWorkbenchContent({
     [transport, generation, profile.id],
     !!entry.availability.data && detailVisible,
   );
+  const weekly = profile.id === "claims";
   const quarterly = profile.id === "gdp";
-  const periodLabel = quarterly ? "季度" : "月份";
+  const periodLabel = weekly ? "周频" : quarterly ? "季度" : "月份";
   const planPeriod = (target: Schedule["targets"][number]) =>
-    quarterly ? target.reference_quarter : target.reference_month;
+    weekly
+      ? `${target.release_at?.slice(0, 10) ?? "计划日期未知"} · ${target.reference_week ?? "参考周待发布材料确认"}`
+      : quarterly
+        ? target.reference_quarter
+        : target.reference_month;
   const shown = !!selection;
   const currentCalendarError =
     calendar.data?.calendar?.error ?? calendar.data?.calendar_error;
@@ -835,7 +876,9 @@ function CpiStrategyWorkbenchContent({
               </dl>
             )}
             <ResultFacts result={data.last_result} />
-            {quarterly ? (
+            {weekly ? (
+              <ClaimsCollectionDetails result={data.last_result} />
+            ) : quarterly ? (
               <GdpCollectionDetails result={data.last_result} />
             ) : (
               <MacroSourceCoverage result={data.last_result} />
@@ -862,7 +905,9 @@ function CpiStrategyWorkbenchContent({
                   <article
                     className="month-plan-card"
                     role="listitem"
-                    key={quarterly ? target.key : target.reference_month}
+                    key={
+                      quarterly || weekly ? target.key : target.reference_month
+                    }
                   >
                     <header>
                       <strong>
@@ -885,7 +930,7 @@ function CpiStrategyWorkbenchContent({
                         ，暂停新的自动采集。以下保留原计划与执行记录。
                       </p>
                     )}
-                    {quarterly && (
+                    {(quarterly || weekly) && (
                       <p>
                         {target.publication_status === "cancelled"
                           ? "计划已取消"
@@ -932,7 +977,11 @@ function CpiStrategyWorkbenchContent({
                         <ResultFacts
                           result={target.target?.result ?? target.result}
                         />
-                        {quarterly ? (
+                        {weekly ? (
+                          <ClaimsCollectionDetails
+                            result={target.target?.result ?? target.result}
+                          />
+                        ) : quarterly ? (
                           <GdpCollectionDetails
                             result={target.target?.result ?? target.result}
                           />
@@ -994,7 +1043,11 @@ function CpiStrategyWorkbenchContent({
                               : (target.history?.result ?? target.history)
                           }
                         />
-                        {quarterly ? (
+                        {weekly ? (
+                          <ClaimsCollectionDetails
+                            result={target.history?.result}
+                          />
+                        ) : quarterly ? (
                           <GdpCollectionDetails
                             result={target.history?.result}
                           />

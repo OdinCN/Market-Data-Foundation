@@ -1,3 +1,5 @@
+import { normalizeClaimsReleases } from "./claimsReleaseAdapter";
+import { retailDecimalText } from "./decimalValue";
 import { QuarterField } from "./QuarterField";
 import { normalizeGdpReleases } from "./gdpReleaseAdapter";
 import { useEffect, useRef, useState } from "react";
@@ -15,6 +17,12 @@ import { Tabs } from "./WorkflowTable";
 
 type Locator =
   | {
+      kind: "official_report_fragment";
+      page: number | null;
+      reference_header: string;
+      excerpt: string;
+    }
+  | {
       kind: "official_table_cell";
       table: string;
       row: string;
@@ -31,6 +39,7 @@ type Locator =
 export type Claim = {
   series_id: string;
   statistic: string;
+  reference_week?: string;
   reference_month?: string;
   reference_quarter?: string;
   unit: string;
@@ -79,8 +88,10 @@ export type Evidence = {
 };
 export type Release = Evidence & {
   event_id: string;
+  reference_week?: string;
   reference_month?: string;
   reference_quarter?: string;
+  reference_weeks?: string[];
   reference_months?: string[];
   reference_quarters?: string[];
   estimate_kind?: string;
@@ -102,6 +113,7 @@ export type Release = Evidence & {
   missing: string[];
   missing_scopes?: {
     series_id: string;
+    reference_week?: string;
     reference_month?: string;
     reference_quarter?: string;
     statistic?: string;
@@ -122,6 +134,8 @@ export type Records = {
 };
 const roles: Record<string, string> = {
   actual: "本次官方公布值",
+  official_previously_reported_prior: "官方原前值（本次报告明确引述）",
+  prior_as_reported_in_this_event: "本次报告前值（含修订）",
   official_previous: "官方此前公布的前值",
   prior_revised: "上期值（本次修订后）",
   previous_estimate: "同季度前一次估计",
@@ -139,16 +153,26 @@ export function MacroReleaseRecords({
   initialEventId?: string | null;
   initialEvidenceId?: string | null;
 }) {
+  const claims = profile.id === "claims";
   const gdp = profile.id === "gdp";
   const referenceText = (value: {
     reference_quarter?: string;
+    reference_week?: string;
     reference_month?: string;
-  }) => value.reference_quarter ?? value.reference_month ?? "未知";
+  }) =>
+    value.reference_week ??
+    value.reference_quarter ??
+    value.reference_month ??
+    "未知";
   const [cutoff, setCutoff] = useState("");
   const [eventFilter, setEventFilter] = useState(initialEventId ?? "");
   const [sourceDate, setSourceDate] = useState("");
   const [reference, setReference] = useState("");
   const [mode, setMode] = useState("event");
+  const recordId = (record: Release, readMode: string) =>
+    claims && readMode === "source_history"
+      ? `${record.event_id}:${record.evidence_id}`
+      : record.event_id;
   const [result, setResult] = useState<Records | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [exchange, setExchange] = useState<CpiHttpExchange | null>(null);
@@ -183,7 +207,14 @@ export function MacroReleaseRecords({
     if (eventFilter.trim()) params.set("event_id", eventFilter.trim());
     if (sourceDate) params.set("source_version", sourceDate);
     if (reference)
-      params.set(gdp ? "reference_quarter" : "reference_month", reference);
+      params.set(
+        claims
+          ? "reference_week"
+          : gdp
+            ? "reference_quarter"
+            : "reference_month",
+        reference,
+      );
     const path = `${profile.basePath}/releases?${params}`;
     setRequest(path);
     const startedAt = performance.now();
@@ -206,16 +237,25 @@ export function MacroReleaseRecords({
       });
       const raw = JSON.parse(text);
       const data: Records =
-        response.ok && gdp ? normalizeGdpReleases(raw) : raw;
+        response.ok && claims
+          ? normalizeClaimsReleases(raw)
+          : response.ok && gdp
+            ? normalizeGdpReleases(raw)
+            : raw;
       if (!response.ok)
         throw new Error(raw.classification ?? "release_read_failed");
       if (!Array.isArray(data.events) || data.as_of_basis !== "available")
         throw new Error("release_contract_invalid");
       setResult(data);
       setSelected((previous) =>
-        data.events.some((event: Release) => event.event_id === previous)
+        data.events.some(
+          (event: Release) => recordId(event, data.read_mode) === previous,
+        )
           ? previous
-          : eventFilter || null,
+          : (() => {
+              const match = data.events.find((e) => e.event_id === eventFilter);
+              return match ? recordId(match, data.read_mode) : null;
+            })(),
       );
     } catch (error) {
       if (!controller.signal.aborted)
@@ -232,7 +272,9 @@ export function MacroReleaseRecords({
     // Fetch on mount, then only on explicit reads. Filter edits do not run IO.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.id]);
-  const event = result?.events.find((item) => item.event_id === selected);
+  const event = result?.events.find(
+    (item) => recordId(item, result.read_mode) === selected,
+  );
   const seriesLabel = (id: string) =>
     profile.series.find(
       ([native]) =>
@@ -257,6 +299,7 @@ export function MacroReleaseRecords({
   };
   const basisLabel = (basis: string) =>
     ({
+      official_report_header: "DOL官方报告表头日期",
       BLS_official_archive_filename: "官方档案文件日期",
       official_material_release_date: "材料声明发布日期",
     })[basis] ?? "未知（来源依据未确认）";
@@ -314,8 +357,8 @@ export function MacroReleaseRecords({
         />
       ) : (
         <DateField
-          label="发布参考月"
-          type="month"
+          label={claims ? "发布参考周（周六）" : "发布参考月"}
+          type={claims ? "date" : "month"}
           value={reference}
           onChange={setReference}
         />
@@ -324,6 +367,12 @@ export function MacroReleaseRecords({
         读取发布记录
       </button>
       <p>只读本地发布证据；不联网、不写入。</p>
+      {claims && (
+        <p>
+          actual为本次材料公布值；官方原前值与本次报告前值分别列示。MDF事前值缺少实际发布截止及版本证据时保持unknown。材料仅覆盖已留存报告，连续值未绑定，不以event
+          actual替代当前值。
+        </p>
+      )}
       {gdp && (
         <p>
           按季度与 advance / second / third 等估计区分。摘要材料目前仅覆盖
@@ -367,7 +416,9 @@ export function MacroReleaseRecords({
               <thead>
                 <tr>
                   <th>事件</th>
-                  <th>{gdp ? "参考季度 / 估计" : "参考月"}</th>
+                  <th>
+                    {claims ? "截止周" : gdp ? "参考季度 / 估计" : "参考月"}
+                  </th>
                   <th>来源版本 / 精度</th>
                   <th>事件值</th>
                   <th>证据可用时间</th>
@@ -375,14 +426,19 @@ export function MacroReleaseRecords({
               </thead>
               <tbody>
                 {result.events.map((item) => (
-                  <tr key={item.event_id}>
+                  <tr key={recordId(item, result.read_mode)}>
                     <td>
-                      <button onClick={() => setSelected(item.event_id)}>
+                      <button
+                        onClick={() =>
+                          setSelected(recordId(item, result.read_mode))
+                        }
+                      >
                         {item.event_id}
                       </button>
                     </td>
                     <td>
                       {(
+                        item.reference_weeks ??
                         item.reference_quarters ??
                         item.reference_months ?? [referenceText(item)]
                       ).join("、")}
@@ -489,7 +545,9 @@ export function MacroReleaseRecords({
                   <thead>
                     <tr>
                       <th>指标 / 统计量</th>
-                      <th>{gdp ? "参考季度 / 估计" : "参考月"}</th>
+                      <th>
+                        {claims ? "截止周" : gdp ? "参考季度 / 估计" : "参考月"}
+                      </th>
                       <th>角色</th>
                       <th>值 / 单位</th>
                       <th>原文定位</th>
@@ -515,7 +573,12 @@ export function MacroReleaseRecords({
                           {claim.estimate_kind && ` · ${claim.estimate_kind}`}
                         </td>
                         <td>
-                          {claim.value ?? "—"} {units[claim.unit] ?? claim.unit}
+                          {claims
+                            ? claim.value === null
+                              ? "unknown（材料未说明）"
+                              : retailDecimalText(claim.value)
+                            : (claim.value ?? "—")}{" "}
+                          {units[claim.unit] ?? claim.unit}
                           {claim.reported_unit === "billion_USD" && (
                             <p className="small">
                               原文：{claim.reported_value} 十亿美元 （显示
@@ -571,9 +634,11 @@ export function MacroReleaseRecords({
                         <td>
                           <details>
                             <summary>
-                              {claim.locator.kind === "official_table_cell"
-                                ? `${tableLabel(claim.locator.table)} · ${claim.locator.row} · ${claim.locator.column}`
-                                : `材料段落 ${claim.locator.start}–${claim.locator.end}`}
+                              {claim.locator.kind === "official_report_fragment"
+                                ? `报告第${claim.locator.page ?? "未知"}页 · ${claim.locator.reference_header}`
+                                : claim.locator.kind === "official_table_cell"
+                                  ? `${tableLabel(claim.locator.table)} · ${claim.locator.row} · ${claim.locator.column}`
+                                  : `材料段落 ${claim.locator.start}–${claim.locator.end}`}
                             </summary>
                             {claim.locator.excerpt}
                             <p>

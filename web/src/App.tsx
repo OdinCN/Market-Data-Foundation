@@ -1,4 +1,5 @@
 import {
+  CLAIMS_PROFILE,
   GDP_PROFILE,
   CPI_PROFILE,
   PPI_PROFILE,
@@ -40,6 +41,8 @@ import { OverviewPage, PlatformPage } from "./WorkflowRuntime";
 import { Technical } from "./WorkflowTable";
 import { useResource } from "./workflowHooks";
 import {
+  CLAIMS,
+  claimsOperationMatches,
   GDP,
   CPI,
   PPI,
@@ -209,19 +212,21 @@ export default function App({
     ((!identity && !operation) || sameKey(key, CPI));
   const macroIdentity = identity ?? operationEntry?.asset?.identity;
   const macroProfile =
-    macroIdentity === GDP.identity
-      ? GDP_PROFILE
-      : macroIdentity === CONSUMPTION.identity
-        ? CONSUMPTION_PROFILE
-        : macroIdentity === RETAIL.identity
-          ? RETAIL_PROFILE
-          : macroIdentity === EMPLOYMENT.identity
-            ? EMPLOYMENT_PROFILE
-            : macroIdentity === PCE.identity
-              ? PCE_PROFILE
-              : macroIdentity === PPI.identity
-                ? PPI_PROFILE
-                : CPI_PROFILE;
+    macroIdentity === CLAIMS.identity
+      ? CLAIMS_PROFILE
+      : macroIdentity === GDP.identity
+        ? GDP_PROFILE
+        : macroIdentity === CONSUMPTION.identity
+          ? CONSUMPTION_PROFILE
+          : macroIdentity === RETAIL.identity
+            ? RETAIL_PROFILE
+            : macroIdentity === EMPLOYMENT.identity
+              ? EMPLOYMENT_PROFILE
+              : macroIdentity === PCE.identity
+                ? PCE_PROFILE
+                : macroIdentity === PPI.identity
+                  ? PPI_PROFILE
+                  : CPI_PROFILE;
   const collectionList =
     page.view === "collection" &&
     ["periodic", "executions"].includes(page.fields.get("tab") ?? "new");
@@ -238,6 +243,8 @@ export default function App({
       (!collectionList ||
         page.fields.get("tab") !== "periodic" ||
         collectionFilter !== keyOf(RETAIL)) &&
+      (!collectionList || collectionFilter !== keyOf(CLAIMS)) &&
+      (macroIdentity !== CLAIMS.identity || collectionList) &&
       (!collectionList || collectionFilter !== keyOf(GDP)) &&
       (macroIdentity !== GDP.identity || collectionList) &&
       (macroIdentity !== CONSUMPTION.identity || collectionList) &&
@@ -339,20 +346,35 @@ export default function App({
     page.view === "collection",
     GDP_PROFILE,
   );
+  const claimsAvailability = useCpiAvailability(
+    transport,
+    generation,
+    !page.invalid &&
+      ["assets", "collection"].includes(page.view) &&
+      (!operation || claimsOperationMatches(operationEntry)) &&
+      ((macroIdentity === CLAIMS.identity &&
+        (!revision || revision === CLAIMS.revision)) ||
+        (collectionList &&
+          (collectionFilter === "all" || collectionFilter === keyOf(CLAIMS)))),
+    page.view === "collection",
+    CLAIMS_PROFILE,
+  );
   const macroAvailability =
-    macroProfile.id === "gdp"
-      ? gdpAvailability
-      : macroProfile.id === "consumption"
-        ? consumptionAvailability
-        : macroProfile.id === "retail"
-          ? retailAvailability
-          : macroProfile.id === "employment"
-            ? employmentAvailability
-            : macroProfile.id === "pce"
-              ? pceAvailability
-              : macroProfile.id === "ppi"
-                ? ppiAvailability
-                : cpiAvailability;
+    macroProfile.id === "claims"
+      ? claimsAvailability
+      : macroProfile.id === "gdp"
+        ? gdpAvailability
+        : macroProfile.id === "consumption"
+          ? consumptionAvailability
+          : macroProfile.id === "retail"
+            ? retailAvailability
+            : macroProfile.id === "employment"
+              ? employmentAvailability
+              : macroProfile.id === "pce"
+                ? pceAvailability
+                : macroProfile.id === "ppi"
+                  ? ppiAvailability
+                  : cpiAvailability;
   const catalog = useResource<Catalog>(
     (signal) => request(transport, "/api/r5/cpi", query, signal),
     [transport, generation, query, wantsCatalog, page.view, page.invalid],
@@ -436,7 +458,8 @@ export default function App({
           !sameKey(key, EMPLOYMENT) &&
           !sameKey(key, RETAIL) &&
           !sameKey(key, CONSUMPTION) &&
-          !sameKey(key, GDP)) ||
+          !sameKey(key, GDP) &&
+          !sameKey(key, CLAIMS)) ||
           (!revision &&
             (page.view !== "assets" ||
               !!operation ||
@@ -459,6 +482,7 @@ export default function App({
       : asset;
   const menu = menus.find((m) => m[0] === page.view)!;
   const busy =
+    claimsAvailability.busy ||
     gdpAvailability.busy ||
     cpiAvailability.busy ||
     ppiAvailability.busy ||
@@ -680,16 +704,18 @@ export default function App({
                         (!revision ||
                           revision === macroProfile.asset.revision) &&
                         (!operation ||
-                          (macroProfile.id === "retail"
-                            ? retailOperationMatches(operationEntry)
-                            : macroProfile.id === "employment"
-                              ? employmentOperationMatches(operationEntry)
-                              : macroProfile.id === "gdp"
-                                ? sameKey(operationEntry?.asset, GDP)
-                                : sameKey(
-                                    selectedAsset?.key,
-                                    macroProfile.asset,
-                                  ))) ? (
+                          (macroProfile.id === "claims"
+                            ? claimsOperationMatches(operationEntry)
+                            : macroProfile.id === "retail"
+                              ? retailOperationMatches(operationEntry)
+                              : macroProfile.id === "employment"
+                                ? employmentOperationMatches(operationEntry)
+                                : macroProfile.id === "gdp"
+                                  ? sameKey(operationEntry?.asset, GDP)
+                                  : sameKey(
+                                      selectedAsset?.key,
+                                      macroProfile.asset,
+                                    ))) ? (
                           <>
                             <CpiTimeSeries
                               profile={macroProfile}
@@ -789,6 +815,7 @@ export default function App({
                       employmentAvailability={employmentAvailability}
                       retailAvailability={retailAvailability}
                       consumptionAvailability={consumptionAvailability}
+                      claimsAvailability={claimsAvailability}
                       gdpAvailability={gdpAvailability}
                     />
                   )}

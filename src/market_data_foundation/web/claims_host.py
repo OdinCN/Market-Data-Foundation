@@ -211,7 +211,13 @@ class ClaimsTimeSeriesHost(GdpTimeSeriesHost):
 
     def releases(self, params):
         self._read_allowed()
-        if set(params) - {"as_of", "read_mode"}:
+        if set(params) - {
+            "as_of",
+            "read_mode",
+            "event_id",
+            "reference_week",
+            "source_version",
+        }:
             raise WebError("unsupported_parameters")
         _cutoff(params.get("as_of"))
         with self.service() as service:
@@ -344,14 +350,34 @@ class ClaimsTimeSeriesHost(GdpTimeSeriesHost):
             query_persists=False,
             response_fields=dict(
                 rows="week_ending descending, then requested series order",
-                value="decimal Number; SA/NSA explicit",
+                value="decimal string|null; Number; SA/NSA explicit",
                 weekly_change="Number(t)-Number(t-7d)",
                 weekly_change_ratio="ratio; 0.01 means 1%",
                 local_four_week_average="local derived; independent from IC4WSA/CC4WSA",
                 related_releases="scope_only; no value-equality version binding",
             ),
             release_records=dict(
-                parameters=["as_of", "read_mode"],
+                parameters=[
+                    "as_of",
+                    "read_mode",
+                    "event_id",
+                    "reference_week",
+                    "source_version",
+                ],
+                filters=dict(
+                    event_id="exact dol-claims-YYYY-MM-DD; cross-family IDs rejected",
+                    reference_week=(
+                        "Saturday YYYY-MM-DD coverage filter; actual or prior roles; "
+                        "never reference_month"
+                    ),
+                    source_version="exact YYYY-MM-DD source version, date precision",
+                    as_of="inclusive aware available cutoff, no latest fallback",
+                ),
+                row_association=(
+                    "series/week scope_only; explicit roles/source_version; "
+                    "scheduled_publication_at only for confirmed actual with "
+                    "embargo_header; prior roles never imply first release time"
+                ),
                 read_modes=["event", "source_history"],
                 evidence_kinds=["official_current_report_snapshot", "official_archive"],
                 surprise="null without named pre-release consensus",

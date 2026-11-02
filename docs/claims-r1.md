@@ -1,8 +1,8 @@
-# 美国初请与续请：R1 第 1–3 段
+# 美国初请与续请：R1 第 1–4 段
 
 已提供周频领域、FRED 正式 API 有界采集、PostgreSQL 持久化、同截止查询、
 DEV CLI、DOL 周报材料及事件回读，以及独立 HTTP、官方日历和统一 worker 入口。
-统一 UI、真实到期 worker 联调、浏览器及完整包验收仍待后续。
+第4段已接入统一 UI 并核验前端/HTTP合同；真实到期 worker 联调、浏览器及完整包验收仍待后续。
 依据 `docs/macro-family-development-review.md`、GDP 季频/就业实现，以及事务引用的
 `MBO_MACRO_RESEARCH_INPUT_PRD_R1_20261101.md` §10 目标 B、附录 A01、§12 和
 `MBO_MDF_MACRO_PRD_R1_SEMANTIC_CONFIRMATION_20261101.md`。
@@ -235,7 +235,7 @@ Catalog 注册资产 `mdf.macro.dol.claims`，provider 为 FRED，原机构为 D
 | --- | --- |
 | GET status / api-help | 实际本地状态、20 日历年可编辑预设、权限与字段说明 |
 | GET query | 必填 start/end 自然日；可选 series/local_only/query_mode/as_of/as_of_basis |
-| GET releases | 可选 as_of、read_mode=event/source_history；六实际与证据角色 |
+| GET releases | 可选 as_of、read_mode=event/source_history、event_id、reference_week、source_version；严格相交过滤，六实际与证据角色 |
 | GET jobs / executions | 持久化回执；中断显示 unknown，不在 GET 中修复或重放 |
 | GET strategy / schedule | 持久策略、日历缓存/失败、计划和独立进程心跳 |
 | POST jobs | 精确四键 request_id/action/start/end；UUID；action=init/update；六系列 |
@@ -331,3 +331,61 @@ clock_timestamp，不倒填 observed。只确认本次响应实际返回且值�
 Playwright+Chromium 宽窄窗、独立 odin_dba 登录核验、整包 deterministic 回归和 PR 准备。
 未来自然发布不能本晚实证，不能把 due/retry/holiday 的确定性测试当自然发布现场验收。
 本段没有生产部署、其他族状态写入、服务替换、push 或 merge。
+
+
+## 第4段：统一工作台与真实序列化合同
+
+Claims 以 `mdf.macro.dol.claims@r1` 接入既有资产查询/发布记录/API说明、
+CollectionWorkbench 新建采集/周期任务/执行记录；复用 CpiTimeSeries、
+CpiTimeSeriesCollection、CpiStrategyWorkbench、MacroReleaseRecords、DateField、
+MultiSelect、请求预览、复制图标及原始 HTTP 正文视图。既有七族默认参数不变。
+运行总览、平台管理、其他数据族和生产部署不在本段范围。
+
+提供者 FRED、原机构 DOL-ETA；资产和目标标题使用“美国初请与续请失业金”。
+来源入口严格匹配原生 Claims operation、source、binding、asset 及禁止静默fallback的合同。
+查询六系列默认全选，各系列 latest_weeks 分别显示，不将续请少一周判为整包不可用。
+默认最近约52周可编辑，使用自然日起止范围及周六 week_ending，不装入月/季度字段。
+初始化取 status 的20日历年预置、允许编辑，说明来源28天计算缓冲，不将240个月当周数。
+
+查询适配器消费真实 `rows`、coverage、Number字符串及派生对象；整体按截止周倒序、
+同周稳定。普通水平、官方四周均值均保留 Number；千位分隔、保留有效小数并去无意义尾零。
+周数值差、周变化比率、本地四周均值分别列示；ratio仅展示时转百分比，原正文保留十进制字符串。
+官方均值系列不再计算“均值的本地四周均值”。FRED `provider_missing` 与
+`local_not_provided`、零、计算缺基期、零分母和补源失败分别保留。
+`local_not_provided` 本身不能证明是从未采集还是来源未返回，页面明示这一合同限制。
+表单当前请求显式 local_only=true、as_of_basis=available；只有服务授权后可显式临时补源。
+历史强制本地和 available cutoff；全部操作数同截止。来源资格变化会取消在途补源、
+清除临时补源选择并恢复本地请求预览，避免资格刷新后的旧请求结果错位。
+
+发布接口现支持严格相交过滤：
+
+- `event_id`：完整 `dol-claims-YYYY-MM-DD`；其他族编号及非法日期拒绝。
+- `reference_week`：原生周六 YYYY-MM-DD，按材料覆盖过滤，可能覆盖 actual 或 prior；
+  不接受 reference_month，也不按发布日期推算初请/续请周。
+- `source_version`：精确 YYYY-MM-DD 来源版本，保留日期精度。
+- `as_of`：带时区、包含边界的 MDF available 截止；`read_mode=event/source_history`。
+
+后端行关联额外返回 reference_week、roles、source_version、schedule_basis 与
+scheduled_publication_at；只有该 series/week 是材料确认 actual 时才关联其报告embargo计划。
+prior 修订关联只提供材料链接，不冒称该参考周的首发时间；未来全局日历不填历史行。
+关联仍为 scope_only / continuous_version_bound=false，event actual 不替代当前连续数值。
+事件详情分别展示本次actual、材料明确引述的官方原前值、本次报告前值；无证据的原前值、
+MDF事前值和实际发布时刻保持unknown。来源历史模式可独立选择同一事件的每份已保存证据。
+原文定位使用材料页码、参考周表头和片段，不伪造文本位置或发布时间。
+
+采集沿用同一双栏布局、确认勾选、请求编号与执行简报，发送 init/update 四键合同。
+周期启停仅一次 PUT；策略 enabled 与worker心跳分开。执行详情消费紧凑周频回执、各系列
+latest_week、缺周真实总量、最多16个样本及截断标志，材料结果与数值回读独立显示。
+未来计划参考周为空时仍正常呈现发布日期，并写明“参考周待发布材料确认”。
+日历来源为可换行普通超链接，沿用共享布局。
+
+`tests/claims_ui_wire.py` 经真实 Claims router / JSONResponse 产生公开合成响应，
+`tests/fixtures/claims_ui_http.json`由 Python 重建并逐项对照；仅日历raw_locator的临时
+根目录规范化为公开fixture标记，非 provider 原始材料或DEV数据。
+前端直接使用这些 serialized响应验证成功、缺值、历史、来源失败、真实release过滤、
+采集/执行回执、日历空参考周及真实目录绑定，避免两端各写一份不一致mock。
+OpenAPI与生成TypeScript已包含 Claims 请求路径，API说明、预览、curl与实际请求对应。
+
+本段未请求新外部来源、未接触DEV PostgreSQL或18761运行服务、未启动真实到期worker、
+未运行Playwright/Chromium宽窄窗现场验收、未跑全仓pytest；这些属于下一联调段及整包收尾。
+具体测试结果与剩余入口见ignored `artifacts/segment4/简报.md`。

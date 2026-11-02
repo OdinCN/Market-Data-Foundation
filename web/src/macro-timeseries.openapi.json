@@ -3988,6 +3988,334 @@
           }
         ]
       }
+    },
+    "/api/r5/claims/timeseries/status": {
+      "get": {
+        "summary": "Claims Timeseries Status",
+        "operationId": "claims_timeseries_status_api_r5_claims_timeseries_status_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/claims/timeseries/query": {
+      "get": {
+        "summary": "Claims Timeseries Query",
+        "operationId": "claims_timeseries_query_api_r5_claims_timeseries_query_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "YYYY-MM-DD inclusive natural day"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "YYYY-MM-DD inclusive natural day"
+          },
+          {
+            "name": "series",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "six native FRED IDs CSV; all six by default"
+          },
+          {
+            "name": "local_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "true default; false allows nonpersisted current gap fetch"
+          },
+          {
+            "name": "query_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "current/history; history inferred with as_of"
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "aware ISO8601 cutoff required in history"
+          },
+          {
+            "name": "as_of_basis",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "available default / observed; one cutoff for every operand"
+          }
+        ]
+      }
+    },
+    "/api/r5/claims/timeseries/api-help": {
+      "get": {
+        "summary": "Claims Timeseries Api-Help",
+        "operationId": "claims_timeseries_api_help_api_r5_claims_timeseries_api_help_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/claims/timeseries/releases": {
+      "get": {
+        "summary": "Claims Timeseries Releases",
+        "operationId": "claims_timeseries_releases_api_r5_claims_timeseries_releases_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "optional as_of"
+          },
+          {
+            "name": "read_mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "optional read_mode"
+          },
+          {
+            "name": "event_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "optional event_id"
+          },
+          {
+            "name": "reference_week",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "optional reference_week"
+          },
+          {
+            "name": "source_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "optional source_version"
+          }
+        ]
+      }
+    },
+    "/api/r5/claims/timeseries/jobs": {
+      "get": {
+        "summary": "Claims Timeseries Jobs",
+        "operationId": "claims_timeseries_jobs_api_r5_claims_timeseries_jobs_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Submit",
+        "operationId": "submit_api_r5_claims_timeseries_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "request_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": ["init", "update"]
+                  },
+                  "start": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                    "format": "date"
+                  },
+                  "end": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                    "format": "date"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["request_id", "action", "start", "end"]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/claims/timeseries/executions": {
+      "get": {
+        "summary": "Claims Timeseries Executions",
+        "operationId": "claims_timeseries_executions_api_r5_claims_timeseries_executions_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/claims/timeseries/strategy": {
+      "get": {
+        "summary": "Claims Timeseries Strategy",
+        "operationId": "claims_timeseries_strategy_api_r5_claims_timeseries_strategy_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Strategy",
+        "operationId": "strategy_api_r5_claims_timeseries_strategy_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "history_start": {
+                    "type": "string",
+                    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+                    "format": "date"
+                  }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": ["enabled"]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/r5/claims/timeseries/schedule": {
+      "get": {
+        "summary": "Claims Timeseries Schedule",
+        "operationId": "claims_timeseries_schedule_api_r5_claims_timeseries_schedule_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

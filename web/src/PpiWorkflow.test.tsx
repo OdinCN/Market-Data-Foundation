@@ -128,6 +128,7 @@ function fixture() {
     retail: false,
     consumption: false,
     gdp: false,
+    claims: false,
   };
   const transport: Transport = async (input, init) => {
     const url = new URL(String(input), "http://fixture.invalid");

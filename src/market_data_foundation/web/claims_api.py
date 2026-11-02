@@ -44,6 +44,12 @@ def timeseries_router(host):
         period_description="YYYY-MM-DD inclusive natural day",
         series_description="six native FRED IDs CSV; all six by default",
         basis_description="available default / observed; one cutoff for every operand",
-        release_fields=("as_of", "read_mode"),
+        release_fields=(
+            "as_of",
+            "read_mode",
+            "event_id",
+            "reference_week",
+            "source_version",
+        ),
         error_handler=failure,
     )

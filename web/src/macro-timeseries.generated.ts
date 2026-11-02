@@ -694,6 +694,144 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/r5/claims/timeseries/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Claims Timeseries Status */
+    get: operations["claims_timeseries_status_api_r5_claims_timeseries_status_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/claims/timeseries/query": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Claims Timeseries Query */
+    get: operations["claims_timeseries_query_api_r5_claims_timeseries_query_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/claims/timeseries/api-help": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Claims Timeseries Api-Help */
+    get: operations["claims_timeseries_api_help_api_r5_claims_timeseries_api_help_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/claims/timeseries/releases": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Claims Timeseries Releases */
+    get: operations["claims_timeseries_releases_api_r5_claims_timeseries_releases_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/claims/timeseries/jobs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Claims Timeseries Jobs */
+    get: operations["claims_timeseries_jobs_api_r5_claims_timeseries_jobs_get"];
+    put?: never;
+    /** Submit */
+    post: operations["submit_api_r5_claims_timeseries_jobs_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/claims/timeseries/executions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Claims Timeseries Executions */
+    get: operations["claims_timeseries_executions_api_r5_claims_timeseries_executions_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/claims/timeseries/strategy": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Claims Timeseries Strategy */
+    get: operations["claims_timeseries_strategy_api_r5_claims_timeseries_strategy_get"];
+    /** Strategy */
+    put: operations["strategy_api_r5_claims_timeseries_strategy_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/claims/timeseries/schedule": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Claims Timeseries Schedule */
+    get: operations["claims_timeseries_schedule_api_r5_claims_timeseries_schedule_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2740,6 +2878,253 @@ export interface operations {
             history_basis?: string;
             coverage?: string;
           };
+        };
+      };
+    };
+  };
+  claims_timeseries_status_api_r5_claims_timeseries_status_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  claims_timeseries_query_api_r5_claims_timeseries_query_get: {
+    parameters: {
+      query: {
+        /** @description YYYY-MM-DD inclusive natural day */
+        start: string;
+        /** @description YYYY-MM-DD inclusive natural day */
+        end: string;
+        /** @description six native FRED IDs CSV; all six by default */
+        series?: string;
+        /** @description true default; false allows nonpersisted current gap fetch */
+        local_only?: string;
+        /** @description current/history; history inferred with as_of */
+        query_mode?: string;
+        /** @description aware ISO8601 cutoff required in history */
+        as_of?: string;
+        /** @description available default / observed; one cutoff for every operand */
+        as_of_basis?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  claims_timeseries_api_help_api_r5_claims_timeseries_api_help_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  claims_timeseries_releases_api_r5_claims_timeseries_releases_get: {
+    parameters: {
+      query?: {
+        /** @description optional as_of */
+        as_of?: string;
+        /** @description optional read_mode */
+        read_mode?: string;
+        /** @description optional event_id */
+        event_id?: string;
+        /** @description optional reference_week */
+        reference_week?: string;
+        /** @description optional source_version */
+        source_version?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  claims_timeseries_jobs_api_r5_claims_timeseries_jobs_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  submit_api_r5_claims_timeseries_jobs_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** Format: uuid */
+          request_id: string;
+          /** @enum {string} */
+          action: "init" | "update";
+          /** Format: date */
+          start: string;
+          /** Format: date */
+          end: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  claims_timeseries_executions_api_r5_claims_timeseries_executions_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  claims_timeseries_strategy_api_r5_claims_timeseries_strategy_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  strategy_api_r5_claims_timeseries_strategy_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          enabled: boolean;
+          /** Format: date */
+          history_start?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  claims_timeseries_schedule_api_r5_claims_timeseries_schedule_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
         };
       };
     };

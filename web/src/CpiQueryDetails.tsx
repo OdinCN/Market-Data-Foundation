@@ -242,6 +242,14 @@ export function CpiQueryApiHelp({
   request: RequestDescription;
   profile?: MacroProfile;
 }) {
+  if (profile.id === "claims")
+    return (
+      <ClaimsQueryApiHelp
+        profile={profile}
+        availability={availability}
+        request={request}
+      />
+    );
   if (profile.id === "gdp")
     return (
       <GdpQueryApiHelp
@@ -957,6 +965,143 @@ function GdpQueryApiHelp({
       <p>
         完整服务说明：{profile.basePath}
         /api-help。采集、周期策略和执行记录暂未开放。
+      </p>
+    </section>
+  );
+}
+
+function ClaimsQueryApiHelp({
+  profile,
+  availability,
+  request,
+}: {
+  profile: MacroProfile;
+  availability: CpiAvailability;
+  request: RequestDescription;
+}) {
+  const base = profile.basePath;
+  return (
+    <section aria-label={`${profile.label} API说明`} className="cpi-api-help">
+      <h4>查询参数与权限</h4>
+      <p>
+        GET {base}/query；
+        {availability.data?.web_capabilities.query
+          ? "已开放查询"
+          : "服务资格待核实"}
+        。原机构 DOL-ETA，传输提供者 FRED；不替换其他提供者。
+      </p>
+      <CompactTable
+        label="Claims查询参数"
+        headers={["参数", "默认 / 类型与含义"]}
+        rows={[
+          [
+            "start / end",
+            "必填 YYYY-MM-DD，含首尾自然日，投影其中周六；最大36600天（100年），表单起点≥1901-01-01；默认最近约52周可编辑",
+          ],
+          [
+            "series",
+            "六条原生FRED ID的CSV，默认全部：ICSA,ICNSA,CCSA,CCNSA,IC4WSA,CC4WSA",
+          ],
+          [
+            "local_only",
+            "API默认true；本表单显式true。授权后当前查询可false临时补缺，不写库；历史强制本地",
+          ],
+          [
+            "query_mode",
+            "current默认；有as_of推定history，显式history必须有截止",
+          ],
+          [
+            "as_of",
+            "带时区ISO8601，包含边界；北京时间表单转+08:00，历史无最新回退",
+          ],
+          [
+            "as_of_basis",
+            "available默认，也接受observed；表单固定available，全部操作数同cutoff",
+          ],
+        ]}
+      />
+      <h4>六系列、字段与单位</h4>
+      <CompactTable
+        label="Claims系列"
+        headers={["series_id", "原生统计量"]}
+        rows={profile.series.map(([id, title]) => [id, title])}
+      />
+      <p>
+        rows[].week_ending为每series独立周六，整体倒序，同周按请求series顺序稳定。value为decimal
+        string|null，单位Number；IC4WSA/CC4WSA是官方四周均值，不能用本地均值替代。
+      </p>
+      <p>
+        weekly_change.value为周数值差（Number）；weekly_change_ratio.value为十进制ratio（0.01展示1%）；local_four_week_average.value为四个周水平的本地均值（Number、local_derived），官方均值系列不再计算。各派生保留inputs溯源；body不转成百分数。
+      </p>
+      <h4>响应与缺值</h4>
+      <p>
+        返回asset_id、start_date/end_date/buffer_start_date、rows、coverage、status、query_mode/as_of/as_of_basis/local_only、provider_requests/provider_attempts/source_failure。coverage只描述目标水平，不保证计算基期完整。local_not_provided为未采集或来源未返回；provider_missing为FRED提供方缺值，不称官方null；zero_denominator不能计算比率。补源失败保留本地值与安全分类，不补零。
+      </p>
+      <CodeBlock
+        copyLabel="复制Claims响应示例"
+        text={JSON.stringify(
+          {
+            asset_id: "mdf.macro.dol.claims",
+            rows: [
+              {
+                series_id: "ICSA",
+                week_ending: "2026-10-24",
+                value: "194000",
+                unit: "Number",
+                weekly_change_ratio: {
+                  value: "0.01",
+                  unit: "ratio",
+                  missing_reason: null,
+                },
+              },
+            ],
+            as_of_basis: "available",
+            local_only: true,
+          },
+          null,
+          2,
+        )}
+      />
+      <h4>来源、时间与修订限制</h4>
+      <p>
+        {profile.historyNotice} FRED
+        realtime_start/end保持日期精度及fred_not_disambiguated依据，last_updated不是官方发布时间。首次本地捕获不等于官方首发，取得时间与available提交确认时间分开。无具名共识不计算surprise。连续版本未绑定时event
+        actual不代表当前值。只显示已保存材料支持的历史发布，材料embargo仅是计划，未知实际时间不补造。
+      </p>
+      <h4>发布记录与定位</h4>
+      <p>
+        GET {base}
+        /releases：as_of、read_mode=event/source_history、event_id=dol-claims-YYYY-MM-DD、reference_week=周六YYYY-MM-DD、source_version=YYYY-MM-DD严格过滤；reference_week为材料覆盖过滤，可含actual与prior，不使用reference_month。返回events/as_of/read_mode。actual=本次值；official_previously_reported_prior=材料明确引述官方原前值；prior_as_reported_in_this_event=本次报告前值。MDF事前值缺足够时间及版本证明时unknown。
+      </p>
+      <CodeBlock
+        copyLabel="复制Claims发布示例"
+        text={`${base}/releases?event_id=dol-claims-2026-10-29&reference_week=2026-10-24&source_version=2026-10-29&read_mode=event`}
+      />
+      <h4>查询请求与历史示例</h4>
+      <RequestPreview request={request} />
+      <CodeBlock
+        copyLabel="复制Claims历史示例"
+        text={`${base}/query?start=2026-10-01&end=2026-10-31&series=ICSA,CCSA&query_mode=history&local_only=true&as_of_basis=available&as_of=2026-11-02T18%3A00%3A00Z`}
+      />
+      <h4>采集、周期及执行</h4>
+      <p>
+        POST {base}/jobs
+        精确四键request_id/action/start/end；UUID，action=init/update，六系列一起采集。初始化按后端20日历年预置，可修改，含28天来源计算缓冲。202仅证明durable
+        running回执，GET
+        jobs/executions追踪；complete证明本地回读完成，材料状态另列。紧凑回执series_coverage保留各自latest_week及missing_weeks_total/trailing_missing_weeks_total；缺周样本最多16且显式truncated，完整序列由query获取。
+      </p>
+      <CodeBlock
+        copyLabel="复制Claims采集示例"
+        text={`curl -X POST '${window.location.origin}${base}/jobs' -H 'Origin: ${window.location.origin}' -H 'Content-Type: application/json' --data '{"request_id":"c1400000-0000-4000-8000-000000000001","action":"init","start":"2006-11-02","end":"2026-11-02"}'`}
+      />
+      <CodeBlock
+        copyLabel="复制Claims策略示例"
+        text={`curl -X PUT '${window.location.origin}${base}/strategy' -H 'Origin: ${window.location.origin}' -H 'Content-Type: application/json' --data '{"enabled":true}'`}
+      />
+      <p>
+        PUT strategy一键启停；GET
+        strategy/schedule提供策略与独立worker心跳。启用不代表进程已运行。未来日历只有发布计划，reference_week=null表示“参考周待发布材料确认”，不得推导初请/续请周。GET不刷新日历，不启动worker。400非法/重复/未知参数，403权限，503能力或存储不可用；200部分返回保留缺项。完整机器说明：GET{" "}
+        {base}/api-help。
       </p>
     </section>
   );

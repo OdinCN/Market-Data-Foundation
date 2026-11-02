@@ -184,6 +184,9 @@ def contract_app():
         CONSUMPTION_PROFILE,
     ):
         app.include_router(timeseries_router(None, profile=profile))
+    from market_data_foundation.web.claims_api import timeseries_router as claims_router
+
+    app.include_router(claims_router(None))
     return app
 
 
