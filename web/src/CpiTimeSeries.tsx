@@ -504,12 +504,15 @@ function CpiTimeSeriesContent({
             <ul className="cpi-coverage">
               {cpiSeries.map(([id, title]) => (
                 <li key={id}>
-                  {title}：
-                  {(claims
-                    ? availability.data!.latest_weeks?.[id]
-                    : gdp
-                      ? availability.data!.latest_quarters?.[id]
-                      : availability.data!.latest_months[id]) ?? "尚无本地记录"}
+                  <span>{title}：</span>
+                  <span className="cpi-coverage-period">
+                    {(claims
+                      ? availability.data!.latest_weeks?.[id]
+                      : gdp
+                        ? availability.data!.latest_quarters?.[id]
+                        : availability.data!.latest_months[id]) ??
+                      "尚无本地记录"}
+                  </span>
                 </li>
               ))}
             </ul>

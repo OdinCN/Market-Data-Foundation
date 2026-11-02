@@ -423,3 +423,18 @@ DOL HTTP 取得封装保留真实 `obtained_at`；进入 PDF parser 和原始材
 
 有界 DEV 运行、真实 Chromium 验收、来源预算及数据库差异证据保存在 ignored
 `artifacts/segment5/`。整包确定性回归及 PR 准备另行收口；本段不表示完成未来自然发布验收。
+
+## 第5b段共享覆盖列表与浏览器复核
+
+共享最新覆盖列表按实际容器宽度排列，窄容器单列、宽容器最多三列；名称允许换行，
+周/月/季度截止值整体显示。保留原有 `latest_weeks`、`latest_months`、`latest_quarters`
+读取语义。Chromium 使用实际文字片段与原生 marker 的几何边界检查相邻列，
+另留存1440未展开/已展开、960、480视口截图，避免只依靠全页无横向溢出的判断。
+
+第5段旧七族浏览器查询曾由路由改写为本地模式，该证据仅证明改写后的本地读取。
+第5b段改用页面“历史截止查询”和晚于真实入库的 available 截止，页面自然发送
+`query_mode=history&local_only=true&as_of_basis=available`；不改写请求。
+已保存短范围的请求预览、实际HTTP正文、原始响应tab和表格逐行数值互相核对。
+Claims 表格另验证内部横向滚动后的日历与缺值列、日期/多选交互、完整发布材料身份、
+API帮助和已有执行详情。来源与运行窗口证据保存在 ignored `artifacts/segment5b/`，
+不重复采集，也不改变旧接口默认行为。

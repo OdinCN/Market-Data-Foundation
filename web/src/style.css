@@ -915,9 +915,18 @@ footer {
 }
 .cpi-coverage {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 12px 32px;
+  max-width: 64rem;
   padding-left: 20px;
+}
+.cpi-coverage > li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.cpi-coverage-period {
+  display: inline-block;
+  white-space: nowrap;
 }
 .historical-read {
   margin-top: 16px;
