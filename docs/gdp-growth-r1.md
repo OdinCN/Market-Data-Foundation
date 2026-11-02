@@ -5,7 +5,7 @@
 2026-11-02，Owner 在 CI #131 通过后授权分段推进。PR #21 已合并，
 本包基于 main 4f9204d。第一段完成季度合同、当前 NIPA 来源适配与定向测试；
 第二段已实现季度数据库、严格截止查询、采集回读与独立 CLI，并通过隔离 PostgreSQL 对照。
-正式 DEV 入库仍待下一有界执行；HTTP API、任务、发布估计证据、日历和 WebUI 尚未接入，不能作为整包验收完成。
+已完成正式 DEV 独立 schema、只读授权、80 季度初始化与回读；HTTP API、任务、发布估计证据、日历和 WebUI 尚未接入，不能作为整包验收完成。
 
 本包限于下表八项。GDI、GDP 平减指数、GDPNow、初请/续请、JOLTS、
 工业生产和中国包不随本笔启用。依据 MBO 宏观研究 PRD R1 与
@@ -81,7 +81,7 @@ control/transactions/MDF-GDP-GROWTH-20261102-R1/artifacts/source-qualification�
   API 说明与实际响应一致、Playwright 正常/窄窗/展开/响应切换检查后再准备 PR。
   CI 通过不代替浏览器和业务链路验收。
 - 白天不持续轮询 CI。每段 15–20 分钟、最多 30 分钟，落盘后回报。
-  RDC 2026-11-02 北京时间 16:00–17:00 维护，15:55 前保存断点并停止依赖连接的长任务。
+  RDC 2026-11-02 北京时间 16:00–17:00 维护已完成；Owner 明确要求继续，原断点恢复后推进。
 
 ## 第二段核心进度（2026-11-02）
 
@@ -104,6 +104,23 @@ CLI：先在仓库中运行 uv run python scripts/gdp_timeseries.py --help。
 prepare / init / update 必须显式传 --confirm-dev-write；query 默认本地读取，
 --allow-upstream 只适用于当前查询。参考期必须为 YYYY-Qn。prepare 同时给予
 odin_dba 当前及未来表 SELECT、schema USAGE；不会创建或改动该角色本身。
+
+## 正式 DEV 联调（2026-11-02）
+
+- 独立 schema `mdf_gdp_timeseries_dev_r1` 已建立。`odin_dba` 已核验 schema
+  USAGE、当前表/视图 SELECT 和未来表 SELECT；无该 schema CREATE / revisions INSERT 权限。
+- 初始化 2006-Q4..2026-Q3，共 80 季度 × 8 指标，目标 640/640 条可读、无缺口。
+  比较缓冲从 2005-Q4 开始，另存 32 条；数据库共 672 条观测、20 个批次、0 次数值修订。
+- 本轮实际 20 次逻辑请求 / 20 次尝试；凭据安全投影已通过 Garage 精确读回后入库。
+  本地取得时间为 2026-11-02T09:39:21Z..09:40:19Z，可用确认时间为 09:40:21Z。
+  不将这次历史回补的取得时间改写为过去的官方发布日期。
+- 640 条当前查询的数值、季度变化率和单位与 SQL rates 视图逐项一致。
+  重复同范围初始化为 0 来源请求、0 新增、0 修订，表计数保持不变。
+  截止首次捕获之前返回 0 条可用，截止可用确认之后返回全部 640 条；未来季度不请求来源。
+- 连续序列仍为 `estimate_kind=unknown`、`event_binding_status=unconfirmed`。
+  官方初值/第二次/第三次估计必须由独立发布材料证明；数值相等不自动绑定事件。
+- 迁移、初始化与读回回执仅在 control 事务目录 `artifacts/dev-integration`。
+  仍未接 HTTP、任务/worker、季度 UI 或浏览器验收，未建 GDP PR，未启动或延长 18761。
 
 ## 官方依据
 
