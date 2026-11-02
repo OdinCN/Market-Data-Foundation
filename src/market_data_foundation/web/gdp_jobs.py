@@ -77,7 +77,7 @@ class GdpJobRunner:
     def executions(self):
         return {"executions": [dict(j, id=j["job_id"]) for j in self.journal.list()]}
 
-    def submit(self, command, *, origin="manual", stage=None):
+    def submit(self, command, *, origin="manual", stage=None, on_started=None):
         validate_command(command, self.clock())
         if origin not in {"manual", "schedule"}:
             raise WebError("gdp_invalid_job_origin")
@@ -103,6 +103,8 @@ class GdpJobRunner:
             )
             self.journal.save(job)
             try:
+                if on_started is not None:
+                    on_started(dict(job))
                 method = (
                     self.service.init_range
                     if command["action"] == "init"

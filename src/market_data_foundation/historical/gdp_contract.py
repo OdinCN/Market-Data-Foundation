@@ -1,9 +1,11 @@
 """BEA GDP quarterly identities; official statistics never inferred from levels."""
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 
+from market_data_foundation.canonical.model import DatasetDefinition, Scope
+from market_data_foundation.historical.bea_pce import PCE_BINDING_CANDIDATE, PCE_SOURCE
 from market_data_foundation.historical.cpi_timeseries_source import CpiSourceError
 
 GdpSourceError = CpiSourceError
@@ -199,3 +201,58 @@ def year_windows(start: str, end: str, *, table_count: int, max_requests: int = 
     if table_count * len(windows) > max_requests:
         raise GdpSourceError("gdp_timeseries_request_budget_exceeded")
     return windows
+
+
+# Directory metadata; registration does not enable the runtime capability.
+
+
+GDP_DEFINITION = DatasetDefinition(
+    ASSET_ID,
+    "r1",
+    "BEA NIPA T10106/T10406/T10101/T10102 quarterly eight native series",
+    "美国 GDP 与增长",
+    True,
+    "table + line + SeriesCode + quarter",
+    "million chained 2017 USD SAAR; annualized percent; contribution percentage points",
+    "reference quarter, observed, available, official estimate event separate",
+    "changed-only local versions; no inferred official estimate binding",
+    "bounded source coverage; native history start unverified",
+    Scope(),
+)
+GDP_SOURCE = replace(
+    PCE_SOURCE,
+    identity="mdf.source.bea.nipa.gdp-growth",
+    contract_revision="r1",
+    operation="GetData:NIPA:T10106:T10406:T10101:T10102:Q",
+    product="BEA GDP and growth",
+    variant="eight-native-quarterly-series",
+    projection_revision="bea-gdp-growth-v1",
+    temporal_contract=(
+        "quarterly reference; distinct MDF observed/available and official estimate"
+    ),
+    completeness_contract="eight native series per quarter; explicit source gaps",
+    pagination_contract=(
+        "five calendar years per table; four independently completed responses"
+    ),
+)
+GDP_BINDING = replace(
+    PCE_BINDING_CANDIDATE,
+    identity="mdf.binding.bea.nipa.gdp-growth",
+    revision="r1",
+    source=GDP_SOURCE.key,
+    limitations=(
+        "credential_free_results_projection_only",
+        "no_provider_fallback",
+        "no_inferred_estimate_binding",
+        "four_responses_not_atomic",
+        "chained_nonadditive",
+    ),
+    mappings=(
+        replace(
+            PCE_BINDING_CANDIDATE.mappings[0],
+            definition=GDP_DEFINITION.key,
+            identity="bea-gdp-growth",
+            semantic_revision="r1",
+        ),
+    ),
+)

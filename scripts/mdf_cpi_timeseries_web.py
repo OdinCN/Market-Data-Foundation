@@ -21,6 +21,7 @@ from market_data_foundation.web.cpi_timeseries_api import (
     admitted_strategy,
 )
 from market_data_foundation.web.cpi_timeseries_host import create_timeseries_preview
+from market_data_foundation.web.gdp_runtime import GdpOptions
 from market_data_foundation.web.pce_dev_host import CANDIDATE_LISTENER
 from market_data_foundation.web.readonly_host import (
     ReadonlySettings,
@@ -69,6 +70,7 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_job(request, prefix="/api/r5/consumption/timeseries")
                 or admitted_job(request, prefix="/api/r5/employment/timeseries")
                 or admitted_job(request, prefix="/api/r5/retail/timeseries")
+                or admitted_job(request, prefix="/api/r5/gdp/timeseries")
                 or (
                     request.url.path == "/api/r5/retail/timeseries/strategy"
                     and admitted_strategy(
@@ -90,6 +92,7 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_strategy(request, prefix="/api/r5/consumption/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/employment/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/retail/timeseries")
+                or admitted_strategy(request, prefix="/api/r5/gdp/timeseries")
             )
         return super().request_admitted(request)
 
@@ -159,7 +162,18 @@ def main():
     parser.add_argument("--retail-artifacts-path", type=Path)
     parser.add_argument("--retail-schedule-path", type=Path)
     parser.add_argument("--retail-request-control-path", type=Path)
+    parser.add_argument("--enable-gdp-timeseries", action="store_true")
+    parser.add_argument("--allow-gdp-local-read", action="store_true")
+    parser.add_argument("--allow-gdp-collect", action="store_true")
+    parser.add_argument("--allow-gdp-source-query", action="store_true")
+    parser.add_argument("--gdp-schedule-path", type=Path)
+    parser.add_argument("--gdp-job-directory", type=Path)
+    parser.add_argument("--gdp-history-start")
     args = parser.parse_args()
+    if args.enable_gdp_timeseries and (
+        args.gdp_schedule_path is None or args.gdp_job_directory is None
+    ):
+        parser.error("GDP requires independent schedule/job paths")
     if args.enable_ppi_timeseries:
         if not args.ppi_history_start:
             parser.error("--enable-ppi-timeseries requires --ppi-history-start")
@@ -199,6 +213,16 @@ def main():
     app = create_timeseries_preview(
         settings,
         enabled=True,
+        gdp_options=GdpOptions(
+            args.gdp_schedule_path,
+            args.gdp_job_directory,
+            allow_read=args.allow_gdp_local_read,
+            allow_collect=args.allow_gdp_collect,
+            allow_source=args.allow_gdp_source_query,
+            history_start=args.gdp_history_start,
+        )
+        if args.enable_gdp_timeseries
+        else None,
         ui_directory=ui,
         schedule_path=args.schedule_path,
         history_start=args.history_start,

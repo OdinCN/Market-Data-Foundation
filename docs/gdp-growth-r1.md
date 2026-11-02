@@ -5,7 +5,7 @@
 2026-11-02，Owner 在 CI #131 通过后授权分段推进。PR #21 已合并，
 本包基于 main 4f9204d。第一段完成季度合同、当前 NIPA 来源适配与定向测试；
 第二段已实现季度数据库、严格截止查询、采集回读与独立 CLI，并通过隔离 PostgreSQL 对照。
-已完成正式 DEV 独立 schema、只读授权、80 季度初始化与回读；GDP 官方摘要发布证据已新增独立导入与截止读取；季度日历与持久任务核心也已完成；HTTP API、worker 和 WebUI 尚未接入，不能作为整包验收完成。
+已完成正式 DEV 独立 schema、只读授权、80 季度初始化与回读；GDP 官方摘要发布证据已新增独立导入与截止读取；季度日历与持久任务核心也已完成；HTTP API、运行配置和显式 worker 入口已接入并完成有界 DEV 核验；共享 WebUI、常驻进程部署与完整浏览器验收待续，不能作为整包验收完成。
 
 本包限于下表八项。GDI、GDP 平减指数、GDPNow、初请/续请、JOLTS、
 工业生产和中国包不随本笔启用。依据 MBO 宏观研究 PRD R1 与
@@ -185,3 +185,15 @@ odin_dba 当前及未来表 SELECT、schema USAGE；不会创建或改动该角�
 - [BEA 官方发布日历](https://www.bea.gov/news/schedule)
 
 本文件是本包的简要实现与核验清单，不新增独立审批或回执流程。
+
+
+## 第三段 3b：HTTP 与运行配置
+
+- 新增 `/api/r5/gdp/timeseries` 的 status、query、api-help、releases、jobs、executions、strategy、schedule；请求使用季度，拒绝月度参数和未知参数。查询默认 `local_only=true`；当前查询显式 false 时才允许临时补源，历史查询强制本地且要求带时区截止。
+- 查询、采集、临时补源分别显式授权；GDP package/source/asset 注册不会自动启用能力。独立任务与策略路径不得覆盖其他族状态，BEA 请求控制继续共用。只读 HTTP 数据连接由服务端强制只读，写连接仅在获准采集时打开。
+- `POST jobs` 使用 UUID 幂等、持久运行回执及后台执行；完成前核验 available 回读，未知中断不自动重放。OpenAPI 描述季度参数、任务 JSON 与策略 JSON，API 说明来自同一 host。
+- Web 启动脚本增加 `--enable-gdp-timeseries`、三项 `--allow-gdp-*` 与独立路径；worker 显式 `--asset gdp --opt-in-gdp-worker`。新增 `--once` 仅执行一次有界 tick，既有默认持续运行方式不变。
+- 2026-11-02 DEV 使用隔离 package/任务状态和实际 PostgreSQL，通过 TestClient 检查九个 HTTP GET，全部200；2006-Q4..2026-Q3 返回640/640条，首次取得前历史截止返回0条可用值。单独启动真实 worker 进程 `--once` 正常退出并写入暂停状态心跳。672条原观测前后不变，无新来源 HTTP 请求或业务采集。
+- 证据保存在本事务 `artifacts/http-runtime`。本段未重启18761，未安装常驻 GDP 服务或启用周期采集；不能把单次 worker 心跳称为持续运行。下一段做季度输入器、共享查询/API说明/发布记录/采集/策略/执行页面，然后全量回归、实际服务部署和真实浏览器端到端核验，再准备 PR。
+
+本段扩大回归418项通过、2项按条件跳过；补充 OpenAPI 与目录证据路径校验后，相关43项再次通过。全量后端及前端回归留待整包联调阶段。

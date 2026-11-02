@@ -340,6 +340,7 @@ def build_service(
     secret_path=DEFAULT_SECRET_PATH,
     request_control_path=None,
     max_transport_attempts=1,
+    credential_loader=None,
 ):
     """Fixed DEV binding. No DDL or provider request during construction."""
     connection = None
@@ -369,7 +370,7 @@ def build_service(
         return GdpTimeSeriesService(
             PostgresGdpStore(connection, GarageGdpRawStore(credentials)),
             GdpRangeSource(
-                credential_loader=loader,
+                credential_loader=credential_loader or loader,
                 max_transport_attempts=max_transport_attempts,
                 request_control_path=request_control_path
                 or (

@@ -20,6 +20,7 @@ from market_data_foundation.historical.consumption_contract import (
 )
 from market_data_foundation.historical.daily_bars import RAW_DAILY_BARS
 from market_data_foundation.historical.employment_contract import BLS_EMPLOYMENT
+from market_data_foundation.historical.gdp_contract import GDP_DEFINITION
 from market_data_foundation.historical.retail_contract import CENSUS_RETAIL
 from market_data_foundation.web.dto import DTO
 from market_data_foundation.web.source_catalog import (
@@ -84,7 +85,7 @@ PACKAGES = (
         "macro",
         "宏观数据接入包",
         "Macro",
-        "CPI、PPI、PCE价格指数、美国消费与收入、就业与零售销售；启用配置不代表来源准入或当前可执行。",
+        "CPI、PPI、PCE价格指数、美国消费与收入、就业、零售销售与GDP增长；启用配置不代表来源准入或当前可执行。",
         (
             CapabilityView(
                 capability_id="cpi",
@@ -114,6 +115,12 @@ PACKAGES = (
                 capability_id="consumption",
                 title="美国消费与收入",
                 definition_ref=ref(CONSUMPTION_DEFINITION),
+                required_sources=["BEA"],
+            ),
+            CapabilityView(
+                capability_id="gdp",
+                title="美国 GDP 与增长",
+                definition_ref=ref(GDP_DEFINITION),
                 required_sources=["BEA"],
             ),
             CapabilityView(

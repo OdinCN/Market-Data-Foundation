@@ -69,6 +69,11 @@ from market_data_foundation.historical.fred_alfred_vintage import (
     VINTAGE_BUNDLE,
     VINTAGE_SOURCE,
 )
+from market_data_foundation.historical.gdp_contract import (
+    GDP_BINDING,
+    GDP_DEFINITION,
+    GDP_SOURCE,
+)
 from market_data_foundation.historical.sdmx_official import _contracts as sdmx_contracts
 from market_data_foundation.historical.tdx_recent_daily import (
     RECENT_BINDING,
@@ -285,6 +290,15 @@ def directory(query: DirectoryQuery) -> DirectoryDTO:
             CONSUMPTION_SOURCE,
             CONSUMPTION_BINDING,
             CONSUMPTION_DEFINITION,
+        ),
+        (
+            "Macro",
+            "BEA",
+            "gdp_contract",
+            "GDP_SOURCE",
+            GDP_SOURCE,
+            GDP_BINDING,
+            GDP_DEFINITION,
         ),
         (
             "Macro",
