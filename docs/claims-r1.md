@@ -1,8 +1,10 @@
-# 美国初请与续请：R1 第 1–4b 段
+# 美国初请与续请失业金：R1 能力与验证边界
 
-已提供周频领域、FRED 正式 API 有界采集、PostgreSQL 持久化、同截止查询、
-DEV CLI、DOL 周报材料及事件回读，以及独立 HTTP、官方日历和统一 worker 入口。
-第4段已接入统一 UI 并核验前端/HTTP合同；真实到期 worker 联调、浏览器及完整包验收仍待后续。
+Claims 提供全国六项周频连续序列、显式初始化/更新、同截止查询、DOL 发布材料、
+官方规则日历、独立 worker、任务执行记录及统一工作台/API 说明。
+FRED 连续序列与 DOL 材料分别留存；材料关联不证明连续数值的官方历史版本。
+已完成有界 DEV 真实采集回读与 Chromium 宽窄窗核验。未来自然发布、完整 vintage、
+具名共识和 odin_dba 独立登录仍未验证或未交付，详见文末。未合并或生产部署。
 依据 `docs/macro-family-development-review.md`、GDP 季频/就业实现，以及事务引用的
 `MBO_MACRO_RESEARCH_INPUT_PRD_R1_20261101.md` §10 目标 B、附录 A01、§12 和
 `MBO_MDF_MACRO_PRD_R1_SEMANTIC_CONFIRMATION_20261101.md`。
@@ -76,7 +78,8 @@ FRED `last_updated` 不是官方发布时间。observed_at 不代替提交后 av
 响应最多 2 MB，单次 HTTPS 超时 12 秒，不跟随重定向。
 使用项目共享三次 transport retry 规则和跨进程请求控制；状态独立命名在
 ignored `artifacts/claims/fred-request-control.json`，不消耗 BLS 控制状态。
-可注入同一固定路径供所有 Claims 调用方共享；常驻 worker 后续须明确绑定该路径。
+CLI 可显式注入固定路径；Web 与 worker 已绑定同一 Claims 专属控制路径，
+不与其他族共用预算。实际 DEV 路径见事务运行回执。
 短 spacing 最多等一次且不超过 5 秒；429 持久化 Retry-After 后立即退出，不轮询冷却。
 原始响应通过 raw_sink 在解析之前留存，解析/留存失败都不重试来源。
 凭据不进入请求描述/日志；响应若回显凭据则拒绝留存。
@@ -107,7 +110,7 @@ DOL 直连三次未成功；后续明确使用环境 HTTP transport 保存当前
 已留存 [2026-10-29 具名官方周报](https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/20261624.pdf)
 和 [当前 PDF](https://www.dol.gov/ui/data.pdf?os=v0) 的原始字节。两者属于同一发布周，
 不能声称取得两期独立档案。离线 PDF literal-string 部分提取和浏览工具文本互相核对；
-前者仅是样本检查工具，第 2 段已改为 pypdf 正式解析和独立文本适配；literal-string 工具不参与产品链路。
+前者仅是样本检查工具，产品使用 pypdf 正式解析和独立文本适配；literal-string 工具不参与产品链路。
 
 报告第 1 页 SA 正文、第 2 页 NSA 正文、第 4 页 regular state programs 表可共同映射：
 
@@ -128,8 +131,9 @@ SA 正文明确给出的“from ... to ...”支持四项官方原前值；NSA �
 all-programs continued weeks、UCFE/UCX、IUR percent 与当前六项不等价，明确排除。
 
 页首 8:30 A.M. Eastern / 2026-10-29 是 embargo/计划依据，换算 UTC 为 12:30；
-本段未证明实际发布时刻，不由 PDF CreationDate、HTTP 时间或 FRED 更新时间推导。
-具名材料获取晚于事件，不能倒填 MDF 历史可用性。当前 PDF 是可变入口；第 3 段允许原始不可变 bytes 与报告 header 建立
+现有证据未证明实际发布时刻，不由 PDF CreationDate、HTTP 时间或 FRED 更新时间推导。
+具名材料获取晚于事件，不能倒填 MDF 历史可用性。当前 PDF 是可变入口；保存的
+原始不可变 bytes 与报告 header 可建立
 `official_current_report_snapshot` 事件证据，具名档案另标 `official_archive`，不伪造档案链接。
 数值相同不单独构成 FRED 批次到官方事件的绑定证据。
 
@@ -179,7 +183,7 @@ uv run python scripts/claims_timeseries.py releases
 普通 CLI query 不绑定真实来源，零网络补源、零业务写入。
 
 材料导入使用 `import-release --confirm-dev-write --material <已留存文件>
---source-url <具名官方URL> --obtained-at <原始获取时刻>`。原 PDF 获取时刻来自第一段
+--source-url <具名官方URL> --obtained-at <原始获取时刻>`。原 PDF 获取时刻来自原始
 安全请求观察，不被本次导入覆盖；available_at 在本次提交后记录。相同材料/parser 重放幂等，
 解析合同升级形成独立 evidence，不制造连续序列经济修订。
 `releases` 通过与其他族一致的 event/claims/evidence 角色读取六项实际值；
@@ -190,40 +194,7 @@ Python `ClaimsReleaseRecords.read(read_mode="source_history")` 可逐证据读�
 数值相等不强绑定 FRED 历史版本。实际发布时间未知，因此 MDF 事前前值缺少已证实的
 事件截止，保持未知；没有具名共识，surprise 也未知。
 
-## 第 2 段实际验证与边界
-
-本段没有重复六项元数据资格核验、DOL 下载或历史档案扫描。
-FRED 正式 API 全窗口初始化 6 请求，最小更新 6 请求，共 12 个逻辑请求/12 次 HTTP，
-均 200；原始包与安全观察位于 ignored `artifacts/segment2/`。
-目标窗口 2006-11-02 至 2026-11-02：6,264 个目标值中有 6,255 个，末端缺 9 个；
-含缓冲实际入库 6,279 行。初请三项最新为 10-24、续请三项最新为 10-17。
-缺周是各系列来源覆盖状态，不当成整个初始化失败或补零。
-相同初始化包离线重放 0 新值/0 新修订；最小真实更新 0 新值/0 新修订。
-available_at 全部非空且不早于 observed_at；业务 SQL 视图和 CLI 均真实回读。
-
-DOL 2026-10-29 原始 PDF 已通过实际生产解析器入库；六项 actual、六项本次前期值、
-四项明确 SA 原前值均通过 CLI 回读；NSA 两项原前值未知。具名档案原始获取时刻为
-2026-11-02T17:56:18.668551+00:00，实际可消费时间保留为本段导入提交之后。
-`odin_dba` 的 schema USAGE/无 CREATE、现有六个表/视图 SELECT/无表写权限和
-事务回滚探针的未来表 SELECT/无写权限均经真实目录核验。
-DEV writer 无 odin_dba 的 SET ROLE 权限；本段没有该账号独立登录凭据，
-直接只读登录会话及会话默认只读状态尚未验证，不以目录核验冒称已验证。
-
-确定性测试覆盖来源缺值、全局周倒序、同截止、变更准入、材料角色和冲突；
-隔离临时 schema 的 PostgreSQL 测试另需显式 `MDF_CLAIMS_PG_TEST=1`，不进 CI：
-
-```bash
-uv run pytest -q tests/test_claims_source.py tests/test_claims_timeseries.py tests/test_claims_storage.py tests/test_claims_release.py
-MDF_CLAIMS_PG_TEST=1 uv run pytest -q -m postgres_integration tests/test_claims_postgres_integration.py
-```
-
-完整包下一段入口为周频 HTTP/共享 UI/API 帮助、官方日历及节假日例外、worker/任务链路，
-并补齐独立只读登录验证、真实宽窄浏览器、全量 deterministic 回归与 PR 准备。
-第一段全仓 pytest 的中断结果仍不是通过，本段按授权只跑针对及相邻能力，不提前再跑全仓。
-没有生产部署、合并、push、服务重启或其他七族写入。
-
-
-## 第 3 段：HTTP、官方日历及任务进程
+## HTTP、权限与任务合同
 
 独立 prefix 为 `/api/r5/claims/timeseries`。复用 GDP 的严格路由、operator/Origin
 边界、包权限、短只读连接、JobJournal、dispatch 和既有策略/心跳原语；GDP 默认保持。
@@ -264,7 +235,7 @@ readback、material、event_binding_status 和 completion。数千行观测及�
 readback 保留 verified/as_of_basis；actuals_verified、actual_weeks 和最多六个 actual_missing
 说明报告精确键的消费验证，material.readback_verified 独立证明报告材料回读。
 任务 complete 说明采集与回读结束；周期 target/history 还须满足材料身份与六键就绪。
-公开 api-help 的 collection.receipt 描述此 shape，后续 UI 应消费它，序列表从 query 读取。
+公开 api-help 的 collection.receipt 与 UI 执行详情消费同一 shape；序列表从 query 读取。
 
 FRED writer/query 均显式注入有效包配置凭据；包引用失效或缺失不能退回默认 secret。
 CLI 的无包调用仍按显式 secret_path 读取既有 FRED 配置。
@@ -301,12 +272,12 @@ clock_timestamp，不倒填 observed。只确认本次响应实际返回且值�
 若 PDF header 仍属于上一事件，返回 source_not_updated，不能冒充新发布或伪造档案 URL。
 无具名共识仍 surprise=null；官方实际发布时刻仍未知，不能拿 8:30 计划代填。
 
-### 显式进程入口和验证边界
+### 显式进程入口
 
 `mdf_cpi_timeseries_web.py` 新增 `--enable-claims-timeseries`、
 `--allow-claims-local-read/--allow-claims-collect/--allow-claims-source-query`，
 以及独立 claims-schedule-path/job-directory/history-start/artifacts-path/request-control-path。
-默认不启用，不修改现有 18761 服务。统一 worker 使用
+产品默认不启用；DEV 的显式有界启用见文末。统一 worker 使用
 `mdf_cpi_timeseries_worker.py --asset claims --opt-in-claims-worker`，独立路径必填，
 可加 `--once` 做一次有界 tick；真实采集另需 `--allow-collect`、包启用和有效 FRED 凭据。
 公共 config/package/environment/只读身份参数沿用既有入口。
@@ -314,32 +285,13 @@ clock_timestamp，不倒填 observed。只确认本次响应实际返回且值�
 目标阶段六系列最近八周更新，之后低优先级 init 补缺历史；最多八次阶段尝试，
 每轮预留六 FRED 加一 DOL 各最多三尝试，滚动 24 小时预留上限 84。
 
-第 3 段真实新增来源仅两个 DOL 官方日历请求，均 200、每次一次；未重取 FRED 或 PDF。
-真实六系列形状和当前 PDF 复用前段不可变材料；当前 PDF v3 在隔离 Claims schema
-导入/六 actual 回读/幂等后已清理。真实本地 HTTP facade 读取 6,279 条观测，
-2026-10-10 至 10-31 共 24 个目标中 15 个有值、9 个来源末端缺行；零来源请求，
-连接 default_transaction_read_only=on，GET 没有创建 schedule/jobs 文件。
-实际统一 worker CLI 已执行一次 paused tick，只在隔离 artifacts 写心跳，未启用采集。
-
-确定性测试覆盖严格参数/权限/非持久补源/同截止/任务幂等与中断、旧报告重试、
-六 actual 周、日历规则/假日/DST/fallback/有效缓存/过期/429/取消改期、空闲暂停心跳。
-隔离 PostgreSQL 测试真实模拟第一事务提交后第二事务中断，再以新同值批次恢复；
-不增加 revision，不倒填 available，不确认未返回的键。所有临时 schema 均清理。
-具体最终测试数量和运行证据见 ignored `artifacts/segment3/简报.md` 与日志。
-
-未启动全仓 pytest。仍需下一段统一 UI、DEV 真正到期/重试 worker 联调、
-Playwright+Chromium 宽窄窗、独立 odin_dba 登录核验、整包 deterministic 回归和 PR 准备。
-未来自然发布不能本晚实证，不能把 due/retry/holiday 的确定性测试当自然发布现场验收。
-本段没有生产部署、其他族状态写入、服务替换、push 或 merge。
-
-
-## 第4段：统一工作台与真实序列化合同
+## 统一工作台与真实序列化合同
 
 Claims 以 `mdf.macro.dol.claims@r1` 接入既有资产查询/发布记录/API说明、
 CollectionWorkbench 新建采集/周期任务/执行记录；复用 CpiTimeSeries、
 CpiTimeSeriesCollection、CpiStrategyWorkbench、MacroReleaseRecords、DateField、
 MultiSelect、请求预览、复制图标及原始 HTTP 正文视图。既有七族默认参数不变。
-运行总览、平台管理、其他数据族和生产部署不在本段范围。
+运行总览、平台管理、新增其他数据族和生产部署不在本次范围。
 
 提供者 FRED、原机构 DOL-ETA；资产和目标标题使用“美国初请与续请失业金”。
 来源入口严格匹配原生 Claims operation、source、binding、asset 及禁止静默fallback的合同。
@@ -386,12 +338,7 @@ latest_week、缺周真实总量、最多16个样本及截断标志，材料结�
 采集/执行回执、日历空参考周及真实目录绑定，避免两端各写一份不一致mock。
 OpenAPI与生成TypeScript已包含 Claims 请求路径，API说明、预览、curl与实际请求对应。
 
-本段未请求新外部来源、未接触DEV PostgreSQL或18761运行服务、未启动真实到期worker、
-未运行Playwright/Chromium宽窄窗现场验收、未跑全仓pytest；这些属于下一联调段及整包收尾。
-具体测试结果与剩余入口见ignored `artifacts/segment4/简报.md`。
-
-
-## 第4b段发布证据归属与执行详情
+### 发布证据归属与执行详情
 
 来源历史继续使用真实 event_id；前端选择身份为 `(event_id, evidence_id)`，
 不删除同事件材料。重新读取时保留仍可见的证据选择。
@@ -409,7 +356,7 @@ OpenAPI与生成TypeScript已包含 Claims 请求路径，API说明、预览、c
 安全分类译为可读原因，完整分类在技术详情。日历仅改中文措辞，材料计划不提升为实际时刻。
 查询帮助示例标明合成字段节选，并给出与比率一致的本周/上周示例值。
 
-## DEV 联调的材料取得与范围说明
+### 材料取得与范围说明
 
 DOL HTTP 取得封装保留真实 `obtained_at`；进入 PDF parser 和原始材料存储前转换为
 普通 bytes，避免带取得时间的 bytes 子类被严格输入合同拒绝。材料响应观察只保留
@@ -421,20 +368,121 @@ DOL HTTP 取得封装保留真实 `obtained_at`；进入 PDF parser 和原始材
 若手动范围仅含一个参考周，材料覆盖的另一参考周未在该次回读中逐项验证时，
 仍显示尚未逐项核实，不把材料保存成功冒称全部材料数值已经核实。
 
-有界 DEV 运行、真实 Chromium 验收、来源预算及数据库差异证据保存在 ignored
-`artifacts/segment5/`。整包确定性回归及 PR 准备另行收口；本段不表示完成未来自然发布验收。
-
-## 第5b段共享覆盖列表与浏览器复核
-
 共享最新覆盖列表按实际容器宽度排列，窄容器单列、宽容器最多三列；名称允许换行，
-周/月/季度截止值整体显示。保留原有 `latest_weeks`、`latest_months`、`latest_quarters`
-读取语义。Chromium 使用实际文字片段与原生 marker 的几何边界检查相邻列，
-另留存1440未展开/已展开、960、480视口截图，避免只依靠全页无横向溢出的判断。
+周/月/季度截止值整体显示，保持各族 latest_weeks/latest_months/latest_quarters 读取语义。
 
-第5段旧七族浏览器查询曾由路由改写为本地模式，该证据仅证明改写后的本地读取。
-第5b段改用页面“历史截止查询”和晚于真实入库的 available 截止，页面自然发送
-`query_mode=history&local_only=true&as_of_basis=available`；不改写请求。
-已保存短范围的请求预览、实际HTTP正文、原始响应tab和表格逐行数值互相核对。
-Claims 表格另验证内部横向滚动后的日历与缺值列、日期/多选交互、完整发布材料身份、
-API帮助和已有执行详情。来源与运行窗口证据保存在 ignored `artifacts/segment5b/`，
-不重复采集，也不改变旧接口默认行为。
+## 已观察的 DEV 与浏览器证据
+
+2026-11-02 首次持久化联调复用已留存的 DOL 材料，未扫描历史档案。
+FRED 正式 API 全窗口初始化 6 请求，最小更新 6 请求，共 12 个逻辑请求/12 次 HTTP，
+均 200；原始包与安全观察位于 ignored `artifacts/segment2/`。
+目标窗口 2006-11-02 至 2026-11-02：6,264 个目标值中有 6,255 个，末端缺 9 个；
+含缓冲实际入库 6,279 行。初请三项最新为 10-24、续请三项最新为 10-17。
+缺周是各系列来源覆盖状态，不当成整个初始化失败或补零。
+相同初始化包离线重放 0 新值/0 新修订；最小真实更新 0 新值/0 新修订。
+available_at 全部非空且不早于 observed_at；业务 SQL 视图和 CLI 均真实回读。
+
+DOL 2026-10-29 原始 PDF 已通过实际生产解析器入库；六项 actual、六项本次前期值、
+四项明确 SA 原前值均通过 CLI 回读；NSA 两项原前值未知。具名档案原始获取时刻为
+2026-11-02T17:56:18.668551+00:00，实际可消费时间保留为实际导入提交之后。
+`odin_dba` 的 schema USAGE/无 CREATE、现有六个表/视图 SELECT/无表写权限和
+事务回滚探针的未来表 SELECT/无写权限均经真实目录核验。
+DEV writer 无 odin_dba 的 SET ROLE 权限；未提供该账号独立登录凭据，
+直接只读登录会话及会话默认只读状态尚未验证，不以目录核验冒称已验证。
+
+
+2026-11-02 官方两日历页均取得 200，保留原文与取得时间。隔离 PostgreSQL 验证
+真实模拟第一次事务已提交、第二次确认中断，再用新同值捕获恢复 pending；不造 revision、
+不倒填 available、不确认未返回键，临时 schema 已清理。此项不依赖 CI 的私网访问。
+
+2026-11-02 19:39–19:50 UTC 的有界 DEV 联调通过真实页面初始化及更新、
+独立数值/材料回读、策略启动/暂停与真实 worker 心跳。新增来源共 16 个逻辑请求、
+16 次 HTTP，预算 20；含两次早期材料失败，历史失败回执原样保留。
+最终仍 6,279 条观测、0 新数值修订；本轮新增 6 个来源批次、1 份材料证据。
+七族业务表计数及策略 enabled 状态保持原样；Claims 最终 enabled=false，worker 为 paused。
+公共 origin 的实际 GET 200，Claims POST/PUT 403。采集成功不据此承诺未来到期执行成功。
+
+Chromium 对 Claims 的 1440/960/480 查询、初始化/更新回执、发布材料、API说明、
+策略/执行详情、日期/多选控件、历史截止及表格内部横向滚动做了现场检查。
+后续可读性复核以真实文字节点和 marker 几何边界确认覆盖列表无侵入、日期不拆行，
+并逐格核对数值、ratio 展示、缺值、材料身份及原始 HTTP 正文字串。
+旧七族最终使用页面历史控件自然发出 query_mode=history、local_only=true、
+as_of_basis=available；请求预览、实际 URL、原始正文与表格基础值一致，零来源请求。
+早期通过路由改写为本地的七族浏览器结果只证明改写后的读取，不作为自然页面合同证据。
+
+最终报告无 pageerror/console error/HTTP 错误；页面卸载时的 status 请求取消仍有记录。
+早期浏览器脚本定位/几何计数失败、材料失败及格式失败均保留；修正后才取得通过证据。
+这些是开发自检和实际 DEV 观察，不表示独立专业审查通过或 Owner 验收。
+
+本地证据根为事务 `MDF-CLAIMS-20261102-R1/artifacts/`：
+
+| 范围 | 证据位置 |
+| --- | --- |
+| 来源原始取得与失败事实 | segment1/sources/、segment1/request-budget.json |
+| 持久化/权限/隔离 PG | segment2/简报.md、segment3/简报.md 及对应日志 |
+| 日历修正与复核 | segment3b/parent-recheck.json、对应测试日志 |
+| DEV 采集/材料/Origin/数据库差异 | segment5/简报.md、acceptance-report.json、各 browser-*-report.json |
+| 最终自然历史查询、截图与正文对照 | segment5b/简报.md、review-index.html、browser-report.json、neighbor-value-consistency.json、state-before/after.json |
+| 整包回归、准确退出与 PR 准备 | segment6/简报.md、*-receipt.json、pytest.log、pr-body.md |
+
+原始响应、运行目录、测试日志和凭据引用留在 ignored artifacts 或事务中，不提交 Git。
+
+## 运行窗口与恢复
+
+DEV 入口为 `http://192.168.10.20:18761/pce#ui=r5&view=assets&asset=mdf.macro.dol.claims&asset_revision=r1`。
+Web 与 Claims worker 分别为 mdf-claims-dev-web-20261102-r1.service、
+mdf-claims-dev-worker-20261102-r1.service；实际启动为 2026-11-03 03:39:31 北京时间，
+RuntimeMaxSec=43200、Restart=no，计划最迟到期为 **2026-11-03 15:39:31 北京时间**。
+这是计划上界，不表示已经到期；后续状态须重新观察。旧七族参数、凭据引用及目录保留，
+旧 GDP worker 按原窗口自然结束，没有续期；Claims 策略暂停不等于停止心跳进程。
+
+事务 segment5/RUNTIME_WINDOW.json 与 previous-runtime.json 保存实际窗口和原配置，
+restore_runtime.py 默认只生成 RESTORE_PLAN.json。经授权恢复时，在本工作树运行：
+
+```sh
+PYTHONPATH=src uv run python /srv/market-data-foundation-control/transactions/MDF-CLAIMS-20261102-R1/artifacts/segment5/restore_runtime.py --execute
+```
+
+该脚本停止两个 Claims unit，通过 CAS 移除 Claims、保留其他当前包设置及凭据引用，
+并恢复一小时有界的旧 Web；不重启其他 worker。恢复方案已生成，尚未执行。
+运行回执包含恢复命令和计划证据，避免把可恢复方案说成已恢复状态。
+
+## 回归命令与真实限制
+
+按 `.github/workflows/ci.yml` 使用既有 uv/Python 3.14.8、Node 24；不改系统 Python。
+根目录：
+
+```sh
+uv sync --locked --group dev
+uv build
+uv run --locked python scripts/check_repository_hygiene.py --include-untracked
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked pytest -m 'not live_provider and not postgres_integration'
+```
+
+前端 web/：
+
+```sh
+npm ci
+npm run check
+npm run format:check
+npm run contract:check
+npm test
+npm run build
+```
+
+隔离 PG 需显式 MDF_CLAIMS_PG_TEST=1 和 postgres_integration 标记，不进确定性 CI。
+真实来源测试另标 live_provider 并显式 opt-in。全量回归的准确数量和退出码见
+segment6/简报.md 与回执；第1段中断、第5b段约26%退出143均不是通过证据，后者终止原因未确认。
+前端最终全量为 41 文件、859 passed、1 项既有 skip；仅整理文档不要求重复同一已通过套件。
+
+- DOL 真实材料仅确认 2026-10-29 一期；多份 PDF/解析证据不代表多期档案。旧档案页面曾403，
+  动态查询入口曾报数据库错误；ETA539 未完成全国/州、SA/NSA、advance/revised映射，不自动接替。
+- 六项 FRED 20年窗口实证不承诺更早原生起点、完整官方 vintage 或盘中可得时间。
+  取得较晚、日期级实时区间、scope_only/未绑定连续版本和实际发布时间未知均保留。
+- 官方计划及节假日、due/retry/cancel 的确定性测试、真实 paused 进程不能替代未来自然发布、
+  真实未来修订和到期失败恢复的现场验收；本窗口没有自然到期事件。
+- 没有稳定具名共识，不承诺 surprise；NSA 原前值、MDF事前值等证据不足字段保持未知。
+- odin_dba 对象 ACL 已核验，独立登录及该会话默认只读尚未验证。生产、永久策略/worker、
+  MBO/KD、JOLTS及下一族均不在本次交付范围。合并需另行授权。

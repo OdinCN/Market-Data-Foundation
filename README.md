@@ -49,11 +49,13 @@ and `docs/qualification/q0-runtime.md` for tested runtime/candidate evidence.
 repositories. Same-repository CI does not require it. Never put its value, other
 credentials, private keys or production data in this repository.
 
-## 五族宏观连续时序与共用 WebUI
+## 宏观连续时序与共用 WebUI
 
-当前实现覆盖 CPI、PPI、PCE、美国就业和美国零售销售的连续查询、显式采集、
-预置周期策略、执行记录和 API 说明；部署权限及真实验证范围须分别核对。
-开发与审查统一入口见 [五族基线指南](docs/macro-family-development-review.md)，
+当前实现包含 CPI、PPI、PCE、美国就业、美国零售销售、消费收入、GDP与Claims的连续查询、
+显式采集、周期策略、执行记录和API说明；各族部署权限及真实验证范围须分别核对。
+Claims 的六项全国周序列、FRED/DOL语义、实际DEV/浏览器证据和未验证边界见
+[Claims R1](docs/claims-r1.md)。
+开发与审查统一入口见 [基线指南](docs/macro-family-development-review.md)，
 其中列明来源差异、代码复用、现有测试和 DEV 人工核对路径。
 参见 [Web 快速上手](docs/cpi-webui-quickstart-zh.md)、
 [CLI / 本机 API](docs/cpi-timeseries-cli-zh.md) 与
