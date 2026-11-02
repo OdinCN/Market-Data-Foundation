@@ -434,9 +434,11 @@ as_of_basis=available；请求预览、实际 URL、原始正文与表格基础�
 
 DEV 入口为 `http://192.168.10.20:18761/pce#ui=r5&view=assets&asset=mdf.macro.dol.claims&asset_revision=r1`。
 Web 与 Claims worker 分别为 mdf-claims-dev-web-20261102-r1.service、
-mdf-claims-dev-worker-20261102-r1.service；实际启动为 2026-11-03 03:39:31 北京时间，
-RuntimeMaxSec=43200、Restart=no，计划最迟到期为 **2026-11-03 15:39:31 北京时间**。
-这是计划上界，不表示已经到期；后续状态须重新观察。旧七族参数、凭据引用及目录保留，
+mdf-claims-dev-worker-20261102-r1.service；原12小时窗口从 2026-11-03 03:39:31 北京时间开始，Restart=no。
+最终目录映射修正后，Web于04:32:47重载，全部参数与origin边界保持，运行上限缩短为原窗口剩余时间；
+Web计划到期为 **2026-11-03 15:38:30 北京时间**，worker仍为15:39:31，未延长原窗口。
+最终重载的实际HTTP核验见事务 segment6/parent-final-runtime-reload.json。
+这些是计划上界，不表示已经到期；后续状态须重新观察。旧七族参数、凭据引用及目录保留，
 旧 GDP worker 按原窗口自然结束，没有续期；Claims 策略暂停不等于停止心跳进程。
 
 事务 segment5/RUNTIME_WINDOW.json 与 previous-runtime.json 保存实际窗口和原配置，
