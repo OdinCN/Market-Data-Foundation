@@ -282,6 +282,14 @@ def test_async_receipt_durable_idempotency_material_failure_and_strategy(
         assert job["state"] == "complete", job
         assert job["result"]["readback"]["verified"]
         assert job["result"]["material"]["status"] == "unavailable"
+        assert "rows" not in job["result"]
+        help_receipt = http.get(PREFIX + "/api-help").json()["collection"]["receipt"]
+        assert set(help_receipt["fields"]) == set(job["result"])
+        assert help_receipt["gap_limit_per_series"] == 16
+        executions = http.get(PREFIX + "/executions").json()["executions"]
+        assert executions[0]["result"] == job["result"]
+        query = http.get(PREFIX + "/query?start=2026-10-01&end=2026-10-31").json()
+        assert len(query["rows"]) == 30
         assert len(calls) == 6 and len(store.rows) == 54
         assert http.post(PREFIX + "/jobs", json=cmd, headers=HEADERS).status_code == 200
         assert len(calls) == 6
@@ -488,3 +496,40 @@ def test_runtime_paths_and_help_match_openapi(tmp_path, monkeypatch):
         in next(p for p in params if p["name"] == "as_of_basis")["description"]
     )
     assert host.asset_metadata()["asset_id"] == "mdf.macro.dol.claims"
+
+
+def test_historical_calendar_cutoff_survives_refresh_and_does_not_leak_moves(
+    tmp_path, monkeypatch
+):
+    from tests.test_claims_schedule import html
+
+    app, host, _, clock, calls = setup(tmp_path, monkeypatch)
+    host.scheduler._accept(host.scheduler._read(), html(), clock[0])
+    acquired = clock[0]
+    clock[0] += timedelta(days=1)
+    changed = html().replace(
+        b"<tr><td>Wednesday, November 25, 2026</td><td>8:30 AM EST</td></tr>", b""
+    )
+    host.scheduler._accept(host.scheduler._read(), changed, clock[0])
+    clock[0] += timedelta(days=1)
+    host.scheduler._accept(host.scheduler._read(), changed, clock[0])
+    with client(app) as http:
+
+        def events(cutoff):
+            response = http.get(
+                PREFIX + "/query",
+                params=dict(
+                    start="2026-10-01", end="2026-10-31", as_of=cutoff.isoformat()
+                ),
+            )
+            assert response.status_code == 200, response.text
+            return {e["event_id"] for e in response.json()["publication_events"]}
+
+        assert not events(acquired - timedelta(microseconds=1))
+        before = events(acquired)
+        assert "dol-claims-2026-11-25" in before
+        assert "dol-claims-2026-11-26" not in before
+        after = events(clock[0])
+        assert "dol-claims-2026-11-26" in after
+        assert "dol-claims-2026-11-25" not in after
+    assert not calls

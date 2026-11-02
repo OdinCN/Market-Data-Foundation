@@ -19,6 +19,12 @@ RULE = (
 )
 
 
+def rule_slot(event):
+    """The nominal Thursday identifies a rule occurrence across exception moves."""
+    d = date.fromisoformat(event["source_date"])
+    return "dol-claims-week-" + (d + timedelta(days=(3 - d.weekday()) % 7)).isoformat()
+
+
 class _ScheduleHTML(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -101,6 +107,7 @@ def parse_official_rule(raw, source_url, obtained_at):
             events[key] = dict(
                 event_id=key,
                 uid=key,
+                rule_slot="dol-claims-week-" + d.isoformat(),
                 source_date=release_day.isoformat(),
                 release_at=local.astimezone(UTC).isoformat(),
                 status="CONFIRMED",

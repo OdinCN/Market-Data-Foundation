@@ -162,9 +162,18 @@ def test_due_old_report_retry_six_actual_weeks_and_low_priority_history(tmp_path
     }
     result[0]["result"] = dict(
         material=dict(
-            status="available", event_id=options["event_id"], actual_weeks=actuals
+            status="available",
+            event_id=options["event_id"],
+            actual_weeks=actuals,
+            readback_verified=True,
         ),
         series_coverage={s: dict(latest_week=w) for s, w in actuals.items()},
+        readback=dict(
+            verified=True,
+            as_of_basis="available",
+            actuals_verified=True,
+            actual_weeks=actuals,
+        ),
     )
     assert scheduler.due_check()["state"] == "complete"
     assert scheduler.due_check()["state"] == "complete"
@@ -222,3 +231,172 @@ def test_moved_execution_block_remains_after_repeated_refresh(tmp_path):
     scheduler._accept(state, html(), AT)
     scheduler._accept(state, html(), AT)
     assert state["targets"][0]["calendar_execution_blocked"]
+
+
+def test_thursday_waiting_target_retries_after_multiple_daily_refreshes(tmp_path):
+    scheduler, clock, calls, _ = setup(tmp_path)
+    clock[0] = datetime(2026, 11, 5, 13, tzinfo=UTC)
+    scheduler.due_check()
+    acquired = clock[0]
+    clock[0] += timedelta(minutes=30)
+    assert scheduler.due_check()["state"] == "awaiting_provider"
+    original = scheduler.status()["targets"][0]
+    original_hash = scheduler.status()["calendar"]["events"][original["event_id"]][
+        "source_sha256"
+    ]
+    for offset in (1, 2, 3):
+        clock[0] = acquired + timedelta(days=offset, hours=1)
+        assert scheduler.due_check()["state"] == "awaiting_provider"
+        # Re-open from durable state on every iteration.
+        state = scheduler._read()
+        target = next(t for t in state["targets"] if t["key"] == original["key"])
+        assert not target["calendar_execution_blocked"]
+        assert target["target"]["attempts"] == offset + 1
+        assert calls[-1][0]["end"] == "2026-11-05"
+        assert calls[-1][1]["event_id"] == original["event_id"]
+        evidence = state["calendar"]["events"][original["event_id"]]
+        assert evidence["acquired_at"] == acquired.isoformat()
+        assert evidence["source_sha256"] == original_hash
+        raw_path = (
+            scheduler.state_path.parent
+            / "claims-calendar-evidence"
+            / (original_hash + ".bin")
+        )
+        assert raw_path.read_bytes() == html()
+    assert scheduler.publications(acquired - timedelta(microseconds=1)) == []
+    assert scheduler.publications(acquired)[0]["event_id"] == original["event_id"]
+    assert not state["calendar"]["event_history"]
+
+
+@pytest.mark.parametrize("guard", ["cancelled", "conflict"])
+def test_repeated_fallback_and_horizon_roll_preserve_event_guards(tmp_path, guard):
+    scheduler, clock, calls, _ = setup(tmp_path)
+    scheduler.due_check()
+    state = scheduler._read()
+    event = state["calendar"]["events"]["dol-claims-2026-11-05"]
+    if guard == "cancelled":
+        event["status"] = "CANCELLED"
+    else:
+        event["classification"] = "calendar_fallback_conflict"
+    scheduler._save(state)
+    for at in (AT, AT + timedelta(hours=1), datetime(2026, 11, 6, 14, tzinfo=UTC)):
+        clock[0] = at
+        scheduler._accept(scheduler._read(), html(), at, source=BACKUP_URL)
+        state = scheduler._read()
+        target = next(t for t in state["targets"] if t["event_id"] == event["event_id"])
+        assert target["calendar_execution_blocked"]
+        retained = state["calendar"]["events"][event["event_id"]]
+        assert retained["classification"]
+        if guard == "cancelled":
+            assert retained["status"] == "CANCELLED"
+            publication = next(
+                e
+                for e in scheduler.publications()
+                if e["event_id"] == event["event_id"]
+            )
+            assert publication["publication_status"] == "cancelled"
+    assert scheduler.due_check()["action"] == "not_due"
+    assert not calls
+
+
+@pytest.mark.parametrize("executed", [False, True])
+@pytest.mark.parametrize("legacy", [False, True])
+def test_exception_date_move_matches_one_week_slot_and_preserves_attempts(
+    tmp_path, executed, legacy
+):
+    scheduler, clock, calls, _ = setup(tmp_path)
+    scheduler.due_check()
+    state = scheduler._read()
+    target = next(t for t in state["targets"] if t["source_date"] == "2026-11-25")
+    if legacy:
+        for t in state["targets"]:
+            t.pop("rule_slot", None)
+            t["key"] = t["event_id"]
+        for e in state["calendar"]["events"].values():
+            e.pop("rule_slot", None)
+    key = target["key"]
+    if executed:
+        target["target"].update(attempts=1, state="complete")
+    scheduler._save(state)
+    changed = html().replace(
+        b"<tr><td>Wednesday, November 25, 2026</td><td>8:30 AM EST</td></tr>", b""
+    )
+    changed_at = AT + timedelta(hours=1)
+    scheduler._accept(scheduler._read(), changed, changed_at)
+    scheduler._accept(scheduler._read(), changed, changed_at, source=BACKUP_URL)
+    state = scheduler._read()
+    matches = [
+        t for t in state["targets"] if t["rule_slot"] == "dol-claims-week-2026-11-26"
+    ]
+    assert len(matches) == 1
+    moved = matches[0]
+    assert moved["key"] == key and moved["event_id"] == "dol-claims-2026-11-26"
+    assert moved["target"]["attempts"] == int(executed)
+    assert moved["calendar_execution_blocked"] is executed
+    if executed:
+        assert moved["calendar_validation"] == "calendar_moved_after_execution"
+    else:
+        assert moved["target"]["next_attempt_at"] == moved["release_at"]
+    assert any(
+        e["event_id"] == "dol-claims-2026-11-25" for e in scheduler.publications(AT)
+    )
+    assert not any(
+        e["event_id"] == "dol-claims-2026-11-26" for e in scheduler.publications(AT)
+    )
+    assert len(state["calendar"]["event_history"]) == 1
+    # No execution is needed to prove the persisted identity/attempt invariants.
+    assert not calls
+
+
+def test_fallback_schedule_conflict_cannot_be_washed_by_repeated_primary(tmp_path):
+    scheduler, _, _, _ = setup(tmp_path)
+    scheduler.due_check()
+    changed = html().replace(
+        b"<tr><td>Wednesday, November 25, 2026</td><td>8:30 AM EST</td></tr>", b""
+    )
+    scheduler._accept(
+        scheduler._read(), changed, AT + timedelta(hours=1), source=BACKUP_URL
+    )
+    for _ in range(2):
+        scheduler._accept(scheduler._read(), html(), AT + timedelta(hours=2))
+        target = next(
+            t for t in scheduler._read()["targets"] if t["source_date"] == "2026-11-25"
+        )
+        assert target["calendar_execution_blocked"]
+        assert target["calendar_validation"] == "calendar_fallback_conflict"
+
+
+@pytest.mark.parametrize(
+    "proof", ["absent", "wrong_week", "five_series", "material_unread"]
+)
+def test_latest_week_alone_or_incomplete_exact_readback_never_completes(
+    tmp_path, proof
+):
+    scheduler, clock, _, result = setup(tmp_path)
+    scheduler.due_check()
+    clock[0] = datetime(2026, 11, 5, 13, 30, tzinfo=UTC)
+    actuals = {s: "2026-10-24" for s in SERIES_IDS}
+    verified = dict(actuals)
+    if proof == "wrong_week":
+        verified["ICSA"] = "2026-10-31"
+    if proof == "five_series":
+        actuals.pop("ICSA")
+        verified.pop("ICSA")
+    result[0]["result"] = dict(
+        material=dict(
+            status="available",
+            event_id="dol-claims-2026-11-05",
+            actual_weeks=actuals,
+            readback_verified=proof != "material_unread",
+        ),
+        series_coverage={s: dict(latest_week="2026-10-31") for s in SERIES_IDS},
+        readback={}
+        if proof == "absent"
+        else dict(
+            verified=True,
+            as_of_basis="available",
+            actuals_verified=True,
+            actual_weeks=verified,
+        ),
+    )
+    assert scheduler.due_check()["state"] == "awaiting_provider"

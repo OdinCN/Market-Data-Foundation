@@ -251,8 +251,20 @@ POST 在 durable running 回执写妥后返回 202，随后回读 jobs/execution
 六系列采集后重新本地读取，校验键集合、值/版本/batch/取得和可用时间指纹及覆盖，
 允许明确的各系列末端来源缺周。材料取得失败单独呈现，不抹去已提交的连续值。
 不凭相同数值把 DOL actual 绑定到 FRED 版本。阶段成功要求材料事件身份匹配，且
-六项 FRED 最新周覆盖报告独立给出的六项 actual 周；不要求把续请缺一周补成初请的周。
+报告独立给出的六个精确 `(series_id, week_ending)` 都已通过本地 available 回读，
+具有非 null 的可消费数值（零有效）。内部缺周、provider_missing 或仅有更晚一周都不算就绪；
+不要求把续请缺一周补成初请的周，也不比较 DOL/FRED 数值来绑定版本。
 同 request_id 幂等，冲突 409；执行中断保持 unknown，不静默重放。
+
+jobs/executions 使用精简回执：saved_points/saved_revisions、status、coverage、
+series_coverage、provider_requests/provider_attempts、start_date/end_date、readback_digest、
+readback、material、event_binding_status 和 completion。数千行观测及派生溯源通过 query 获取。
+各系列 missing_weeks 和 trailing_missing_weeks 分别最多保留 16 个样本，
+对应 `*_total` 为真实未截断总数，`*_truncated` 明示截断；coverage 总量不截断。
+readback 保留 verified/as_of_basis；actuals_verified、actual_weeks 和最多六个 actual_missing
+说明报告精确键的消费验证，material.readback_verified 独立证明报告材料回读。
+任务 complete 说明采集与回读结束；周期 target/history 还须满足材料身份与六键就绪。
+公开 api-help 的 collection.receipt 描述此 shape，后续 UI 应消费它，序列表从 query 读取。
 
 FRED writer/query 均显式注入有效包配置凭据；包引用失效或缺失不能退回默认 secret。
 CLI 的无包调用仍按显式 secret_path 读取既有 FRED 配置。
@@ -276,6 +288,12 @@ clock_timestamp，不倒填 observed。只确认本次响应实际返回且值�
 日历接受记录另有不可变原文 locator。只在显式 worker tick 刷新，GET 不刷新。
 官方入口间可 fallback；429/配额/安全错误不借备用绕开。没有 FRED 时间 fallback。
 取消、执行后改期及冲突保持阻断；滚动生成范围前移不会把既有事件误当取消。
+计划以名义周四 `rule_slot` 识别同一周规则，节假日例外变动不会另建可重跑计划；
+兼容既有日期型 target key，并保留阶段尝试、结果及保护。未执行计划可由主日历明确改期，
+备用日历与既有计划冲突则保持阻断，重复主/备刷新均不自动解除保护。
+已取得的历史计划及原始证据保留；未变计划保留首次 acquired_at，变更版本留在同一
+日历状态的 event_history 中。历史 query 按每个版本的实际取得截止选取，
+后续刷新既不隐藏早已知晓的计划，也不把新改期提前泄漏到旧截止。
 
 计划保持 planned_only，参考周为空；只有实际来源报告/系列确定初请与续请各自所属周。
 当前官方 PDF `https://www.dol.gov/ui/data.pdf?os=v0`（或无 query 同路径）支持真实留存的

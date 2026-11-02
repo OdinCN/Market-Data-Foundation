@@ -18,6 +18,7 @@ from market_data_foundation.historical.claims_calendar import (
     NEW_YORK,
     PRIMARY_URL,
     parse_official_rule,
+    rule_slot,
 )
 from market_data_foundation.historical.claims_contract import (
     ClaimsError,
@@ -36,7 +37,7 @@ from market_data_foundation.historical.pce_release_schedule import (
     RETRY_SECONDS,
     PceReleaseScheduler,
 )
-from market_data_foundation.web.claims_jobs import CLAIMS_PROFILE
+from market_data_foundation.web.claims_jobs import CLAIMS_PROFILE, actuals_ready
 
 POLICY = dict(
     stage_max_attempts=8,
@@ -105,11 +106,35 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
             original_agency="DOL-ETA",
             calendar_status=self._calendar_status(state, now),
             next_due=min(due) if due else None,
-            calendar_publications=[
-                dict(e, acquired_at=state["calendar"].get("acquired_at"))
-                for e in state["calendar"].get("events", {}).values()
-            ],
+            calendar_publications=self._publications(state),
         )
+
+    def _publications(self, state, cutoff=None):
+        calendar = state["calendar"]
+        indexed = {}
+        for e in calendar.get("event_history", []) + list(
+            calendar.get("events", {}).values()
+        ):
+            event = dict(
+                e, acquired_at=e.get("acquired_at", calendar.get("acquired_at"))
+            )
+            event["publication_status"] = (
+                "cancelled" if event["status"] == "CANCELLED" else "scheduled"
+            )
+            if cutoff is not None and (
+                not event["acquired_at"] or _instant(event["acquired_at"]) > cutoff
+            ):
+                continue
+            slot = rule_slot(event)
+            if (
+                slot not in indexed
+                or event["acquired_at"] >= indexed[slot]["acquired_at"]
+            ):
+                indexed[slot] = event
+        return sorted(indexed.values(), key=lambda e: (e["release_at"], e["event_id"]))
+
+    def publications(self, cutoff=None):
+        return self._publications(self._read(), cutoff)
 
     def _calendar_status(self, state, at):
         value = super()._calendar_status(state, at)
@@ -120,34 +145,65 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
 
     def _accept(self, state, raw, acquired, *, source=PRIMARY_URL):
         parsed = parse_official_rule(raw, source, acquired)
-        old_events = state["calendar"].get("events", {})
-        previous = {t["key"]: t for t in state["targets"]}
-        targets = []
-        for key, event in parsed["events"].items():
-            old = previous.pop(key, None)
+        old_calendar = state["calendar"]
+        old_events = {
+            rule_slot(e): dict(
+                e, acquired_at=e.get("acquired_at", old_calendar.get("acquired_at"))
+            )
+            for e in old_calendar.get("events", {}).values()
+        }
+        previous = {rule_slot(t): t for t in state["targets"]}
+        history = list(old_calendar.get("event_history", []))
+        targets, events = [], {}
+        for candidate in parsed["events"].values():
+            slot = rule_slot(candidate)
+            old = previous.pop(slot, None)
+            prior = old_events.pop(slot, {})
+            event = dict(candidate, acquired_at=acquired.isoformat())
+            classification = prior.get("classification")
+            if prior.get("status") == "CANCELLED":
+                event = dict(prior)
+                classification = "calendar_cancellation_requires_requalification"
+            moved = prior and prior["release_at"] != candidate["release_at"]
+            if moved and source == BACKUP_URL:
+                event = dict(prior)
+                classification = classification or "calendar_fallback_conflict"
+            if (
+                old
+                and old["release_at"] != candidate["release_at"]
+                and any(old[n]["attempts"] for n in ("target", "history"))
+            ):
+                classification = classification or "calendar_moved_after_execution"
+            if classification:
+                event["classification"] = classification
+            # An unchanged plan keeps its original knowledge/evidence cutoff.
+            fields = ("event_id", "release_at", "status", "classification")
+            if prior and all(prior.get(k) == event.get(k) for k in fields):
+                event = prior
+            elif prior:
+                history.append(prior)
+                event["acquired_at"] = acquired.isoformat()
+            events[event["event_id"]] = event
             if old is None and _instant(event["release_at"]) <= acquired:
                 continue  # importing a calendar never replays earlier events
             stage = dict(
                 state="pending", attempts=0, next_attempt_at=event["release_at"]
             )
-            prior = old_events.get(key, {})
             blocked = (
                 bool((old or {}).get("calendar_execution_blocked"))
-                or prior.get("status") == "CANCELLED"
-                or bool(prior.get("classification"))
+                or event.get("status") == "CANCELLED"
+                or bool(event.get("classification"))
             )
-            if prior.get("status") == "CANCELLED":
-                parsed["events"][key] = dict(
-                    prior,
-                    classification="calendar_cancellation_requires_requalification",
-                )
             target = dict(
                 old or {},
-                key=key,
-                event_id=key,
+                key=old["key"] if old else slot,
+                rule_slot=slot,
+                event_id=event["event_id"],
                 release_at=event["release_at"],
                 source_date=event["source_date"],
                 calendar_execution_blocked=blocked,
+                calendar_validation=(old or {}).get("calendar_validation")
+                or classification,
                 target=copy.deepcopy(old["target"] if old else stage),
                 history=copy.deepcopy(old["history"] if old else stage),
             )
@@ -165,8 +221,6 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
             if t["source_date"] < parsed["rules_valid_from"]:
                 # Rolling the generation horizon forward is not cancellation.
                 targets.append(t)
-                if t["key"] in old_events:
-                    parsed["events"][t["key"]] = old_events[t["key"]]
             else:
                 targets.append(
                     dict(
@@ -175,6 +229,11 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
                         calendar_validation="calendar_removed",
                     )
                 )
+        # Absence outside the rolling window is not cancellation, including plans
+        # that were already in the past on their first calendar import.
+        for event in old_events.values():
+            events[event["event_id"]] = event
+        parsed.update(events=events, event_history=history)
         sha = hashlib.sha256(raw).hexdigest()
         path = self.state_path.parent / "claims-calendar-evidence" / (sha + ".bin")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -349,12 +408,7 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
             and result["material"].get("status") == "available"
         )
         if ready:
-            actuals = result["material"].get("actual_weeks", {})
-            ready = len(actuals) == 6 and all(
-                (result.get("series_coverage", {}).get(s, {}).get("latest_week") or "")
-                >= w
-                for s, w in actuals.items()
-            )
+            ready = actuals_ready(result)
         if job["state"] == "unknown":
             stage["state"] = "unknown"
         elif ready:

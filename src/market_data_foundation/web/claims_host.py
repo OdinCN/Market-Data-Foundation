@@ -197,15 +197,10 @@ class ClaimsTimeSeriesHost(GdpTimeSeriesHost):
                 allow_upstream=upstream,
             )
             result = ClaimsReleaseRecords(service.store).link_result(result)
-        snapshot = self.scheduler.status()
-        acquired = snapshot["calendar"].get("acquired_at")
-        known = acquired and (
-            cutoff is None or datetime.fromisoformat(acquired) <= cutoff
-        )
         # A release date is not a reference-week assignment. Keep plans separate.
         return dict(
             result,
-            publication_events=snapshot["calendar_publications"] if known else [],
+            publication_events=self.scheduler.publications(cutoff),
             metadata=dict(
                 calendar_binds_current_revision=False,
                 calendar_semantics=(
@@ -371,6 +366,35 @@ class ClaimsTimeSeriesHost(GdpTimeSeriesHost):
                 ),
                 interrupted="unknown; no silent replay",
                 material_failure="separate from numeric success",
+                receipt=dict(
+                    fields=[
+                        "saved_points",
+                        "saved_revisions",
+                        "status",
+                        "coverage",
+                        "series_coverage",
+                        "provider_requests",
+                        "provider_attempts",
+                        "start_date",
+                        "end_date",
+                        "readback_digest",
+                        "readback",
+                        "material",
+                        "event_binding_status",
+                        "completion",
+                    ],
+                    gap_limit_per_series=16,
+                    gap_totals="missing_weeks_total / trailing_missing_weeks_total",
+                    truncation="explicit *_truncated flags; totals are uncapped",
+                    series_data=PREFIX + "/query",
+                    readiness=(
+                        "six exact report (series, week) local nonnull available keys"
+                    ),
+                    readback=(
+                        "verified, as_of_basis, actuals_verified, actual_weeks, "
+                        "actual_missing"
+                    ),
+                ),
             ),
             calendar=dict(
                 provider="DOL-ETA",
