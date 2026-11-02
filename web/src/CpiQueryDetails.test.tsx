@@ -19,6 +19,8 @@ import {
   PPI_PROFILE,
   PCE_PROFILE,
   EMPLOYMENT_PROFILE,
+  RETAIL_PROFILE,
+  CONSUMPTION_PROFILE,
 } from "./macroTimeSeriesProfile";
 
 const request = {
@@ -254,12 +256,19 @@ it.each([
   },
 );
 
-it.each([CPI_PROFILE, PPI_PROFILE, PCE_PROFILE, EMPLOYMENT_PROFILE])(
+it.each([
+  CPI_PROFILE,
+  PPI_PROFILE,
+  PCE_PROFILE,
+  EMPLOYMENT_PROFILE,
+  RETAIL_PROFILE,
+  CONSUMPTION_PROFILE,
+])(
   "$label help shares the complete disclosure structure and uses the actual supplied request",
   (profile) => {
     const actualRequest = {
       method: "GET" as const,
-      path: `${profile.basePath}/query?start=2025-10&end=2026-09&${profile.id === "employment" ? "series=LNS14000000" : "basket=core&adjustment=sa"}&query_mode=history&local_only=true&as_of_basis=available&as_of=2026-10-31T08%3A00%3A00%2B08%3A00`,
+      path: `${profile.basePath}/query?start=2025-10&end=2026-09&${profile.id === "employment" ? "series=LNS14000000" : profile.id === "consumption" ? "series=DPCERC&measure=native" : profile.id === "retail" ? "basket=control" : "basket=core&adjustment=sa"}&query_mode=history&local_only=true&as_of_basis=available&as_of=2026-10-31T08%3A00%3A00%2B08%3A00`,
     };
     const availability: CpiAvailability = {
       busy: false,
@@ -292,9 +301,12 @@ it.each([CPI_PROFILE, PPI_PROFILE, PCE_PROFILE, EMPLOYMENT_PROFILE])(
       parameters.getByText("as_of_basis / vintage_mode").closest("tr")!
         .textContent,
     ).toContain("无截止 current: observed；history 或有截止: available");
-    expect(
-      parameters.getByText("measure").closest("tr")!.textContent,
-    ).toContain("index");
+    if (profile.id === "retail")
+      expect(parameters.queryByText("measure")).toBeNull();
+    else
+      expect(
+        parameters.getByText("measure").closest("tr")!.textContent,
+      ).toContain(profile.id === "consumption" ? "native" : "index");
     for (const title of [
       `${profile.series.length}个统计序列`,
       "返回字段、类型与单位",
@@ -341,6 +353,20 @@ it.each([CPI_PROFILE, PPI_PROFILE, PCE_PROFILE, EMPLOYMENT_PROFILE])(
       expect("measure" in example).toBe(false);
       expect("unit" in example).toBe(false);
       expect("measure_complete" in example).toBe(false);
+    } else if (profile.id === "consumption") {
+      expect(parameters.getByText("series")).toBeTruthy();
+      expect(parameters.queryByText("basket")).toBeNull();
+      expect(example.measure).toBe("native");
+      expect(example.points[0].value_unit).toBe("million_USD");
+      expect(example.points[1].change_1m_percentage_points).toBe("-0.2");
+    } else if (profile.id === "retail") {
+      expect(parameters.getByText("basket")).toBeTruthy();
+      expect(
+        screen.getByRole("table", { name: "统计序列" }).textContent,
+      ).toContain("口径标识（basket）");
+      expect(example.points[0].headline_level.value).toBe("745021");
+      expect(example.points[0].official_headline_mpcsm.value).toBe("0.8");
+      expect(example.points[0].official_headline_mpcsm.unit).toBe("percent");
     } else {
       expect(parameters.getByText("basket")).toBeTruthy();
       expect(example.unit).toBe("index");

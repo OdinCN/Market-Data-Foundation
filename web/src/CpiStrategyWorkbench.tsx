@@ -587,8 +587,11 @@ function CpiStrategyWorkbenchContent({
         {shown && detailVisible && data && (
           <>
             <h3>{profile.label} 策略详情</h3>
-            <p>{profileScopeText(profile)}</p>
-            {profile.historyNotice && <p>{profile.historyNotice}</p>}
+            <details>
+              <summary>口径与采集说明</summary>
+              <p>{profileScopeText(profile)}</p>
+              {profile.historyNotice && <p>{profile.historyNotice}</p>}
+            </details>
             <dl>
               <Fact name="策略状态">
                 {data.exists

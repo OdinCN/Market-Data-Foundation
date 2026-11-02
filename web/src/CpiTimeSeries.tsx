@@ -504,9 +504,15 @@ function CpiTimeSeriesContent({
               />
             </div>
           )}
-          {(!basket.length || !adjustment.length || !measure.length) && (
-            <p role="alert">统计篮子、季节调整和显示指标均须至少选择一项。</p>
+          {employment && !series.length && (
+            <p role="alert">
+              请至少选择一项{consumption ? "消费与收入" : "就业"}指标。
+            </p>
           )}
+          {!employment && (!basket.length || !adjustment.length) && (
+            <p role="alert">统计篮子和季节调整均须至少选择一项。</p>
+          )}
+          {!measure.length && <p role="alert">请至少选择一项显示指标。</p>}
           {start && end && !rangeValid(start, end) && (
             <p role="alert">
               请选择有效的起止月份，开始不得晚于结束，范围须少于 200 年。
@@ -525,12 +531,14 @@ function CpiTimeSeriesContent({
         </form>
         <p className="small">
           {consumption
-            ? "七项指标按原生系列选择；金额为百万美元SAAR水平，储蓄率为百分数及百分点变化。显示列选择会发送columns，缺值不补零。"
+            ? "按所选原生系列查询；金额为百万美元年率水平，储蓄率为百分数及百分点变化。"
             : employment
-              ? "就业指标选择直接限定请求系列；缺值不补零。"
+              ? "按所选就业系列查询，各指标保留原生单位。"
               : retail
-                ? "按所选口径返回结果；显示指标仅控制表格列。计算复用六项原始输入。"
-                : "显示指标只控制表格列；实际请求固定 measure=index，不发送列选择参数。"}
+                ? "按所选口径查询，计算复用六项原始输入。"
+                : "按所选统计口径查询，请求使用 measure=index。"}
+          更改显示指标后，请求会发送 columns
+          限定返回字段；标识、来源和缺值信息保留。缺值不补零。
         </p>
         <RequestPreview request={request} />
         {pending && <p role="status">正在查询 {profile.label}…</p>}

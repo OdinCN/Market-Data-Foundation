@@ -988,7 +988,7 @@ export function CollectionWorkbench({
               )}
               {assets.map((a) => (
                 <option key={keyOf(a.key)} value={keyOf(a.key)}>
-                  {a.label}
+                  {sameKey(a.key, CPI) ? "CPI · 消费者价格指数" : a.label}
                 </option>
               ))}
               {filter !== "all" &&
@@ -1116,7 +1116,7 @@ export function CollectionWorkbench({
                 )}
               {assets.map((a) => (
                 <option key={keyOf(a.key)} value={keyOf(a.key)}>
-                  {a.label}
+                  {sameKey(a.key, CPI) ? "CPI · 消费者价格指数" : a.label}
                 </option>
               ))}
             </select>
@@ -1204,7 +1204,7 @@ export function CollectionWorkbench({
                   )}
                   {assets.map((a) => (
                     <option key={keyOf(a.key)} value={keyOf(a.key)}>
-                      {a.label}
+                      {sameKey(a.key, CPI) ? "CPI · 消费者价格指数" : a.label}
                     </option>
                   ))}
                 </select>

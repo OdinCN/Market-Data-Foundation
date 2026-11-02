@@ -57,7 +57,7 @@ export const CPI_PROFILE: MacroProfile = Object.freeze({
     ],
   ] as const,
   historyNotice:
-    "短期研究使用季调（SA）变化，年度研究使用未季调（NSA）同比；各行保留独立来源序列，不拼接。表单保留总体/核心默认，可选居住、食品、能源、核心商品和服务（不含能源服务）。实际覆盖以当前查询为准，原生历史起点未知时不推算。",
+    "短期研究使用季调（SA）变化，年度研究使用未季调（NSA）同比；各行保留独立来源序列，不拼接。采集覆盖总体、核心、居住、食品、能源、核心商品和服务（不含能源服务）。实际覆盖以来源返回为准，原生历史起点未知时不推算。",
 });
 export const PPI_PROFILE: MacroProfile = Object.freeze({
   id: "ppi",
@@ -207,4 +207,19 @@ export function macroAssetLabel(profile: MacroProfile): string {
   return profile.label.startsWith("美国")
     ? profile.label
     : "美国 " + profile.label;
+}
+
+export function initializationAnchorText(basis?: string) {
+  const labels: Record<string, string> = {
+    "official_elapsed_release/reference_month":
+      "官方日历中已过计划时间的参考月；不代表该期数据已确认发布",
+    confirmed_local_available: "本地已确认可消费的最新观测月份",
+    previous_utc_calendar_month_not_release_readiness:
+      "当前 UTC 自然月的上个月；不代表已发布或来源已就绪",
+    request_calendar_month:
+      "请求时所在自然月的上个月；不代表已发布或来源已就绪",
+    request_calendar_month_no_release_claim:
+      "请求时北京时间自然月的上个月；不代表已发布或来源已就绪",
+  };
+  return labels[basis ?? ""] ?? "服务未提供可解释的月份依据，请核实采集范围";
 }
