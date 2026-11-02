@@ -172,7 +172,9 @@ def parse_observations(raw, series_id, start, end):
                     "realtime_end": last,
                     "realtime_precision": "date",
                     "realtime_date_basis": "fred_not_disambiguated",
-                    "source_missing_reason": "official_null" if text == "." else None,
+                    "source_missing_reason": "provider_missing"
+                    if text == "."
+                    else None,
                     "event_binding_status": "unconfirmed",
                 },
             )

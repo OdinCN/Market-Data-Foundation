@@ -65,7 +65,7 @@ def test_parse_keeps_decimal_null_date_precision_and_event_unbound():
     doc["observations"][0]["value"] = "."
     missing = parse_observations(json.dumps(doc).encode(), "ICSA", START, END)[0]
     assert missing.value is None
-    assert missing.provider_extra["source_missing_reason"] == "official_null"
+    assert missing.provider_extra["source_missing_reason"] == "provider_missing"
 
 
 @pytest.mark.parametrize(

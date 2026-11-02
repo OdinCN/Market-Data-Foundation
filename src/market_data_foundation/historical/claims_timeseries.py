@@ -1,6 +1,6 @@
 """Pure weekly projection and read-only, local-first queries at one cutoff.
 
-Persistence/DDL and event-material ingestion are separate later capabilities.
+Persistence/DDL and event-material ingestion are separate explicit capabilities.
 All comparison operands are selected before arithmetic at the same cutoff.
 """
 
@@ -110,7 +110,7 @@ def _ref(row):
 def _missing(row):
     if row is None:
         return "local_not_provided"
-    return "official_null" if row.value is None else None
+    return "provider_missing" if row.value is None else None
 
 
 def _derive(inputs, operation):
@@ -223,6 +223,10 @@ def project_range(
                 )
                 item["local_four_week_average"] = average
             result.append(item)
+    order = {sid: i for i, sid in enumerate(series_ids)}
+    result.sort(
+        key=lambda row: (-day(row["week_ending"]).toordinal(), order[row["series_id"]])
+    )
     available = sum(row["value"] is not None for row in result)
     expected = len(series_ids) * len(targets)
     return {
@@ -241,8 +245,8 @@ def project_range(
             "missing_rows": sum(
                 r["missing_reason"] == "local_not_provided" for r in result
             ),
-            "official_nulls": sum(
-                r["missing_reason"] == "official_null" for r in result
+            "provider_missing_values": sum(
+                r["missing_reason"] == "provider_missing" for r in result
             ),
         },
         "decimal_context": "precision_28_half_even_no_display_rounding",
@@ -254,7 +258,7 @@ class ClaimsTimeSeriesService:
     """Injected read store; query performs no writes, migration or event lookup.
 
     Store.read_range returns ClaimsObservation revisions in a short read snapshot.
-    Segment 2 supplies durable storage. Upstream supplementation is current-only,
+    Upstream supplementation is current-only,
     response-only, and can fill absent keys; local nulls/values remain authoritative.
     """
 

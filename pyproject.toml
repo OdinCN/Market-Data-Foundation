@@ -12,6 +12,7 @@ dependencies = [
     "fastapi==0.119.1",
     "psycopg[binary]==3.3.6",
     "pydantic==2.12.3",
+    "pypdf>=6,<7",
 ]
 
 [dependency-groups]

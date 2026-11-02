@@ -122,19 +122,19 @@ def test_four_week_average_is_exact_separate_from_official_and_never_fills_gaps(
     assert missing["rows"][0]["weekly_change"]["value"] == "101"
 
 
-def test_official_null_missing_row_and_zero_have_distinct_results():
+def test_provider_missing_missing_row_and_zero_have_distinct_results():
     rows = [row("2026-09-12", "0"), row("2026-09-19", "5"), row("2026-09-26", None)]
     result = project_range(rows, "2026-09-12", "2026-10-03", series_ids=("ICSA",))
     missing, null, five, zero = result["rows"]
     assert missing["missing_reason"] == "local_not_provided"
-    assert null["missing_reason"] == "official_null"
+    assert null["missing_reason"] == "provider_missing"
     assert zero["value"] == "0"
     assert five["weekly_change"]["value"] == "5"
     assert five["weekly_change_ratio"]["missing_reason"] == "zero_denominator"
     assert result["coverage"] == {
         "expected": 4,
         "available": 2,
-        "official_nulls": 1,
+        "provider_missing_values": 1,
         "missing_rows": 1,
     }
 
@@ -228,7 +228,7 @@ def test_upstream_only_fills_absent_points_and_has_no_available_time():
         "2026-09-19", "2026-09-26", series_ids=("ICSA",), allow_upstream=True
     )
     null, supplement = result["rows"]
-    assert null["missing_reason"] == "official_null"
+    assert null["missing_reason"] == "provider_missing"
     assert supplement["value"] == "999"
     assert supplement["provenance"]["available_at"] is None
     assert supplement["provenance"]["revision"] is None
