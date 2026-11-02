@@ -180,6 +180,7 @@ class GdpTimeSeriesService:
     def _collect(self, start, end, series_ids, *, refresh):
         series, buffer = _request_args(start, end, series_ids)
         requests = attempts = 0
+        returned = set()
         with self.store.operation():
             before = self.store.read_range(series, buffer, end)
             have = {(d["series_id"], d["quarter"]) for d in before}
@@ -196,6 +197,7 @@ class GdpTimeSeriesService:
                     raise _source_error(error) from None
                 requests = sum(b.request["request_count"] for b in batches)
                 attempts = sum(b.attempts for b in batches)
+                returned = {(p.series_id, p.quarter) for b in batches for p in b.points}
                 try:
                     saved = self.store.save_batches(batches, missing_only=not refresh)
                 except GdpStorageError as error:
@@ -236,6 +238,14 @@ class GdpTimeSeriesService:
             **saved,
             provider_requests=requests,
             provider_attempts=attempts,
+            source_returned_series_quarters=[
+                {"series_id": s, "quarter": q} for s, q in sorted(returned)
+            ],
+            source_missing=[
+                {"series_id": s, "quarter": q}
+                for s, q in sorted(missing - returned)
+                if start <= q <= end
+            ],
             collection_mode="update" if refresh else "initialize",
             buffer_start_quarter=buffer,
             query_mode="current",

@@ -11,11 +11,12 @@ import hashlib
 import json
 import os
 import re
+import ssl
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from zoneinfo import ZoneInfo
 
@@ -82,6 +83,10 @@ def _fetch_calendar(url, accept):
             http_status=error.code,
             retry_at=retry_after(error.headers.get("Retry-After")),
         ) from None
+    except (ssl.SSLError, URLError) as error:
+        if isinstance(error, ssl.SSLError) or isinstance(error.reason, ssl.SSLError):
+            raise PceScheduleError("bea_calendar_tls_failure") from None
+        raise PceScheduleError("bea_calendar_fetch_failed") from None
     except Exception:
         raise PceScheduleError("bea_calendar_fetch_failed") from None
     if not raw or len(raw) > MAX_CALENDAR_BYTES:
