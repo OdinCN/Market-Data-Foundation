@@ -499,7 +499,7 @@ function CpiTimeSeriesContent({
           <>
             <p>
               已保存观测 {availability.data.observation_count.toLocaleString()}{" "}
-              条；各口径最新{periodLabel}：
+              条；各口径{claims ? "全库最新有值截止周" : `最新${periodLabel}`}：
             </p>
             <ul className="cpi-coverage">
               {cpiSeries.map(([id, title]) => (
@@ -513,6 +513,11 @@ function CpiTimeSeriesContent({
                 </li>
               ))}
             </ul>
+            {claims && (
+              <p className="small">
+                此处为全库最新有值截止周；执行详情中的最新周仅限该次采集范围。初请与续请的参考周分别取自来源，续请通常滞后一周，末端差异本身不表示采集失败。
+              </p>
+            )}
             {!availability.data.web_capabilities.query && (
               <p role="alert">
                 当前服务未开放 {profile.label} 查询。请核实服务资格。

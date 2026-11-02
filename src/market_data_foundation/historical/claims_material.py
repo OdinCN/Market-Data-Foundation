@@ -75,7 +75,20 @@ def material_fetcher(
                 sha256=sha,
                 obtained_at=obtained.isoformat(),
                 status=response.status,
-                headers=response.headers,
+                headers={
+                    k: v
+                    for k, v in response.headers.items()
+                    if k.lower()
+                    in {
+                        "content-type",
+                        "content-length",
+                        "content-range",
+                        "last-modified",
+                        "etag",
+                        "date",
+                        "retry-after",
+                    }
+                },
                 attempts=attempts,
             )
             key = hashlib.sha256((url + obtained.isoformat()).encode()).hexdigest()

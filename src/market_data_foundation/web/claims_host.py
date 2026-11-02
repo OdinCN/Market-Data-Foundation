@@ -240,6 +240,10 @@ class ClaimsTimeSeriesHost(GdpTimeSeriesHost):
         try:
             raw = self.material_fetcher()
             obtained = getattr(raw, "obtained_at", self.clock())
+            # The HTTP acquisition envelope is a bytes subclass. Preserve its
+            # real acquisition time, then pass plain bytes to parser/storage.
+            if isinstance(raw, bytes):
+                raw = bytes(raw)
             parsed = parse_release(raw, CURRENT_REPORT_URL)
             if event_id and parsed["event_id"] != event_id:
                 return dict(

@@ -448,6 +448,7 @@ def test_durable_interrupted_job_is_unknown_and_not_replayed(tmp_path, monkeypat
 def test_current_snapshot_material_old_report_and_failure_are_separate(
     tmp_path, monkeypatch
 ):
+    from market_data_foundation.historical.calendar_resilience import AcquiredCalendar
     from market_data_foundation.historical.claims_calendar import CURRENT_REPORT_URL
     from market_data_foundation.historical.claims_release import (
         ClaimsReleaseRecords,
@@ -457,11 +458,14 @@ def test_current_snapshot_material_old_report_and_failure_are_separate(
 
     app, host, store, _, calls = setup(tmp_path, monkeypatch)
     raw = "\f".join(pages()).encode()
-    host.material_fetcher = lambda: raw
+    acquired_at = host.clock()
+    host.material_fetcher = lambda: AcquiredCalendar(raw, acquired_at)
     imported = []
 
     def write_material(records, raw, url, *, obtained_at):
         assert url == CURRENT_REPORT_URL
+        assert type(raw) is bytes
+        assert obtained_at == acquired_at
         doc = dict(parse_release(raw, url), evidence_id="synthetic")
         imported.append(doc)
         return doc
