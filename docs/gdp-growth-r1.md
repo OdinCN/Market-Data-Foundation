@@ -5,7 +5,7 @@
 2026-11-02，Owner 在 CI #131 通过后授权分段推进。PR #21 已合并，
 本包基于 main 4f9204d。第一段完成季度合同、当前 NIPA 来源适配与定向测试；
 第二段已实现季度数据库、严格截止查询、采集回读与独立 CLI，并通过隔离 PostgreSQL 对照。
-已完成正式 DEV 独立 schema、只读授权、80 季度初始化与回读；HTTP API、任务、发布估计证据、日历和 WebUI 尚未接入，不能作为整包验收完成。
+已完成正式 DEV 独立 schema、只读授权、80 季度初始化与回读；GDP 官方摘要发布证据已新增独立导入与截止读取；HTTP API、任务、日历和 WebUI 尚未接入，不能作为整包验收完成。
 
 本包限于下表八项。GDI、GDP 平减指数、GDPNow、初请/续请、JOLTS、
 工业生产和中国包不随本笔启用。依据 MBO 宏观研究 PRD R1 与
@@ -118,9 +118,33 @@ odin_dba 当前及未来表 SELECT、schema USAGE；不会创建或改动该角�
   重复同范围初始化为 0 来源请求、0 新增、0 修订，表计数保持不变。
   截止首次捕获之前返回 0 条可用，截止可用确认之后返回全部 640 条；未来季度不请求来源。
 - 连续序列仍为 `estimate_kind=unknown`、`event_binding_status=unconfirmed`。
-  官方初值/第二次/第三次估计必须由独立发布材料证明；数值相等不自动绑定事件。
+  官方初值/第二次/第三次估计由独立发布材料证明；数值相等不自动绑定连续序列版本。
 - 迁移、初始化与读回回执仅在 control 事务目录 `artifacts/dev-integration`。
   仍未接 HTTP、任务/worker、季度 UI 或浏览器验收，未建 GDP PR，未启动或延长 18761。
+
+## 官方发布摘要证据（第二段 2c，2026-11-02）
+
+- 新增 gdp_release_material / gdp_release_records 与显式 CLI。
+  季度、advance/second/third、同季度前一次估计、上季度修订前/后值分别存储，
+  与 revisions 的本地修订编号分离；不改写连续值或取得时间。
+- BEA 官方 HTML 摘要表逐列核验目标季度、SAAR、Real GDP 行和估计列标题。
+  无 id 的多张表使用独立定位，避免年度修订表覆盖当季估计表。
+  URL/标题/参考期冲突、重复目标表、未知数值不猜测。
+- 官方材料日期保留 date 精度，actual_at 为空；禁用把 embargo 提示当实际发布瞬间。
+  来源历史只返回截止 MDF 确认可用时间已经取得的材料，迟到资料不倒填可见性。
+  无具名合格共识则 surprise 为空；同一事件证据冲突时 actual 不选最新覆盖旧值。
+- DEV 三次有界公开 GET 均 HTTP200：2026Q3 advance、2026Q2 second、2026Q2 third；
+  原始 HTTP 正文经 Garage 精确读回，三事件共八项声明独立入库。
+  同季度第二次/第三次估计差可核对；第三次材料同时有上季度原值与修订值。
+- 新增 release_events / release_evidence，odin_dba SELECT 已验证，不能 INSERT。
+  重复导入和严格截止验证通过，原 672 条连续观测逐行保持不变。
+- 当前摘要适配覆盖 A191RL；其余七项金额/贡献明确返回 not_covered_by_summary_adapter。
+  不跟随新闻页面中会更新的当前 NIPA 链接冒充当次版本。完整档案表、独立后续更新格式、
+  具名共识和连续版本强绑定尚未资格核验；缺口不阻断已有连续序列。
+- CLI scripts/gdp_release_records.py：prepare/import 需 --confirm-dev-write；
+  import 接收已留存官方材料与来源 URL，read 默认仅本地。支持 --reference-quarter、
+  --source-version、--as-of 和 --read-mode source_history；不会自动联网或在读取时迁移。
+- 本段仍未接 HTTP、任务/worker、季度 UI 或浏览器。后续必须完成完整产品链路再提交验收。
 
 ## 官方依据
 
