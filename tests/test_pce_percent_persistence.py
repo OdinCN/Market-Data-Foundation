@@ -252,7 +252,11 @@ def test_multiple_gaps_budget_counts_two_http_requests_per_pce_window():
         for month in core.month_range("1975-01", "2026-12")
         if int(month[:4]) % 2 == 0
     ]
-    store = SimpleNamespace(operation=nullcontext, read_range=lambda *a, **kw: local)
+    store = SimpleNamespace(
+        operation=nullcontext,
+        read_snapshot=nullcontext,
+        read_range=lambda *a, **kw: local,
+    )
     source = SimpleNamespace(
         profile=PCE_PROFILE,
         plan_windows=lambda first, last: [(first, last)],
