@@ -284,8 +284,10 @@ it.each([CPI_PROFILE, PPI_PROFILE, PCE_PROFILE, EMPLOYMENT_PROFILE])(
     const parameters = within(screen.getByRole("table", { name: "查询参数" }));
     const defaultRow = parameters.getByText("local_only").closest("tr")!;
     expect(defaultRow.textContent).toContain(
-      `否 / ${profile.id === "cpi" ? "true" : "false"}（Web）`,
+      `否 / ${profile.id === "cpi" ? "true" : "false"}（API默认）`,
     );
+    expect(defaultRow.textContent).toContain("当前表单发 false，历史发 true");
+    expect(defaultRow.textContent).toContain("history 始终禁止上游");
     expect(
       parameters.getByText("as_of_basis / vintage_mode").closest("tr")!
         .textContent,
