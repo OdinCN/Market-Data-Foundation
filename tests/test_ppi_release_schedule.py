@@ -216,10 +216,10 @@ def test_stale_calendar_keeps_cached_ppi_targets_and_source(tmp_path):
 
     scheduler.calendar_fetcher = unavailable
     result = scheduler.due_check()
-    assert result["calendar_status"] == "degraded_cached_calendar"
+    assert result["calendar_status"] == "stale"
     assert result["calendar"]["source"] == CALENDAR_URL
-    assert result["action"] == "updated"
-    assert service.updates[0][2] == PPI_PROFILE.series_ids
+    assert result["action"] == "calendar_unavailable"
+    assert service.updates == []
 
 
 def test_service_profile_cannot_silently_cross_assets(tmp_path):

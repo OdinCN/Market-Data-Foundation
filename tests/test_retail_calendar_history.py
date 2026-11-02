@@ -220,7 +220,7 @@ def test_worker_automatically_imports_history_even_when_recent_fetch_fails(tmp_p
         auto_strategy=SimpleNamespace(_read=lambda: {"enabled": True}),
         submit=Mock(side_effect=AssertionError("no data jobs")),
     )
-    assert s.due_check()["action"] == "calendar_unavailable"
+    assert s.due_check()["action"] == "not_due"
     assert len(s.status()["calendar_publications"]) == 2
     assert s.status()["targets"] == []
     s.host.submit.assert_not_called()

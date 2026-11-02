@@ -10,13 +10,16 @@ import ssl
 from http.client import HTTPException, HTTPSConnection
 from urllib.parse import urljoin, urlsplit
 
+from market_data_foundation.historical.calendar_resilience import retry_after
+
 MAX_BYTES = 2_000_000
 MAX_REDIRECTS = 3
 
 
 class BlsWebError(ValueError):
-    def __init__(self, classification):
+    def __init__(self, classification, *, http_status=None, retry_at=None):
         self.classification = classification
+        self.http_status, self.retry_at = http_status, retry_at
         super().__init__(classification)
 
 
@@ -90,7 +93,11 @@ def fetch_bls_page(
                         url = redirected
                         continue
                     if response.status != 200:
-                        raise BlsWebError(f"http_{response.status}")
+                        raise BlsWebError(
+                            f"http_{response.status}",
+                            http_status=response.status,
+                            retry_at=retry_after(response.getheader("Retry-After")),
+                        )
                     raw = response.read(max_bytes + 1)
                     if len(raw) > max_bytes:
                         raise BlsWebError("payload_too_large")

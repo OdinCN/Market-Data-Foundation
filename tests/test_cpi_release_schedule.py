@@ -237,7 +237,7 @@ def test_retries_are_bounded_and_survive_restart(tmp_path):
     assert len(service.updates) == 5
 
 
-def test_failed_calendar_refresh_uses_known_official_dates_with_warning(tmp_path):
+def test_expired_calendar_stops_new_collection_with_warning(tmp_path):
     obj, service, clock = scheduler(tmp_path)
     obj.refresh_calendar()
     clock.advance(int(CALENDAR_MAX_AGE.total_seconds()))
@@ -247,10 +247,10 @@ def test_failed_calendar_refresh_uses_known_official_dates_with_warning(tmp_path
 
     obj.calendar_fetcher = fail
     result = obj.due_check()
-    assert result["action"] == "awaiting_provider"
-    assert result["calendar_status"] == "degraded_cached_calendar"
+    assert result["action"] == "calendar_unavailable"
+    assert result["calendar_status"] == "stale"
     assert result["calendar"]["error"] == "calendar_refresh_failed"
-    assert len(service.updates) == 1
+    assert len(service.updates) == 0
     assert "password" not in obj.state_path.read_text()
 
 
@@ -459,8 +459,8 @@ def test_known_calendar_horizon_completed_requires_new_dates(tmp_path):
         CpiScheduleError("calendar_http_403")
     )
     result = obj.due_check()
-    assert result["action"] == "calendar_update_required"
-    assert result["calendar_status"] == "degraded_cached_calendar"
+    assert result["action"] == "calendar_unavailable"
+    assert result["calendar_status"] == "stale"
     assert len(service.updates) == 2
 
 

@@ -35,6 +35,8 @@ def fetch_reference_calendar():
 
 class PpiReleaseScheduler(CpiReleaseScheduler):
     def __init__(self, service, state_path, **options):
+        if "calendar_fetcher" not in options:
+            options.setdefault("fallback_fetcher", fetch_reference_calendar)
         options.setdefault("calendar_fetcher", fetch_official_calendar)
         options.setdefault("reference_fetcher", fetch_reference_calendar)
         super().__init__(service, state_path, profile=PPI_PROFILE, **options)
