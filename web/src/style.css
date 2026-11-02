@@ -1529,3 +1529,10 @@ footer {
 .macro-result-table td:last-child {
   min-width: 200px;
 }
+
+.calendar-source-link {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}

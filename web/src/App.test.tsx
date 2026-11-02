@@ -77,13 +77,11 @@ async function journey(transport: Transport) {
     fireEvent.click(developerDirectory);
   const table = screen.getByRole("region", { name: "注册接口" });
   expect(within(table).queryByText("TDX / TDX")).toBeNull();
-  select("注册接口", /选择 CPI .*2026-09 公布窗口/);
+  select("注册接口", /选择 美国 CPI .*2026-09 公布窗口/);
   expect(location.hash).toContain(encodeURIComponent(MANUAL_OPERATION));
   fireEvent.click(btn("查看关联资产 →"));
   await ready();
-  expect(
-    screen.getByRole("heading", { name: "CPI · 四项核心指标" }),
-  ).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "美国 CPI" })).toBeTruthy();
   expect(new URLSearchParams(location.hash.slice(1)).get("asset")).toBe(
     CPI.identity,
   );
@@ -97,7 +95,7 @@ async function journey(transport: Transport) {
     keyOf(CPI),
   );
   const summary = within(screen.getByLabelText("本次采集摘要"));
-  expect(summary.getByText("CPI · 四项核心指标")).toBeTruthy();
+  expect(summary.getByText("美国 CPI")).toBeTruthy();
   expect(summary.getByText("BLS · 2026-09 公布窗口")).toBeTruthy();
   expect(summary.getByText(/继承资产 \/ 接口的 Host 存储绑定/)).toBeTruthy();
 }
@@ -256,9 +254,7 @@ it("A: Macro → exact CPI variant → deduplicated asset → inherited capture,
   fireEvent.click(btn("创建采集任务"));
   expect(api.requests.every((r) => r.method === "GET")).toBe(true);
   fireEvent.click(btn("查看资产 →"));
-  expect(
-    screen.getByRole("heading", { name: "CPI · 四项核心指标" }),
-  ).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "美国 CPI" })).toBeTruthy();
   expect(location.hash).toContain(encodeURIComponent(MANUAL_OPERATION));
   expect(screen.queryByRole("region", { name: "数据资产" })).toBeNull();
   expect(screen.getByText(/代码合同参考；运行接入/)).toBeTruthy();
@@ -293,9 +289,7 @@ it("B: trusted offline fixture explicitly accepts a durable Job, selects its exe
   expect(screen.getAllByText("待执行").length).toBeGreaterThan(0);
   fireEvent.click(btn("查看关联资产 →"));
   await ready();
-  expect(
-    screen.getByRole("heading", { name: "CPI · 四项核心指标" }),
-  ).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "美国 CPI" })).toBeTruthy();
   expect(location.hash).toContain(encodeURIComponent(MANUAL_OPERATION));
 });
 it("B: separately qualified offline asset opens only its eligible service and explicitly reads exact/as-of through actual ASGI", async () => {
@@ -308,9 +302,7 @@ it("B: separately qualified offline asset opens only its eligible service and ex
   render(<App transport={api.transport} initialQuery={query} />);
   await ready();
   await ready();
-  expect(
-    screen.getAllByRole("heading", { name: "CPI · 四项核心指标" }),
-  ).toHaveLength(1);
+  expect(screen.getAllByRole("heading", { name: "美国 CPI" })).toHaveLength(1);
   expect(api.requests.some((r) => r.path.includes("/read?"))).toBe(false);
   fireEvent.click(btn("读取本地数据"));
   await screen.findByText(/读取成功/);
@@ -335,7 +327,7 @@ it.each(["PPI", "TDX"])(
     await ready();
     select(
       "注册接口",
-      name === "PPI" ? /选择 PPI / : /选择 TDX .*具名日线合同/,
+      name === "PPI" ? /选择 美国 PPI / : /选择 TDX .*具名日线合同/,
     );
     fireEvent.click(btn("查看关联资产 →"));
     await ready();
@@ -743,14 +735,12 @@ it("directory refresh failure clears stale selection and hides private error mes
   location.hash = "ui=r5&view=interfaces";
   render(<App transport={transport} />);
   await ready();
-  select("注册接口", /选择 CPI .*2026-09 公布窗口/);
+  select("注册接口", /选择 美国 CPI .*2026-09 公布窗口/);
   fault = true;
   fireEvent.click(btn("刷新"));
   await ready();
   expect(screen.getByText("目录暂不可读取。")).toBeTruthy();
-  expect(
-    screen.queryByRole("heading", { name: "CPI · 四项核心指标" }),
-  ).toBeNull();
+  expect(screen.queryByRole("heading", { name: "美国 CPI" })).toBeNull();
   expect(screen.queryByText(/private-sensitive/)).toBeNull();
 });
 it("E: actual offline UNKNOWN execution retains original identity and blocks blind retry/backfill without POST", async () => {
@@ -924,17 +914,17 @@ it("source directory remains cached across navigation and changing interface cle
   render(<App transport={api.transport} />);
   nav("数据源管理");
   await ready();
-  select("注册接口", /选择 CPI .*2026-09 公布窗口/);
+  select("注册接口", /选择 美国 CPI .*2026-09 公布窗口/);
   fireEvent.click(btn("查看关联资产 →"));
   await ready();
   nav("数据源管理");
-  select("注册接口", /选择 PPI /);
+  select("注册接口", /选择 美国 PPI /);
   const fields = new URLSearchParams(location.hash.slice(1));
   expect(fields.has("asset")).toBe(false);
   expect(fields.has("version")).toBe(false);
   fireEvent.click(btn("查看关联资产 →"));
   await ready();
-  expect(screen.getByRole("heading", { name: "PPI · 最终需求" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "美国 PPI" })).toBeTruthy();
   expect(
     api.requests.filter((r) => r.path.startsWith("/api/r5/sources")),
   ).toHaveLength(1);
@@ -1215,7 +1205,7 @@ it.each(["periodic", "executions"])(
     });
     if (tab === "executions")
       await waitFor(() => expect(row.textContent).toBe("CPI · 自动阶段"));
-    else expect(row.closest("tr")!.textContent).toContain("CPI · 四项核心指标");
+    else expect(row.closest("tr")!.textContent).toContain("美国 CPI");
     expect(new URLSearchParams(location.hash.slice(1)).has("asset")).toBe(
       false,
     );
@@ -1244,7 +1234,7 @@ it.each(["periodic", "executions"])(
     }
     expect(await screen.findByText("f2-plan")).toBeTruthy();
     fireEvent.click(btn("查看关联资产 →"));
-    await screen.findByRole("heading", { name: "CPI · 四项核心指标" });
+    await screen.findByRole("heading", { name: "美国 CPI" });
     expect(new URLSearchParams(location.hash.slice(1)).get("asset")).toBe(
       target.asset_identity,
     );

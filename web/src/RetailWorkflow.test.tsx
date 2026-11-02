@@ -427,7 +427,7 @@ it("uses shared new collection, editable 240-month preset, single submission and
   expect(h.jobs[0].start).toBe("2026-08");
   expect(h.jobs[0].job_id).toBe(h.jobs[0].request_id);
   fireEvent.click(
-    form.getByRole("button", { name: /美国 零售销售 · 初始化采集/ }),
+    form.getByRole("button", { name: /美国零售销售 · 初始化采集/ }),
   );
   await screen.findByRole("heading", { name: "采集执行记录" });
   expect(location.hash).toContain(`job=${h.jobs[0].job_id}`);
@@ -581,7 +581,7 @@ it("uses the real shared App retail periodic row with start/pause and truthful d
   location.hash = `ui=r5&view=collection&tab=periodic&periodic_asset=${keyOf(RETAIL)}`;
   render(<App transport={transport} />);
   const row = await screen.findByRole("row", {
-    name: /官方发布自动采集.*美国 零售销售/,
+    name: /官方发布自动采集.*美国零售销售/,
   });
   await waitFor(() =>
     expect(
@@ -618,7 +618,7 @@ it.each(["loading", "failed"])(
     location.hash = `ui=r5&view=collection&tab=periodic&periodic_asset=${keyOf(RETAIL)}`;
     render(<App transport={transport} />);
     const row = await screen.findByRole("row", {
-      name: /官方发布自动采集.*美国 零售销售/,
+      name: /官方发布自动采集.*美国零售销售/,
     });
     expect(
       within(row)

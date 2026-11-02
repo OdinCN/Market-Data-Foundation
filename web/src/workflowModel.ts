@@ -180,21 +180,22 @@ export type StorageObservation = {
   dto: Observability["storage"][number] | null;
 };
 const titles: Record<string, string> = {
-  "mdf.macro.bls.cpi.headlines": "CPI · 四项核心指标",
-  "mdf.macro.bls.ppi.final-demand": "PPI · 最终需求",
-  "mdf.macro.bls.employment.ces-cps": "Employment · 就业",
-  "mdf.macro.bea.pce.headline-core": "PCE价格指数",
+  "mdf.macro.bls.cpi.headlines": "美国 CPI",
+  "mdf.macro.bls.ppi.final-demand": "美国 PPI",
+  "mdf.macro.bls.employment.ces-cps": "美国就业",
+  "mdf.macro.bea.pce.headline-core": "美国 PCE价格指数",
   "mdf.macro.bea.consumption-income": "美国消费与收入",
   "mdf.macro.bea.gdp-growth": "美国 GDP 与增长",
-  "mdf.macro.census.retail": "Retail Sales · 零售销售",
+  "mdf.macro.census.retail": "美国零售销售",
   "mdf.macro.fred-alfred.vintage-bundle": "FRED / ALFRED · 历史修订",
-  "mdf.macro.fomc-statement-document": "FOMC · 政策声明",
+  "mdf.macro.fomc-statement-document": "美国 FOMC · 政策声明",
   "mdf.macro.ecb.sdmx.exr": "ECB SDMX · 汇率",
   "mdf.macro.estat.sdmx.prc_hicp_minr": "Eurostat SDMX · HICP",
   "mdf.market.bars.daily.raw": "TDX · 原始日线",
   "mdf.kd.sector-analysis.current-rank": "KD · 板块当前排名",
 };
-export const assetTitle = (key: Key) => titles[key.identity] ?? key.identity;
+export const assetTitle = (key: Key, fallback = key.identity) =>
+  titles[key.identity] ?? fallback;
 export const componentTitle = {
   Macro: "Macro 接入组件",
   TDX: "TDX Go Driver",

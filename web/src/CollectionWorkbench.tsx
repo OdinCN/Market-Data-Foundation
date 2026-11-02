@@ -1019,21 +1019,23 @@ export function CollectionWorkbench({
             >
               <option value="all">全部资产</option>
               {!assets.some((a) => sameKey(a.key, GDP)) && (
-                <option value={keyOf(GDP)}>美国GDP与增长</option>
+                <option value={keyOf(GDP)}>{assetTitle(GDP)}</option>
               )}
               {!assets.some((a) => sameKey(a.key, EMPLOYMENT)) &&
                 newEmployment && (
-                  <option value={keyOf(EMPLOYMENT)}>美国就业</option>
+                  <option value={keyOf(EMPLOYMENT)}>
+                    {assetTitle(EMPLOYMENT)}
+                  </option>
                 )}
               {!assets.some((a) => sameKey(a.key, PPI)) && (
-                <option value={keyOf(PPI)}>美国 PPI</option>
+                <option value={keyOf(PPI)}>{assetTitle(PPI)}</option>
               )}
               {!assets.some((a) => sameKey(a.key, PCE)) && (
-                <option value={keyOf(PCE)}>美国 PCE</option>
+                <option value={keyOf(PCE)}>{assetTitle(PCE)}</option>
               )}
               {assets.map((a) => (
                 <option key={keyOf(a.key)} value={keyOf(a.key)}>
-                  {sameKey(a.key, CPI) ? "CPI · 消费者价格指数" : a.label}
+                  {assetTitle(a.key)}
                 </option>
               ))}
               {filter !== "all" &&
@@ -1145,7 +1147,7 @@ export function CollectionWorkbench({
             >
               {!assets.some((a) => sameKey(a.key, GDP)) &&
                 macroProfile.id !== "gdp" && (
-                  <option value={keyOf(GDP)}>美国GDP与增长</option>
+                  <option value={keyOf(GDP)}>{assetTitle(GDP)}</option>
                 )}
               {!assets.some((a) => sameKey(a.key, macroProfile.asset)) && (
                 <option value={keyOf(macroProfile.asset)}>
@@ -1155,23 +1157,25 @@ export function CollectionWorkbench({
               {!assets.some((a) => sameKey(a.key, EMPLOYMENT)) &&
                 macroProfile.id !== "employment" &&
                 newEmployment && (
-                  <option value={keyOf(EMPLOYMENT)}>美国就业</option>
+                  <option value={keyOf(EMPLOYMENT)}>
+                    {assetTitle(EMPLOYMENT)}
+                  </option>
                 )}
               {!assets.some((a) => sameKey(a.key, CPI)) &&
                 macroProfile.id !== "cpi" && (
-                  <option value={keyOf(CPI)}>美国 CPI</option>
+                  <option value={keyOf(CPI)}>{assetTitle(CPI)}</option>
                 )}
               {!assets.some((a) => sameKey(a.key, PPI)) &&
                 macroProfile.id !== "ppi" && (
-                  <option value={keyOf(PPI)}>美国 PPI</option>
+                  <option value={keyOf(PPI)}>{assetTitle(PPI)}</option>
                 )}
               {!assets.some((a) => sameKey(a.key, PCE)) &&
                 macroProfile.id !== "pce" && (
-                  <option value={keyOf(PCE)}>美国 PCE</option>
+                  <option value={keyOf(PCE)}>{assetTitle(PCE)}</option>
                 )}
               {assets.map((a) => (
                 <option key={keyOf(a.key)} value={keyOf(a.key)}>
-                  {sameKey(a.key, CPI) ? "CPI · 消费者价格指数" : a.label}
+                  {assetTitle(a.key)}
                 </option>
               ))}
             </select>
@@ -1248,23 +1252,25 @@ export function CollectionWorkbench({
                 >
                   <option value="">选择一个已登记资产</option>
                   {!assets.some((a) => sameKey(a.key, GDP)) && (
-                    <option value={keyOf(GDP)}>美国GDP与增长</option>
+                    <option value={keyOf(GDP)}>{assetTitle(GDP)}</option>
                   )}
                   {!assets.some((a) => sameKey(a.key, EMPLOYMENT)) && (
-                    <option value={keyOf(EMPLOYMENT)}>美国就业</option>
+                    <option value={keyOf(EMPLOYMENT)}>
+                      {assetTitle(EMPLOYMENT)}
+                    </option>
                   )}
                   {!assets.some((a) => sameKey(a.key, CPI)) && (
-                    <option value={keyOf(CPI)}>美国 CPI</option>
+                    <option value={keyOf(CPI)}>{assetTitle(CPI)}</option>
                   )}
                   {!assets.some((a) => sameKey(a.key, PPI)) && (
-                    <option value={keyOf(PPI)}>美国 PPI</option>
+                    <option value={keyOf(PPI)}>{assetTitle(PPI)}</option>
                   )}
                   {!assets.some((a) => sameKey(a.key, PCE)) && (
-                    <option value={keyOf(PCE)}>美国 PCE</option>
+                    <option value={keyOf(PCE)}>{assetTitle(PCE)}</option>
                   )}
                   {assets.map((a) => (
                     <option key={keyOf(a.key)} value={keyOf(a.key)}>
-                      {sameKey(a.key, CPI) ? "CPI · 消费者价格指数" : a.label}
+                      {assetTitle(a.key)}
                     </option>
                   ))}
                 </select>

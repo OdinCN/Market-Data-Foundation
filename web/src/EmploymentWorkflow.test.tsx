@@ -349,7 +349,7 @@ it("editable initialization confirms DEV, refreshes briefs and opens the shared 
   await flush();
   expect(submitted).toHaveLength(1);
   const brief = within(screen.getByRole("complementary", { name: "执行简报" }));
-  fireEvent.click(brief.getByRole("button", { name: /美国 就业/ }));
+  fireEvent.click(brief.getByRole("button", { name: /美国就业/ }));
   expect(onExecution).toHaveBeenCalledWith(jobs[0].job_id);
   cleanup();
   const fields = new URLSearchParams({
@@ -642,7 +642,7 @@ it("ordinary asset collection navigation submits all five employment series and 
   fireEvent.click(
     within(screen.getByRole("complementary", { name: "执行简报" })).getByRole(
       "button",
-      { name: /美国 就业/ },
+      { name: /美国就业/ },
     ),
   );
   await screen.findByText("执行详情");

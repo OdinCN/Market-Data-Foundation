@@ -23,7 +23,7 @@ export function GdpCollectionDetails({
 }: {
   result: Record<string, unknown> | null | undefined;
 }) {
-  if (!result) return <p>执行结果未记录</p>;
+  if (!result) return null;
   if (
     result.result &&
     typeof result.result === "object" &&

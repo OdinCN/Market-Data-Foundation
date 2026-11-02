@@ -1,5 +1,6 @@
 import {
   GDP,
+  assetTitle,
   CPI,
   PPI,
   PCE,
@@ -205,9 +206,7 @@ export const CONSUMPTION_PROFILE: MacroProfile = Object.freeze({
 });
 
 export function macroAssetLabel(profile: MacroProfile): string {
-  return profile.label.startsWith("美国")
-    ? profile.label
-    : "美国 " + profile.label;
+  return assetTitle(profile.asset);
 }
 
 export function initializationAnchorText(basis?: string) {

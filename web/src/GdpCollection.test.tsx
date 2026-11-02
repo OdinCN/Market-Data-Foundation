@@ -292,7 +292,7 @@ it("shows native source gaps, official nulls and uncertain readback without mont
   );
 });
 
-it("requires a second explicit action to enable GDP strategy and does not fabricate a worker heartbeat", async () => {
+it("enables and pauses GDP strategy with one PUT per click, without extra confirmation or fabricated heartbeat", async () => {
   const writes: unknown[] = [];
   let strategy = fixture.strategy;
   const transport: Transport = async (path, init) => {
@@ -313,14 +313,22 @@ it("requires a second explicit action to enable GDP strategy and does not fabric
     />,
   );
   await screen.findByText("GDP与增长 策略详情");
+  const calendarSource = screen.getByText("当前日历入口").parentElement!;
+  const calendarLink = within(calendarSource).getByRole("link");
+  expect(calendarLink.getAttribute("href")).toBe(
+    fixture.schedule.calendar.source,
+  );
+  expect(calendarLink.textContent).toBe(fixture.schedule.calendar.source);
+  expect(within(calendarSource).queryByRole("button")).toBeNull();
   fireEvent.click(button("启动"));
-  expect(writes).toHaveLength(0);
-  fireEvent.click(button("取消"));
-  expect(writes).toHaveLength(0);
-  fireEvent.click(button("启动"));
-  fireEvent.click(button("确认启动GDP策略"));
   await flush();
   expect(writes).toEqual([{ enabled: true }]);
+  expect(screen.queryByRole("button", { name: "确认启动GDP策略" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "取消" })).toBeNull();
+  expect(screen.queryByText(/确认允许按季度/)).toBeNull();
+  fireEvent.click(button("暂停"));
+  await flush();
+  expect(writes).toEqual([{ enabled: true }, { enabled: false }]);
   const heartbeat = screen.getByText("最近心跳（北京时间）").parentElement!;
   expect(heartbeat.textContent).toContain("未记录");
   expect(screen.getByText("后台进程").parentElement!.textContent).toContain(
@@ -409,7 +417,7 @@ it("includes GDP in the common execution list and opens its own detail with sche
   await screen.findByText("执行详情");
   expect(table.textContent).toContain("GDP与增长 · 自动阶段 · 当期采集");
   expect(screen.getByText("关联资产").parentElement!.textContent).toContain(
-    "GDP与增长",
+    "美国 GDP 与增长",
   );
   expect(screen.getByLabelText("GDP季度回读覆盖")).toBeTruthy();
 });
@@ -438,7 +446,7 @@ it("adds GDP beside an existing family in the common strategy table", async () =
     screen.getByRole("region", { name: "周期任务" }),
   ).getByRole("table");
   expect(table.textContent).toContain("美国 CPI");
-  expect(table.textContent).toContain("美国 GDP与增长");
+  expect(table.textContent).toContain("美国 GDP 与增长");
 });
 
 it("keeps current upstream opt-in, URL preview, raw result and historical local mode consistent", async () => {
@@ -638,7 +646,7 @@ it("includes GDP in the shared workbench periodic list when the host is availabl
   expect(
     within(screen.getByRole("region", { name: "周期任务" })).getByRole("table")
       .textContent,
-  ).toContain("美国 GDP与增长");
+  ).toContain("美国 GDP 与增长");
   expect(paths.every((path) => path.startsWith(profile.basePath))).toBe(true);
 });
 
@@ -725,4 +733,87 @@ it("clears upstream consent when source permission is revoked and requires a fre
     />,
   );
   expect(toggle().checked).toBe(false);
+});
+
+it.each(["denied", "unverified"])(
+  "keeps GDP strategy blocked when collection is %s",
+  async (mode) => {
+    const writes: unknown[] = [];
+    render(
+      <CpiStrategyWorkbench
+        profile={profile}
+        availability={{
+          ...availability,
+          failure: mode === "unverified" ? "unavailable" : null,
+          data: {
+            ...nativeStatus,
+            web_capabilities: {
+              ...nativeStatus.web_capabilities,
+              collect: mode !== "denied",
+            },
+          },
+        }}
+        transport={async (path, init) => {
+          if (init?.method === "PUT") writes.push(init.body);
+          return response(
+            String(path).endsWith("/schedule")
+              ? fixture.schedule
+              : fixture.strategy,
+          );
+        }}
+      />,
+    );
+    await flush();
+    expect(button("启动").disabled).toBe(true);
+    fireEvent.click(button("启动"));
+    expect(writes).toEqual([]);
+  },
+);
+
+it("keeps a GDP save locked while pending and reconciles a lost receipt by GET without another PUT", async () => {
+  vi.useFakeTimers();
+  let release!: () => void;
+  let failedRead = false;
+  let enabled = false;
+  const writes: unknown[] = [];
+  render(
+    <CpiStrategyWorkbench
+      profile={profile}
+      availability={availability}
+      transport={async (path, init) => {
+        if (String(path).endsWith("/schedule"))
+          return response(fixture.schedule);
+        if (init?.method === "PUT") {
+          writes.push(JSON.parse(String(init.body)));
+          enabled = true;
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          failedRead = true;
+          throw new TypeError("synthetic_lost_receipt");
+        }
+        if (failedRead) return response({}, 503);
+        return response({
+          ...fixture.strategy,
+          exists: true,
+          enabled,
+          state: enabled ? "enabled" : "paused",
+        });
+      }}
+    />,
+  );
+  await flush();
+  fireEvent.click(button("启动"));
+  expect(button("保存中…").disabled).toBe(true);
+  fireEvent.click(button("保存中…"));
+  expect(writes).toEqual([{ enabled: true }]);
+  await act(async () => release());
+  expect(screen.getByText(/策略保存结果未知/)).toBeTruthy();
+  expect(button("启动").disabled).toBe(true);
+  failedRead = false;
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  expect(button("暂停").disabled).toBe(false);
+  expect(writes).toHaveLength(1);
 });

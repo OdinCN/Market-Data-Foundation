@@ -297,7 +297,6 @@ function useStrategyControl(
 ) {
   const [saving, setSaving] = useState(false);
   const [uncertain, setUncertain] = useState(false);
-  const [confirmEnable, setConfirmEnable] = useState(false);
   const writing = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -329,11 +328,6 @@ function useStrategyControl(
           (profile.id === "gdp" && !!availability.failure)))
     )
       return;
-    if (profile.id === "gdp" && !data.enabled && !confirmEnable) {
-      setConfirmEnable(true);
-      return;
-    }
-    setConfirmEnable(false);
     writing.current = true;
     resource.invalidate();
     setSaving(true);
@@ -362,8 +356,6 @@ function useStrategyControl(
     data,
     saving,
     uncertain,
-    confirmEnable,
-    setConfirmEnable,
     toggle,
   };
 }
@@ -660,29 +652,8 @@ function CpiStrategyWorkbenchContent({
                     void e.toggle();
                   }}
                 >
-                  {e.saving
-                    ? "保存中…"
-                    : e.data?.enabled
-                      ? "暂停"
-                      : e.confirmEnable
-                        ? "确认启动GDP策略"
-                        : "启动"}
+                  {e.saving ? "保存中…" : e.data?.enabled ? "暂停" : "启动"}
                 </button>
-                {e.confirmEnable && (
-                  <>
-                    <span>
-                      确认允许按季度及官方估计计划采集到开发测试库。启动策略不会启动后台进程。
-                    </span>
-                    <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        e.setConfirmEnable(false);
-                      }}
-                    >
-                      取消
-                    </button>
-                  </>
-                )}
                 {!e.availability.data?.web_capabilities.collect &&
                   e.availability.data?.web_capabilities.reason && (
                     <span>
@@ -759,23 +730,12 @@ function CpiStrategyWorkbenchContent({
             {refresh?.refresh_mode && (
               <dl>
                 <Fact name="当前日历入口">
-                  {refresh.source && quarterly ? (
-                    <>
-                      <CodeBlock
-                        text={refresh.source}
-                        label="日历来源URL"
-                        copyLabel="复制日历来源URL"
-                      />
-                      <a href={refresh.source} target="_blank" rel="noreferrer">
-                        打开官方日历
-                      </a>
-                    </>
-                  ) : refresh.source ? (
+                  {refresh.source ? (
                     <a
                       href={refresh.source}
                       target="_blank"
                       rel="noreferrer"
-                      style={{ overflowWrap: "anywhere" }}
+                      className="calendar-source-link"
                     >
                       {refresh.source}
                     </a>
@@ -1028,7 +988,11 @@ function CpiStrategyWorkbenchContent({
                           </time>
                         </p>
                         <ResultFacts
-                          result={target.history?.result ?? target.history}
+                          result={
+                            quarterly
+                              ? target.history?.result
+                              : (target.history?.result ?? target.history)
+                          }
                         />
                         {quarterly ? (
                           <GdpCollectionDetails

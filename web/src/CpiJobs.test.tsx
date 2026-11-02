@@ -279,7 +279,7 @@ it("preserves exact manual target through lost durable receipt, explicit resubmi
   });
   expect(api.effects).toEqual({ source: 1, raw: 1, jobs: 1 });
   fireEvent.click(screen.getByRole("button", { name: "查看关联资产 →" }));
-  await screen.findByRole("heading", { name: "CPI · 四项核心指标" });
+  await screen.findByRole("heading", { name: "美国 CPI" });
   const read = await screen.findByRole("button", { name: "读取本地数据" });
   await waitFor(() => expect((read as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(read);
@@ -408,7 +408,7 @@ it.each([
     expect((screen.getByLabelText("采集目标") as HTMLSelectElement).value).toBe(
       hasAsset ? keyOf(CPI) : "",
     );
-    if (hasAsset) expect(summary.getByText("CPI · 四项核心指标")).toBeTruthy();
+    if (hasAsset) expect(summary.getByText("美国 CPI")).toBeTruthy();
     else expect(screen.getByText(/关联对象缺失或身份冲突/)).toBeTruthy();
     const source = screen.getByLabelText("关联数据源 / Operation");
     if (invalid === "unsupported operation") {
