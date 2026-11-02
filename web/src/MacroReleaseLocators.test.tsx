@@ -30,8 +30,8 @@ it("renders real PPI table locators and Chinese labels without undefined spans, 
   expect(table.textContent).not.toContain("undefined");
   expect(table.textContent).not.toContain("材料段落");
   expect(table.textContent).toContain("WPSFD4");
-  fireEvent.click(screen.getByRole("button", { name: "实际响应" }));
-  expect(screen.getByLabelText("发布记录实际HTTP正文").textContent).toBe(wire);
+  fireEvent.click(screen.getByRole("tab", { name: "原始响应" }));
+  expect(screen.getByLabelText("原始 HTTP 正文").textContent).toBe(wire);
 });
 
 it("preserves unknown source-version basis", async () => {

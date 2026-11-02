@@ -1598,6 +1598,8 @@ class ReleaseRecords:
                     links.append(
                         dict(
                             event_id=event["event_id"],
+                            source_version=dict(event["source_version"]),
+                            roles=sorted({c["role"] for c in claims}),
                             evidence_ids=list(
                                 dict.fromkeys(c["evidence_id"] for c in claims)
                             ),

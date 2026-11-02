@@ -86,7 +86,11 @@ def test_revisions_content_only_and_raw_lineage():
     assert store.save_batch("three", batch(table, observed=AT + timedelta(days=2))) == 1
     assert store.last_write_counts == (0, 1)
     assert store.status() == dict(
-        batch_count=3, observation_count=79, revision_count=1, latest_month="2026-09"
+        batch_count=3,
+        observation_count=79,
+        revision_count=1,
+        latest_month="2026-09",
+        latest_months=dict.fromkeys(("headline", "control", "ex_auto"), "2026-09"),
     )
     version = store.read_range("2026-09", "2026-09")["2026-09", "441", "SM"]
     assert version.cell.source_pointer and version.cell.raw_sha256
@@ -156,6 +160,11 @@ def test_null_suppressed_missing_and_zero(marker, status):
     target(table, "2026-08")[table[0].index("cell_value")] = "0"
     svc = service()
     svc.store.save_batch("one", batch(table))
+    assert svc.store.status()["latest_months"] == {
+        "headline": "2026-09",
+        "control": "2026-08",
+        "ex_auto": "2026-08",
+    }
     point = svc.query_range("2026-09", "2026-09", local_only=True)["points"][0]
     operand = next(c for c in point["source_cells"] if c["category_code"] == "441")
     assert operand["status"] == status

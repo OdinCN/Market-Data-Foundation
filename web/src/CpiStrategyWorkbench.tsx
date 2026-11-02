@@ -1,3 +1,4 @@
+import { macroAssetLabel } from "./macroTimeSeriesProfile";
 import { MacroSourceCoverage, coverageEvidence } from "./MacroSourceCoverage";
 import {
   CPI_PROFILE,
@@ -7,7 +8,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
 import { formatBeijingTime } from "./beijingTime";
-import { releaseLink, releaseReasonText } from "./macroReleaseLinks";
+import { releaseLink, releaseReasonTexts } from "./macroReleaseLinks";
 import { Fact, WorkflowTable } from "./WorkflowTable";
 import { useVisiblePolling } from "./useVisiblePolling";
 import {
@@ -201,8 +202,8 @@ export function CpiExecutionDetail({
               ? "材料已留存；支持范围见事件详情"
               : "材料尚未完整确认；连续数值结果另列"}
           </p>
-          {material.reasons?.map((reason) => (
-            <p key={reason}>{releaseReasonText(reason)}</p>
+          {releaseReasonTexts(material.reasons).map((reason) => (
+            <p key={reason}>{reason}</p>
           ))}
           {material.event_ids?.map((id, i) => (
             <p key={id}>
@@ -215,7 +216,7 @@ export function CpiExecutionDetail({
       )}
       <dl>
         <Fact name="记录编号">{e.id}</Fact>
-        <Fact name="关联资产">美国 {profile.label}</Fact>
+        <Fact name="关联资产">{macroAssetLabel(profile)}</Fact>
         <Fact name="来源">
           {e.origin === "automatic"
             ? "自动策略 · 最近真实执行摘要"
@@ -543,10 +544,10 @@ function CpiStrategyWorkbenchContent({
           .filter((e) => e.visible)
           .map((e) => ({
             id: `${e.profile.id}-auto`,
-            search: `美国 ${e.profile.label} 官方发布自动采集`,
+            search: `${macroAssetLabel(e.profile)} 官方发布自动采集`,
             cells: [
               "官方发布自动采集",
-              `美国 ${e.profile.label}`,
+              macroAssetLabel(e.profile),
               e.data
                 ? e.data.exists
                   ? cpiStateText(
@@ -586,8 +587,11 @@ function CpiStrategyWorkbenchContent({
         {shown && detailVisible && data && (
           <>
             <h3>{profile.label} 策略详情</h3>
-            <p>{profileScopeText(profile)}</p>
-            {profile.historyNotice && <p>{profile.historyNotice}</p>}
+            <details>
+              <summary>口径与采集说明</summary>
+              <p>{profileScopeText(profile)}</p>
+              {profile.historyNotice && <p>{profile.historyNotice}</p>}
+            </details>
             <dl>
               <Fact name="策略状态">
                 {data.exists

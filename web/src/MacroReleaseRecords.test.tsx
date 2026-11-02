@@ -1,5 +1,6 @@
 import { afterEach, expect, it } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -15,6 +16,7 @@ import {
   PPI_PROFILE,
   PCE_PROFILE,
   RETAIL_PROFILE,
+  CONSUMPTION_PROFILE,
 } from "./macroTimeSeriesProfile";
 import type { Transport } from "./api";
 afterEach(() => {
@@ -63,8 +65,8 @@ it("renders actual HTTP archive claims, revision roles, date precision and raw w
   expect(values.textContent).toContain("38 千岗位");
   expect(detail.textContent).toContain("预期差未计算");
   const raw = f.text();
-  fireEvent.click(screen.getByRole("button", { name: "实际响应" }));
-  expect(screen.getByLabelText("发布记录实际HTTP正文").textContent).toBe(raw);
+  fireEvent.click(screen.getByRole("tab", { name: "原始响应" }));
+  expect(screen.getByLabelText("原始 HTTP 正文").textContent).toBe(raw);
   expect(f.bridge.effects.source).toBe(0);
 });
 
@@ -132,11 +134,73 @@ it.each([
       expect(values.textContent).toContain("原文：745.0 十亿美元");
     }
     const raw = f.text();
-    fireEvent.click(screen.getByRole("button", { name: "实际响应" }));
-    expect(screen.getByLabelText("发布记录实际HTTP正文").textContent).toBe(raw);
-    expect(
-      screen.getByRole("button", { name: "复制发布记录原始响应" }),
-    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "原始响应" }));
+    expect(screen.getByLabelText("原始 HTTP 正文").textContent).toBe(raw);
+    expect(screen.getByRole("button", { name: "复制原始响应" })).toBeTruthy();
     expect(f.bridge.effects.source).toBe(0);
   },
 );
+
+it.each([
+  CPI_PROFILE,
+  PPI_PROFILE,
+  PCE_PROFILE,
+  profile,
+  RETAIL_PROFILE,
+  CONSUMPTION_PROFILE,
+])(
+  "$label release failures retain exact HTTP evidence with the shared response controls",
+  async (selectedProfile) => {
+    const body =
+      '\n { "classification": "local_read_not_authorized", "extra": 9007199254740993 }\n';
+    const transport: Transport = async () =>
+      new Response(body, { status: 403 });
+    render(
+      <MacroReleaseRecords profile={selectedProfile} transport={transport} />,
+    );
+    await screen.findByRole("alert");
+    const exchange = screen.getByRole("region", { name: "本次原始响应" });
+    expect(exchange.textContent).toContain("403");
+    expect(exchange.textContent).toContain("耗时");
+    expect(exchange.textContent).toContain("完成时间");
+    fireEvent.click(screen.getByRole("tab", { name: "原始响应" }));
+    expect(screen.getByLabelText("原始 HTTP 正文").textContent).toBe(body);
+    expect(screen.getByLabelText("本次请求 URL").textContent).toContain(
+      selectedProfile.basePath + "/releases?",
+    );
+    expect(screen.queryByRole("table", { name: "发布事件列表" })).toBeNull();
+  },
+);
+
+it("ignores a previous profile's late release response", async () => {
+  let finish!: (value: Response) => void;
+  const transport: Transport = async (path) => {
+    if (String(path).includes("/cpi/"))
+      return new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    return new Response(
+      JSON.stringify({
+        events: [],
+        missing: [],
+        as_of_basis: "available",
+        provider_requests: 0,
+      }),
+      { status: 200 },
+    );
+  };
+  const view = render(
+    <MacroReleaseRecords profile={CPI_PROFILE} transport={transport} />,
+  );
+  view.rerender(
+    <MacroReleaseRecords profile={CONSUMPTION_PROFILE} transport={transport} />,
+  );
+  await screen.findByRole("table", { name: "发布事件列表" });
+  await act(async () =>
+    finish(new Response("old CPI failure", { status: 502 })),
+  );
+  expect(screen.getByLabelText("本次请求 URL").textContent).toContain(
+    "/consumption/",
+  );
+  expect(screen.queryByRole("alert")).toBeNull();
+});

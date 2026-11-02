@@ -144,9 +144,7 @@ class RetailContinuousHost:
             "host_binding": "retail-continuous-dev-r1",
             "legacy_snapshot_is_runtime_evidence": False,
             "source_qualified": False,
-            "latest_months": {
-                s: result["latest_month"] for s in ("headline", "control")
-            },
+            "latest_months": result["latest_months"],
             "initialization": {
                 "preset_id": "retail_previous_month_240",
                 "months": 240,

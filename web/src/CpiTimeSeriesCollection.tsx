@@ -1,6 +1,8 @@
+import { macroAssetLabel } from "./macroTimeSeriesProfile";
 import {
   CPI_PROFILE,
   profileScopeText,
+  initializationAnchorText,
   type MacroProfile,
 } from "./macroTimeSeriesProfile";
 import { DateField } from "./DateField";
@@ -395,13 +397,17 @@ function CpiTimeSeriesCollectionContent({
     >
       <h3>{profile.label} 受控采集</h3>
       <CpiAvailabilityNotice profile={profile} availability={availability} />
-      {profile.historyNotice && (
-        <p className="small">{profile.historyNotice}</p>
-      )}
       <p>
-        {profileScopeText(profile)}
-        一起采集。长范围由后端自动分批，无需手动拆分。
+        共 {profile.series.length}{" "}
+        种口径一起采集。长范围由后端自动分批，无需手动拆分。
       </p>
+      <details>
+        <summary>口径与采集说明</summary>
+        <p>{profileScopeText(profile)}</p>
+        {profile.historyNotice && (
+          <p className="small">{profile.historyNotice}</p>
+        )}
+      </details>
       {maxMonths != null && (
         <p className="small">当前主机每次允许最多 {maxMonths} 个月。</p>
       )}
@@ -456,9 +462,15 @@ function CpiTimeSeriesCollectionContent({
               </p>
             )}
             {initializing && preset?.available && (
-              <p>
-                服务预置月份：{preset.start} 至 {preset.end}
-              </p>
+              <>
+                <p>
+                  服务预置月份：{preset.start} 至 {preset.end}
+                </p>
+                <p className="small">
+                  范围依据：{initializationAnchorText(preset.anchor_basis)}
+                  。实际覆盖以采集回读为准。
+                </p>
+              </>
             )}
             {initializing && !preset?.available && (
               <p role="status">
@@ -503,7 +515,7 @@ function CpiTimeSeriesCollectionContent({
               <li>
                 <div className="execution-brief-card" role="status">
                   <strong>
-                    美国 {profile.label} · {cpiActionText(intent.action)}
+                    {macroAssetLabel(profile)} · {cpiActionText(intent.action)}
                   </strong>
                   <dl>
                     <div>
@@ -540,7 +552,7 @@ function CpiTimeSeriesCollectionContent({
                   onClick={() => onExecution?.(job.job_id)}
                 >
                   <strong>
-                    美国 {profile.label} · {cpiActionText(job.action)}
+                    {macroAssetLabel(profile)} · {cpiActionText(job.action)}
                   </strong>
                   <dl>
                     <div>

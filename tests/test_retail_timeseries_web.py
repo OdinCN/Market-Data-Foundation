@@ -104,6 +104,9 @@ def test_shared_get_and_factory_never_materialize_write_ports(tmp_path, monkeypa
         assert status.json()["host_binding"] == "retail-continuous-dev-r1"
         assert status.json()["initialization"]["months"] == 240
         assert status.json()["source_qualified"] is False
+        assert status.json()["latest_months"] == dict.fromkeys(
+            ("headline", "control", "ex_auto")
+        )
         assert http.get(PREFIX + "/api-help").status_code == 200
         response = http.get(PREFIX + "/query?start=2026-08&end=2026-09&local_only=true")
         assert response.status_code == 200
@@ -471,3 +474,30 @@ def test_query_projects_calendar_for_past_and_empty_future_months_read_only(
     data.save_batch.assert_not_called()
     data.ensure_schema.assert_not_called()
     assert "write" not in calls
+
+
+def test_status_reports_each_basket_only_when_its_inputs_exist(tmp_path, monkeypatch):
+    from tests.test_census_retail_timeseries import payload, snapshot
+
+    app, runtime, data, wire, calls = retail(tmp_path, monkeypatch)
+    batch = snapshot(payload("2026-08", "2026-09"), "2026-08", "2026-09").batches[0]
+    data.save_batch("status-inputs", batch)
+    with client(app) as http:
+        assert http.get(PREFIX + "/status").json()["latest_months"] == {
+            "headline": "2026-09",
+            "control": "2026-09",
+            "ex_auto": "2026-09",
+        }
+        del data.revisions[("2026-09", "444", "SM")]
+        assert http.get(PREFIX + "/status").json()["latest_months"] == {
+            "headline": "2026-09",
+            "control": "2026-08",
+            "ex_auto": "2026-09",
+        }
+        del data.revisions[("2026-09", "441", "SM")]
+        assert http.get(PREFIX + "/status").json()["latest_months"] == {
+            "headline": "2026-09",
+            "control": "2026-08",
+            "ex_auto": "2026-08",
+        }
+    assert "write" not in calls and not wire.calls

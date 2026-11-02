@@ -1,3 +1,4 @@
+import { macroAssetLabel } from "./macroTimeSeriesProfile";
 import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import { useState, type ReactNode } from "react";
 import type { Packages, RuntimeRevision } from "./packageApi";
@@ -344,7 +345,7 @@ export function RuntimeAssets({
       {cpiSelected && !selected && (
         <section>
           <div className="toolbar cpi-asset-title">
-            <h3>美国 {profile.label}</h3>
+            <h3>{macroAssetLabel(profile)}</h3>
             {cpiAction}
           </div>
           {cpi}

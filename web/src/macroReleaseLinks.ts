@@ -44,6 +44,12 @@ export const releaseReasonText = (reason: string): string =>
       "所选材料未提供剔除食品和能源的最终需求核心篮子",
     ppi_index_not_in_selected_material: "所选材料未提供这些篮子的指数水平",
     pce_index_not_in_release_html: "发布网页未提供价格指数水平",
+    native_money_levels_not_in_release_html:
+      "发布网页未提供金额水平，连续金额序列另列",
+    real_goods_services_not_in_release_html:
+      "发布网页未提供实际商品及服务消费的完整口径",
+    historical_comparisons_xlsx_is_not_vintage_revision_table:
+      "历史比较表不构成历史版本修订证据",
     official_previous_requires_separate_prior_event_material:
       "官方原前值需查阅独立的上次发布材料",
     employment_sector_levels_not_in_summary_B_changes_table:
@@ -65,3 +71,7 @@ export const releaseReasonText = (reason: string): string =>
     release_material_transport_or_storage_failed:
       "发布材料取得或留存失败，数值结果另列",
   })[reason] ?? "该口径的材料、来源或时间证据尚不充分";
+
+export const releaseReasonTexts = (
+  reasons: readonly string[] = [],
+): string[] => [...new Set(reasons.map(releaseReasonText))];

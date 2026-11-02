@@ -456,6 +456,10 @@ def test_memory_current_history_and_projection_keep_batch_identity(tmp_path):
             point["related_release_events"][0]["association"]
             == "explicit_version_proof"
         )
+        link = point["related_release_events"][0]
+        assert link["source_version"]["precision"] == "date"
+        assert link["source_version"]["value"] == "2026-10-02"
+        assert link["roles"] == ["actual"]
         assert result["provider_requests"] == 0
 
 

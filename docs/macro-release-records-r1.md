@@ -115,3 +115,10 @@ Root 负责真实 PG/权限、DEV 原材料导入、运行进程、实际浏览�
 如需复核PPI短历史init，Root使用已留存两份SHA匹配响应与已有PG只读证据，不再发20年来源请求。
 Root正常环境的重点回归：`tests/test_macro_release_followup.py`（含标准ASGI批次/历史/列投影），
 以及`web/src/MacroResearchFields.test.tsx`、`MacroReleaseRecords.test.tsx`、`MacroReleaseLocators.test.tsx`。
+
+
+查询点的 related_release_events 另带 source_version（value / precision / basis / source）
+及 roles（匹配该参考月与口径的 claim 角色，可含 actual、prior_revised、official_previous），
+用于区分原公布和后续修订。它们来自已留存事件，不由事件编号或月份偏移推断。
+旧 event_id、evidence_ids、association、reason 字段与版本绑定规则不变；新增展示信息不构成版本证明。
+零售派生口径的关联仍是月份级材料相关性，不代表网页提供了该派生值。
