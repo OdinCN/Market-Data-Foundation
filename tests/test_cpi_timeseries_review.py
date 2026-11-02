@@ -1,6 +1,7 @@
 """Independent offline counterexamples for the CPI continuous-series delivery."""
 
 import json
+from contextlib import contextmanager
 from datetime import UTC, datetime
 
 import pytest
@@ -360,12 +361,25 @@ api_key = "'''
     class OfflineConnection:
         autocommit = True
         closed = False
+        in_transaction = False
 
         def __init__(self):
             self.statements = []
 
+        @contextmanager
+        def transaction(self):
+            assert not self.in_transaction
+            self.in_transaction = True
+            try:
+                yield
+            finally:
+                self.in_transaction = False
+
         def execute(self, sql, params=()):
             self.statements.append(sql)
+            if sql == "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY":
+                assert self.in_transaction
+                return OfflineCursor()
             assert sql.startswith("SELECT ")
             assert "pg_" in sql or ("r.index_value" in sql and ".batches b" in sql)
             return OfflineCursor()
@@ -381,6 +395,13 @@ api_key = "'''
         return connection
 
     transport = SyntheticYearsTransport()
+    original_post = transport.post
+
+    def post(*args, **kwargs):
+        assert all(not connection.in_transaction for connection in connections)
+        return original_post(*args, **kwargs)
+
+    monkeypatch.setattr(transport, "post", post)
     monkeypatch.setattr(psycopg, "connect", connect)
     monkeypatch.setattr(source, "ExactOneHttpsTransport", lambda: transport)
     packages_path = tmp_path / "packages"

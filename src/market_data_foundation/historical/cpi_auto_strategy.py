@@ -58,7 +58,7 @@ class CpiAutoStrategy:
             self.scheduler._validate_asset(value, "schedule_strategy_asset_mismatch")
             if value.get("version") != 1 or type(value.get("enabled")) is not bool:
                 raise ValueError
-            validate_month(value["history_start"])
+            self._validate_period(value["history_start"])
             self._validate_history_floor(value["history_start"])
             return value
         except CpiScheduleError:
@@ -76,7 +76,7 @@ class CpiAutoStrategy:
             try:
                 persisted = json.loads(self.scheduler.state_path.read_text())
                 self.scheduler._validate_asset(persisted)
-                baseline = validate_month(
+                baseline = self._validate_period(
                     persisted.get("history_start", self.scheduler.history_start)
                 )
                 self._validate_history_floor(baseline)
@@ -93,6 +93,9 @@ class CpiAutoStrategy:
         baseline = value["history_start"] if created else self.scheduler.history_start
         self.scheduler.history_start = baseline
         return baseline, bool(created)
+
+    def _validate_period(self, value):
+        return validate_month(value)
 
     def _validate_history_floor(self, month):
         earliest = self.scheduler.profile.earliest_month
@@ -128,7 +131,7 @@ class CpiAutoStrategy:
     def update(self, *, enabled, history_start):
         if type(enabled) is not bool:
             raise CpiScheduleError("schedule_strategy_enabled_invalid")
-        validate_month(history_start)
+        self._validate_period(history_start)
         self._validate_history_floor(history_start)
         with self._locked():
             value = self._read()

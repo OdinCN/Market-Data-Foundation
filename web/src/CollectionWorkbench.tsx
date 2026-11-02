@@ -1,5 +1,6 @@
 import { macroAssetLabel } from "./macroTimeSeriesProfile";
 import {
+  GDP_PROFILE,
   CPI_PROFILE,
   PPI_PROFILE,
   PCE_PROFILE,
@@ -26,6 +27,7 @@ import {
   type Execution,
   type Interface,
   type Plans,
+  GDP,
   CPI,
   PPI,
   PCE,
@@ -89,6 +91,7 @@ export function CollectionWorkbench({
   employmentAvailability,
   retailAvailability,
   consumptionAvailability,
+  gdpAvailability,
 }: {
   assets: Asset[];
   asset: Asset | undefined;
@@ -98,6 +101,7 @@ export function CollectionWorkbench({
   transport: Transport;
   generation: number;
   invalidIdentity: boolean;
+  gdpAvailability?: CpiAvailability;
   cpiAvailability?: CpiAvailability;
   ppiAvailability?: CpiAvailability;
   pceAvailability?: CpiAvailability;
@@ -199,52 +203,65 @@ export function CollectionWorkbench({
     (sameKey(asset?.key, CONSUMPTION) ||
       (route.fields.get("asset") === CONSUMPTION.identity &&
         route.fields.get("asset_revision") === CONSUMPTION.revision));
+  const gdpTarget =
+    !invalidIdentity &&
+    !route.fields.has("operation") &&
+    (sameKey(asset?.key, GDP) ||
+      (route.fields.get("asset") === GDP.identity &&
+        route.fields.get("asset_revision") === GDP.revision));
+  const newGdp = !!gdpAvailability?.data && !gdpAvailability.legacy;
   const newConsumption =
     !!consumptionAvailability?.data && !consumptionAvailability.legacy;
   const newRetail = !!retailAvailability?.data && !retailAvailability.legacy;
   const newEmployment =
     !!employmentAvailability?.data && !employmentAvailability.legacy;
-  const macroProfile = consumptionTarget
-    ? CONSUMPTION_PROFILE
-    : retailTarget
-      ? RETAIL_PROFILE
-      : employmentTarget
-        ? EMPLOYMENT_PROFILE
-        : pceTarget
-          ? PCE_PROFILE
-          : isPpi
-            ? PPI_PROFILE
-            : CPI_PROFILE;
-  const macroAvailability = consumptionTarget
-    ? consumptionAvailability
-    : retailTarget
-      ? retailAvailability
-      : employmentTarget
-        ? employmentAvailability
-        : pceTarget
-          ? pceAvailability
-          : isPpi
-            ? ppiAvailability
-            : cpiAvailability;
+  const macroProfile = gdpTarget
+    ? GDP_PROFILE
+    : consumptionTarget
+      ? CONSUMPTION_PROFILE
+      : retailTarget
+        ? RETAIL_PROFILE
+        : employmentTarget
+          ? EMPLOYMENT_PROFILE
+          : pceTarget
+            ? PCE_PROFILE
+            : isPpi
+              ? PPI_PROFILE
+              : CPI_PROFILE;
+  const macroAvailability = gdpTarget
+    ? gdpAvailability
+    : consumptionTarget
+      ? consumptionAvailability
+      : retailTarget
+        ? retailAvailability
+        : employmentTarget
+          ? employmentAvailability
+          : pceTarget
+            ? pceAvailability
+            : isPpi
+              ? ppiAvailability
+              : cpiAvailability;
   const newPpi =
     !!ppiAvailability && !ppiAvailability.legacy && !!ppiAvailability.data;
   const newPce =
     !!pceAvailability && !pceAvailability.legacy && !!pceAvailability.data;
-  const newMacro = consumptionTarget
-    ? !!consumptionAvailability && !consumptionAvailability.legacy
-    : retailTarget
-      ? !!retailAvailability && !retailAvailability.legacy
-      : employmentTarget
-        ? !!employmentAvailability && !employmentAvailability.legacy
-        : pceTarget
-          ? !!pceAvailability &&
-            !pceAvailability.legacy &&
-            (!!pceAvailability.data || !!pceAvailability.failure)
-          : isPpi
-            ? !!ppiAvailability
-            : !!cpiAvailability &&
-              !cpiAvailability.legacy &&
-              (!!cpiAvailability.data || !!cpiAvailability.failure);
+  const newMacro = gdpTarget
+    ? !!gdpAvailability && !gdpAvailability.legacy
+    : consumptionTarget
+      ? !!consumptionAvailability && !consumptionAvailability.legacy
+      : retailTarget
+        ? !!retailAvailability && !retailAvailability.legacy
+        : employmentTarget
+          ? !!employmentAvailability && !employmentAvailability.legacy
+          : pceTarget
+            ? !!pceAvailability &&
+              !pceAvailability.legacy &&
+              (!!pceAvailability.data || !!pceAvailability.failure)
+            : isPpi
+              ? !!ppiAvailability
+              : !!cpiAvailability &&
+                !cpiAvailability.legacy &&
+                (!!cpiAvailability.data || !!cpiAvailability.failure);
   const macroPending =
     !!macroAvailability &&
     !macroAvailability.legacy &&
@@ -265,6 +282,7 @@ export function CollectionWorkbench({
   const filter = route.fields.get(filterField) ?? "all";
   const executionSchedule = route.fields.get("execution_schedule") ?? "all";
   const readRecords =
+    !gdpTarget &&
     !isPpi &&
     (!pceTarget || (tab !== "new" && filter !== keyOf(PCE))) &&
     (!cpiAvailability || cpiAvailability.legacy) &&
@@ -376,7 +394,7 @@ export function CollectionWorkbench({
       !invalidIdentity &&
       (filter === "all" ||
         filter === keyOf(CPI) ||
-        (!!route.fields.get("job") && !isPpi && !pceTarget)),
+        (!!route.fields.get("job") && !isPpi && !pceTarget && !gdpTarget)),
   );
   const ppiRecords = useVisiblePolling(
     (signal) => readCpiExecutions(transport, signal, PPI_PROFILE),
@@ -418,7 +436,23 @@ export function CollectionWorkbench({
       !invalidIdentity &&
       (filter === "all" || filter === keyOf(CONSUMPTION) || consumptionTarget),
   );
+  const gdpRecords = useVisiblePolling(
+    (signal) => readCpiExecutions(transport, signal, GDP_PROFILE),
+    [transport, generation, GDP_PROFILE.id],
+    newGdp &&
+      tab === "executions" &&
+      !invalidIdentity &&
+      (filter === "all" || filter === keyOf(GDP) || gdpTarget),
+  );
   const macroRecords = [
+    ...(executionSchedule === "all" &&
+    (filter === "all" || filter === keyOf(GDP))
+      ? (gdpRecords.data?.executions ?? []).map((e) => ({
+          ...e,
+          profile: GDP_PROFILE,
+          rowId: `gdp:${e.id}`,
+        }))
+      : []),
     ...(executionSchedule === "all" &&
     (filter === "all" || filter === keyOf(CONSUMPTION))
       ? (consumptionRecords.data?.executions ?? []).map((e) => ({
@@ -490,6 +524,14 @@ export function CollectionWorkbench({
     operation: HISTORY_OPERATION,
   };
   function recordState(kind: "plans" | "jobs") {
+    if (filter === keyOf(GDP))
+      return gdpRecords.failure
+        ? "GDP执行记录读取失败，当前记录尚未核实。"
+        : gdpRecords.busy
+          ? "正在读取GDP执行记录…"
+          : !newGdp
+            ? "GDP服务状态尚未核实，执行记录尚未查询。"
+            : "当前已查询范围没有GDP执行记录。";
     if (filter === keyOf(EMPLOYMENT))
       return employmentRecords.failure
         ? "就业执行记录读取失败。"
@@ -976,23 +1018,29 @@ export function CollectionWorkbench({
               }
             >
               <option value="all">全部资产</option>
+              {!assets.some((a) => sameKey(a.key, GDP)) && (
+                <option value={keyOf(GDP)}>{assetTitle(GDP)}</option>
+              )}
               {!assets.some((a) => sameKey(a.key, EMPLOYMENT)) &&
                 newEmployment && (
-                  <option value={keyOf(EMPLOYMENT)}>美国就业</option>
+                  <option value={keyOf(EMPLOYMENT)}>
+                    {assetTitle(EMPLOYMENT)}
+                  </option>
                 )}
               {!assets.some((a) => sameKey(a.key, PPI)) && (
-                <option value={keyOf(PPI)}>美国 PPI</option>
+                <option value={keyOf(PPI)}>{assetTitle(PPI)}</option>
               )}
               {!assets.some((a) => sameKey(a.key, PCE)) && (
-                <option value={keyOf(PCE)}>美国 PCE</option>
+                <option value={keyOf(PCE)}>{assetTitle(PCE)}</option>
               )}
               {assets.map((a) => (
                 <option key={keyOf(a.key)} value={keyOf(a.key)}>
-                  {sameKey(a.key, CPI) ? "CPI · 消费者价格指数" : a.label}
+                  {assetTitle(a.key)}
                 </option>
               ))}
               {filter !== "all" &&
                 !assets.some((a) => keyOf(a.key) === filter) &&
+                filter !== keyOf(GDP) &&
                 filter !== keyOf(PPI) &&
                 filter !== keyOf(PCE) &&
                 !(filter === keyOf(EMPLOYMENT) && newEmployment) && (
@@ -1033,9 +1081,11 @@ export function CollectionWorkbench({
         pceRecords.failure ||
         employmentRecords.failure ||
         retailRecords.failure ||
-        consumptionRecords.failure) && (
+        consumptionRecords.failure ||
+        gdpRecords.failure) && (
         <div role="alert">
           采集记录已陈旧，保留上次数据并自动重读。
+          {gdpRecords.failure && <p>GDP执行记录读取失败，当前结果尚未核实。</p>}
           {ppiRecords.failure && (
             <p>PPI 执行记录读取失败，当前记录尚未核实。</p>
           )}
@@ -1060,7 +1110,8 @@ export function CollectionWorkbench({
         pceTarget ||
         employmentTarget ||
         retailTarget ||
-        consumptionTarget) ? (
+        consumptionTarget ||
+        gdpTarget) ? (
         <>
           <label>
             采集目标
@@ -1071,19 +1122,21 @@ export function CollectionWorkbench({
                   (a) => keyOf(a.key) === e.target.value,
                 );
                 const selectedKey =
-                  e.target.value === keyOf(CONSUMPTION)
-                    ? CONSUMPTION
-                    : e.target.value === keyOf(RETAIL)
-                      ? RETAIL
-                      : e.target.value === keyOf(EMPLOYMENT)
-                        ? EMPLOYMENT
-                        : e.target.value === keyOf(PCE)
-                          ? PCE
-                          : e.target.value === keyOf(PPI)
-                            ? PPI
-                            : e.target.value === keyOf(CPI)
-                              ? CPI
-                              : selected?.key;
+                  e.target.value === keyOf(GDP)
+                    ? GDP
+                    : e.target.value === keyOf(CONSUMPTION)
+                      ? CONSUMPTION
+                      : e.target.value === keyOf(RETAIL)
+                        ? RETAIL
+                        : e.target.value === keyOf(EMPLOYMENT)
+                          ? EMPLOYMENT
+                          : e.target.value === keyOf(PCE)
+                            ? PCE
+                            : e.target.value === keyOf(PPI)
+                              ? PPI
+                              : e.target.value === keyOf(CPI)
+                                ? CPI
+                                : selected?.key;
                 navigate("collection", {
                   asset: selectedKey?.identity ?? null,
                   asset_revision: selectedKey?.revision ?? null,
@@ -1092,6 +1145,10 @@ export function CollectionWorkbench({
                 });
               }}
             >
+              {!assets.some((a) => sameKey(a.key, GDP)) &&
+                macroProfile.id !== "gdp" && (
+                  <option value={keyOf(GDP)}>{assetTitle(GDP)}</option>
+                )}
               {!assets.some((a) => sameKey(a.key, macroProfile.asset)) && (
                 <option value={keyOf(macroProfile.asset)}>
                   {macroAssetLabel(macroProfile)}
@@ -1100,23 +1157,25 @@ export function CollectionWorkbench({
               {!assets.some((a) => sameKey(a.key, EMPLOYMENT)) &&
                 macroProfile.id !== "employment" &&
                 newEmployment && (
-                  <option value={keyOf(EMPLOYMENT)}>美国就业</option>
+                  <option value={keyOf(EMPLOYMENT)}>
+                    {assetTitle(EMPLOYMENT)}
+                  </option>
                 )}
               {!assets.some((a) => sameKey(a.key, CPI)) &&
                 macroProfile.id !== "cpi" && (
-                  <option value={keyOf(CPI)}>美国 CPI</option>
+                  <option value={keyOf(CPI)}>{assetTitle(CPI)}</option>
                 )}
               {!assets.some((a) => sameKey(a.key, PPI)) &&
                 macroProfile.id !== "ppi" && (
-                  <option value={keyOf(PPI)}>美国 PPI</option>
+                  <option value={keyOf(PPI)}>{assetTitle(PPI)}</option>
                 )}
               {!assets.some((a) => sameKey(a.key, PCE)) &&
                 macroProfile.id !== "pce" && (
-                  <option value={keyOf(PCE)}>美国 PCE</option>
+                  <option value={keyOf(PCE)}>{assetTitle(PCE)}</option>
                 )}
               {assets.map((a) => (
                 <option key={keyOf(a.key)} value={keyOf(a.key)}>
-                  {sameKey(a.key, CPI) ? "CPI · 消费者价格指数" : a.label}
+                  {assetTitle(a.key)}
                 </option>
               ))}
             </select>
@@ -1172,15 +1231,17 @@ export function CollectionWorkbench({
                       (a) => keyOf(a.key) === e.target.value,
                     );
                     const selectedKey =
-                      e.target.value === keyOf(EMPLOYMENT)
-                        ? EMPLOYMENT
-                        : e.target.value === keyOf(PCE)
-                          ? PCE
-                          : e.target.value === keyOf(PPI)
-                            ? PPI
-                            : e.target.value === keyOf(CPI)
-                              ? CPI
-                              : a?.key;
+                      e.target.value === keyOf(GDP)
+                        ? GDP
+                        : e.target.value === keyOf(EMPLOYMENT)
+                          ? EMPLOYMENT
+                          : e.target.value === keyOf(PCE)
+                            ? PCE
+                            : e.target.value === keyOf(PPI)
+                              ? PPI
+                              : e.target.value === keyOf(CPI)
+                                ? CPI
+                                : a?.key;
                     navigate("collection", {
                       asset: selectedKey?.identity ?? null,
                       asset_revision: selectedKey?.revision ?? null,
@@ -1190,21 +1251,26 @@ export function CollectionWorkbench({
                   }}
                 >
                   <option value="">选择一个已登记资产</option>
+                  {!assets.some((a) => sameKey(a.key, GDP)) && (
+                    <option value={keyOf(GDP)}>{assetTitle(GDP)}</option>
+                  )}
                   {!assets.some((a) => sameKey(a.key, EMPLOYMENT)) && (
-                    <option value={keyOf(EMPLOYMENT)}>美国就业</option>
+                    <option value={keyOf(EMPLOYMENT)}>
+                      {assetTitle(EMPLOYMENT)}
+                    </option>
                   )}
                   {!assets.some((a) => sameKey(a.key, CPI)) && (
-                    <option value={keyOf(CPI)}>美国 CPI</option>
+                    <option value={keyOf(CPI)}>{assetTitle(CPI)}</option>
                   )}
                   {!assets.some((a) => sameKey(a.key, PPI)) && (
-                    <option value={keyOf(PPI)}>美国 PPI</option>
+                    <option value={keyOf(PPI)}>{assetTitle(PPI)}</option>
                   )}
                   {!assets.some((a) => sameKey(a.key, PCE)) && (
-                    <option value={keyOf(PCE)}>美国 PCE</option>
+                    <option value={keyOf(PCE)}>{assetTitle(PCE)}</option>
                   )}
                   {assets.map((a) => (
                     <option key={keyOf(a.key)} value={keyOf(a.key)}>
-                      {sameKey(a.key, CPI) ? "CPI · 消费者价格指数" : a.label}
+                      {assetTitle(a.key)}
                     </option>
                   ))}
                 </select>
@@ -1518,10 +1584,21 @@ export function CollectionWorkbench({
           newEmployment ||
           newRetail ||
           newConsumption ||
+          newGdp ||
+          (filter === keyOf(GDP) && gdpAvailability) ||
           (filter === keyOf(RETAIL) && retailAvailability) ||
           (filter === keyOf(CONSUMPTION) && consumptionAvailability)) ? (
         <CpiStrategyWorkbench
           transport={transport}
+          seventhProfile={
+            (newGdp || gdpTarget || filter === keyOf(GDP)) && gdpAvailability
+              ? GDP_PROFILE
+              : undefined
+          }
+          seventhAvailability={gdpAvailability}
+          seventhVisible={
+            !invalidIdentity && (filter === "all" || filter === keyOf(GDP))
+          }
           availability={
             cpiAvailability ?? {
               data: null,
@@ -1673,7 +1750,8 @@ export function CollectionWorkbench({
             columns={["任务名称", "创建时间（北京时间）", "采集范围", "结果"]}
             pageSize={20}
             locateId={
-              (consumptionTarget ||
+              (gdpTarget ||
+                consumptionTarget ||
                 retailTarget ||
                 employmentTarget ||
                 isPpi ||
@@ -1715,9 +1793,9 @@ export function CollectionWorkbench({
               })),
               ...macroRecords.map((e) => ({
                 id: e.rowId,
-                search: `${e.id} ${macroAssetLabel(e.profile)} ${e.origin === "automatic" ? "自动策略" : "手动采集"} ${cpiActionText(e.origin === "automatic" ? (e.stage ?? e.action) : e.action)} ${e.start ?? ""} ${e.end ?? ""} ${cpiExecutionStateText(e.state, e.result, e.profile, e)}`,
+                search: `${e.id} ${macroAssetLabel(e.profile)} ${e.origin !== "manual" ? "自动策略" : "手动采集"} ${cpiActionText(e.origin !== "manual" ? (e.stage ?? e.action) : e.action)} ${e.start ?? ""} ${e.end ?? ""} ${cpiExecutionStateText(e.state, e.result, e.profile, e)}`,
                 cells: [
-                  `${e.profile.label} · ${e.origin === "automatic" ? "自动阶段 · " : ""}${cpiActionText(e.origin === "automatic" ? (e.stage ?? e.action) : e.action)}`,
+                  `${e.profile.label} · ${e.origin !== "manual" ? "自动阶段 · " : ""}${cpiActionText(e.origin !== "manual" ? (e.stage ?? e.action) : e.action)}`,
                   <ExecutionCreatedAt value={e.created_at} />,
                   <span className="execution-range">
                     <span>{e.start ?? "未记录"}</span>

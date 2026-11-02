@@ -15,6 +15,7 @@ from market_data_foundation.historical.cpi_timeseries_cli import (
 from market_data_foundation.web.cpi_pg_readonly_scope import DevReadIdentity
 from market_data_foundation.web.cpi_query import CpiQueryAccess
 from market_data_foundation.web.cpi_timeseries_host import TimeSeriesRuntime
+from market_data_foundation.web.gdp_runtime import GdpOptions
 from market_data_foundation.web.readonly_host import ReadonlySettings
 
 
@@ -22,9 +23,14 @@ def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--asset",
-        choices=("cpi", "ppi", "pce", "employment", "retail", "consumption"),
+        choices=("cpi", "ppi", "pce", "employment", "retail", "consumption", "gdp"),
         default="cpi",
     )
+    parser.add_argument("--opt-in-gdp-worker", action="store_true")
+    parser.add_argument("--gdp-schedule-path", type=Path)
+    parser.add_argument("--gdp-job-directory", type=Path)
+    parser.add_argument("--gdp-history-start")
+    parser.add_argument("--once", action="store_true", help="One bounded worker tick")
     parser.add_argument("--opt-in-cpi-worker", action="store_true")
     parser.add_argument("--opt-in-ppi-worker", action="store_true")
     parser.add_argument("--opt-in-pce-worker", action="store_true")
@@ -66,6 +72,10 @@ def build_runtime(args):
     if not getattr(args, f"opt_in_{args.asset}_worker"):
         raise ValueError(f"explicit_{args.asset}_worker_opt_in_required")
     paths = [args.schedule_path, args.job_directory]
+    if args.asset == "gdp":
+        if args.gdp_schedule_path is None or args.gdp_job_directory is None:
+            raise ValueError("gdp_independent_paths_required")
+        paths += [args.gdp_schedule_path, args.gdp_job_directory]
     ppi = args.asset == "ppi"
     pce = args.asset == "pce"
     retail = args.asset == "retail"
@@ -111,6 +121,15 @@ def build_runtime(args):
     )
     return TimeSeriesRuntime(
         settings,
+        gdp_options=GdpOptions(
+            args.gdp_schedule_path,
+            args.gdp_job_directory,
+            allow_read=True,
+            allow_collect=args.allow_collect,
+            history_start=args.gdp_history_start,
+        )
+        if args.asset == "gdp"
+        else None,
         schedule_path=args.schedule_path,
         job_directory=args.job_directory,
         history_start=args.history_start,
@@ -186,7 +205,9 @@ def main(argv=None):
         runtime = build_runtime(args)
         # Construction and heartbeat never create/enable a strategy or collect.
         # tick rereads persistent enabled; even paused workers remain observable.
-        if args.asset == "cpi":
+        if args.asset == "gdp":
+            host = runtime.gdp_timeseries
+        elif args.asset == "cpi":
             host = runtime.timeseries
         elif args.asset == "consumption":
             host = runtime.consumption_timeseries
@@ -198,6 +219,9 @@ def main(argv=None):
             host = runtime.employment_timeseries
         else:
             host = runtime.pce_timeseries
+        if args.once:
+            emit(host.auto_strategy.tick())
+            return 0
         run_worker(
             host.auto_strategy,
             poll_seconds=args.poll_seconds,

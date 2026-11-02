@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import type { Packages, RuntimeRevision } from "./packageApi";
 import type { Navigate, Route } from "./workflowRoute";
 import { Fact, WorkflowTable } from "./WorkflowTable";
-import { sameKey } from "./workflowModel";
+import { assetTitle, sameKey } from "./workflowModel";
 const eligible = (value: RuntimeRevision["local_read"]) =>
   value.allowed === true
     ? "允许"
@@ -55,7 +55,12 @@ export function RuntimeAssets({
       owners
         .flatMap((p) => p.capabilities)
         .find((c) => c.definition_ref.identity === identity)?.title ?? identity;
-    return { identity, owners, revisions, title };
+    return {
+      identity,
+      owners,
+      revisions,
+      title: assetTitle({ identity, revision: "" }, title),
+    };
   });
   const selected = rows.find((r) => r.identity === route.fields.get("asset"));
   const cpiSelected =
@@ -342,7 +347,7 @@ export function RuntimeAssets({
           </WorkflowTable>
         </>
       )}
-      {cpiSelected && !selected && (
+      {cpiSelected && !selected && !busy && (data || failure) && (
         <section>
           <div className="toolbar cpi-asset-title">
             <h3>{macroAssetLabel(profile)}</h3>

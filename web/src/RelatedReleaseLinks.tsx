@@ -5,6 +5,8 @@ import { formatBeijingTime } from "./beijingTime";
 
 const roles: Record<string, string> = {
   actual: "当期公布",
+  previous_estimate: "同季度前一次估计",
+  prior_original: "上季度修订前值",
   prior_revised: "后续修订",
   official_previous: "此前公布值",
 };
@@ -31,6 +33,7 @@ export function RelatedReleaseLinks({
                 : link.source_version?.precision === "instant"
                   ? formatBeijingTime(link.source_version.value)
                   : "查看发布事件"}
+              {link.estimate_kind && ` · ${link.estimate_kind}`}
               {!!link.roles?.length &&
                 " · " +
                   link.roles

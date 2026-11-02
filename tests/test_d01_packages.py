@@ -139,6 +139,11 @@ def test_real_identities_source_variants_and_other_code_catalog_are_preserved(tm
             "identity": "mdf.macro.bea.pce.headline-core",
             "revision": "t04-r1",
         }
+        assert refs["gdp"] == {
+            "identity": "mdf.macro.bea.gdp-growth",
+            "revision": "r1",
+        }
+        assert "gdp" not in macro["enabled_capability_ids"]
         cpi = next(
             a for a in macro["assets"] if a["identity"] == refs["cpi"]["identity"]
         )
@@ -155,7 +160,7 @@ def test_real_identities_source_variants_and_other_code_catalog_are_preserved(tm
         }
         directory = client.get("/api/r5/sources").json()
         assert directory["evidence_mode"] == "CODE_CONTRACTS_ONLY"
-        assert len(directory["entries"]) == 17
+        assert len(directory["entries"]) == 18
         assert (
             len(
                 {
@@ -164,7 +169,7 @@ def test_real_identities_source_variants_and_other_code_catalog_are_preserved(tm
                     if e["asset"]
                 }
             )
-            == 12
+            == 13
         )
 
 

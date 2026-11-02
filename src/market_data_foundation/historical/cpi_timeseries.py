@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+from contextlib import nullcontext
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
@@ -452,34 +453,39 @@ class CpiTimeSeriesService:
                 raise CpiTimeSeriesError(
                     "cpi_timeseries_restoration_expected_points_invalid"
                 )
-            with self.store.operation():
-                read_options = {"as_of": as_of}
-                if vintage_mode != "observed":
-                    read_options["vintage_mode"] = vintage_mode
-                local = self.store.read_range(series, buffer_start, end, **read_options)
-                indexed = {
-                    (p["series_id"], p["month"]): dict(p, origin="local") for p in local
-                }
-                if confirmed_current:
-                    confirmed = self.store.read_range(
-                        series, buffer_start, end, vintage_mode="available"
+            with self.store.operation() if persist else nullcontext():
+                # End the read transaction before any temporary source fetch.
+                with self.store.read_snapshot() if not persist else nullcontext():
+                    read_options = {"as_of": as_of}
+                    if vintage_mode != "observed":
+                        read_options["vintage_mode"] = vintage_mode
+                    local = self.store.read_range(
+                        series, buffer_start, end, **read_options
                     )
-                    indexed.update(
-                        {
-                            (p["series_id"], p["month"]): dict(p, origin="local")
-                            for p in confirmed
-                            if indexed.get((p["series_id"], p["month"]), {}).get(
-                                "availability"
-                            )
-                            != "withdrawn"
-                        }
-                    )
-                    for point in indexed.values():
-                        if (
-                            point.get("available_at") is None
-                            and point.get("availability") != "withdrawn"
-                        ):
-                            point["availability"] = "unknown"
+                    indexed = {
+                        (p["series_id"], p["month"]): dict(p, origin="local")
+                        for p in local
+                    }
+                    if confirmed_current:
+                        confirmed = self.store.read_range(
+                            series, buffer_start, end, vintage_mode="available"
+                        )
+                        indexed.update(
+                            {
+                                (p["series_id"], p["month"]): dict(p, origin="local")
+                                for p in confirmed
+                                if indexed.get((p["series_id"], p["month"]), {}).get(
+                                    "availability"
+                                )
+                                != "withdrawn"
+                            }
+                        )
+                        for point in indexed.values():
+                            if (
+                                point.get("available_at") is None
+                                and point.get("availability") != "withdrawn"
+                            ):
+                                point["availability"] = "unknown"
                 needed = {
                     (s, month)
                     for s in series
@@ -940,8 +946,7 @@ class CpiTimeSeriesService:
 
     def status(self):
         try:
-            with self.store.operation():
-                return self.store.status()
+            return self.store.status()
         except CpiStorageError as error:
             raise CpiTimeSeriesError(error.classification) from None
         except Exception:

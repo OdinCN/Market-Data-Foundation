@@ -1,4 +1,10 @@
-import { macroAssetLabel } from "./macroTimeSeriesProfile";
+import { CodeBlock } from "./CpiQueryDetails";
+import { quarterValid } from "./QuarterField";
+import {
+  GdpCollectionDetails,
+  gdpExecutionState,
+} from "./GdpCollectionDetails";
+import { macroAssetLabel, gdpEstimateText } from "./macroTimeSeriesProfile";
 import { MacroSourceCoverage, coverageEvidence } from "./MacroSourceCoverage";
 import {
   CPI_PROFILE,
@@ -49,6 +55,8 @@ const states: Record<string, string> = {
   unavailable: "不可用",
   disabled: "已暂停",
   waiting: "等待执行",
+  cancelled: "已取消",
+  pending_exhausted: "重试次数已耗尽",
 };
 export const cpiStateText = (value?: string | null) =>
   value ? (states[value] ?? "尚未核实") : "未记录";
@@ -58,6 +66,8 @@ export function cpiExecutionStateText(
   _profile: MacroProfile = CPI_PROFILE,
   scope: { start?: string | null; end?: string | null } = {},
 ) {
+  if (_profile.id === "gdp")
+    return gdpExecutionState(state, result) ?? cpiStateText(state);
   const { data, missing, absent, nulls } = coverageEvidence(result);
   if (!["complete", "succeeded"].includes(state ?? ""))
     return cpiStateText(state);
@@ -138,7 +148,12 @@ type Schedule = {
   calendar_error?: string | null;
   calendar_refresh_error?: string | null;
   targets: (Stage & {
-    reference_month: string;
+    reference_month?: string;
+    reference_quarter?: string;
+    estimate_kind?: string;
+    publication_status?: string;
+    calendar_validation?: string | null;
+    key?: string;
     calendar_execution_blocked?: boolean;
     release_at: string | null;
     target?: Stage;
@@ -231,13 +246,11 @@ export function CpiExecutionDetail({
         <Fact name="记录编号">{e.id}</Fact>
         <Fact name="关联资产">{macroAssetLabel(profile)}</Fact>
         <Fact name="来源">
-          {e.origin === "automatic"
-            ? "自动策略 · 最近真实执行摘要"
-            : "手动采集"}
+          {e.origin !== "manual" ? "自动策略 · 最近真实执行摘要" : "手动采集"}
         </Fact>
         <Fact name="采集方式">
           {cpiActionText(
-            e.origin === "automatic"
+            e.origin !== "manual"
               ? e.action === "withdraw"
                 ? "withdraw"
                 : (e.stage ?? e.action)
@@ -262,12 +275,16 @@ export function CpiExecutionDetail({
         {e.classification && <Fact name="结果分类">{e.classification}</Fact>}
       </dl>
       <ResultFacts result={e.result} />
-      <MacroSourceCoverage
-        key={e.id}
-        result={e.result}
-        start={e.start}
-        end={e.end}
-      />
+      {profile.id === "gdp" ? (
+        <GdpCollectionDetails result={e.result} />
+      ) : (
+        <MacroSourceCoverage
+          key={e.id}
+          result={e.result}
+          start={e.start}
+          end={e.end}
+        />
+      )}
     </>
   );
 }
@@ -306,7 +323,9 @@ function useStrategyControl(
       uncertain ||
       resource.busy ||
       resource.stale ||
-      (!data.enabled && !availability.data?.web_capabilities.collect)
+      (!data.enabled &&
+        (!availability.data?.web_capabilities.collect ||
+          (profile.id === "gdp" && !!availability.failure)))
     )
       return;
     writing.current = true;
@@ -332,7 +351,13 @@ function useStrategyControl(
   useEffect(() => {
     if (data) setUncertain(false);
   }, [data]);
-  return { resource, data, saving, uncertain, toggle };
+  return {
+    resource,
+    data,
+    saving,
+    uncertain,
+    toggle,
+  };
 }
 export function CpiStrategyWorkbench(
   props: Parameters<typeof CpiStrategyWorkbenchContent>[0],
@@ -365,6 +390,9 @@ function CpiStrategyWorkbenchContent({
   sixthProfile,
   sixthAvailability,
   sixthVisible = true,
+  seventhProfile,
+  seventhAvailability,
+  seventhVisible = true,
   selectedId,
   selected: selectedProp,
   onSelect,
@@ -379,6 +407,9 @@ function CpiStrategyWorkbenchContent({
   additionalProfile?: MacroProfile;
   additionalAvailability?: CpiAvailability;
   additionalVisible?: boolean;
+  seventhProfile?: MacroProfile;
+  seventhAvailability?: CpiAvailability;
+  seventhVisible?: boolean;
   sixthProfile?: MacroProfile;
   sixthAvailability?: CpiAvailability;
   sixthVisible?: boolean;
@@ -442,7 +473,24 @@ function CpiStrategyWorkbenchContent({
     sixthAvailability ?? emptyAvailability,
     !!sixthProfile && sixthVisible,
   );
+  const seventh = useStrategyControl(
+    transport,
+    generation,
+    seventhProfile ?? primaryProfile,
+    seventhAvailability ?? emptyAvailability,
+    !!seventhProfile && seventhVisible,
+  );
   const entries = [
+    ...(seventhProfile
+      ? [
+          {
+            profile: seventhProfile,
+            availability: seventhAvailability ?? emptyAvailability,
+            visible: seventhVisible,
+            ...seventh,
+          },
+        ]
+      : []),
     ...(sixthProfile
       ? [
           {
@@ -523,11 +571,25 @@ function CpiStrategyWorkbenchContent({
         !Array.isArray(value.targets)
       )
         throw new Error("schedule_unknown");
+      if (
+        profile.id === "gdp" &&
+        !value.targets.every(
+          (t) =>
+            quarterValid(t.reference_quarter) &&
+            typeof t.estimate_kind === "string" &&
+            typeof t.key === "string",
+        )
+      )
+        throw new Error("gdp_schedule_unknown");
       return value;
     },
     [transport, generation, profile.id],
     !!entry.availability.data && detailVisible,
   );
+  const quarterly = profile.id === "gdp";
+  const periodLabel = quarterly ? "季度" : "月份";
+  const planPeriod = (target: Schedule["targets"][number]) =>
+    quarterly ? target.reference_quarter : target.reference_month;
   const shown = !!selection;
   const currentCalendarError =
     calendar.data?.calendar?.error ?? calendar.data?.calendar_error;
@@ -573,24 +635,32 @@ function CpiStrategyWorkbenchContent({
                     )
                   : "未启动"
                 : "尚未核实",
-              <button
-                key="toggle"
-                disabled={
-                  !e.data ||
-                  e.saving ||
-                  e.uncertain ||
-                  e.resource.busy ||
-                  e.resource.stale ||
-                  (!e.data.enabled &&
-                    !e.availability.data?.web_capabilities.collect)
-                }
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void e.toggle();
-                }}
-              >
-                {e.saving ? "保存中…" : e.data?.enabled ? "暂停" : "启动"}
-              </button>,
+              <span key="toggle">
+                <button
+                  disabled={
+                    !e.data ||
+                    e.saving ||
+                    e.uncertain ||
+                    e.resource.busy ||
+                    e.resource.stale ||
+                    (!e.data.enabled &&
+                      (!e.availability.data?.web_capabilities.collect ||
+                        (e.profile.id === "gdp" && !!e.availability.failure)))
+                  }
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void e.toggle();
+                  }}
+                >
+                  {e.saving ? "保存中…" : e.data?.enabled ? "暂停" : "启动"}
+                </button>
+                {!e.availability.data?.web_capabilities.collect &&
+                  e.availability.data?.web_capabilities.reason && (
+                    <span>
+                      采集不可用：{e.availability.data.web_capabilities.reason}
+                    </span>
+                  )}
+              </span>,
             ],
           }))}
       >
@@ -665,7 +735,7 @@ function CpiStrategyWorkbenchContent({
                       href={refresh.source}
                       target="_blank"
                       rel="noreferrer"
-                      style={{ overflowWrap: "anywhere" }}
+                      className="calendar-source-link"
                     >
                       {refresh.source}
                     </a>
@@ -684,7 +754,8 @@ function CpiStrategyWorkbenchContent({
             {!data.enabled && <p>策略已暂停。</p>}
             {refresh?.refresh_mode === "fallback" ? (
               <p role="status">
-                主日历入口暂不可用，已切换到同一机构的官方备用入口。存在冲突或未覆盖的月份暂停自动采集，等待主入口确认。
+                主日历入口暂不可用，已切换到同一机构的官方备用入口。存在冲突或未覆盖的
+                {periodLabel}暂停自动采集，等待主入口确认。
               </p>
             ) : calendar.data?.calendar_status === "degraded_cached_calendar" &&
               !calendarUsable ? (
@@ -725,11 +796,19 @@ function CpiStrategyWorkbenchContent({
             {data.last_result && (
               <dl>
                 <Fact name="最近执行状态">
-                  {cpiStateText(
-                    typeof data.last_result.state === "string"
-                      ? data.last_result.state
-                      : null,
-                  )}
+                  {quarterly
+                    ? cpiExecutionStateText(
+                        typeof data.last_result.state === "string"
+                          ? data.last_result.state
+                          : undefined,
+                        data.last_result,
+                        profile,
+                      )
+                    : cpiStateText(
+                        typeof data.last_result.state === "string"
+                          ? data.last_result.state
+                          : null,
+                      )}
                 </Fact>
                 <Fact name="最近执行阶段">
                   {cpiActionText(
@@ -756,134 +835,188 @@ function CpiStrategyWorkbenchContent({
               </dl>
             )}
             <ResultFacts result={data.last_result} />
-            <MacroSourceCoverage result={data.last_result} />
-            <h4>月份计划与执行结果</h4>
+            {quarterly ? (
+              <GdpCollectionDetails result={data.last_result} />
+            ) : (
+              <MacroSourceCoverage result={data.last_result} />
+            )}
+            <h4>{periodLabel}计划与执行结果</h4>
             <p className="small">
               时间基准：北京时间（UTC+08:00）。计划时间不代表已经执行。
             </p>
             <div
               className="month-plan-list"
               role="list"
-              aria-label={`${profile.label} 月份计划`}
+              aria-label={`${profile.label} ${periodLabel}计划`}
             >
-              {(calendar.data?.targets ?? []).map((target) => (
-                <article
-                  className="month-plan-card"
-                  role="listitem"
-                  key={target.reference_month}
-                >
-                  <header>
-                    <strong>{target.reference_month}</strong>
-                    <span>
-                      官方日历时间{" "}
-                      <time>{calendarTime(target.release_at)}</time>
-                    </span>
-                  </header>
-                  {target.calendar_execution_blocked && (
-                    <p role="status">
-                      此月份的日历信息有冲突或尚未重新确认，暂停新的自动采集。以下保留原计划与执行记录。
-                    </p>
-                  )}
-                  <div className="month-stage-grid">
-                    <div className="month-stage-state">
-                      <strong>当期采集</strong>
+              {[...(calendar.data?.targets ?? [])]
+                .sort((a, b) =>
+                  quarterly
+                    ? (b.reference_quarter ?? "").localeCompare(
+                        a.reference_quarter ?? "",
+                      ) ||
+                      (a.release_at ?? "").localeCompare(b.release_at ?? "")
+                    : 0,
+                )
+                .map((target) => (
+                  <article
+                    className="month-plan-card"
+                    role="listitem"
+                    key={quarterly ? target.key : target.reference_month}
+                  >
+                    <header>
+                      <strong>
+                        {planPeriod(target)}
+                        {quarterly
+                          ? ` · ${gdpEstimateText(target.estimate_kind ?? "")}`
+                          : ""}
+                      </strong>
                       <span>
-                        {cpiStateText(target.target?.state ?? target.state)}
+                        官方日历时间{" "}
+                        <time>{calendarTime(target.release_at)}</time>
                       </span>
-                    </div>
-                    <div className="month-stage-detail">
-                      <p>
-                        最近尝试：
-                        <time>
-                          {calendarTime(
-                            target.auto?.last_attempt_at ??
-                              target.target?.last_attempt_at ??
-                              target.last_attempt_at,
-                          )}
-                        </time>
+                    </header>
+                    {target.calendar_execution_blocked && (
+                      <p role="status">
+                        此{periodLabel}的日历信息
+                        {quarterly
+                          ? "已取消、有冲突或尚未重新确认"
+                          : "有冲突或尚未重新确认"}
+                        ，暂停新的自动采集。以下保留原计划与执行记录。
                       </p>
+                    )}
+                    {quarterly && (
                       <p>
-                        下次尝试：
-                        <time>
-                          {calendarTime(
-                            target.auto?.next_attempt_at ??
-                              target.target?.next_attempt_at ??
-                              target.next_attempt_at,
-                          )}
-                        </time>
+                        {target.publication_status === "cancelled"
+                          ? "计划已取消"
+                          : "官方发布计划"}{" "}
+                        {target.calendar_validation ?? ""}
                       </p>
-                      <ResultFacts
-                        result={target.target?.result ?? target.result}
-                      />
-                      <MacroSourceCoverage
-                        result={target.target?.result ?? target.result}
-                        start={target.reference_month}
-                        end={target.reference_month}
-                      />
-                      {(target.auto?.classification ??
-                        target.target?.classification) && (
+                    )}
+                    <div className="month-stage-grid">
+                      <div className="month-stage-state">
+                        <strong>当期采集</strong>
+                        <span>
+                          {quarterly
+                            ? cpiExecutionStateText(
+                                target.target?.state ?? target.state,
+                                target.target?.result,
+                                profile,
+                              )
+                            : cpiStateText(
+                                target.target?.state ?? target.state,
+                              )}
+                        </span>
+                      </div>
+                      <div className="month-stage-detail">
                         <p>
-                          {target.auto?.classification ??
-                            target.target?.classification}
-                        </p>
-                      )}
-                    </div>
-                    <div className="month-stage-state">
-                      <strong>历史核实</strong>
-                      <span>
-                        {target.history?.state === "blocked" &&
-                        [
-                          "pending",
-                          "running",
-                          "awaiting_provider",
-                          "unknown",
-                          "failed",
-                        ].includes(target.target?.state ?? "")
-                          ? "等待当期采集"
-                          : cpiExecutionStateText(
-                              target.history?.state,
-                              target.history,
-                              profile,
-                              {
-                                start: target.history?.update_start,
-                                end: target.history?.update_end,
-                              },
+                          最近尝试：
+                          <time>
+                            {calendarTime(
+                              target.auto?.last_attempt_at ??
+                                target.target?.last_attempt_at ??
+                                target.last_attempt_at,
                             )}
-                      </span>
+                          </time>
+                        </p>
+                        <p>
+                          下次尝试：
+                          <time>
+                            {calendarTime(
+                              target.auto?.next_attempt_at ??
+                                target.target?.next_attempt_at ??
+                                target.next_attempt_at,
+                            )}
+                          </time>
+                        </p>
+                        <ResultFacts
+                          result={target.target?.result ?? target.result}
+                        />
+                        {quarterly ? (
+                          <GdpCollectionDetails
+                            result={target.target?.result ?? target.result}
+                          />
+                        ) : (
+                          <MacroSourceCoverage
+                            result={target.target?.result ?? target.result}
+                            start={target.reference_month}
+                            end={target.reference_month}
+                          />
+                        )}
+                        {(target.auto?.classification ??
+                          target.target?.classification) && (
+                          <p>
+                            {target.auto?.classification ??
+                              target.target?.classification}
+                          </p>
+                        )}
+                      </div>
+                      <div className="month-stage-state">
+                        <strong>历史核实</strong>
+                        <span>
+                          {target.history?.state === "blocked" &&
+                          [
+                            "pending",
+                            "running",
+                            "awaiting_provider",
+                            "unknown",
+                            "failed",
+                          ].includes(target.target?.state ?? "")
+                            ? "等待当期采集"
+                            : cpiExecutionStateText(
+                                target.history?.state,
+                                target.history,
+                                profile,
+                                {
+                                  start: target.history?.update_start,
+                                  end: target.history?.update_end,
+                                },
+                              )}
+                        </span>
+                      </div>
+                      <div className="month-stage-detail">
+                        <p>
+                          最近尝试：
+                          <time>
+                            {calendarTime(target.history?.last_attempt_at)}
+                          </time>
+                        </p>
+                        <p>
+                          下次核实：
+                          <time>
+                            {calendarTime(target.history?.next_attempt_at)}
+                          </time>
+                        </p>
+                        <ResultFacts
+                          result={
+                            quarterly
+                              ? target.history?.result
+                              : (target.history?.result ?? target.history)
+                          }
+                        />
+                        {quarterly ? (
+                          <GdpCollectionDetails
+                            result={target.history?.result}
+                          />
+                        ) : (
+                          <MacroSourceCoverage
+                            result={target.history}
+                            start={target.history?.update_start}
+                            end={target.history?.update_end}
+                          />
+                        )}
+                        {target.history?.classification && (
+                          <p>{target.history.classification}</p>
+                        )}
+                      </div>
                     </div>
-                    <div className="month-stage-detail">
-                      <p>
-                        最近尝试：
-                        <time>
-                          {calendarTime(target.history?.last_attempt_at)}
-                        </time>
-                      </p>
-                      <p>
-                        下次核实：
-                        <time>
-                          {calendarTime(target.history?.next_attempt_at)}
-                        </time>
-                      </p>
-                      <ResultFacts
-                        result={target.history?.result ?? target.history}
-                      />
-                      <MacroSourceCoverage
-                        result={target.history}
-                        start={target.history?.update_start}
-                        end={target.history?.update_end}
-                      />
-                      {target.history?.classification && (
-                        <p>{target.history.classification}</p>
-                      )}
-                    </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                ))}
               {!calendar.data?.targets.length && (
                 <p>
                   {calendar.failure
-                    ? "月份计划读取失败，当前计划尚未核实。"
-                    : "暂无月份计划。"}
+                    ? `${periodLabel}计划读取失败，当前计划尚未核实。`
+                    : `暂无${periodLabel}计划。`}
                 </p>
               )}
             </div>

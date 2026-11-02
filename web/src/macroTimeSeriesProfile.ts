@@ -1,4 +1,6 @@
 import {
+  GDP,
+  assetTitle,
   CPI,
   PPI,
   PCE,
@@ -9,7 +11,7 @@ import {
 } from "./workflowModel";
 
 export type MacroProfile = Readonly<{
-  id: "cpi" | "ppi" | "pce" | "employment" | "retail" | "consumption";
+  id: "cpi" | "ppi" | "pce" | "employment" | "retail" | "consumption" | "gdp";
   label: string;
   provider: "BLS" | "BEA" | "Census";
   asset: Key;
@@ -204,9 +206,7 @@ export const CONSUMPTION_PROFILE: MacroProfile = Object.freeze({
 });
 
 export function macroAssetLabel(profile: MacroProfile): string {
-  return profile.label.startsWith("美国")
-    ? profile.label
-    : "美国 " + profile.label;
+  return assetTitle(profile.asset);
 }
 
 export function initializationAnchorText(basis?: string) {
@@ -223,3 +223,39 @@ export function initializationAnchorText(basis?: string) {
   };
   return labels[basis ?? ""] ?? "服务未提供可解释的月份依据，请核实采集范围";
 }
+
+export const GDP_PROFILE: MacroProfile = Object.freeze({
+  id: "gdp",
+  label: "GDP与增长",
+  provider: "BEA",
+  asset: GDP,
+  basePath: "/api/r5/gdp/timeseries",
+  series: [
+    ["A191RX", "实际GDP · 百万2017链价美元 · SAAR", "real_gdp", "sa"],
+    [
+      "LB000003",
+      "实际私人国内最终需求 · 百万2017链价美元 · SAAR",
+      "real_private_final_demand",
+      "sa",
+    ],
+    ["A191RL", "官方年化季环比 · %", "gdp_qoq_annualized", "sa"],
+    ["DPCERY", "消费贡献 · 百分点", "consumption_contribution", "sa"],
+    ["A007RY", "固定投资贡献 · 百分点", "fixed_investment_contribution", "sa"],
+    ["A014RY", "库存贡献 · 百分点", "inventories_contribution", "sa"],
+    ["A822RY", "政府贡献 · 百分点", "government_contribution", "sa"],
+    ["A019RY", "净出口贡献 · 百分点", "net_exports_contribution", "sa"],
+  ] as const,
+  historyNotice:
+    "原生季度 YYYY-Qn。金额是百万2017链价美元的季调年率水平；官方年化季环比为原生 percent，贡献为原生百分点，均不再乘100。仅两个水平系列计算非年化季变与年变。连续序列估计为 unknown、事件未绑定，不推定官方首发；发布材料与日历计划分别展示。",
+});
+
+export const gdpEstimateText = (kind: string) =>
+  (
+    ({
+      advance: "初值",
+      second: "第二次估计",
+      third: "第三次估计",
+      initial: "首次估计",
+      updated: "更新估计",
+    }) as Record<string, string>
+  )[kind] ?? kind;

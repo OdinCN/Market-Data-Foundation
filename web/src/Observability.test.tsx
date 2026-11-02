@@ -93,7 +93,7 @@ it("projects resource fixtures and preserves alarm → diagnostic → same asset
   expect(screen.queryByText("fixture.diagnostic.2")).toBeNull();
   expect(screen.getByText(/fixture.job.1 \/ fixture.attempt.1/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "查看关联资产 →" }));
-  await screen.findByRole("heading", { name: "CPI · 四项核心指标" });
+  await screen.findByRole("heading", { name: "美国 CPI" });
   expect(location.hash).toContain("asset=mdf.macro.bls.cpi.headlines");
   expect(location.hash).toContain("asset_revision=p3-r1");
   expect(api.requests.every((p) => !p.includes("/read?"))).toBe(true);

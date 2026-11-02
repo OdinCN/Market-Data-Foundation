@@ -50,7 +50,7 @@ def test_code_inventory_is_stable_bounded_and_never_opens_host_scope(monkeypatch
         assert body["evidence_mode"] == "CODE_CONTRACTS_ONLY"
         assert body["scope"] == "NAMED_R5_I2_ALLOWLIST"
         entries = body["entries"]
-        assert len(entries) == 17 <= source_catalog.MAX_ENTRIES
+        assert len(entries) == 18 <= source_catalog.MAX_ENTRIES
         assert len({e["identity"] for e in entries}) == len(entries)
 
         def order(e):
@@ -137,10 +137,10 @@ def test_domain_contracts_do_not_masquerade_as_generic_services_or_descriptors()
         if entry.source_name in {"ECB", "ESTAT"}:
             assert entry.source_qualified_contract is False
             assert "not_source_qualified" in entry.binding_contract.limitations
-        if (
-            entry.source_name == "BEA"
-            and entry.asset.identity != "mdf.macro.bea.consumption-income"
-        ):
+        if entry.source_name == "BEA" and entry.asset.identity not in {
+            "mdf.macro.bea.consumption-income",
+            "mdf.macro.bea.gdp-growth",
+        }:
             assert "source_mapping_not_independently_verified" in (
                 entry.binding_contract.limitations
             )
@@ -270,3 +270,18 @@ def test_directory_openapi_is_strict_get_only_and_bounded():
         ]
         == source_catalog.MAX_ENTRIES
     )
+
+
+def test_gdp_catalog_keeps_quarterly_boundaries_and_real_code_reference():
+    entry = next(
+        e
+        for e in directory(DirectoryQuery()).entries
+        if e.asset and e.asset.identity == "mdf.macro.bea.gdp-growth"
+    )
+    assert entry.evidence_refs == [
+        "src/market_data_foundation/historical/gdp_contract.py:GDP_SOURCE"
+    ]
+    assert "no_inferred_estimate_binding" in entry.binding_contract.limitations
+    assert "four_responses_not_atomic" in entry.binding_contract.limitations
+    assert "chained_nonadditive" in entry.binding_contract.limitations
+    assert entry.source_qualification == "UNKNOWN"

@@ -797,6 +797,8 @@ def test_optional_evidence_failure_preserves_numeric_result_and_reports_reason(
 
 
 def test_range_evidence_and_first_capture_use_bounded_read_queries_without_bootstrap():
+    from contextlib import nullcontext
+
     from market_data_foundation.historical.cpi_timeseries import month_at, month_number
     from market_data_foundation.historical.cpi_timeseries_store import (
         PostgresTimeSeriesStore,
@@ -807,6 +809,9 @@ def test_range_evidence_and_first_capture_use_bounded_read_queries_without_boots
 
         def __init__(self):
             self.queries = []
+
+        def transaction(self):
+            return nullcontext()
 
         def execute(self, sql, params=None):
             self.queries.append(sql)
@@ -829,8 +834,11 @@ def test_range_evidence_and_first_capture_use_bounded_read_queries_without_boots
     ]
     result = repo.link_result({"points": points, "as_of": AT.isoformat()})
     assert len(result["points"]) == 240
-    assert len(connection.queries) <= 5
-    assert all(sql.lstrip().startswith("SELECT") for sql in connection.queries)
+    assert len(connection.queries) <= 6
+    assert connection.queries[0] == (
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+    )
+    assert all(sql.lstrip().startswith("SELECT") for sql in connection.queries[1:])
     assert all(p["mdf_first_captured"] is None for p in points)
 
 

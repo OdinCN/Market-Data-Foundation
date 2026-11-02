@@ -31,6 +31,7 @@ FAMILIES = (
     ("EMPLOYMENT", "美国就业", "bls_employment"),
     ("PCE", "美国 PCE", "bea_pce"),
     ("CONSUMPTION", "美国消费与收入", "bea_consumption"),
+    ("GDP", "美国 GDP 与增长", "gdp_contract"),
     ("RETAIL", "美国零售", "census_retail"),
     ("FRED_ALFRED", "FRED / ALFRED vintage", "fred_alfred_vintage"),
     ("FOMC", "FOMC 声明", "fomc_statement"),

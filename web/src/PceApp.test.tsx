@@ -218,7 +218,7 @@ it("developer contract navigation preserves PCE binding and the only create butt
   fireEvent.click(
     within(screen.getByRole("region", { name: "注册接口" })).getByRole(
       "button",
-      { name: /选择 PCE/ },
+      { name: /选择 美国 PCE/ },
     ),
   );
   expect(screen.getByText(/T20807 → T20804/)).toBeTruthy();
