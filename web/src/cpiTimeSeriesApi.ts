@@ -6,6 +6,7 @@ import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import type { Transport } from "./api";
 import { normalizeRetailResult } from "./retailTimeSeriesAdapter";
 import { isDecimalString } from "./decimalValue";
+import { readGdpStatus } from "./gdpTimeSeriesAdapter";
 import { useVisiblePolling } from "./useVisiblePolling";
 
 export const CPI_TIMESERIES = CPI_PROFILE.basePath;
@@ -45,6 +46,7 @@ export type CpiStatus = {
     anchor_basis: string;
   };
   latest_months: Record<string, string | null>;
+  latest_quarters?: Record<string, string | null>;
   observation_count: number;
   revision_count: number;
   batch_count: number;
@@ -92,7 +94,7 @@ export async function cpiRequest<T>(
     timeoutMs,
   );
 }
-async function requestCpiJson<T>(
+export async function requestCpiJson<T>(
   transport: Transport,
   path: string,
   init: RequestInit,
@@ -209,6 +211,7 @@ export function useCpiAvailability(
 ): CpiAvailability {
   const resource = useVisiblePolling<CpiStatus | "legacy">(
     async (signal) => {
+      if (profile.id === "gdp") return readGdpStatus(transport, signal);
       let value: CpiStatus;
       try {
         value = await readCpiStatus(transport, signal, profile);
@@ -295,6 +298,7 @@ export type CpiPublicationEvent = {
 export type CpiPoint = {
   related_release_events?: {
     event_id: string;
+    estimate_kind?: string;
     evidence_ids: string[];
     source_version?: {
       value: string;

@@ -1,3 +1,15 @@
+import {
+  QuarterField,
+  previousCompleteQuarter,
+  quarterRangeValid,
+  shiftQuarter,
+} from "./QuarterField";
+import { buildGdpQueryRequest, queryGdpRange } from "./gdpTimeSeriesAdapter";
+import {
+  monthlyRangeResult,
+  type RangePoint,
+  type RangeResult,
+} from "./rangeQueryModel";
 import { decimalDisplayText, retailDecimalText } from "./decimalValue";
 import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import { formatBeijingTime, beijingInputToIso } from "./beijingTime";
@@ -17,7 +29,6 @@ import {
   type CpiAvailability,
   type CpiPoint,
   type CpiPublicationEvent,
-  type CpiResult,
   type CpiScope,
   type CpiHttpExchange,
 } from "./cpiTimeSeriesApi";
@@ -63,6 +74,10 @@ export function CpiAvailabilityNotice({
 }
 export const missingText = (reason?: string) =>
   ({
+    official_null: "官方空值",
+    local_record_missing: "本地尚无记录",
+    local_availability_unconfirmed: "本地可用确认不足",
+    same_cutoff_endpoint_unavailable: "同一截止下比较端点缺值",
     source_unavailable: "未公布 / 来源缺值",
     withdrawn: "来源已撤回",
     availability_evidence_insufficient: "当时可用证据不足",
@@ -155,40 +170,50 @@ function CpiTimeSeriesContent({
   initialReleaseEvent?: string | null;
   initialReleaseEvidence?: string | null;
 }) {
+  const gdp = profile.id === "gdp";
   const consumption = profile.id === "consumption";
-  const employment = profile.id === "employment" || consumption;
+  const employment = profile.id === "employment" || consumption || gdp;
   const retail = profile.id === "retail";
-  const measures = consumption
+  const measures = gdp
     ? [
-        { value: "value", label: "数值（单位见指标）" },
-        ...globalMeasures.filter((m) => m.value !== "index_value"),
-        {
-          value: "change_1m_percentage_points",
-          label: "储蓄率月变化（百分点）",
-        },
-        {
-          value: "change_12m_percentage_points",
-          label: "储蓄率年变化（百分点）",
-        },
+        { value: "value", label: "原生值（金额 / % / 百分点）" },
+        { value: "change_1q_ratio", label: "水平季变（非年化）" },
+        { value: "change_4q_ratio", label: "水平年变" },
       ]
-    : employment
-      ? employmentMeasures
-      : retail
-        ? [
-            ...globalMeasures.map((item) =>
-              item.value === "index_value"
-                ? { ...item, label: "金额（百万当期美元）" }
-                : item,
-            ),
-            { value: "official_mpcsm_percent", label: "官方 MPCSM（percent）" },
-          ]
-        : profile.id === "pce"
+    : consumption
+      ? [
+          { value: "value", label: "数值（单位见指标）" },
+          ...globalMeasures.filter((m) => m.value !== "index_value"),
+          {
+            value: "change_1m_percentage_points",
+            label: "储蓄率月变化（百分点）",
+          },
+          {
+            value: "change_12m_percentage_points",
+            label: "储蓄率年变化（百分点）",
+          },
+        ]
+      : employment
+        ? employmentMeasures
+        : retail
           ? [
-              ...globalMeasures,
-              { value: "annualized_3m_ratio", label: "3月年化变化" },
-              { value: "annualized_6m_ratio", label: "6月年化变化" },
+              ...globalMeasures.map((item) =>
+                item.value === "index_value"
+                  ? { ...item, label: "金额（百万当期美元）" }
+                  : item,
+              ),
+              {
+                value: "official_mpcsm_percent",
+                label: "官方 MPCSM（percent）",
+              },
             ]
-          : globalMeasures;
+          : profile.id === "pce"
+            ? [
+                ...globalMeasures,
+                { value: "annualized_3m_ratio", label: "3月年化变化" },
+                { value: "annualized_6m_ratio", label: "6月年化变化" },
+              ]
+            : globalMeasures;
   const baskets = [
     ...new Map(
       profile.series.map((s) => [
@@ -207,8 +232,15 @@ function CpiTimeSeriesContent({
   const availableAdjustments = adjustments.filter((item) =>
     profile.series.some((s) => s[3] === item.value),
   );
-  const latest = latestMonth(availability.data);
-  const [start, setStart] = useState(latest ? shiftMonth(latest, -11) : "");
+  const latest = gdp
+    ? previousCompleteQuarter()
+    : latestMonth(availability.data);
+  const shiftPeriod = gdp ? shiftQuarter : shiftMonth;
+  const validRange = gdp ? quarterRangeValid : rangeValid;
+  const periodLabel = gdp ? "季度" : "月份";
+  const [start, setStart] = useState(
+    latest ? shiftPeriod(latest, gdp ? -7 : -11) : "",
+  );
   const [end, setEnd] = useState(latest);
   const [basket, setBasket] = useState(["headline", "core"]);
   const [adjustment, setAdjustment] = useState(
@@ -222,7 +254,7 @@ function CpiTimeSeriesContent({
   const [columnsEdited, setColumnsEdited] = useState(false);
   const [history, setHistory] = useState(false);
   const [asOf, setAsOf] = useState("");
-  const [result, setResult] = useState<CpiResult | null>(null);
+  const [result, setResult] = useState<RangeResult | null>(null);
   const [failure, setFailure] = useState(false);
   const [pending, setPending] = useState(false);
   const [page, setPage] = useState(0);
@@ -236,7 +268,7 @@ function CpiTimeSeriesContent({
   const active = useRef<AbortController | null>(null);
   useEffect(() => {
     if (latest && !edited.current) {
-      setStart(shiftMonth(latest, -11));
+      setStart(shiftPeriod(latest, gdp ? -7 : -11));
       setEnd(latest);
     }
   }, [latest]);
@@ -260,7 +292,7 @@ function CpiTimeSeriesContent({
     edit();
   }
   const valid =
-    rangeValid(start, end) &&
+    validRange(start, end) &&
     basket.length > 0 &&
     adjustment.length > 0 &&
     measure.length > 0 &&
@@ -284,7 +316,9 @@ function CpiTimeSeriesContent({
         }
       : {}),
   };
-  const request = buildCpiQueryRequest(scope, profile);
+  const request = gdp
+    ? buildGdpQueryRequest(scope)
+    : buildCpiQueryRequest(scope, profile);
   async function submit() {
     if (pending || !valid || availability.data?.web_capabilities.query !== true)
       return;
@@ -296,16 +330,21 @@ function CpiTimeSeriesContent({
     setExchange(null);
     setPage(0);
     try {
-      const response = await queryCpiRange(
-        transport,
-        scope,
-        controller.signal,
-        (value) => {
-          if (active.current === controller && !controller.signal.aborted)
-            setExchange(value);
-        },
-        profile,
-      );
+      const onExchange = (value: CpiHttpExchange) => {
+        if (active.current === controller && !controller.signal.aborted)
+          setExchange(value);
+      };
+      const response = gdp
+        ? await queryGdpRange(transport, scope, controller.signal, onExchange)
+        : monthlyRangeResult(
+            await queryCpiRange(
+              transport,
+              scope,
+              controller.signal,
+              onExchange,
+              profile,
+            ),
+          );
       if (!controller.signal.aborted) setResult(response);
     } catch {
       if (!controller.signal.aborted) setFailure(true);
@@ -330,7 +369,7 @@ function CpiTimeSeriesContent({
             cpiSeries.findIndex((s) => s[0] === a.series_id) -
             cpiSeries.findIndex((s) => s[0] === b.series_id),
         ),
-        (row) => row.month,
+        (row) => row.period,
       )
     : [];
   const columns = measures.filter((item) => measure.includes(item.value));
@@ -386,8 +425,14 @@ function CpiTimeSeriesContent({
       </div>
       <div hidden={tab !== "query"}>
         <p className="muted">
-          当前查询优先读取本地，缺口可向 {profile.provider}
-          查询，不保存。历史截止查询只读已入库记录。
+          {gdp ? (
+            "当前与历史查询均只读本地（local_only=true），不临时补源。"
+          ) : (
+            <>
+              当前查询优先读取本地，缺口可向 {profile.provider} 查询，不保存。
+            </>
+          )}
+          历史截止查询只读已入库记录。
         </p>
         <CpiAvailabilityNotice profile={profile} availability={availability} />
         {profile.historyNotice && (
@@ -397,13 +442,15 @@ function CpiTimeSeriesContent({
           <>
             <p>
               已保存观测 {availability.data.observation_count.toLocaleString()}{" "}
-              条；各口径最新月份：
+              条；各口径最新{periodLabel}：
             </p>
             <ul className="cpi-coverage">
               {cpiSeries.map(([id, title]) => (
                 <li key={id}>
                   {title}：
-                  {availability.data!.latest_months[id] ?? "尚无本地记录"}
+                  {(gdp
+                    ? availability.data!.latest_quarters?.[id]
+                    : availability.data!.latest_months[id]) ?? "尚无本地记录"}
                 </li>
               ))}
             </ul>
@@ -422,21 +469,39 @@ function CpiTimeSeriesContent({
           }}
         >
           <div className="field-grid">
-            <DateField
-              label="开始月份"
-              type="month"
-              value={start}
-              onChange={(value) => change(() => setStart(value))}
-            />
-            <DateField
-              label="结束月份"
-              type="month"
-              value={end}
-              onChange={(value) => change(() => setEnd(value))}
-            />
+            {gdp ? (
+              <QuarterField
+                label="开始季度"
+                value={start}
+                onChange={(value) => change(() => setStart(value))}
+              />
+            ) : (
+              <DateField
+                label="开始月份"
+                type="month"
+                value={start}
+                onChange={(value) => change(() => setStart(value))}
+              />
+            )}
+            {gdp ? (
+              <QuarterField
+                label="结束季度"
+                value={end}
+                onChange={(value) => change(() => setEnd(value))}
+              />
+            ) : (
+              <DateField
+                label="结束月份"
+                type="month"
+                value={end}
+                onChange={(value) => change(() => setEnd(value))}
+              />
+            )}
             {employment ? (
               <MultiSelect
-                label={consumption ? "消费与收入指标" : "就业指标"}
+                label={
+                  gdp ? "GDP指标" : consumption ? "消费与收入指标" : "就业指标"
+                }
                 options={profile.series.map((s) => ({
                   value: s[0],
                   label: s[1],
@@ -506,16 +571,18 @@ function CpiTimeSeriesContent({
           )}
           {employment && !series.length && (
             <p role="alert">
-              请至少选择一项{consumption ? "消费与收入" : "就业"}指标。
+              请至少选择一项{gdp ? "GDP" : consumption ? "消费与收入" : "就业"}
+              指标。
             </p>
           )}
           {!employment && (!basket.length || !adjustment.length) && (
             <p role="alert">统计篮子和季节调整均须至少选择一项。</p>
           )}
           {!measure.length && <p role="alert">请至少选择一项显示指标。</p>}
-          {start && end && !rangeValid(start, end) && (
+          {start && end && !validRange(start, end) && (
             <p role="alert">
-              请选择有效的起止月份，开始不得晚于结束，范围须少于 200 年。
+              请选择有效的起止{periodLabel}，开始不得晚于结束，范围须少于 200
+              年。
             </p>
           )}
           <button
@@ -530,15 +597,22 @@ function CpiTimeSeriesContent({
           </button>
         </form>
         <p className="small">
-          {consumption
-            ? "按所选原生系列查询；金额为百万美元年率水平，储蓄率为百分数及百分点变化。"
-            : employment
-              ? "按所选就业系列查询，各指标保留原生单位。"
-              : retail
-                ? "按所选口径查询，计算复用六项原始输入。"
-                : "按所选统计口径查询，请求使用 measure=index。"}
-          更改显示指标后，请求会发送 columns
-          限定返回字段；标识、来源和缺值信息保留。缺值不补零。
+          {gdp
+            ? "按所选原生系列查询；显示指标仅控制表格列，不发送月度参数或 columns。"
+            : consumption
+              ? "按所选原生系列查询；金额为百万美元年率水平，储蓄率为百分数及百分点变化。"
+              : employment
+                ? "按所选就业系列查询，各指标保留原生单位。"
+                : retail
+                  ? "按所选口径查询，计算复用六项原始输入。"
+                  : "按所选统计口径查询，请求使用 measure=index。"}
+          {!gdp && (
+            <>
+              更改显示指标后，请求会发送 columns
+              限定返回字段；标识、来源和缺值信息保留。
+            </>
+          )}
+          缺值不补零。
         </p>
         <RequestPreview request={request} />
         {pending && <p role="status">正在查询 {profile.label}…</p>}
@@ -593,24 +667,38 @@ function CpiTimeSeriesContent({
           {result && columns.length > 0 && (
             <section aria-label={`${profile.label} 范围结果`}>
               <h4>
-                {result.start_month} 至 {result.end_month}
+                {result.start_period} 至 {result.end_period}
               </h4>
               <p role="status">
-                共 {rows.length} 条（月 × 口径），有效观测{" "}
-                {result.points.length} 条，缺值 {result.missing.length} 条。
+                共 {rows.length} 条（{gdp ? "季度" : "月"} × 口径），有效观测{" "}
+                {gdp
+                  ? result.points.filter(
+                      (point) => point.availability === "available",
+                    ).length
+                  : result.points.length}{" "}
+                条，缺值{" "}
+                {gdp
+                  ? result.points.filter(
+                      (point) => point.availability === "missing",
+                    ).length
+                  : result.missing.length}{" "}
+                条。
                 {profile.id === "retail" &&
                 (result.source_failure || result.source_no_content?.length)
                   ? "来源补取未完成，当前为部分返回。"
-                  : !result.missing.length && !selectedCalculationMissing.length
+                  : (gdp ? result.complete : !result.missing.length) &&
+                      !selectedCalculationMissing.length
                     ? "所选指标数据完整。"
                     : "所选指标存在缺值。"}
               </p>
               <p className="small">
-                {consumption
-                  ? "金额为百万当期/2017链价美元，季调年率水平；变化为累计比率。储蓄率为百分数，其变化列为百分点。"
-                  : employment
-                    ? "CES 千岗位及月净增；失业率、劳动参与率为百分数及百分点变化；时薪为美元/小时及环同比；平均每周工时为小时及小时变化。"
-                    : "变化率以百分比显示；3月、6月为相隔对应月数的累计变化，未经年化。"}
+                {gdp
+                  ? "金额为百万2017链价美元（SAAR）；官方年化季环比为%，贡献为百分点。水平季变/年变以%显示，未经年化；其他六项不计算变化。"
+                  : consumption
+                    ? "金额为百万当期/2017链价美元，季调年率水平；变化为累计比率。储蓄率为百分数，其变化列为百分点。"
+                    : employment
+                      ? "CES 千岗位及月净增；失业率、劳动参与率为百分数及百分点变化；时薪为美元/小时及环同比；平均每周工时为小时及小时变化。"
+                      : "变化率以百分比显示；3月、6月为相隔对应月数的累计变化，未经年化。"}
               </p>
               <div className="table-wrap">
                 <table
@@ -619,7 +707,7 @@ function CpiTimeSeriesContent({
                 >
                   <thead>
                     <tr>
-                      <th>月份</th>
+                      <th>{periodLabel}</th>
                       <th>口径</th>
                       {columns.map((column) => (
                         <th key={column.value}>{column.label}</th>
@@ -636,13 +724,13 @@ function CpiTimeSeriesContent({
                         const gaps = result.calculation_missing.filter(
                           (g) =>
                             g.series_id === row.series_id &&
-                            g.month === row.month &&
+                            g.period === row.period &&
                             columns.some((column) => column.value === g.metric),
                         );
                         return (
-                          <tr key={`${row.month}:${row.series_id}`}>
+                          <tr key={`${row.period}:${row.series_id}`}>
                             <td>
-                              {row.month}
+                              {row.period}
                               <RelatedReleaseLinks
                                 links={row.point?.related_release_events}
                                 profile={profile}
@@ -655,7 +743,9 @@ function CpiTimeSeriesContent({
                                 )?.[1]
                               }
                               {!history &&
-                                row.point?.availability === "unpersisted" && (
+                                (row.point?.availability === "unpersisted" ||
+                                  (gdp &&
+                                    row.point?.origin === "upstream")) && (
                                   <span className="cpi-temporary-value">
                                     临时来源值
                                   </span>
@@ -664,22 +754,34 @@ function CpiTimeSeriesContent({
                             {columns.map(({ value: field }) => (
                               <td key={field}>
                                 {valueText(
-                                  row.point?.[field as keyof CpiPoint],
+                                  row.point?.[field as keyof RangePoint],
                                   field.endsWith("ratio"),
-                                  employment
+                                  gdp
                                     ? field.endsWith("ratio") ||
-                                      field === "mom_pct" ||
-                                      field === "yoy_pct"
+                                      row.point?.value_unit === "percent"
                                       ? "%"
-                                      : consumption &&
-                                          field === "value" &&
-                                          row.series_id === "A072RC"
-                                        ? "%"
+                                      : row.point?.value_unit ===
+                                          "percentage_points"
+                                        ? " 百分点"
                                         : ""
-                                    : field === "index_value"
-                                      ? ""
-                                      : "%",
-                                  retail ||
+                                    : employment
+                                      ? field.endsWith("ratio") ||
+                                        field === "mom_pct" ||
+                                        field === "yoy_pct"
+                                        ? "%"
+                                        : consumption &&
+                                            field === "value" &&
+                                            row.series_id === "A072RC"
+                                          ? "%"
+                                          : ""
+                                      : field === "index_value"
+                                        ? ""
+                                        : "%",
+                                  (gdp &&
+                                    field === "value" &&
+                                    row.point?.value_unit ===
+                                      "million_chained_2017_USD") ||
+                                    retail ||
                                     (consumption &&
                                       field === "value" &&
                                       row.series_id !== "A072RC"),
@@ -709,22 +811,53 @@ function CpiTimeSeriesContent({
                               </td>
                             )}
                             <td>
-                              {publicationText({
-                                month: row.month,
-                                publication_event:
-                                  row.point?.publication_event ??
-                                  events.find(
-                                    (event) =>
-                                      event.reference_month === row.month,
-                                  ),
-                              }) ?? "无对应月份记录"}
+                              {gdp
+                                ? row.point?.calendar_plans?.length
+                                  ? row.point.calendar_plans.map((event, i) => (
+                                      <p key={i}>
+                                        {(
+                                          {
+                                            advance: "初值",
+                                            second: "第二次估计",
+                                            third: "第三次估计",
+                                            initial: "首次估计",
+                                            updated: "更新估计",
+                                          } as Record<string, string>
+                                        )[event.estimate_kind] ??
+                                          event.estimate_kind}{" "}
+                                        ·{" "}
+                                        {(
+                                          {
+                                            CONFIRMED: "计划已确认",
+                                            TENTATIVE: "暂定",
+                                            CANCELLED: "已取消",
+                                          } as Record<string, string>
+                                        )[event.status] ?? event.status}{" "}
+                                        · 计划：
+                                        {formatBeijingTime(event.release_at)}
+                                      </p>
+                                    ))
+                                  : "无对应季度日历计划"
+                                : (publicationText({
+                                    month: row.period,
+                                    publication_event:
+                                      row.point?.publication_event ??
+                                      events.find(
+                                        (event) =>
+                                          event.reference_month === row.period,
+                                      ),
+                                  }) ?? "无对应月份记录")}
                             </td>
                             <td>
-                              {!row.point
-                                ? missingText(row.reason)
-                                : gaps.length
-                                  ? `计算基期缺值：${[...new Set(gaps.map((g) => `${g.required_month}（${missingText(g.reason)}）`))].join("、")}`
-                                  : "—"}
+                              {gdp && row.point?.availability === "missing"
+                                ? missingText(
+                                    row.point.missing_reason ?? undefined,
+                                  )
+                                : !row.point
+                                  ? missingText(row.reason)
+                                  : gaps.length
+                                    ? `计算基期缺值：${[...new Set(gaps.map((g) => `${g.required_period}（${missingText(g.reason)}）`))].join("、")}`
+                                    : "—"}
                             </td>
                           </tr>
                         );
@@ -752,8 +885,10 @@ function CpiTimeSeriesContent({
               <details>
                 <summary>来源与时间详情</summary>
                 <p>
-                  来源：{profile.provider}；本次未保存。来源请求{" "}
-                  {result.provider_requests} 次。
+                  来源：{profile.provider}；本次未保存。
+                  {gdp &&
+                    "连续序列 estimate_kind=unknown，event_binding_status=unconfirmed；日历计划不证明官方公布值或首发。"}
+                  来源请求 {result.provider_requests} 次。
                   {history
                     ? `入库截止：${formatBeijingTime(result.as_of)}。`
                     : "展示当前查询值。"}

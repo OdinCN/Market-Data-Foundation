@@ -1,0 +1,2063 @@
+{
+  "status": {
+    "latest_quarters": {
+      "A191RX": "2026-Q3",
+      "LB000003": "2026-Q3",
+      "A191RL": "2026-Q3",
+      "DPCERY": "2026-Q3",
+      "A007RY": "2026-Q3",
+      "A014RY": "2026-Q3",
+      "A822RY": "2026-Q3",
+      "A019RY": "2026-Q3"
+    },
+    "observation_count": 48,
+    "revision_count": 0,
+    "batch_count": 4,
+    "web_capabilities": {
+      "query": true,
+      "collect": true,
+      "reason": null
+    },
+    "initialization": {
+      "preset_id": "gdp_previous_quarter_80",
+      "quarters": 80,
+      "start": "2006-Q4",
+      "end": "2026-Q3",
+      "editable": true,
+      "available": true,
+      "anchor_basis": "previous_utc_quarter_not_release_readiness"
+    }
+  },
+  "query": {
+    "start_quarter": "2026-Q2",
+    "end_quarter": "2026-Q3",
+    "series_ids": [
+      "A191RX",
+      "LB000003",
+      "A191RL",
+      "DPCERY",
+      "A007RY",
+      "A014RY",
+      "A822RY",
+      "A019RY"
+    ],
+    "points": [
+      {
+        "series_id": "A191RX",
+        "quarter": "2026-Q3",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "fc6cf4d558b8110a51661cce264d595f7cc8f9775e9837ab05968f249946bc87",
+        "value": "24000000.123",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10106",
+            "LineNumber": "1",
+            "SeriesCode": "A191RX",
+            "TimePeriod": "2026Q3",
+            "CL_UNIT": "Level",
+            "UNIT_MULT": "6",
+            "METRIC_NAME": "Chained Dollars",
+            "DataValue": "24,000,000.123",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "fecbc0648b93aad65d9e2343079fe762b058975e1693f4e70f63815504627aef",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/fecbc0648b93aad65d9e2343079fe762b058975e1693f4e70f63815504627aef/raw-response.bin",
+        "origin": "local",
+        "indicator": "real_gdp",
+        "value_unit": "million_chained_2017_USD",
+        "statistic": "SAAR_level",
+        "seasonal_adjustment": "SA",
+        "chained_base": "2017",
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": "0.0000",
+        "change_4q_ratio": "0.0000",
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": [
+          {
+            "classification": null,
+            "estimate_kind": "second",
+            "event_id": "bea:gdp:2026-11-25:2026-Q3:second",
+            "reference_quarter": "2026-Q3",
+            "release_at": "2026-11-25T13:30:00+00:00",
+            "sequence": 0,
+            "sha256": "30d436febe6f38180e0f05eb9074dd07e055b1fac7308f860bd2cd0ad69e2a7d",
+            "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+            "status": "CONFIRMED",
+            "summary": "GDP (Second Estimate), 3rd Quarter 2026",
+            "uid": "second",
+            "acquired_at": "2026-11-02T12:00:00+00:00",
+            "publication_status": "scheduled"
+          }
+        ]
+      },
+      {
+        "series_id": "LB000003",
+        "quarter": "2026-Q3",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "65a56a63d416be18bfb0ae722258580ab5f95eaa8adbef213e8eee89ed4389be",
+        "value": "21000000.456",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10406",
+            "LineNumber": "8",
+            "SeriesCode": "LB000003",
+            "TimePeriod": "2026Q3",
+            "CL_UNIT": "Level",
+            "UNIT_MULT": "6",
+            "METRIC_NAME": "Chained Dollars",
+            "DataValue": "21,000,000.456",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "43e50c9f92b8cfc6b44020c1597d2945dd2956cf7fd981e63b1d7b35a09729a3",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/43e50c9f92b8cfc6b44020c1597d2945dd2956cf7fd981e63b1d7b35a09729a3/raw-response.bin",
+        "origin": "local",
+        "indicator": "real_private_final_demand",
+        "value_unit": "million_chained_2017_USD",
+        "statistic": "SAAR_level",
+        "seasonal_adjustment": "SA",
+        "chained_base": "2017",
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": "0.0000",
+        "change_4q_ratio": "0.0000",
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": [
+          {
+            "classification": null,
+            "estimate_kind": "second",
+            "event_id": "bea:gdp:2026-11-25:2026-Q3:second",
+            "reference_quarter": "2026-Q3",
+            "release_at": "2026-11-25T13:30:00+00:00",
+            "sequence": 0,
+            "sha256": "30d436febe6f38180e0f05eb9074dd07e055b1fac7308f860bd2cd0ad69e2a7d",
+            "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+            "status": "CONFIRMED",
+            "summary": "GDP (Second Estimate), 3rd Quarter 2026",
+            "uid": "second",
+            "acquired_at": "2026-11-02T12:00:00+00:00",
+            "publication_status": "scheduled"
+          }
+        ]
+      },
+      {
+        "series_id": "A191RL",
+        "quarter": "2026-Q3",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "f985e6b058acf5acb0b2473117771fc382d40ca615b8af89f7a37ab3aeb44775",
+        "value": "3.4",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10101",
+            "LineNumber": "1",
+            "SeriesCode": "A191RL",
+            "TimePeriod": "2026Q3",
+            "CL_UNIT": "Percent change, annual rate",
+            "UNIT_MULT": "0",
+            "METRIC_NAME": "Fisher Quantity Index",
+            "DataValue": "3.4",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "df078e31ddacafad853c8c1ed582745ec62905361640b82aa4af80e42e23cc17",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/df078e31ddacafad853c8c1ed582745ec62905361640b82aa4af80e42e23cc17/raw-response.bin",
+        "origin": "local",
+        "indicator": "gdp_qoq_annualized",
+        "value_unit": "percent",
+        "statistic": "official_annualized_qoq",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": [
+          {
+            "classification": null,
+            "estimate_kind": "second",
+            "event_id": "bea:gdp:2026-11-25:2026-Q3:second",
+            "reference_quarter": "2026-Q3",
+            "release_at": "2026-11-25T13:30:00+00:00",
+            "sequence": 0,
+            "sha256": "30d436febe6f38180e0f05eb9074dd07e055b1fac7308f860bd2cd0ad69e2a7d",
+            "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+            "status": "CONFIRMED",
+            "summary": "GDP (Second Estimate), 3rd Quarter 2026",
+            "uid": "second",
+            "acquired_at": "2026-11-02T12:00:00+00:00",
+            "publication_status": "scheduled"
+          }
+        ]
+      },
+      {
+        "series_id": "DPCERY",
+        "quarter": "2026-Q3",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "09ff0c2229931d9dd1ed63197f56d87459d455793b34fe690f10f104bda2a977",
+        "value": "2.50",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10102",
+            "LineNumber": "2",
+            "SeriesCode": "DPCERY",
+            "TimePeriod": "2026Q3",
+            "CL_UNIT": "Level",
+            "UNIT_MULT": "0",
+            "METRIC_NAME": "Quantity Contributions",
+            "DataValue": "2.50",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5/raw-response.bin",
+        "origin": "local",
+        "indicator": "consumption_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": [
+          {
+            "classification": null,
+            "estimate_kind": "second",
+            "event_id": "bea:gdp:2026-11-25:2026-Q3:second",
+            "reference_quarter": "2026-Q3",
+            "release_at": "2026-11-25T13:30:00+00:00",
+            "sequence": 0,
+            "sha256": "30d436febe6f38180e0f05eb9074dd07e055b1fac7308f860bd2cd0ad69e2a7d",
+            "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+            "status": "CONFIRMED",
+            "summary": "GDP (Second Estimate), 3rd Quarter 2026",
+            "uid": "second",
+            "acquired_at": "2026-11-02T12:00:00+00:00",
+            "publication_status": "scheduled"
+          }
+        ]
+      },
+      {
+        "series_id": "A007RY",
+        "quarter": "2026-Q3",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "09ff0c2229931d9dd1ed63197f56d87459d455793b34fe690f10f104bda2a977",
+        "value": "1.60",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10102",
+            "LineNumber": "8",
+            "SeriesCode": "A007RY",
+            "TimePeriod": "2026Q3",
+            "CL_UNIT": "Level",
+            "UNIT_MULT": "0",
+            "METRIC_NAME": "Quantity Contributions",
+            "DataValue": "1.60",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5/raw-response.bin",
+        "origin": "local",
+        "indicator": "fixed_investment_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": [
+          {
+            "classification": null,
+            "estimate_kind": "second",
+            "event_id": "bea:gdp:2026-11-25:2026-Q3:second",
+            "reference_quarter": "2026-Q3",
+            "release_at": "2026-11-25T13:30:00+00:00",
+            "sequence": 0,
+            "sha256": "30d436febe6f38180e0f05eb9074dd07e055b1fac7308f860bd2cd0ad69e2a7d",
+            "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+            "status": "CONFIRMED",
+            "summary": "GDP (Second Estimate), 3rd Quarter 2026",
+            "uid": "second",
+            "acquired_at": "2026-11-02T12:00:00+00:00",
+            "publication_status": "scheduled"
+          }
+        ]
+      },
+      {
+        "series_id": "A014RY",
+        "quarter": "2026-Q3",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "09ff0c2229931d9dd1ed63197f56d87459d455793b34fe690f10f104bda2a977",
+        "value": "0",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10102",
+            "LineNumber": "14",
+            "SeriesCode": "A014RY",
+            "TimePeriod": "2026Q3",
+            "CL_UNIT": "Level",
+            "UNIT_MULT": "0",
+            "METRIC_NAME": "Quantity Contributions",
+            "DataValue": "0",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5/raw-response.bin",
+        "origin": "local",
+        "indicator": "inventories_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": [
+          {
+            "classification": null,
+            "estimate_kind": "second",
+            "event_id": "bea:gdp:2026-11-25:2026-Q3:second",
+            "reference_quarter": "2026-Q3",
+            "release_at": "2026-11-25T13:30:00+00:00",
+            "sequence": 0,
+            "sha256": "30d436febe6f38180e0f05eb9074dd07e055b1fac7308f860bd2cd0ad69e2a7d",
+            "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+            "status": "CONFIRMED",
+            "summary": "GDP (Second Estimate), 3rd Quarter 2026",
+            "uid": "second",
+            "acquired_at": "2026-11-02T12:00:00+00:00",
+            "publication_status": "scheduled"
+          }
+        ]
+      },
+      {
+        "series_id": "A822RY",
+        "quarter": "2026-Q3",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "09ff0c2229931d9dd1ed63197f56d87459d455793b34fe690f10f104bda2a977",
+        "value": "0.80",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10102",
+            "LineNumber": "22",
+            "SeriesCode": "A822RY",
+            "TimePeriod": "2026Q3",
+            "CL_UNIT": "Level",
+            "UNIT_MULT": "0",
+            "METRIC_NAME": "Quantity Contributions",
+            "DataValue": "0.80",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5/raw-response.bin",
+        "origin": "local",
+        "indicator": "government_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": [
+          {
+            "classification": null,
+            "estimate_kind": "second",
+            "event_id": "bea:gdp:2026-11-25:2026-Q3:second",
+            "reference_quarter": "2026-Q3",
+            "release_at": "2026-11-25T13:30:00+00:00",
+            "sequence": 0,
+            "sha256": "30d436febe6f38180e0f05eb9074dd07e055b1fac7308f860bd2cd0ad69e2a7d",
+            "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+            "status": "CONFIRMED",
+            "summary": "GDP (Second Estimate), 3rd Quarter 2026",
+            "uid": "second",
+            "acquired_at": "2026-11-02T12:00:00+00:00",
+            "publication_status": "scheduled"
+          }
+        ]
+      },
+      {
+        "series_id": "A019RY",
+        "quarter": "2026-Q3",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "09ff0c2229931d9dd1ed63197f56d87459d455793b34fe690f10f104bda2a977",
+        "value": "-0.5",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10102",
+            "LineNumber": "15",
+            "SeriesCode": "A019RY",
+            "TimePeriod": "2026Q3",
+            "CL_UNIT": "Level",
+            "UNIT_MULT": "0",
+            "METRIC_NAME": "Quantity Contributions",
+            "DataValue": "-0.5",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5/raw-response.bin",
+        "origin": "local",
+        "indicator": "net_exports_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": [
+          {
+            "classification": null,
+            "estimate_kind": "second",
+            "event_id": "bea:gdp:2026-11-25:2026-Q3:second",
+            "reference_quarter": "2026-Q3",
+            "release_at": "2026-11-25T13:30:00+00:00",
+            "sequence": 0,
+            "sha256": "30d436febe6f38180e0f05eb9074dd07e055b1fac7308f860bd2cd0ad69e2a7d",
+            "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+            "status": "CONFIRMED",
+            "summary": "GDP (Second Estimate), 3rd Quarter 2026",
+            "uid": "second",
+            "acquired_at": "2026-11-02T12:00:00+00:00",
+            "publication_status": "scheduled"
+          }
+        ]
+      },
+      {
+        "series_id": "A191RX",
+        "quarter": "2026-Q2",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "fc6cf4d558b8110a51661cce264d595f7cc8f9775e9837ab05968f249946bc87",
+        "value": "24000000.123",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10106",
+            "LineNumber": "1",
+            "SeriesCode": "A191RX",
+            "TimePeriod": "2026Q2",
+            "CL_UNIT": "Level",
+            "UNIT_MULT": "6",
+            "METRIC_NAME": "Chained Dollars",
+            "DataValue": "24,000,000.123",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "fecbc0648b93aad65d9e2343079fe762b058975e1693f4e70f63815504627aef",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/fecbc0648b93aad65d9e2343079fe762b058975e1693f4e70f63815504627aef/raw-response.bin",
+        "origin": "local",
+        "indicator": "real_gdp",
+        "value_unit": "million_chained_2017_USD",
+        "statistic": "SAAR_level",
+        "seasonal_adjustment": "SA",
+        "chained_base": "2017",
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": "0.0000",
+        "change_4q_ratio": "0.0000",
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "LB000003",
+        "quarter": "2026-Q2",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "65a56a63d416be18bfb0ae722258580ab5f95eaa8adbef213e8eee89ed4389be",
+        "value": "21000000.456",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10406",
+            "LineNumber": "8",
+            "SeriesCode": "LB000003",
+            "TimePeriod": "2026Q2",
+            "CL_UNIT": "Level",
+            "UNIT_MULT": "6",
+            "METRIC_NAME": "Chained Dollars",
+            "DataValue": "21,000,000.456",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "43e50c9f92b8cfc6b44020c1597d2945dd2956cf7fd981e63b1d7b35a09729a3",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/43e50c9f92b8cfc6b44020c1597d2945dd2956cf7fd981e63b1d7b35a09729a3/raw-response.bin",
+        "origin": "local",
+        "indicator": "real_private_final_demand",
+        "value_unit": "million_chained_2017_USD",
+        "statistic": "SAAR_level",
+        "seasonal_adjustment": "SA",
+        "chained_base": "2017",
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": "0.0000",
+        "change_4q_ratio": "0.0000",
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A191RL",
+        "quarter": "2026-Q2",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "f985e6b058acf5acb0b2473117771fc382d40ca615b8af89f7a37ab3aeb44775",
+        "value": "3.4",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10101",
+            "LineNumber": "1",
+            "SeriesCode": "A191RL",
+            "TimePeriod": "2026Q2",
+            "CL_UNIT": "Percent change, annual rate",
+            "UNIT_MULT": "0",
+            "METRIC_NAME": "Fisher Quantity Index",
+            "DataValue": "3.4",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "df078e31ddacafad853c8c1ed582745ec62905361640b82aa4af80e42e23cc17",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/df078e31ddacafad853c8c1ed582745ec62905361640b82aa4af80e42e23cc17/raw-response.bin",
+        "origin": "local",
+        "indicator": "gdp_qoq_annualized",
+        "value_unit": "percent",
+        "statistic": "official_annualized_qoq",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [
+          {
+            "event_id": "bea:gdp:2026-09-30:2026-Q2:third",
+            "source_version": {
+              "value": "2026-09-30",
+              "precision": "date",
+              "timezone": "America/New_York",
+              "basis": "official_material_release_date",
+              "source": "BEA GDP official release archive"
+            },
+            "estimate_kind": "third",
+            "roles": [
+              "actual",
+              "previous_estimate"
+            ],
+            "association": "scope_only",
+            "continuous_version_bound": false
+          },
+          {
+            "event_id": "bea:gdp:2026-09-30:2026-Q2:second",
+            "source_version": {
+              "value": "2026-09-30",
+              "precision": "date",
+              "timezone": "America/New_York",
+              "basis": "official_material_release_date",
+              "source": "BEA GDP official release archive"
+            },
+            "estimate_kind": "second",
+            "roles": [
+              "actual",
+              "previous_estimate"
+            ],
+            "association": "scope_only",
+            "continuous_version_bound": false
+          }
+        ],
+        "publication_events": []
+      },
+      {
+        "series_id": "DPCERY",
+        "quarter": "2026-Q2",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "09ff0c2229931d9dd1ed63197f56d87459d455793b34fe690f10f104bda2a977",
+        "value": "2.50",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10102",
+            "LineNumber": "2",
+            "SeriesCode": "DPCERY",
+            "TimePeriod": "2026Q2",
+            "CL_UNIT": "Level",
+            "UNIT_MULT": "0",
+            "METRIC_NAME": "Quantity Contributions",
+            "DataValue": "2.50",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5/raw-response.bin",
+        "origin": "local",
+        "indicator": "consumption_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A007RY",
+        "quarter": "2026-Q2",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "09ff0c2229931d9dd1ed63197f56d87459d455793b34fe690f10f104bda2a977",
+        "value": "1.60",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10102",
+            "LineNumber": "8",
+            "SeriesCode": "A007RY",
+            "TimePeriod": "2026Q2",
+            "CL_UNIT": "Level",
+            "UNIT_MULT": "0",
+            "METRIC_NAME": "Quantity Contributions",
+            "DataValue": "1.60",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5/raw-response.bin",
+        "origin": "local",
+        "indicator": "fixed_investment_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A014RY",
+        "quarter": "2026-Q2",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "09ff0c2229931d9dd1ed63197f56d87459d455793b34fe690f10f104bda2a977",
+        "value": null,
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10102",
+            "LineNumber": "14",
+            "SeriesCode": "A014RY",
+            "TimePeriod": "2026Q2",
+            "CL_UNIT": "Level",
+            "UNIT_MULT": "0",
+            "METRIC_NAME": "Quantity Contributions",
+            "DataValue": "(NA)",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": "official_null"
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5/raw-response.bin",
+        "origin": "local",
+        "indicator": "inventories_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "missing",
+        "missing_reason": "official_null",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A822RY",
+        "quarter": "2026-Q2",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "09ff0c2229931d9dd1ed63197f56d87459d455793b34fe690f10f104bda2a977",
+        "value": "0.80",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10102",
+            "LineNumber": "22",
+            "SeriesCode": "A822RY",
+            "TimePeriod": "2026Q2",
+            "CL_UNIT": "Level",
+            "UNIT_MULT": "0",
+            "METRIC_NAME": "Quantity Contributions",
+            "DataValue": "0.80",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5/raw-response.bin",
+        "origin": "local",
+        "indicator": "government_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A019RY",
+        "quarter": "2026-Q2",
+        "revision": 1,
+        "observed_at": "2026-11-02T12:00:00+00:00",
+        "batch_id": "09ff0c2229931d9dd1ed63197f56d87459d455793b34fe690f10f104bda2a977",
+        "value": "-1.03",
+        "provider_extra": {
+          "bea": {
+            "TableName": "T10102",
+            "LineNumber": "15",
+            "SeriesCode": "A019RY",
+            "TimePeriod": "2026Q2",
+            "CL_UNIT": "Level",
+            "UNIT_MULT": "0",
+            "METRIC_NAME": "Quantity Contributions",
+            "DataValue": "-1.03",
+            "LineDescription": "synthetic metric",
+            "NoteRef": "synthetic-note"
+          },
+          "retained_notes": [
+            {
+              "NoteText": "Synthetic: billions of chained (2017) dollars"
+            }
+          ],
+          "source_missing_reason": null
+        },
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "raw_sha256": "1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/1e10cae983bb188445dd807ef316f314aa48278f9c1ef4ddf3ceb679f0ea40f5/raw-response.bin",
+        "origin": "local",
+        "indicator": "net_exports_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "available",
+        "missing_reason": null,
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      }
+    ],
+    "status": "partial",
+    "coverage": {
+      "expected": 16,
+      "available": 15,
+      "official_null": 1,
+      "missing": 0
+    },
+    "query_mode": "current",
+    "as_of": null,
+    "as_of_basis": "observed",
+    "local_only": true,
+    "provider_requests": 0,
+    "provider_attempts": 0,
+    "source_failure": null,
+    "publication_events": [
+      {
+        "classification": null,
+        "estimate_kind": "second",
+        "event_id": "bea:gdp:2026-11-25:2026-Q3:second",
+        "reference_quarter": "2026-Q3",
+        "release_at": "2026-11-25T13:30:00+00:00",
+        "sequence": 0,
+        "sha256": "30d436febe6f38180e0f05eb9074dd07e055b1fac7308f860bd2cd0ad69e2a7d",
+        "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+        "status": "CONFIRMED",
+        "summary": "GDP (Second Estimate), 3rd Quarter 2026",
+        "uid": "second",
+        "acquired_at": "2026-11-02T12:00:00+00:00",
+        "publication_status": "scheduled"
+      }
+    ],
+    "metadata": {
+      "calendar_binds_current_revision": false,
+      "calendar_semantics": "planned_official_quarter_estimate_not_value_timestamp",
+      "historical_calendar": "only_snapshot_acquired_by_cutoff; no reconstruction"
+    }
+  },
+  "history": {
+    "start_quarter": "2026-Q2",
+    "end_quarter": "2026-Q3",
+    "series_ids": [
+      "A191RX",
+      "LB000003",
+      "A191RL",
+      "DPCERY",
+      "A007RY",
+      "A014RY",
+      "A822RY",
+      "A019RY"
+    ],
+    "points": [
+      {
+        "series_id": "A191RX",
+        "quarter": "2026-Q3",
+        "value": null,
+        "indicator": "real_gdp",
+        "value_unit": "million_chained_2017_USD",
+        "statistic": "SAAR_level",
+        "seasonal_adjustment": "SA",
+        "chained_base": "2017",
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {
+          "change_1q_ratio": "same_cutoff_endpoint_unavailable",
+          "change_4q_ratio": "same_cutoff_endpoint_unavailable"
+        },
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "LB000003",
+        "quarter": "2026-Q3",
+        "value": null,
+        "indicator": "real_private_final_demand",
+        "value_unit": "million_chained_2017_USD",
+        "statistic": "SAAR_level",
+        "seasonal_adjustment": "SA",
+        "chained_base": "2017",
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {
+          "change_1q_ratio": "same_cutoff_endpoint_unavailable",
+          "change_4q_ratio": "same_cutoff_endpoint_unavailable"
+        },
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A191RL",
+        "quarter": "2026-Q3",
+        "value": null,
+        "indicator": "gdp_qoq_annualized",
+        "value_unit": "percent",
+        "statistic": "official_annualized_qoq",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "DPCERY",
+        "quarter": "2026-Q3",
+        "value": null,
+        "indicator": "consumption_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A007RY",
+        "quarter": "2026-Q3",
+        "value": null,
+        "indicator": "fixed_investment_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A014RY",
+        "quarter": "2026-Q3",
+        "value": null,
+        "indicator": "inventories_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A822RY",
+        "quarter": "2026-Q3",
+        "value": null,
+        "indicator": "government_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A019RY",
+        "quarter": "2026-Q3",
+        "value": null,
+        "indicator": "net_exports_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A191RX",
+        "quarter": "2026-Q2",
+        "value": null,
+        "indicator": "real_gdp",
+        "value_unit": "million_chained_2017_USD",
+        "statistic": "SAAR_level",
+        "seasonal_adjustment": "SA",
+        "chained_base": "2017",
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {
+          "change_1q_ratio": "same_cutoff_endpoint_unavailable",
+          "change_4q_ratio": "same_cutoff_endpoint_unavailable"
+        },
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "LB000003",
+        "quarter": "2026-Q2",
+        "value": null,
+        "indicator": "real_private_final_demand",
+        "value_unit": "million_chained_2017_USD",
+        "statistic": "SAAR_level",
+        "seasonal_adjustment": "SA",
+        "chained_base": "2017",
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {
+          "change_1q_ratio": "same_cutoff_endpoint_unavailable",
+          "change_4q_ratio": "same_cutoff_endpoint_unavailable"
+        },
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A191RL",
+        "quarter": "2026-Q2",
+        "value": null,
+        "indicator": "gdp_qoq_annualized",
+        "value_unit": "percent",
+        "statistic": "official_annualized_qoq",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "DPCERY",
+        "quarter": "2026-Q2",
+        "value": null,
+        "indicator": "consumption_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A007RY",
+        "quarter": "2026-Q2",
+        "value": null,
+        "indicator": "fixed_investment_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A014RY",
+        "quarter": "2026-Q2",
+        "value": null,
+        "indicator": "inventories_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A822RY",
+        "quarter": "2026-Q2",
+        "value": null,
+        "indicator": "government_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      },
+      {
+        "series_id": "A019RY",
+        "quarter": "2026-Q2",
+        "value": null,
+        "indicator": "net_exports_contribution",
+        "value_unit": "percentage_points",
+        "statistic": "contribution_to_annualized_gdp_growth",
+        "seasonal_adjustment": "SA",
+        "chained_base": null,
+        "availability": "missing",
+        "missing_reason": "local_record_missing",
+        "estimate_kind": "unknown",
+        "event_binding_status": "unconfirmed",
+        "event_binding_reason": "current_nipa_table_has_no_release_vintage",
+        "change_1q_ratio": null,
+        "change_4q_ratio": null,
+        "calculation_missing": {},
+        "related_releases": [],
+        "publication_events": []
+      }
+    ],
+    "status": "partial",
+    "coverage": {
+      "expected": 16,
+      "available": 0,
+      "official_null": 0,
+      "missing": 16
+    },
+    "query_mode": "history",
+    "as_of": "2026-11-02T11:00:00+00:00",
+    "as_of_basis": "available",
+    "local_only": true,
+    "provider_requests": 0,
+    "provider_attempts": 0,
+    "source_failure": null,
+    "publication_events": [],
+    "metadata": {
+      "calendar_binds_current_revision": false,
+      "calendar_semantics": "planned_official_quarter_estimate_not_value_timestamp",
+      "historical_calendar": "only_snapshot_acquired_by_cutoff; no reconstruction"
+    }
+  },
+  "releases": {
+    "events": [
+      {
+        "event_id": "bea:gdp:2026-09-30:2026-Q2:third",
+        "family": "gdp",
+        "reference_quarter": "2026-Q2",
+        "reference_quarters": [
+          "2026-Q1",
+          "2026-Q2"
+        ],
+        "estimate_kind": "third",
+        "actual_at": null,
+        "source_version": {
+          "value": "2026-09-30",
+          "precision": "date",
+          "timezone": "America/New_York",
+          "basis": "official_material_release_date",
+          "source": "BEA GDP official release archive"
+        },
+        "source_url": "https://www.bea.gov/news/2026/gdp-third-estimate-2nd-quarter-2026",
+        "parser_revision": "bea-gdp-release-summary-v1",
+        "claims": [
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q2",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "previous_estimate",
+            "estimate_kind": "advance",
+            "value": "1.5",
+            "value_identity": "dc108382c94e257b17654c0a7d86bdc9e6e20375432b587f8ee9f15667c8d65f",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-1",
+              "row": "Real GDP",
+              "column": "Advance Estimate",
+              "excerpt": "Real GDP | 1.5 | 1.5 | 2.2"
+            },
+            "evidence_ids": [
+              "c84f44976befd988772dcc9a6dd444788be325b8f4d761aaae93200994f10f7c"
+            ]
+          },
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q2",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "previous_estimate",
+            "estimate_kind": "second",
+            "value": "1.5",
+            "value_identity": "8a63bbb250205871a0cddc273114d7c9af2e113ce3d160bfa0df45446bec881d",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-1",
+              "row": "Real GDP",
+              "column": "Second Estimate",
+              "excerpt": "Real GDP | 1.5 | 1.5 | 2.2"
+            },
+            "evidence_ids": [
+              "c84f44976befd988772dcc9a6dd444788be325b8f4d761aaae93200994f10f7c"
+            ]
+          },
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q2",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "actual",
+            "estimate_kind": "third",
+            "value": "2.2",
+            "value_identity": "2fbc8d7e2ee4c08b5a98116cc244884c280f84247ff90a99b8f8eef657a47e5d",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-1",
+              "row": "Real GDP",
+              "column": "Third Estimate",
+              "excerpt": "Real GDP | 1.5 | 1.5 | 2.2"
+            },
+            "evidence_ids": [
+              "c84f44976befd988772dcc9a6dd444788be325b8f4d761aaae93200994f10f7c"
+            ]
+          },
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q1",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "prior_original",
+            "estimate_kind": "unknown",
+            "value": "2.1",
+            "value_identity": "7bed51d05d83a713af880c92745912fcaa82cf641d927a0edd2733898f6984f7",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-2",
+              "row": "Real GDP",
+              "column": "Previous",
+              "excerpt": "Real GDP | 2.1 | 2.5"
+            },
+            "evidence_ids": [
+              "c84f44976befd988772dcc9a6dd444788be325b8f4d761aaae93200994f10f7c"
+            ]
+          },
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q1",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "prior_revised",
+            "estimate_kind": "unknown",
+            "value": "2.5",
+            "value_identity": "286d5093c08ad49f739035db711b1eaa8884320744f1b5c48ddddf497c15bc15",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-2",
+              "row": "Real GDP",
+              "column": "Revised",
+              "excerpt": "Real GDP | 2.1 | 2.5"
+            },
+            "evidence_ids": [
+              "c84f44976befd988772dcc9a6dd444788be325b8f4d761aaae93200994f10f7c"
+            ]
+          }
+        ],
+        "previous_estimate_revision_pp": "0.7",
+        "consensus": null,
+        "surprise": null,
+        "surprise_missing": [
+          "consensus_source_unavailable"
+        ],
+        "missing": [
+          "actual_publication_instant_not_proven"
+        ],
+        "missing_scopes": [
+          {
+            "series_id": "A191RX",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "LB000003",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "DPCERY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A007RY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A014RY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A822RY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A019RY",
+            "reason": "not_covered_by_summary_adapter"
+          }
+        ],
+        "retention": {
+          "kind": "retained_document",
+          "exact_original_retained": false,
+          "acquisition_method": "explicit_operator_import",
+          "coverage": "GDP_summary_and_explicit_prior_quarter_revision_tables"
+        },
+        "evidence_id": "c84f44976befd988772dcc9a6dd444788be325b8f4d761aaae93200994f10f7c",
+        "raw_sha256": "026c40a7c7b72136cdc642152ed0874d53f499edbf8843ae163b2f0524842867",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/026c40a7c7b72136cdc642152ed0874d53f499edbf8843ae163b2f0524842867/raw-response.bin",
+        "obtained_at": "2026-11-02T12:00:01+00:00",
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "conflicts": [],
+        "evidence_ids": [
+          "c84f44976befd988772dcc9a6dd444788be325b8f4d761aaae93200994f10f7c"
+        ]
+      },
+      {
+        "event_id": "bea:gdp:2026-09-30:2026-Q2:second",
+        "family": "gdp",
+        "reference_quarter": "2026-Q2",
+        "reference_quarters": [
+          "2026-Q1",
+          "2026-Q2"
+        ],
+        "estimate_kind": "second",
+        "actual_at": null,
+        "source_version": {
+          "value": "2026-09-30",
+          "precision": "date",
+          "timezone": "America/New_York",
+          "basis": "official_material_release_date",
+          "source": "BEA GDP official release archive"
+        },
+        "source_url": "https://www.bea.gov/news/2026/gdp-second-estimate-2nd-quarter-2026",
+        "parser_revision": "bea-gdp-release-summary-v1",
+        "claims": [
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q2",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "previous_estimate",
+            "estimate_kind": "advance",
+            "value": "1.5",
+            "value_identity": "dc108382c94e257b17654c0a7d86bdc9e6e20375432b587f8ee9f15667c8d65f",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-1",
+              "row": "Real GDP",
+              "column": "Advance Estimate",
+              "excerpt": "Real GDP | 1.5 | 2.2"
+            },
+            "evidence_ids": [
+              "5b9f8b7abb62de15e303cfc2fcbfdb7c56ea9110de70cdf630d15793273d16c9"
+            ]
+          },
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q2",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "actual",
+            "estimate_kind": "second",
+            "value": "2.2",
+            "value_identity": "7e82942e7e4e98c4adb9142f6c2ff87609c0fb92a8b3cbe4a405690e8ee60ec7",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-1",
+              "row": "Real GDP",
+              "column": "Second Estimate",
+              "excerpt": "Real GDP | 1.5 | 2.2"
+            },
+            "evidence_ids": [
+              "5b9f8b7abb62de15e303cfc2fcbfdb7c56ea9110de70cdf630d15793273d16c9"
+            ]
+          },
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q1",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "prior_original",
+            "estimate_kind": "unknown",
+            "value": "2.1",
+            "value_identity": "7bed51d05d83a713af880c92745912fcaa82cf641d927a0edd2733898f6984f7",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-2",
+              "row": "Real GDP",
+              "column": "Previous",
+              "excerpt": "Real GDP | 2.1 | 2.5"
+            },
+            "evidence_ids": [
+              "5b9f8b7abb62de15e303cfc2fcbfdb7c56ea9110de70cdf630d15793273d16c9"
+            ]
+          },
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q1",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "prior_revised",
+            "estimate_kind": "unknown",
+            "value": "2.5",
+            "value_identity": "286d5093c08ad49f739035db711b1eaa8884320744f1b5c48ddddf497c15bc15",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-2",
+              "row": "Real GDP",
+              "column": "Revised",
+              "excerpt": "Real GDP | 2.1 | 2.5"
+            },
+            "evidence_ids": [
+              "5b9f8b7abb62de15e303cfc2fcbfdb7c56ea9110de70cdf630d15793273d16c9"
+            ]
+          }
+        ],
+        "previous_estimate_revision_pp": "0.7",
+        "consensus": null,
+        "surprise": null,
+        "surprise_missing": [
+          "consensus_source_unavailable"
+        ],
+        "missing": [
+          "actual_publication_instant_not_proven"
+        ],
+        "missing_scopes": [
+          {
+            "series_id": "A191RX",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "LB000003",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "DPCERY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A007RY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A014RY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A822RY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A019RY",
+            "reason": "not_covered_by_summary_adapter"
+          }
+        ],
+        "retention": {
+          "kind": "retained_document",
+          "exact_original_retained": false,
+          "acquisition_method": "explicit_operator_import",
+          "coverage": "GDP_summary_and_explicit_prior_quarter_revision_tables"
+        },
+        "evidence_id": "5b9f8b7abb62de15e303cfc2fcbfdb7c56ea9110de70cdf630d15793273d16c9",
+        "raw_sha256": "6f604e986a83934a6e99e9f78b99b422f8b1653f8ec610fd47965b392323b602",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/6f604e986a83934a6e99e9f78b99b422f8b1653f8ec610fd47965b392323b602/raw-response.bin",
+        "obtained_at": "2026-11-02T12:00:01+00:00",
+        "available_at": "2026-11-02T12:00:01+00:00",
+        "conflicts": [],
+        "evidence_ids": [
+          "5b9f8b7abb62de15e303cfc2fcbfdb7c56ea9110de70cdf630d15793273d16c9"
+        ]
+      }
+    ],
+    "as_of": "2026-11-02T12:00:01+00:00",
+    "read_mode": "event",
+    "missing": []
+  },
+  "source_history": {
+    "events": [
+      {
+        "event_id": "bea:gdp:2026-09-30:2026-Q2:third",
+        "family": "gdp",
+        "reference_quarter": "2026-Q2",
+        "reference_quarters": [
+          "2026-Q1",
+          "2026-Q2"
+        ],
+        "estimate_kind": "third",
+        "actual_at": null,
+        "source_version": {
+          "value": "2026-09-30",
+          "precision": "date",
+          "timezone": "America/New_York",
+          "basis": "official_material_release_date",
+          "source": "BEA GDP official release archive"
+        },
+        "source_url": "https://www.bea.gov/news/2026/gdp-third-estimate-2nd-quarter-2026",
+        "parser_revision": "bea-gdp-release-summary-v1",
+        "claims": [
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q2",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "previous_estimate",
+            "estimate_kind": "advance",
+            "value": "1.5",
+            "value_identity": "dc108382c94e257b17654c0a7d86bdc9e6e20375432b587f8ee9f15667c8d65f",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-1",
+              "row": "Real GDP",
+              "column": "Advance Estimate",
+              "excerpt": "Real GDP | 1.5 | 1.5 | 2.2"
+            }
+          },
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q2",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "previous_estimate",
+            "estimate_kind": "second",
+            "value": "1.5",
+            "value_identity": "8a63bbb250205871a0cddc273114d7c9af2e113ce3d160bfa0df45446bec881d",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-1",
+              "row": "Real GDP",
+              "column": "Second Estimate",
+              "excerpt": "Real GDP | 1.5 | 1.5 | 2.2"
+            }
+          },
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q2",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "actual",
+            "estimate_kind": "third",
+            "value": "2.2",
+            "value_identity": "2fbc8d7e2ee4c08b5a98116cc244884c280f84247ff90a99b8f8eef657a47e5d",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-1",
+              "row": "Real GDP",
+              "column": "Third Estimate",
+              "excerpt": "Real GDP | 1.5 | 1.5 | 2.2"
+            }
+          },
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q1",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "prior_original",
+            "estimate_kind": "unknown",
+            "value": "2.1",
+            "value_identity": "7bed51d05d83a713af880c92745912fcaa82cf641d927a0edd2733898f6984f7",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-2",
+              "row": "Real GDP",
+              "column": "Previous",
+              "excerpt": "Real GDP | 2.1 | 2.5"
+            }
+          },
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q1",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "prior_revised",
+            "estimate_kind": "unknown",
+            "value": "2.5",
+            "value_identity": "286d5093c08ad49f739035db711b1eaa8884320744f1b5c48ddddf497c15bc15",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-2",
+              "row": "Real GDP",
+              "column": "Revised",
+              "excerpt": "Real GDP | 2.1 | 2.5"
+            }
+          }
+        ],
+        "previous_estimate_revision_pp": "0.7",
+        "consensus": null,
+        "surprise": null,
+        "surprise_missing": [
+          "consensus_source_unavailable"
+        ],
+        "missing": [
+          "actual_publication_instant_not_proven"
+        ],
+        "missing_scopes": [
+          {
+            "series_id": "A191RX",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "LB000003",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "DPCERY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A007RY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A014RY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A822RY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A019RY",
+            "reason": "not_covered_by_summary_adapter"
+          }
+        ],
+        "retention": {
+          "kind": "retained_document",
+          "exact_original_retained": false,
+          "acquisition_method": "explicit_operator_import",
+          "coverage": "GDP_summary_and_explicit_prior_quarter_revision_tables"
+        },
+        "evidence_id": "c84f44976befd988772dcc9a6dd444788be325b8f4d761aaae93200994f10f7c",
+        "raw_sha256": "026c40a7c7b72136cdc642152ed0874d53f499edbf8843ae163b2f0524842867",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/026c40a7c7b72136cdc642152ed0874d53f499edbf8843ae163b2f0524842867/raw-response.bin",
+        "obtained_at": "2026-11-02T12:00:01+00:00",
+        "available_at": "2026-11-02T12:00:01+00:00"
+      },
+      {
+        "event_id": "bea:gdp:2026-09-30:2026-Q2:second",
+        "family": "gdp",
+        "reference_quarter": "2026-Q2",
+        "reference_quarters": [
+          "2026-Q1",
+          "2026-Q2"
+        ],
+        "estimate_kind": "second",
+        "actual_at": null,
+        "source_version": {
+          "value": "2026-09-30",
+          "precision": "date",
+          "timezone": "America/New_York",
+          "basis": "official_material_release_date",
+          "source": "BEA GDP official release archive"
+        },
+        "source_url": "https://www.bea.gov/news/2026/gdp-second-estimate-2nd-quarter-2026",
+        "parser_revision": "bea-gdp-release-summary-v1",
+        "claims": [
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q2",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "previous_estimate",
+            "estimate_kind": "advance",
+            "value": "1.5",
+            "value_identity": "dc108382c94e257b17654c0a7d86bdc9e6e20375432b587f8ee9f15667c8d65f",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-1",
+              "row": "Real GDP",
+              "column": "Advance Estimate",
+              "excerpt": "Real GDP | 1.5 | 2.2"
+            }
+          },
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q2",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "actual",
+            "estimate_kind": "second",
+            "value": "2.2",
+            "value_identity": "7e82942e7e4e98c4adb9142f6c2ff87609c0fb92a8b3cbe4a405690e8ee60ec7",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-1",
+              "row": "Real GDP",
+              "column": "Second Estimate",
+              "excerpt": "Real GDP | 1.5 | 2.2"
+            }
+          },
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q1",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "prior_original",
+            "estimate_kind": "unknown",
+            "value": "2.1",
+            "value_identity": "7bed51d05d83a713af880c92745912fcaa82cf641d927a0edd2733898f6984f7",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-2",
+              "row": "Real GDP",
+              "column": "Previous",
+              "excerpt": "Real GDP | 2.1 | 2.5"
+            }
+          },
+          {
+            "series_id": "A191RL",
+            "reference_quarter": "2026-Q1",
+            "statistic": "official_annualized_qoq",
+            "unit": "percent",
+            "adjustment": "SA",
+            "role": "prior_revised",
+            "estimate_kind": "unknown",
+            "value": "2.5",
+            "value_identity": "286d5093c08ad49f739035db711b1eaa8884320744f1b5c48ddddf497c15bc15",
+            "confirmation_state": "confirmed",
+            "continuous_version": null,
+            "locator": {
+              "kind": "official_table_cell",
+              "table": "table-2",
+              "row": "Real GDP",
+              "column": "Revised",
+              "excerpt": "Real GDP | 2.1 | 2.5"
+            }
+          }
+        ],
+        "previous_estimate_revision_pp": "0.7",
+        "consensus": null,
+        "surprise": null,
+        "surprise_missing": [
+          "consensus_source_unavailable"
+        ],
+        "missing": [
+          "actual_publication_instant_not_proven"
+        ],
+        "missing_scopes": [
+          {
+            "series_id": "A191RX",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "LB000003",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "DPCERY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A007RY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A014RY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A822RY",
+            "reason": "not_covered_by_summary_adapter"
+          },
+          {
+            "series_id": "A019RY",
+            "reason": "not_covered_by_summary_adapter"
+          }
+        ],
+        "retention": {
+          "kind": "retained_document",
+          "exact_original_retained": false,
+          "acquisition_method": "explicit_operator_import",
+          "coverage": "GDP_summary_and_explicit_prior_quarter_revision_tables"
+        },
+        "evidence_id": "5b9f8b7abb62de15e303cfc2fcbfdb7c56ea9110de70cdf630d15793273d16c9",
+        "raw_sha256": "6f604e986a83934a6e99e9f78b99b422f8b1653f8ec610fd47965b392323b602",
+        "raw_locator": "mdf-s3://mdf-artifacts/macro/gdp-timeseries/r1/6f604e986a83934a6e99e9f78b99b422f8b1653f8ec610fd47965b392323b602/raw-response.bin",
+        "obtained_at": "2026-11-02T12:00:01+00:00",
+        "available_at": "2026-11-02T12:00:01+00:00"
+      }
+    ],
+    "as_of": "2026-11-02T12:00:01+00:00",
+    "read_mode": "source_history",
+    "missing": []
+  }
+}

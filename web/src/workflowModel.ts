@@ -13,6 +13,10 @@ export type Key = { identity: string; revision: string };
 export const keyOf = (key: Key) => `${key.identity}@${key.revision}`;
 export const sameKey = (a?: Key | null, b?: Key | null) =>
   !!a && !!b && a.identity === b.identity && a.revision === b.revision;
+export const GDP: Key = {
+  identity: "mdf.macro.bea.gdp-growth",
+  revision: "r1",
+};
 export const CONSUMPTION: Key = {
   identity: "mdf.macro.bea.consumption-income",
   revision: "r1",

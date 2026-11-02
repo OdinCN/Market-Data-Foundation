@@ -1,4 +1,5 @@
 import {
+  GDP_PROFILE,
   CPI_PROFILE,
   PPI_PROFILE,
   PCE_PROFILE,
@@ -39,6 +40,7 @@ import { OverviewPage, PlatformPage } from "./WorkflowRuntime";
 import { Technical } from "./WorkflowTable";
 import { useResource } from "./workflowHooks";
 import {
+  GDP,
   CPI,
   PPI,
   PCE,
@@ -207,17 +209,19 @@ export default function App({
     ((!identity && !operation) || sameKey(key, CPI));
   const macroIdentity = identity ?? operationEntry?.asset?.identity;
   const macroProfile =
-    macroIdentity === CONSUMPTION.identity
-      ? CONSUMPTION_PROFILE
-      : macroIdentity === RETAIL.identity
-        ? RETAIL_PROFILE
-        : macroIdentity === EMPLOYMENT.identity
-          ? EMPLOYMENT_PROFILE
-          : macroIdentity === PCE.identity
-            ? PCE_PROFILE
-            : macroIdentity === PPI.identity
-              ? PPI_PROFILE
-              : CPI_PROFILE;
+    macroIdentity === GDP.identity
+      ? GDP_PROFILE
+      : macroIdentity === CONSUMPTION.identity
+        ? CONSUMPTION_PROFILE
+        : macroIdentity === RETAIL.identity
+          ? RETAIL_PROFILE
+          : macroIdentity === EMPLOYMENT.identity
+            ? EMPLOYMENT_PROFILE
+            : macroIdentity === PCE.identity
+              ? PCE_PROFILE
+              : macroIdentity === PPI.identity
+                ? PPI_PROFILE
+                : CPI_PROFILE;
   const collectionList =
     page.view === "collection" &&
     ["periodic", "executions"].includes(page.fields.get("tab") ?? "new");
@@ -234,6 +238,7 @@ export default function App({
       (!collectionList ||
         page.fields.get("tab") !== "periodic" ||
         collectionFilter !== keyOf(RETAIL)) &&
+      macroIdentity !== GDP.identity &&
       (macroIdentity !== CONSUMPTION.identity || collectionList) &&
       (macroIdentity !== RETAIL.identity ||
         (collectionList && collectionFilter !== keyOf(RETAIL))) &&
@@ -321,18 +326,30 @@ export default function App({
     page.view === "collection",
     CONSUMPTION_PROFILE,
   );
+  const gdpAvailability = useCpiAvailability(
+    transport,
+    generation,
+    !page.invalid &&
+      page.view === "assets" &&
+      macroIdentity === GDP.identity &&
+      (!revision || revision === GDP.revision),
+    false,
+    GDP_PROFILE,
+  );
   const macroAvailability =
-    macroProfile.id === "consumption"
-      ? consumptionAvailability
-      : macroProfile.id === "retail"
-        ? retailAvailability
-        : macroProfile.id === "employment"
-          ? employmentAvailability
-          : macroProfile.id === "pce"
-            ? pceAvailability
-            : macroProfile.id === "ppi"
-              ? ppiAvailability
-              : cpiAvailability;
+    macroProfile.id === "gdp"
+      ? gdpAvailability
+      : macroProfile.id === "consumption"
+        ? consumptionAvailability
+        : macroProfile.id === "retail"
+          ? retailAvailability
+          : macroProfile.id === "employment"
+            ? employmentAvailability
+            : macroProfile.id === "pce"
+              ? pceAvailability
+              : macroProfile.id === "ppi"
+                ? ppiAvailability
+                : cpiAvailability;
   const catalog = useResource<Catalog>(
     (signal) => request(transport, "/api/r5/cpi", query, signal),
     [transport, generation, query, wantsCatalog, page.view, page.invalid],
@@ -415,7 +432,8 @@ export default function App({
           !sameKey(key, PCE) &&
           !sameKey(key, EMPLOYMENT) &&
           !sameKey(key, RETAIL) &&
-          !sameKey(key, CONSUMPTION)) ||
+          !sameKey(key, CONSUMPTION) &&
+          !sameKey(key, GDP)) ||
           (!revision &&
             (page.view !== "assets" ||
               !!operation ||
@@ -438,6 +456,7 @@ export default function App({
       : asset;
   const menu = menus.find((m) => m[0] === page.view)!;
   const busy =
+    gdpAvailability.busy ||
     cpiAvailability.busy ||
     ppiAvailability.busy ||
     pceAvailability.busy ||
@@ -662,10 +681,12 @@ export default function App({
                             ? retailOperationMatches(operationEntry)
                             : macroProfile.id === "employment"
                               ? employmentOperationMatches(operationEntry)
-                              : sameKey(
-                                  selectedAsset?.key,
-                                  macroProfile.asset,
-                                ))) ? (
+                              : macroProfile.id === "gdp"
+                                ? sameKey(operationEntry?.asset, GDP)
+                                : sameKey(
+                                    selectedAsset?.key,
+                                    macroProfile.asset,
+                                  ))) ? (
                           <>
                             <CpiTimeSeries
                               profile={macroProfile}
@@ -682,18 +703,25 @@ export default function App({
                         ) : undefined
                       }
                       cpiAction={
-                        <button
-                          onClick={() =>
-                            navigate("collection", {
-                              asset: macroProfile.asset.identity,
-                              asset_revision: macroProfile.asset.revision,
-                              operation: null,
-                              tab: "new",
-                            })
-                          }
-                        >
-                          采集数据
-                        </button>
+                        macroProfile.id === "gdp" ? (
+                          <p role="status">
+                            GDP
+                            采集、周期策略和执行记录暂未开放；可在此查询数据与发布证据。
+                          </p>
+                        ) : (
+                          <button
+                            onClick={() =>
+                              navigate("collection", {
+                                asset: macroProfile.asset.identity,
+                                asset_revision: macroProfile.asset.revision,
+                                operation: null,
+                                tab: "new",
+                              })
+                            }
+                          >
+                            采集数据
+                          </button>
+                        )
                       }
                       reference={
                         selectedAsset ? (
@@ -748,25 +776,30 @@ export default function App({
                       ordinary={ordinaryQuery}
                     />
                   )}
-                  {page.view === "collection" && (
-                    <CollectionWorkbench
-                      key={`${identity}:${revision}:${operation}`}
-                      assets={model.assets}
-                      asset={selectedAsset}
-                      source={invalidIdentity ? undefined : source}
-                      invalidIdentity={invalidIdentity || missingMapping}
-                      route={page}
-                      navigate={navigate}
-                      transport={transport}
-                      generation={generation}
-                      cpiAvailability={cpiAvailability}
-                      ppiAvailability={ppiAvailability}
-                      pceAvailability={pceAvailability}
-                      employmentAvailability={employmentAvailability}
-                      retailAvailability={retailAvailability}
-                      consumptionAvailability={consumptionAvailability}
-                    />
-                  )}
+                  {page.view === "collection" &&
+                    (macroIdentity === GDP.identity ? (
+                      <p role="status">
+                        GDP 采集、周期策略和执行记录暂未开放。
+                      </p>
+                    ) : (
+                      <CollectionWorkbench
+                        key={`${identity}:${revision}:${operation}`}
+                        assets={model.assets}
+                        asset={selectedAsset}
+                        source={invalidIdentity ? undefined : source}
+                        invalidIdentity={invalidIdentity || missingMapping}
+                        route={page}
+                        navigate={navigate}
+                        transport={transport}
+                        generation={generation}
+                        cpiAvailability={cpiAvailability}
+                        ppiAvailability={ppiAvailability}
+                        pceAvailability={pceAvailability}
+                        employmentAvailability={employmentAvailability}
+                        retailAvailability={retailAvailability}
+                        consumptionAvailability={consumptionAvailability}
+                      />
+                    ))}
                   {page.view === "platform" && (
                     <PlatformPage
                       data={observation.data}
