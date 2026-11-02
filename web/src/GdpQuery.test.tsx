@@ -342,7 +342,7 @@ it("provides native parameter, field, unit, release and error documentation", ()
   ])
     expect(help.textContent).toContain(text);
 });
-it("routes the runtime GDP asset through shared compact/expanded panes and honest collection state", async () => {
+it("routes the runtime GDP asset through shared compact/expanded panes and its own collection form", async () => {
   location.hash = `ui=r5&view=assets&asset=${GDP.identity}&asset_revision=r1`;
   const f = wire();
   render(<App transport={f.transport} />);
@@ -352,13 +352,12 @@ it("routes the runtime GDP asset through shared compact/expanded panes and hones
   fireEvent.click(screen.getByRole("button", { name: "收起窗体" }));
   expect(document.querySelector(".workbench.cpi-asset-expanded")).toBeNull();
   expect(f.calls.some((p) => p.includes("/cpi/timeseries"))).toBe(false);
-  fireEvent.click(screen.getByRole("button", { name: "采集任务" }));
-  expect(
-    await screen.findByText("GDP 采集、周期策略和执行记录暂未开放。"),
-  ).toBeTruthy();
-  expect(f.calls.some((p) => /\/(jobs|strategy|executions)/.test(p))).toBe(
-    false,
+  fireEvent.click(screen.getByRole("button", { name: "采集数据" }));
+  expect(await screen.findByLabelText("采集开始季度")).toBeTruthy();
+  expect(new URLSearchParams(location.hash.slice(1)).get("asset")).toBe(
+    GDP.identity,
   );
+  expect(f.calls.some((p) => p.includes("/cpi/timeseries"))).toBe(false);
 });
 
 it("requests a native series subset and validates its own quarterly coverage", () => {

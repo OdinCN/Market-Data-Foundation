@@ -26,6 +26,232 @@
       "editable": true,
       "available": true,
       "anchor_basis": "previous_utc_quarter_not_release_readiness"
+    },
+    "collection_scope": {
+      "series": "all_eight_native_inputs",
+      "max_quarters": 800
+    },
+    "source_allowed": true
+  },
+  "jobs": {
+    "jobs": [
+      {
+        "action": "init",
+        "asset": "gdp",
+        "classification": null,
+        "created_at": "2026-11-02T12:00:00+00:00",
+        "end": "2026-Q3",
+        "finished_at": "2026-11-02T12:00:00+00:00",
+        "job_id": "d3200000-0000-4000-8000-000000000001",
+        "origin": "manual",
+        "request_id": "d3200000-0000-4000-8000-000000000001",
+        "result": {
+          "completion": "local_readback_verified",
+          "coverage": {
+            "available": 15,
+            "expected": 16,
+            "missing": 0,
+            "official_null": 1
+          },
+          "event_binding_status": "unconfirmed",
+          "provider_attempts": 0,
+          "provider_requests": 0,
+          "readback": {
+            "as_of_basis": "available",
+            "verified": true
+          },
+          "saved_points": 0,
+          "saved_revisions": 0,
+          "source_missing": []
+        },
+        "stage": null,
+        "start": "2026-Q2",
+        "started_at": "2026-11-02T12:00:00+00:00",
+        "state": "complete"
+      }
+    ]
+  },
+  "executions": {
+    "executions": [
+      {
+        "action": "init",
+        "asset": "gdp",
+        "classification": null,
+        "created_at": "2026-11-02T12:00:00+00:00",
+        "end": "2026-Q3",
+        "finished_at": "2026-11-02T12:00:00+00:00",
+        "job_id": "d3200000-0000-4000-8000-000000000001",
+        "origin": "manual",
+        "request_id": "d3200000-0000-4000-8000-000000000001",
+        "result": {
+          "completion": "local_readback_verified",
+          "coverage": {
+            "available": 15,
+            "expected": 16,
+            "missing": 0,
+            "official_null": 1
+          },
+          "event_binding_status": "unconfirmed",
+          "provider_attempts": 0,
+          "provider_requests": 0,
+          "readback": {
+            "as_of_basis": "available",
+            "verified": true
+          },
+          "saved_points": 0,
+          "saved_revisions": 0,
+          "source_missing": []
+        },
+        "stage": null,
+        "start": "2026-Q2",
+        "started_at": "2026-11-02T12:00:00+00:00",
+        "state": "complete",
+        "id": "d3200000-0000-4000-8000-000000000001"
+      }
+    ]
+  },
+  "strategy": {
+    "exists": false,
+    "enabled": false,
+    "history_start": "2026-Q3",
+    "history_start_locked": true,
+    "worker": {
+      "last_heartbeat_at": null,
+      "state": "not_started"
+    },
+    "next_due": null,
+    "policy": {
+      "identity": "reference_quarter_and_native_estimate_kind",
+      "event_binding": "calendar_is_not_value_evidence",
+      "history_batch_quarters": 16,
+      "history_priority": "low",
+      "rolling_24h_reserved_http": 80,
+      "stage_max_attempts": 10,
+      "calendar_cache_hours": 24
+    },
+    "calendar_status": "fresh",
+    "calendar": {
+      "acquired_at": "2026-11-02T12:00:00+00:00",
+      "cache_valid_until": "2026-11-03T12:00:00+00:00",
+      "consecutive_refresh_failures": 0,
+      "events": {
+        "second": {
+          "classification": null,
+          "estimate_kind": "second",
+          "event_id": "bea:gdp:2026-11-25:2026-Q3:second",
+          "reference_quarter": "2026-Q3",
+          "release_at": "2026-11-25T13:30:00+00:00",
+          "sequence": 0,
+          "sha256": "30d436febe6f38180e0f05eb9074dd07e055b1fac7308f860bd2cd0ad69e2a7d",
+          "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+          "status": "CONFIRMED",
+          "summary": "GDP (Second Estimate), 3rd Quarter 2026",
+          "uid": "second"
+        }
+      },
+      "last_refresh_attempt": "2026-11-02T12:00:00+00:00",
+      "next_refresh_at": "2026-11-02T18:00:00+00:00",
+      "primary_error": null,
+      "primary_source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+      "refresh_attempts": [
+        {
+          "outcome": "accepted",
+          "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics"
+        }
+      ],
+      "refresh_mode": "primary",
+      "sha256": "30d436febe6f38180e0f05eb9074dd07e055b1fac7308f860bd2cd0ad69e2a7d",
+      "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics"
+    },
+    "next_release_at": "2026-11-25T13:30:00+00:00",
+    "runtime_state": "not_started"
+  },
+  "schedule": {
+    "asset": "gdp",
+    "calendar": {
+      "acquired_at": "2026-11-02T12:00:00+00:00",
+      "cache_valid_until": "2026-11-03T12:00:00+00:00",
+      "consecutive_refresh_failures": 0,
+      "events": {
+        "second": {
+          "classification": null,
+          "estimate_kind": "second",
+          "event_id": "bea:gdp:2026-11-25:2026-Q3:second",
+          "reference_quarter": "2026-Q3",
+          "release_at": "2026-11-25T13:30:00+00:00",
+          "sequence": 0,
+          "sha256": "30d436febe6f38180e0f05eb9074dd07e055b1fac7308f860bd2cd0ad69e2a7d",
+          "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+          "status": "CONFIRMED",
+          "summary": "GDP (Second Estimate), 3rd Quarter 2026",
+          "uid": "second"
+        }
+      },
+      "last_refresh_attempt": "2026-11-02T12:00:00+00:00",
+      "next_refresh_at": "2026-11-02T18:00:00+00:00",
+      "primary_error": null,
+      "primary_source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+      "refresh_attempts": [
+        {
+          "outcome": "accepted",
+          "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics"
+        }
+      ],
+      "refresh_mode": "primary",
+      "sha256": "30d436febe6f38180e0f05eb9074dd07e055b1fac7308f860bd2cd0ad69e2a7d",
+      "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics"
+    },
+    "history_start": "2026-Q3",
+    "targets": [
+      {
+        "calendar_execution_blocked": false,
+        "calendar_validation": null,
+        "estimate_kind": "second",
+        "event_id": "bea:gdp:2026-11-25:2026-Q3:second",
+        "history": {
+          "attempts": 0,
+          "next_attempt_at": "2026-11-25T13:30:00+00:00",
+          "next_start": "2026-Q3",
+          "state": "pending"
+        },
+        "key": "2026-Q3:second",
+        "publication_status": "scheduled",
+        "reference_quarter": "2026-Q3",
+        "release_at": "2026-11-25T13:30:00+00:00",
+        "target": {
+          "attempts": 0,
+          "next_attempt_at": "2026-11-25T13:30:00+00:00",
+          "state": "pending"
+        },
+        "uid": "second"
+      }
+    ],
+    "version": 1,
+    "provider": "BEA",
+    "calendar_status": "fresh",
+    "calendar_coverage": "explicit_quarter_and_estimate_only",
+    "next_due": "2026-11-25T13:30:00+00:00",
+    "calendar_publications": [
+      {
+        "classification": null,
+        "estimate_kind": "second",
+        "event_id": "bea:gdp:2026-11-25:2026-Q3:second",
+        "reference_quarter": "2026-Q3",
+        "release_at": "2026-11-25T13:30:00+00:00",
+        "sequence": 0,
+        "sha256": "30d436febe6f38180e0f05eb9074dd07e055b1fac7308f860bd2cd0ad69e2a7d",
+        "source": "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics",
+        "status": "CONFIRMED",
+        "summary": "GDP (Second Estimate), 3rd Quarter 2026",
+        "uid": "second",
+        "acquired_at": "2026-11-02T12:00:00+00:00",
+        "publication_status": "scheduled"
+      }
+    ],
+    "worker": {
+      "last_heartbeat_at": null,
+      "state": "not_started",
+      "enabled": false
     }
   },
   "query": {

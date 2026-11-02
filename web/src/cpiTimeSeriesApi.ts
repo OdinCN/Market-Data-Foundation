@@ -6,7 +6,8 @@ import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import type { Transport } from "./api";
 import { normalizeRetailResult } from "./retailTimeSeriesAdapter";
 import { isDecimalString } from "./decimalValue";
-import { readGdpStatus } from "./gdpTimeSeriesAdapter";
+import { quarterValid } from "./QuarterField";
+import { readGdpStatus, validGdpJob } from "./gdpTimeSeriesAdapter";
 import { useVisiblePolling } from "./useVisiblePolling";
 
 export const CPI_TIMESERIES = CPI_PROFILE.basePath;
@@ -47,11 +48,24 @@ export type CpiStatus = {
   };
   latest_months: Record<string, string | null>;
   latest_quarters?: Record<string, string | null>;
+  source_allowed?: boolean;
+  quarter_initialization?: {
+    preset_id: string;
+    quarters: number;
+    start: string;
+    end: string;
+    available: boolean;
+    anchor_basis: string;
+  };
   observation_count: number;
   revision_count: number;
   batch_count: number;
   web_capabilities: { query: boolean; collect: boolean; reason: string | null };
-  collection_scope?: { max_months?: number | null; series: string };
+  collection_scope?: {
+    max_months?: number | null;
+    max_quarters?: number;
+    series: string;
+  };
 };
 export type CpiAvailability = {
   refresh?: () => void;
@@ -560,19 +574,33 @@ export type CpiJob = CpiJobIntent & {
     saved_points?: number;
     saved_revisions?: number;
     coverage_complete?: boolean;
+    coverage?: {
+      expected: number;
+      available: number;
+      official_null: number;
+      missing: number;
+    };
+    source_missing?: { series_id: string; quarter: string; reason?: string }[];
+    event_binding_status?: string;
     completion?: string;
     readback?: {
       verified: boolean;
-      point_count: number;
-      expected_points: number;
-      source_unavailable_count: number;
+      as_of_basis?: string;
+      // Monthly counts are absent from native GDP readback receipts.
+      point_count?: number;
+      expected_points?: number;
+      source_unavailable_count?: number;
       missing?: { series_id: string; month: string }[];
       source_missing?: { series_id: string; month: string; reason?: string }[];
       source_unavailable?: { series_id: string; month: string }[];
     };
   } | null;
 };
-export function validJob(job: CpiJob): boolean {
+export function validJob(
+  job: CpiJob,
+  profile: MacroProfile = CPI_PROFILE,
+): boolean {
+  if (profile.id === "gdp") return validGdpJob(job);
   return (
     !!job &&
     typeof job.job_id === "string" &&
@@ -626,7 +654,9 @@ export function validJob(job: CpiJob): boolean {
               job.result.readback.point_count,
               job.result.readback.expected_points,
               job.result.readback.source_unavailable_count,
-            ].every((v) => Number.isInteger(v) && v >= 0)))))
+            ].every(
+              (v) => typeof v === "number" && Number.isInteger(v) && v >= 0,
+            )))))
   );
 }
 export async function readCpiJobs(
@@ -643,7 +673,12 @@ export async function readCpiJobs(
     20000,
     profile,
   );
-  if (!Array.isArray(result?.jobs) || !result.jobs.every(validJob))
+  if (
+    !Array.isArray(result?.jobs) ||
+    !result.jobs.every((job) => validJob(job, profile)) ||
+    (profile.id === "gdp" &&
+      new Set(result.jobs.map((j) => j.request_id)).size !== result.jobs.length)
+  )
     throw new CpiServiceFailure("cpi_jobs_unknown");
   return result;
 }
@@ -661,7 +696,10 @@ export type CpiStrategy = {
   last_result?: Record<string, unknown> | null;
   policy: Record<string, unknown>;
 };
-export function validStrategy(value: CpiStrategy): boolean {
+export function validStrategy(
+  value: CpiStrategy,
+  profile: MacroProfile = CPI_PROFILE,
+): boolean {
   const instant = (v: unknown) =>
     v === null || (typeof v === "string" && Number.isFinite(Date.parse(v)));
   return (
@@ -671,8 +709,10 @@ export function validStrategy(value: CpiStrategy): boolean {
     (value.history_start_locked === undefined ||
       typeof value.history_start_locked === "boolean") &&
     (!value.enabled || value.exists) &&
-    monthValid(value.history_start) &&
-    value.history_start >= "1901-01" &&
+    (profile.id === "gdp"
+      ? quarterValid(value.history_start)
+      : monthValid(value.history_start)) &&
+    value.history_start >= (profile.id === "gdp" ? "1901-Q1" : "1901-01") &&
     !!value.worker &&
     typeof value.worker.state === "string" &&
     !!value.worker.state &&
@@ -697,7 +737,7 @@ export async function readCpiStrategy(
     20000,
     profile,
   );
-  if (!validStrategy(value))
+  if (!validStrategy(value, profile))
     throw new CpiServiceFailure("cpi_strategy_unknown");
   return value;
 }
@@ -721,14 +761,18 @@ export async function saveCpiStrategy(
     20000,
     profile,
   );
-  if (!validStrategy(value) || !value.exists || value.enabled !== enabled)
+  if (
+    !validStrategy(value, profile) ||
+    !value.exists ||
+    value.enabled !== enabled
+  )
     throw new CpiServiceFailure("cpi_strategy_unknown");
   return value;
 }
 
 export type CpiExecution = {
   id: string;
-  origin: "manual" | "automatic";
+  origin: "manual" | "automatic" | "schedule";
   stage?: string | null;
   action: string;
   start: string | null;
@@ -761,10 +805,17 @@ export async function readCpiExecutions(
         !!e &&
         typeof e.id === "string" &&
         !!e.id &&
-        ["manual", "automatic"].includes(e.origin) &&
+        (profile.id === "gdp"
+          ? ["manual", "schedule"]
+          : ["manual", "automatic"]
+        ).includes(e.origin) &&
         typeof e.action === "string" &&
         typeof e.state === "string" &&
-        [e.start, e.end].every((v) => v === null || monthValid(v)) &&
+        [e.start, e.end].every(
+          (v) =>
+            v === null ||
+            (profile.id === "gdp" ? quarterValid(v) : monthValid(v)),
+        ) &&
         [e.created_at, e.started_at, e.finished_at].every(instant) &&
         (e.classification === null ||
           (typeof e.classification === "string" &&
@@ -772,6 +823,12 @@ export async function readCpiExecutions(
         (e.result === null ||
           (typeof e.result === "object" && !Array.isArray(e.result))),
     ) ||
+    (profile.id === "gdp" &&
+      !value.executions.every(
+        (e) =>
+          validGdpJob(e as unknown as CpiJob) &&
+          e.id === (e as unknown as CpiJob).job_id,
+      )) ||
     new Set(value.executions.map((e) => e.id)).size !== value.executions.length
   )
     throw new CpiServiceFailure("cpi_executions_unknown");

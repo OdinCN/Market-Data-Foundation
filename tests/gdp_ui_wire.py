@@ -28,9 +28,18 @@ def responses(tmp_path, monkeypatch):
     for kind in ("second", "third"):
         records.import_material(material(kind), URL.format(kind))
     host.scheduler.refresh_calendar()
+    host.submit(
+        {
+            "request_id": "d3200000-0000-4000-8000-000000000001",
+            "action": "init",
+            "start": "2026-Q2",
+            "end": "2026-Q3",
+        }
+    )
     before = service.status()
     source_calls = len(wire.calls)
     paths = {
+        **{name: "/" + name for name in ("jobs", "executions", "strategy", "schedule")},
         "query": "/query?start=2026-Q2&end=2026-Q3&local_only=true",
         "history": (
             "/query?start=2026-Q2&end=2026-Q3&local_only=true"
@@ -76,6 +85,8 @@ def responses(tmp_path, monkeypatch):
             "batch_count",
             "web_capabilities",
             "initialization",
+            "collection_scope",
+            "source_allowed",
         )
     }
     for name, path in paths.items():

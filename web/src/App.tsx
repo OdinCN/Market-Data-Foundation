@@ -238,7 +238,8 @@ export default function App({
       (!collectionList ||
         page.fields.get("tab") !== "periodic" ||
         collectionFilter !== keyOf(RETAIL)) &&
-      macroIdentity !== GDP.identity &&
+      (!collectionList || collectionFilter !== keyOf(GDP)) &&
+      (macroIdentity !== GDP.identity || collectionList) &&
       (macroIdentity !== CONSUMPTION.identity || collectionList) &&
       (macroIdentity !== RETAIL.identity ||
         (collectionList && collectionFilter !== keyOf(RETAIL))) &&
@@ -330,10 +331,12 @@ export default function App({
     transport,
     generation,
     !page.invalid &&
-      page.view === "assets" &&
-      macroIdentity === GDP.identity &&
-      (!revision || revision === GDP.revision),
-    false,
+      ["assets", "collection"].includes(page.view) &&
+      ((macroIdentity === GDP.identity &&
+        (!revision || revision === GDP.revision)) ||
+        (collectionList &&
+          (collectionFilter === "all" || collectionFilter === keyOf(GDP)))),
+    page.view === "collection",
     GDP_PROFILE,
   );
   const macroAvailability =
@@ -703,25 +706,18 @@ export default function App({
                         ) : undefined
                       }
                       cpiAction={
-                        macroProfile.id === "gdp" ? (
-                          <p role="status">
-                            GDP
-                            采集、周期策略和执行记录暂未开放；可在此查询数据与发布证据。
-                          </p>
-                        ) : (
-                          <button
-                            onClick={() =>
-                              navigate("collection", {
-                                asset: macroProfile.asset.identity,
-                                asset_revision: macroProfile.asset.revision,
-                                operation: null,
-                                tab: "new",
-                              })
-                            }
-                          >
-                            采集数据
-                          </button>
-                        )
+                        <button
+                          onClick={() =>
+                            navigate("collection", {
+                              asset: macroProfile.asset.identity,
+                              asset_revision: macroProfile.asset.revision,
+                              operation: null,
+                              tab: "new",
+                            })
+                          }
+                        >
+                          采集数据
+                        </button>
                       }
                       reference={
                         selectedAsset ? (
@@ -776,30 +772,26 @@ export default function App({
                       ordinary={ordinaryQuery}
                     />
                   )}
-                  {page.view === "collection" &&
-                    (macroIdentity === GDP.identity ? (
-                      <p role="status">
-                        GDP 采集、周期策略和执行记录暂未开放。
-                      </p>
-                    ) : (
-                      <CollectionWorkbench
-                        key={`${identity}:${revision}:${operation}`}
-                        assets={model.assets}
-                        asset={selectedAsset}
-                        source={invalidIdentity ? undefined : source}
-                        invalidIdentity={invalidIdentity || missingMapping}
-                        route={page}
-                        navigate={navigate}
-                        transport={transport}
-                        generation={generation}
-                        cpiAvailability={cpiAvailability}
-                        ppiAvailability={ppiAvailability}
-                        pceAvailability={pceAvailability}
-                        employmentAvailability={employmentAvailability}
-                        retailAvailability={retailAvailability}
-                        consumptionAvailability={consumptionAvailability}
-                      />
-                    ))}
+                  {page.view === "collection" && (
+                    <CollectionWorkbench
+                      key={`${identity}:${revision}:${operation}`}
+                      assets={model.assets}
+                      asset={selectedAsset}
+                      source={invalidIdentity ? undefined : source}
+                      invalidIdentity={invalidIdentity || missingMapping}
+                      route={page}
+                      navigate={navigate}
+                      transport={transport}
+                      generation={generation}
+                      cpiAvailability={cpiAvailability}
+                      ppiAvailability={ppiAvailability}
+                      pceAvailability={pceAvailability}
+                      employmentAvailability={employmentAvailability}
+                      retailAvailability={retailAvailability}
+                      consumptionAvailability={consumptionAvailability}
+                      gdpAvailability={gdpAvailability}
+                    />
+                  )}
                   {page.view === "platform" && (
                     <PlatformPage
                       data={observation.data}

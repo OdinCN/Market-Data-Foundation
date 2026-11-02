@@ -5,6 +5,12 @@ import {
   initializationAnchorText,
   type MacroProfile,
 } from "./macroTimeSeriesProfile";
+import {
+  QuarterField,
+  previousCompleteQuarter,
+  quarterRangeValid,
+  quarterCount,
+} from "./QuarterField";
 import { DateField } from "./DateField";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
@@ -30,6 +36,9 @@ import {
 } from "./CpiStrategyWorkbench";
 import { formatBeijingTime } from "./beijingTime";
 
+function MonthField(props: Parameters<typeof QuarterField>[0]) {
+  return <DateField {...props} type="month" />;
+}
 const profileIntentKey = (profile: MacroProfile) =>
   `mdf.${profile.id}.timeseries.pending.v1`;
 function requestId() {
@@ -49,15 +58,20 @@ function requestId() {
     .map((part) => part.join(""))
     .join("-");
 }
-function storedIntent(intentKey: string): CpiJobIntent | null {
+function storedIntent(
+  intentKey: string,
+  quarterly = false,
+): CpiJobIntent | null {
   const raw = localStorage.getItem(intentKey);
   if (raw === null) return null;
   const value: CpiJobIntent = JSON.parse(raw);
   if (
     !value ||
     !uuidValid(value.request_id) ||
-    !["init", "initialize", "update"].includes(value.action) ||
-    !rangeValid(value.start, value.end)
+    !(
+      quarterly ? ["init", "update"] : ["init", "initialize", "update"]
+    ).includes(value.action) ||
+    !(quarterly ? quarterRangeValid : rangeValid)(value.start, value.end)
   )
     throw new Error("intent_unreadable");
   return value;
@@ -93,15 +107,22 @@ function CpiTimeSeriesCollectionContent({
   generation?: number;
   onExecution?: (id: string) => void;
 }) {
+  const PeriodField = profile.id === "gdp" ? QuarterField : MonthField;
   const intentKey = profileIntentKey(profile);
-  const latest = latestMonth(availability.data);
+  const quarterly = profile.id === "gdp";
+  const validPeriodRange = quarterly ? quarterRangeValid : rangeValid;
+  const periodLabel = quarterly ? "季度" : "月份";
+  const latest = quarterly
+    ? (availability.data?.quarter_initialization?.end ??
+      previousCompleteQuarter())
+    : latestMonth(availability.data);
   const [start, setStart] = useState(latest);
   const [end, setEnd] = useState(latest);
   const [action, setAction] = useState<"initialize" | "update">("update");
   const [confirmed, setConfirmed] = useState(false);
   const [initial] = useState(() => {
     try {
-      return { intent: storedIntent(intentKey), failed: false };
+      return { intent: storedIntent(intentKey, quarterly), failed: false };
     } catch {
       return { intent: null, failed: true };
     }
@@ -135,7 +156,7 @@ function CpiTimeSeriesCollectionContent({
   useEffect(() => {
     const update = () => {
       try {
-        setIntent(storedIntent(intentKey));
+        setIntent(storedIntent(intentKey, quarterly));
       } catch {
         setStorageFailed(true);
       }
@@ -157,21 +178,27 @@ function CpiTimeSeriesCollectionContent({
   const enabled =
     availability.data?.web_capabilities.collect === true &&
     !availability.failure;
-  const maxMonths = availability.data?.collection_scope?.max_months;
-  const preset = availability.data?.initialization;
+  const maxPeriods = quarterly
+    ? availability.data?.collection_scope?.max_quarters
+    : availability.data?.collection_scope?.max_months;
+  const preset = quarterly
+    ? availability.data?.quarter_initialization
+    : availability.data?.initialization;
   const initializing = action === "initialize";
   const requestedStart = start;
   const requestedEnd = end;
   const validRange =
-    rangeValid(start, end) &&
-    (maxMonths == null || monthCount(start, end) <= maxMonths);
+    validPeriodRange(start, end) &&
+    (!quarterly || end <= previousCompleteQuarter()) &&
+    (maxPeriods == null ||
+      (quarterly ? quarterCount : monthCount)(start, end) <= maxPeriods);
   useEffect(() => {
     if (
       initializing &&
       !edited.current.initialize &&
       !intent &&
       preset?.available &&
-      rangeValid(preset.start ?? "", preset.end ?? "")
+      validPeriodRange(preset.start ?? "", preset.end ?? "")
     ) {
       setStart(preset.start!);
       setEnd(preset.end!);
@@ -212,7 +239,7 @@ function CpiTimeSeriesCollectionContent({
     setNotice("");
     let reserved: CpiJobIntent | null = null;
     try {
-      const existing = storedIntent(intentKey);
+      const existing = storedIntent(intentKey, quarterly);
       if (existing) {
         setIntent(existing);
         setNotice("已有请求待回查，请先核实原任务。");
@@ -222,7 +249,7 @@ function CpiTimeSeriesCollectionContent({
       }
       reserved = {
         request_id: requestId(),
-        action,
+        action: quarterly && action === "initialize" ? "init" : action,
         start: requestedStart,
         end: requestedEnd,
       };
@@ -249,7 +276,7 @@ function CpiTimeSeriesCollectionContent({
         20000,
         profile,
       );
-      if (!validJob(job) || !sameIntent(job, reserved))
+      if (!validJob(job, profile) || !sameIntent(job, reserved))
         throw new Error("receipt_unknown");
       if (mounted.current) {
         setReceipt(job);
@@ -272,6 +299,9 @@ function CpiTimeSeriesCollectionContent({
               error.classification === "initialization_preset_range_required"));
         const refused =
           jobsBusy ||
+          (quarterly &&
+            error instanceof CpiServiceFailure &&
+            [400, 403, 422].includes(error.status ?? 0)) ||
           initializationRefused ||
           (error instanceof CpiServiceFailure &&
             [400, 403, 422].includes(error.status ?? 0) &&
@@ -287,7 +317,7 @@ function CpiTimeSeriesCollectionContent({
             ].includes(error.classification));
         if (refused && reserved) {
           try {
-            const stored = storedIntent(intentKey);
+            const stored = storedIntent(intentKey, quarterly);
             if (!stored || !sameIntent(stored, reserved))
               throw new Error("intent_changed");
             localStorage.removeItem(intentKey);
@@ -305,7 +335,7 @@ function CpiTimeSeriesCollectionContent({
           jobsBusy
             ? `另一项 ${profile.label} 采集正在执行，本次请求未创建任务。请待任务释放后重新确认原范围。`
             : refused
-              ? "服务明确拒绝本次采集，未创建任务。请核实写入资格或范围后重新确认。"
+              ? `服务明确拒绝本次采集，未创建任务。请核实写入资格或范围后重新确认。${error instanceof CpiServiceFailure ? `（${error.classification}）` : ""}`
               : "采集回执不明，不能判断是否已执行。将自动跟踪原请求，请勿重复提交。",
         );
         jobs.refresh();
@@ -318,7 +348,7 @@ function CpiTimeSeriesCollectionContent({
   function newIntent() {
     if (!intent || unresolved || busy || !matched) return;
     try {
-      const stored = storedIntent(intentKey);
+      const stored = storedIntent(intentKey, quarterly);
       if (!stored || !sameIntent(stored, intent))
         throw new Error("intent_changed");
       localStorage.removeItem(intentKey);
@@ -366,7 +396,7 @@ function CpiTimeSeriesCollectionContent({
         20000,
         profile,
       );
-      if (!validJob(next) || !sameIntent(next, job))
+      if (!validJob(next, profile) || !sameIntent(next, job))
         throw new Error("retail_resume_unknown");
       setReceipt(next);
       setNotice("已按原请求编号恢复；保留已成功批次，不创建另一项采集。");
@@ -408,11 +438,16 @@ function CpiTimeSeriesCollectionContent({
           <p className="small">{profile.historyNotice}</p>
         )}
       </details>
-      {maxMonths != null && (
-        <p className="small">当前主机每次允许最多 {maxMonths} 个月。</p>
+      {maxPeriods != null && (
+        <p className="small">
+          当前主机每次允许最多 {maxPeriods} {quarterly ? "个季度" : "个月"}。
+        </p>
       )}
       {!enabled && availability.data && (
-        <p role="status">当前未开放 {profile.label} 采集。</p>
+        <p role="status">
+          当前未开放 {profile.label} 采集：
+          {availability.data.web_capabilities.reason ?? "资格未确认"}。
+        </p>
       )}
       <div className="workbench cpi-collection-workbench">
         <div className="collection-input-pane">
@@ -435,20 +470,18 @@ function CpiTimeSeriesCollectionContent({
               </select>
             </label>
             <div className="field-grid">
-              <DateField
+              <PeriodField
                 key={`${action}-start`}
-                label="采集开始月份"
-                type="month"
+                label={`采集开始${periodLabel}`}
                 value={start}
                 onChange={(value) => {
                   edited.current[action] = true;
                   setStart(value);
                 }}
               />
-              <DateField
+              <PeriodField
                 key={`${action}-end`}
-                label="采集结束月份"
-                type="month"
+                label={`采集结束${periodLabel}`}
                 value={end}
                 onChange={(value) => {
                   edited.current[action] = true;
@@ -458,27 +491,40 @@ function CpiTimeSeriesCollectionContent({
             </div>
             {initializing && (
               <p>
-                初始化服务预置范围：{preset?.months ?? "待核实"}个月，可自行修改
+                初始化服务预置范围：
+                {(preset &&
+                  ("quarters" in preset ? preset.quarters : preset.months)) ||
+                  "待核实"}
+                {quarterly ? "个季度" : "个月"}，可自行修改
               </p>
             )}
             {initializing && preset?.available && (
               <>
                 <p>
-                  服务预置月份：{preset.start} 至 {preset.end}
+                  服务预置{periodLabel}：{preset.start} 至 {preset.end}
                 </p>
                 <p className="small">
-                  范围依据：{initializationAnchorText(preset.anchor_basis)}
+                  范围依据：
+                  {quarterly
+                    ? "上一完整 UTC 季度；不代表已发布或来源已就绪"
+                    : initializationAnchorText(preset.anchor_basis)}
                   。实际覆盖以采集回读为准。
                 </p>
               </>
             )}
             {initializing && !preset?.available && (
               <p role="status">
-                服务暂无默认范围（尚未确认可用锚点 ），请自行填写合法月份范围。
+                服务暂无默认范围（尚未确认可用锚点 ），请自行填写合法
+                {periodLabel}范围。
               </p>
             )}
             {start && end && !validRange && (
-              <p role="alert">起止月份无效或超过服务允许的采集范围。</p>
+              <p role="alert">
+                起止{periodLabel}
+                {quarterly
+                  ? "无效、尚未完整结束或超过服务允许的采集范围。"
+                  : "无效或超过服务允许的采集范围。"}
+              </p>
             )}
             <label className="cpi-collection-confirm">
               <input

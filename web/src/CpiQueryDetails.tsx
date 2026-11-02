@@ -778,7 +778,7 @@ function GdpQueryApiHelp({
           [
             "local_only",
             "否 / true",
-            "true / false；本表单始终显式 true。仅当前查询显式 false 才允许缺口临时补源，不写库；历史强制 true",
+            "true / false；默认显式 true。仅当前查询且 source_allowed=true 时可勾选临时补源并发送 false，不写库，部分失败保留本地值；历史强制 true",
           ],
           [
             "query_mode",

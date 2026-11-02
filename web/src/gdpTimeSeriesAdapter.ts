@@ -6,15 +6,22 @@ import {
   type CpiStatus,
   type CpiScope,
   type CpiHttpExchange,
+  type CpiJob,
+  uuidValid,
 } from "./cpiTimeSeriesApi";
 import { isDecimalString } from "./decimalValue";
-import { quarterValid, quarterCount, shiftQuarter } from "./QuarterField";
+import {
+  quarterValid,
+  quarterRangeValid,
+  quarterCount,
+  shiftQuarter,
+} from "./QuarterField";
 import type { RangePoint, RangeResult } from "./rangeQueryModel";
 
 export type GdpScope = Pick<
   CpiScope,
   "start" | "end" | "series" | "query_mode" | "as_of" | "as_of_basis"
->;
+> & { local_only?: boolean };
 
 export type GdpStatus = Omit<
   CpiStatus,
@@ -26,7 +33,10 @@ export type GdpStatus = Omit<
     end: string;
     quarters: number;
     anchor_basis: string;
+    preset_id: string;
+    available: boolean;
   };
+  collection_scope: { series: string; max_quarters: number };
 };
 export type GdpPoint = {
   series_id: string;
@@ -105,6 +115,14 @@ export async function readGdpStatus(
     ![value.observation_count, value.revision_count, value.batch_count].every(
       count,
     ) ||
+    typeof value.source_allowed !== "boolean" ||
+    !value.initialization ||
+    !quarterRangeValid(value.initialization.start, value.initialization.end) ||
+    !count(value.initialization.quarters) ||
+    typeof value.initialization.available !== "boolean" ||
+    typeof value.initialization.anchor_basis !== "string" ||
+    !value.collection_scope ||
+    !count(value.collection_scope.max_quarters) ||
     typeof value.web_capabilities?.query !== "boolean" ||
     typeof value.web_capabilities?.collect !== "boolean"
   )
@@ -117,6 +135,9 @@ export async function readGdpStatus(
     web_capabilities: value.web_capabilities,
     latest_months: {},
     latest_quarters: value.latest_quarters,
+    quarter_initialization: value.initialization,
+    collection_scope: value.collection_scope,
+    source_allowed: value.source_allowed === true,
   };
 }
 export function buildGdpQueryRequest(scope: GdpScope) {
@@ -126,8 +147,7 @@ export function buildGdpQueryRequest(scope: GdpScope) {
     end: scope.end,
     series: scope.series ?? ids.join(","),
     query_mode: history ? "history" : "current",
-    // This segment never needs upstream queries. API and UI both stay local by default.
-    local_only: "true",
+    local_only: String(history || scope.local_only !== false),
     ...(history ? { as_of_basis: "available", as_of: scope.as_of ?? "" } : {}),
   });
   return {
@@ -147,14 +167,14 @@ export function normalizeGdpResult(
     result.start_quarter !== scope.start ||
     result.end_quarter !== scope.end ||
     result.query_mode !== (history ? "history" : "current") ||
-    result.local_only !== true ||
+    result.local_only !== (history || scope.local_only !== false) ||
     result.as_of_basis !== (history ? "available" : "observed") ||
     (history
       ? Date.parse(result.as_of ?? "") !== Date.parse(scope.as_of ?? "")
       : result.as_of !== null) ||
     ![result.provider_requests, result.provider_attempts].every(count) ||
-    result.provider_requests !== 0 ||
-    result.provider_attempts !== 0 ||
+    ((history || scope.local_only !== false) &&
+      (result.provider_requests !== 0 || result.provider_attempts !== 0)) ||
     !Array.isArray(result.series_ids) ||
     new Set(result.series_ids).size !== selected.length ||
     !selected.every((id) => result.series_ids.includes(id)) ||
@@ -205,7 +225,8 @@ export function normalizeGdpResult(
       ) ||
       point.value_unit !== unit ||
       point.statistic !== statistic ||
-      point.origin === "upstream" ||
+      (point.origin === "upstream" &&
+        (history || scope.local_only !== false)) ||
       point.estimate_kind !== "unknown" ||
       point.event_binding_status !== "unconfirmed" ||
       !["available", "missing"].includes(point.availability) ||
@@ -301,4 +322,57 @@ export async function queryGdpRange(
     onExchange,
   );
   return normalizeGdpResult(result, scope);
+}
+
+// GDP receipts retain native quarterly fields, including top-level source gaps.
+export function validGdpJob(job: CpiJob): boolean {
+  const instant = (v: unknown) =>
+    typeof v === "string" && Number.isFinite(Date.parse(v));
+  const result = job?.result;
+  const coverage = result?.coverage;
+  return (
+    !!job &&
+    "asset" in job &&
+    job.asset === "gdp" &&
+    "origin" in job &&
+    ["manual", "schedule"].includes(String(job.origin)) &&
+    uuidValid(job.request_id) &&
+    job.job_id === job.request_id &&
+    ["init", "update"].includes(job.action) &&
+    quarterRangeValid(job.start, job.end) &&
+    ["running", "complete", "failed", "unknown"].includes(job.state) &&
+    instant(job.created_at) &&
+    [job.started_at, job.finished_at].every((v) => v === null || instant(v)) &&
+    (job.classification === null ||
+      (typeof job.classification === "string" &&
+        /^[a-z0-9_]{1,100}$/.test(job.classification))) &&
+    (result === null ||
+      (typeof result === "object" &&
+        [
+          result.provider_requests,
+          result.provider_attempts,
+          result.saved_points,
+          result.saved_revisions,
+        ].every((v) => v === undefined || count(v)) &&
+        (result.source_missing === undefined ||
+          (Array.isArray(result.source_missing) &&
+            result.source_missing.every(
+              (p) => typeof p.series_id === "string" && quarterValid(p.quarter),
+            ))))) &&
+    (job.state !== "complete" ||
+      (!!result?.readback &&
+        result.readback.verified === true &&
+        job.finished_at !== null &&
+        result.readback.as_of_basis === "available" &&
+        !!coverage &&
+        [
+          coverage.expected,
+          coverage.available,
+          coverage.official_null,
+          coverage.missing,
+        ].every(count) &&
+        coverage.expected === quarterCount(job.start, job.end) * ids.length &&
+        coverage.expected ===
+          coverage.available + coverage.official_null + coverage.missing))
+  );
 }

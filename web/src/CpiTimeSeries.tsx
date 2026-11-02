@@ -1,3 +1,4 @@
+import { gdpEstimateText } from "./macroTimeSeriesProfile";
 import {
   QuarterField,
   previousCompleteQuarter,
@@ -253,6 +254,14 @@ function CpiTimeSeriesContent({
   );
   const [columnsEdited, setColumnsEdited] = useState(false);
   const [history, setHistory] = useState(false);
+  const [allowUpstream, setAllowUpstream] = useState(false);
+  useEffect(() => {
+    if (
+      gdp &&
+      (availability.data?.source_allowed !== true || availability.failure)
+    )
+      setAllowUpstream(false);
+  }, [gdp, availability.data?.source_allowed, availability.failure]);
   const [asOf, setAsOf] = useState("");
   const [result, setResult] = useState<RangeResult | null>(null);
   const [failure, setFailure] = useState(false);
@@ -279,7 +288,12 @@ function CpiTimeSeriesContent({
     setResult(null);
     setPending(false);
     setExchange(null);
-  }, [transport, availability.data?.web_capabilities.query]);
+  }, [
+    transport,
+    availability.data?.web_capabilities.query,
+    gdp ? availability.data?.source_allowed : undefined,
+    gdp ? availability.failure : undefined,
+  ]);
   function change(edit: () => void) {
     edited.current = true;
     active.current?.abort();
@@ -298,7 +312,7 @@ function CpiTimeSeriesContent({
     measure.length > 0 &&
     (!employment || series.length > 0) &&
     (!history || !!beijingInputToIso(asOf));
-  const scope: CpiScope = {
+  const scope: CpiScope & { local_only?: boolean } = {
     start,
     end,
     ...(employment ? { series: series.join(",") } : {}),
@@ -308,6 +322,15 @@ function CpiTimeSeriesContent({
       adjustment.length === adjustments.length ? "all" : (adjustment[0] ?? ""),
     measure: consumption ? "native" : "index",
     query_mode: history ? "history" : "current",
+    ...(gdp
+      ? {
+          local_only:
+            history ||
+            !allowUpstream ||
+            availability.data?.source_allowed !== true ||
+            !!availability.failure,
+        }
+      : {}),
     ...(history
       ? {
           as_of: beijingInputToIso(asOf),
@@ -426,7 +449,7 @@ function CpiTimeSeriesContent({
       <div hidden={tab !== "query"}>
         <p className="muted">
           {gdp ? (
-            "当前与历史查询均只读本地（local_only=true），不临时补源。"
+            "默认只读本地（local_only=true）；当前查询可在服务授权后显式允许临时补源，不写库。历史查询始终只读本地。"
           ) : (
             <>
               当前查询优先读取本地，缺口可向 {profile.provider} 查询，不保存。
@@ -552,11 +575,41 @@ function CpiTimeSeriesContent({
               type="checkbox"
               checked={history}
               onChange={(event) =>
-                change(() => setHistory(event.target.checked))
+                change(() => {
+                  setHistory(event.target.checked);
+                  if (event.target.checked) setAllowUpstream(false);
+                })
               }
             />
             <span>历史截止查询</span>
           </label>
+          {gdp && (
+            <label className="cpi-history-toggle">
+              <input
+                type="checkbox"
+                checked={
+                  !history &&
+                  allowUpstream &&
+                  availability.data?.source_allowed === true &&
+                  !availability.failure
+                }
+                disabled={
+                  history ||
+                  availability.data?.source_allowed !== true ||
+                  !!availability.failure
+                }
+                onChange={(event) =>
+                  change(() => setAllowUpstream(event.target.checked))
+                }
+              />
+              <span>允许本次当前查询临时补源（不写库）</span>
+            </label>
+          )}
+          {gdp && (
+            <p className="small">
+              默认只读本地。临时补源仅在服务明确授权的当前查询中可用；部分失败保留本地值。历史查询强制只读本地。
+            </p>
+          )}
           {history && (
             <div className="cpi-history-fields">
               <p className="small">按入库时间查看截止时已保存的数据。</p>
@@ -815,17 +868,7 @@ function CpiTimeSeriesContent({
                                 ? row.point?.calendar_plans?.length
                                   ? row.point.calendar_plans.map((event, i) => (
                                       <p key={i}>
-                                        {(
-                                          {
-                                            advance: "初值",
-                                            second: "第二次估计",
-                                            third: "第三次估计",
-                                            initial: "首次估计",
-                                            updated: "更新估计",
-                                          } as Record<string, string>
-                                        )[event.estimate_kind] ??
-                                          event.estimate_kind}{" "}
-                                        ·{" "}
+                                        {gdpEstimateText(event.estimate_kind)} ·{" "}
                                         {(
                                           {
                                             CONFIRMED: "计划已确认",

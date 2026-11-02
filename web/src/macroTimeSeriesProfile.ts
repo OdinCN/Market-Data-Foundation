@@ -249,3 +249,14 @@ export const GDP_PROFILE: MacroProfile = Object.freeze({
   historyNotice:
     "原生季度 YYYY-Qn。金额是百万2017链价美元的季调年率水平；官方年化季环比为原生 percent，贡献为原生百分点，均不再乘100。仅两个水平系列计算非年化季变与年变。连续序列估计为 unknown、事件未绑定，不推定官方首发；发布材料与日历计划分别展示。",
 });
+
+export const gdpEstimateText = (kind: string) =>
+  (
+    ({
+      advance: "初值",
+      second: "第二次估计",
+      third: "第三次估计",
+      initial: "首次估计",
+      updated: "更新估计",
+    }) as Record<string, string>
+  )[kind] ?? kind;
