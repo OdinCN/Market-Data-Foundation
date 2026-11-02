@@ -4,7 +4,8 @@
 
 2026-11-02，Owner 在 CI #131 通过后授权分段推进。PR #21 已合并，
 本包基于 main 4f9204d。第一段完成季度合同、当前 NIPA 来源适配与定向测试；
-尚未接入数据库、HTTP API、任务、日历或 WebUI，不能作为整包验收完成。
+第二段已实现季度数据库、严格截止查询、采集回读与独立 CLI，并通过隔离 PostgreSQL 对照。
+正式 DEV 入库仍待下一有界执行；HTTP API、任务、发布估计证据、日历和 WebUI 尚未接入，不能作为整包验收完成。
 
 本包限于下表八项。GDI、GDP 平减指数、GDPNow、初请/续请、JOLTS、
 工业生产和中国包不随本笔启用。依据 MBO 宏观研究 PRD R1 与
@@ -81,6 +82,28 @@ control/transactions/MDF-GDP-GROWTH-20261102-R1/artifacts/source-qualification�
   CI 通过不代替浏览器和业务链路验收。
 - 白天不持续轮询 CI。每段 15–20 分钟、最多 30 分钟，落盘后回报。
   RDC 2026-11-02 北京时间 16:00–17:00 维护，15:55 前保存断点并停止依赖连接的长任务。
+
+## 第二段核心进度（2026-11-02）
+
+- 新增 gdp_store / gdp_timeseries 与 scripts/gdp_timeseries.py；季度 DATE 首日键、
+  NUMERIC 原生值、batches / revisions / latest / gdp_timeseries_rates。
+- 相同数值不增加本地修订、不重写首次取得时间；表级生产日期变化仅保留新批次材料。
+  明确官方 null 与缺行；迟到的不同值拒绝覆盖较新的本地观测。
+- 初始化只补缺行，重复完整初始化不请求来源；更新保留改变后的新版本。
+  查询临时补源不写库，不替换已有本地值；历史模式必须提供有时区的截止时间，禁止补源。
+- available 截止按提交后确认时间读取；若新版本确认结果未知，不退回旧值冒充当前可用。
+  显式确认恢复只使用当前时间，不补造过去可用时间。
+- 金额的 1/4 季变化由同一截止下的水平值派生为 ratio；官方年化增长和贡献不再派生。
+  SQL rates 视图与 API 核心返回一致。公开 HTTP 路由尚未接入。
+- 抽出公共 verified_garage_raw，原月度 wrapper 保留参数、命名空间、错误类别和读回协议；
+  GDP 使用独立原始材料目录。仅通过精确读回的原始材料才能入库。
+- 核验：295 项定向回归、4 项 CLI 默认行为/写入确认检查、1 项真实临时 PostgreSQL
+  隔离测试通过；临时 schema 已清理。全量回归和浏览器核验留待后续完整交付。
+
+CLI：先在仓库中运行 uv run python scripts/gdp_timeseries.py --help。
+prepare / init / update 必须显式传 --confirm-dev-write；query 默认本地读取，
+--allow-upstream 只适用于当前查询。参考期必须为 YYYY-Qn。prepare 同时给予
+odin_dba 当前及未来表 SELECT、schema USAGE；不会创建或改动该角色本身。
 
 ## 官方依据
 

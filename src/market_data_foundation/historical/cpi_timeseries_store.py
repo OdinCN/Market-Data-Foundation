@@ -16,15 +16,13 @@ from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from threading import RLock
 from types import SimpleNamespace
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 
 import psycopg
 from psycopg.types.json import Jsonb
 
 from market_data_foundation.historical.bls_cpi_material_store import (
     BUCKET,
-    GARAGE_ENDPOINT,
-    _signed_headers,
 )
 from market_data_foundation.historical.bls_timeseries_profile import (
     CONSUMPTION_PROFILE,
@@ -36,7 +34,7 @@ from market_data_foundation.historical.bls_timeseries_profile import (
 from market_data_foundation.historical.pce_timeseries_metadata import (
     compact_pce_metadata,
 )
-from market_data_foundation.storage.market_dataset_garage import _transport
+from market_data_foundation.historical.verified_garage_raw import VerifiedGarageRawStore
 
 SCHEMA = CPI_PROFILE.schema
 RAW_PREFIX = CPI_PROFILE.raw_prefix
@@ -547,76 +545,19 @@ def _validate_raw_store(raw_store, profile):
         raise CpiStorageError("bls_timeseries_profile_mismatch")
 
 
-class GarageCpiRawStore:
-    """Reuse MDF's fixed Garage signing/transport, with a separate raw prefix.
-
-    Identical content addresses may be adopted only after exact readback. A
-    failed GET is never a miss. A lost PUT acknowledgement is reconciled with
-    one GET; no provider re-fetch or blind write retry is performed.
-    """
+class GarageCpiRawStore(VerifiedGarageRawStore):
+    """Existing monthly namespace over the common verified Garage transfer."""
 
     def __init__(self, credentials, *, transport=None, clock=None, profile=CPI_PROFILE):
         self.profile = validate_profile(profile)
-        self._credentials = credentials
-        self._transport = transport or _transport
-        self._clock = clock or (lambda: datetime.now(UTC))
-
-    def _send(self, method, sha, raw=b"", maximum=MAX_RAW_BYTES):
-        path = "/" + quote(
-            f"{BUCKET}/{self.profile.raw_prefix}{sha}/raw-response.bin", safe="/-_.~"
+        super().__init__(
+            credentials,
+            raw_prefix=self.profile.raw_prefix,
+            error_factory=CpiStorageError,
+            error_prefix="cpi_timeseries",
+            transport=transport,
+            clock=clock,
         )
-        headers = _signed_headers(
-            method,
-            path,
-            "192.168.10.8:3900",
-            digest(raw),
-            self._clock().astimezone(UTC),
-            self._credentials,
-        )
-        try:
-            return self._transport(
-                method, GARAGE_ENDPOINT + path, headers, raw, maximum, 10.0
-            )
-        except Exception:
-            raise CpiStorageError("cpi_timeseries_raw_transport_failed") from None
-
-    def _read(self, sha, raw):
-        status, found = self._send("GET", sha, maximum=len(raw))
-        if status == 404:
-            return False
-        if status != 200:
-            raise CpiStorageError("cpi_timeseries_raw_read_failed")
-        if found != raw or digest(found) != sha:
-            raise CpiStorageError("cpi_timeseries_raw_mismatch")
-        return True
-
-    def put_verified(self, raw):
-        if type(raw) is not bytes or not 0 < len(raw) <= MAX_RAW_BYTES:
-            raise CpiStorageError("cpi_timeseries_raw_invalid")
-        sha = digest(raw)
-        if self._read(sha, raw):
-            return raw_locator(sha, profile=self.profile)
-        write_unknown = False
-        try:
-            status, _ = self._send("PUT", sha, raw, maximum=1024)
-        except CpiStorageError:
-            write_unknown = True
-        else:
-            if status not in (200, 201, 204) and status < 500:
-                raise CpiStorageError("cpi_timeseries_raw_write_rejected")
-            write_unknown = status >= 500
-        try:
-            verified = self._read(sha, raw)
-        except CpiStorageError:
-            raise CpiStorageError("cpi_timeseries_raw_outcome_unknown") from None
-        if not verified:
-            classification = (
-                "cpi_timeseries_raw_outcome_unknown"
-                if write_unknown
-                else "cpi_timeseries_raw_readback_missing"
-            )
-            raise CpiStorageError(classification)
-        return raw_locator(sha, profile=self.profile)
 
 
 class PostgresTimeSeriesStore:

@@ -288,6 +288,8 @@ class GdpRangeSource:
                             {
                                 **params,
                                 "provider": "BEA",
+                                "start_quarter": max(start, f"{first:04d}-Q1"),
+                                "end_quarter": min(end, f"{last:04d}-Q4"),
                                 "seriesid": [
                                     s
                                     for s in series_ids
