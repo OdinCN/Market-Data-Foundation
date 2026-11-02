@@ -10,6 +10,7 @@ import {
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import App from "./App";
+import { ClaimsCollectionDetails } from "./ClaimsCollectionDetails";
 import type { Transport } from "./api";
 import { CpiTimeSeries } from "./CpiTimeSeries";
 import { CpiTimeSeriesCollection } from "./CpiTimeSeriesCollection";
@@ -280,8 +281,8 @@ it("renders serialized rows in descending weeks, Number precision, distinct mean
   expect(table.textContent).toContain("FRED提供方返回缺值");
   expect(table.textContent).not.toContain("官方空值");
   expect(table.textContent).toContain("本地未采集");
-  expect(rows[0].textContent).toContain("材料embargo计划");
-  expect(rows[6].textContent).toContain("无本周actual计划证据");
+  expect(rows[0].textContent).toContain("计划发布（材料标注）");
+  expect(rows[6].textContent).toContain("未获得对应截止周公布值的计划时间证据");
   expect(within(rows[4]).getAllByRole("cell")[5].textContent).toBe("—");
   const link = within(rows[0]).getAllByRole("link")[0];
   expect(link.getAttribute("href")).toContain("asset=mdf.macro.dol.claims");
@@ -340,7 +341,7 @@ it("uses strict native release locator filters and keeps unknown original priors
   const detail = screen.getByRole("region", { name: "发布事件详情" });
   expect(detail.textContent).toContain("官方原前值");
   expect(detail.textContent).toContain("本次报告前值");
-  expect(detail.textContent).toContain("unknown（材料未说明）");
+  expect(detail.textContent).toContain("未知（材料未说明）");
   expect(detail.textContent).toContain("未绑定（不以数值相等推断）");
   change("发布参考周（周六）", "2026-10-24");
   change("来源版本日期", "2026-10-29");
@@ -573,14 +574,27 @@ it("selects each retained evidence version of the same Claims event independentl
   const table = screen.getByRole("table", { name: "发布事件列表" });
   const buttons = within(table).getAllByRole("button");
   expect(buttons).toHaveLength(2);
+  const consoleErrors = vi.spyOn(console, "error");
   fireEvent.click(buttons[1]);
   expect(
     screen.getByRole("region", { name: "发布事件详情" }).textContent,
   ).toContain("synthetic-prior-parser");
-  fireEvent.click(buttons[0]);
+  fireEvent.click(screen.getByRole("button", { name: "读取发布记录" }));
+  await flush();
+  expect(
+    screen.getByRole("region", { name: "发布事件详情" }).textContent,
+  ).toContain("synthetic-prior-parser");
+  fireEvent.click(
+    within(screen.getByRole("table", { name: "发布事件列表" })).getAllByRole(
+      "button",
+    )[0],
+  );
   expect(
     screen.getByRole("region", { name: "发布事件详情" }).textContent,
   ).not.toContain("synthetic-prior-parser");
+  expect(consoleErrors.mock.calls.flat().join(" ")).not.toMatch(
+    /same key|unique.*key/,
+  );
 });
 
 it("cancels a pending Claims supplement when source permission changes and restores a local preview", async () => {
@@ -627,4 +641,184 @@ it("cancels a pending Claims supplement when source permission changes and resto
       .getAllByLabelText("请求 URL")
       .every((e) => e.textContent?.includes("local_only=true")),
   ).toBe(true);
+});
+
+it("keeps aggregate claims on their supporting proof and expands both original materials", async () => {
+  const event = normalizeClaimsReleases(fixture.releases).events[0];
+  expect(event.evidence).toHaveLength(2);
+  expect(event.state).toBe("confirmed");
+  expect(event.actual_at).toBeNull();
+  const prior = event.claims.find(
+    (c) =>
+      c.series_id === "ICNSA" &&
+      c.role === "official_previously_reported_prior",
+  )!;
+  expect(prior.evidence_id).toBe("synthetic-public-prior-evidence");
+  expect(prior.locator.excerpt).toContain("earlier proof: original prior 95");
+  expect(event.evidence[0].claims).not.toContainEqual(
+    expect.objectContaining({ series_id: "ICNSA", role: prior.role }),
+  );
+  const f = wire();
+  render(
+    <CpiTimeSeries
+      profile={profile}
+      availability={availability}
+      transport={f.transport}
+      initialReleaseEvent="dol-claims-2026-10-29"
+    />,
+  );
+  await screen.findByRole("table", { name: "发布事件列表" });
+  const detail = screen.getByRole("region", { name: "发布事件详情" });
+  const priorRow = within(detail)
+    .getByRole("table", { name: "事件公布与修订值" })
+    .querySelectorAll("tbody tr")[17];
+  expect(priorRow.textContent).toContain("95");
+  expect(priorRow.textContent).toContain("1".repeat(64));
+  expect(priorRow.textContent).not.toContain("0".repeat(64));
+  const originalHash = location.hash;
+  fireEvent.click(
+    within(priorRow as HTMLElement).getByRole("button", {
+      name: "synthetic-public-prior-evidence",
+    }),
+  );
+  expect(
+    (
+      document.getElementById(
+        "claims-proof-synthetic-public-prior-evidence",
+      ) as HTMLDetailsElement
+    ).open,
+  ).toBe(true);
+  expect(location.hash).toBe(originalHash);
+  expect(within(detail).getAllByText(/本材料原始公布与修订值（/)).toHaveLength(
+    2,
+  );
+});
+
+it("shows conflicting proof values separately without assigning a selected PDF", async () => {
+  const event = normalizeClaimsReleases(fixture.release_conflict).events[0];
+  expect(event.state).toBe("unknown");
+  expect(event.claims[0].evidence_id).toBeUndefined();
+  expect(event.claims[0].locator.excerpt).toContain("未选择单一材料");
+  expect(event.evidence.map((p) => p.claims[0].value)).toEqual(["100", "101"]);
+  const transport: Transport = async () => response(fixture.release_conflict);
+  render(
+    <CpiTimeSeries
+      profile={profile}
+      availability={availability}
+      transport={transport}
+      initialReleaseEvent="dol-claims-2026-10-29"
+    />,
+  );
+  await screen.findByRole("table", { name: "发布事件列表" });
+  const row = screen
+    .getByRole("table", { name: "事件公布与修订值" })
+    .querySelector("tbody tr")!;
+  expect(row.textContent).toContain("材料冲突（未选定值）");
+  expect(row.textContent).toContain("原文值：100");
+  expect(row.textContent).toContain("原文值：101");
+});
+
+it("consumes serialized version and cutoff filters without backdating late evidence", () => {
+  const filtered = normalizeClaimsReleases(fixture.source_version_filtered);
+  expect(filtered.events.map((e) => e.evidence_id)).toEqual([
+    "synthetic-public-prior-evidence",
+  ]);
+  const before = normalizeClaimsReleases(fixture.available_before_latest);
+  expect(before.events[0].evidence).toHaveLength(1);
+  expect(before.events[0].available_at).toBe(
+    fixture.source_history.events[1].available_at,
+  );
+  expect(normalizeClaimsReleases(fixture.available_before_all).events).toEqual(
+    [],
+  );
+});
+
+it("shows Chinese bounded execution coverage with separate material and numeric readback", () => {
+  render(<ClaimsCollectionDetails result={fixture.jobs.jobs[0]} />);
+  expect(
+    screen.getByText(/本次回读范围：2026-09-01 至 2026-09-26/),
+  ).toBeTruthy();
+  expect(screen.getAllByText(/范围内最新有值截止周/)).toHaveLength(6);
+  expect(screen.getByText(/获取、解析或回读流程未完成/)).toBeTruthy();
+  const technical = screen.getByText("执行回读技术详情").closest("details")!;
+  expect(technical.open).toBe(false);
+  expect(technical.textContent).toContain("latest_week");
+  expect(technical.textContent).toContain("missing_weeks_total");
+});
+
+it.each([
+  ["unbound", "claims_dol_material_unbound", false, "未配置材料获取能力"],
+  ["available", "", true, "获取成功、解析成功、独立回读已核实"],
+  [
+    "unavailable",
+    "claims_release_parse_failed",
+    false,
+    "材料解析或内容核对未通过",
+  ],
+  [
+    "unavailable",
+    "claims_material_readback_mismatch",
+    false,
+    "保存后的材料回读未通过核对",
+  ],
+  ["unavailable", "claims_dol_http_503", false, "来源请求未成功"],
+  [
+    "source_not_updated",
+    "claims_dol_source_not_updated",
+    false,
+    "材料尚未更新到目标发布事件",
+  ],
+])(
+  "explains material state %s / %s",
+  (status, classification, verified, label) => {
+    render(
+      <ClaimsCollectionDetails
+        result={{
+          ...fixture.jobs.jobs[0].result,
+          material: { status, classification, readback_verified: verified },
+        }}
+      />,
+    );
+    expect(screen.getByText(new RegExp(label))).toBeTruthy();
+  },
+);
+
+it.each([
+  "late-proof",
+  "wrong-event",
+  "dangling-proof",
+  "duplicate-history",
+  "missing-proofs",
+])("rejects unsafe release provenance %s", (kind) => {
+  const value = structuredClone(
+    kind === "duplicate-history" ? fixture.source_history : fixture.releases,
+  );
+  if (kind === "late-proof")
+    value.events[0].evidence[1].available_at = "2099-01-01T00:00:00Z";
+  if (kind === "wrong-event")
+    value.events[0].evidence[1].event_id = "dol-claims-2026-10-22";
+  if (kind === "dangling-proof")
+    value.events[0].claims[0].evidence_id = "not-a-retained-proof";
+  if (kind === "duplicate-history") value.events.push(value.events[0]);
+  if (kind === "missing-proofs") delete value.events[0].evidence;
+  expect(() => normalizeClaimsReleases(value)).toThrow(
+    "claims_release_contract_invalid",
+  );
+});
+
+it("shows uncapped twenty-year gap totals with only the serialized sixteen samples", () => {
+  const execution = fixture.gap_executions.executions.find(
+    (e: { result: { coverage: { expected: number } } }) =>
+      e.result.coverage.expected === 6264,
+  );
+  render(<ClaimsCollectionDetails result={execution} />);
+  expect(screen.getByText(/目标 6,264，有值 0/)).toBeTruthy();
+  expect(screen.getAllByText(/缺周共 1,044，末端缺周共 1,044/)).toHaveLength(6);
+  expect(screen.getAllByText(/已截断，最多16个/)).toHaveLength(6);
+  const perSeries = screen
+    .getAllByText(/范围内最新有值截止周/)[0]
+    .closest("details")!;
+  expect(perSeries.open).toBe(false);
+  const samples = perSeries.querySelectorAll("p")[0].textContent!;
+  expect(samples.match(/\d{4}-\d{2}-\d{2}/g)).toHaveLength(32);
 });

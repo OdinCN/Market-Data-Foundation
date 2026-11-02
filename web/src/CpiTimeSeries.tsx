@@ -924,10 +924,11 @@ function CpiTimeSeriesContent({
                                 ? row.point?.claims_plans?.length
                                   ? row.point.claims_plans.map((t) => (
                                       <p key={t}>
-                                        材料embargo计划：{formatBeijingTime(t)}
+                                        计划发布（材料标注）：
+                                        {formatBeijingTime(t)}
                                       </p>
                                     ))
-                                  : "无本周actual计划证据"
+                                  : "未获得对应截止周公布值的计划时间证据"
                                 : gdp
                                   ? row.point?.calendar_plans?.length
                                     ? row.point.calendar_plans.map(
@@ -1010,7 +1011,7 @@ function CpiTimeSeriesContent({
                     ? `入库截止：${formatBeijingTime(result.as_of)}。`
                     : "展示当前查询值。"}
                   {claims
-                    ? "行内时间仅取自对应系列/周actual的报告embargo计划；不以未来全局日历填历史行，不证明当前FRED版本当时已知。原机构DOL-ETA。"
+                    ? "行内时间仅取自材料对应该系列和截止周公布值的计划发布时间；不以未来全局日历填历史行，不证明当前FRED版本当时已知。原机构DOL-ETA。"
                     : "时间来自官方日历，不表示当前修订值在该时已知；历史截止仍按入库时间。"}
                   来源观察时间仅记录收到响应的时点，不作为历史截止依据。
                 </p>

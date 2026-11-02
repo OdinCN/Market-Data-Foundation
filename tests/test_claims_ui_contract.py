@@ -100,3 +100,48 @@ def test_row_schedule_requires_this_series_week_actual():
 def test_bad_filters_fail_before_storage(params):
     with pytest.raises(ClaimsError):
         ClaimsReleaseRecords(None).read(**params)
+
+
+def test_serialized_same_event_proofs_versions_and_available_cutoff(
+    tmp_path, monkeypatch
+):
+    wire = responses(tmp_path, monkeypatch)
+    history = wire["source_history"]["events"]
+    assert len(history) == 2
+    assert {p["event_id"] for p in history} == {"dol-claims-2026-10-29"}
+    assert len({p["evidence_id"] for p in history}) == 2
+    assert {p["source_version"]["value"] for p in history} == {
+        "2026-10-28",
+        "2026-10-29",
+    }
+    filtered = wire["source_version_filtered"]["events"]
+    assert [p["evidence_id"] for p in filtered] == ["synthetic-public-prior-evidence"]
+    before = wire["available_before_latest"]["events"][0]
+    assert before["evidence_ids"] == ["synthetic-public-prior-evidence"]
+    assert before["available_at"] == history[1]["available_at"]
+    assert wire["available_before_all"]["events"] == []
+    event = wire["releases"]["events"][0]
+    assert len(event["evidence"]) == 2
+    assert event["actual_available"]
+    assert event["official_actual_publication_at"] is None
+    assert event["surprise"] is None
+    assert event["surprise_missing"] == ["named_consensus_unavailable"]
+    claim = next(
+        c
+        for c in event["claims"]
+        if c["series_id"] == "ICNSA"
+        and c["role"] == "official_previously_reported_prior"
+    )
+    assert claim["value"] == "95"
+    assert claim["evidence_id"] == "synthetic-public-prior-evidence"
+    assert claim["evidence_ids"] == ["synthetic-public-prior-evidence"]
+    assert claim["evidence"]["page"] == 2
+    assert not any(
+        c["series_id"] == "ICNSA" and c["role"] == claim["role"]
+        for c in event["evidence"][0]["claims"]
+    )
+    conflict = wire["release_conflict"]["events"][0]
+    assert not conflict["actual_available"]
+    assert conflict["claims"][0]["confirmation_state"] == "conflict"
+    assert conflict["claims"][0]["evidence_id"] is None
+    assert {p["claims"][0]["value"] for p in conflict["evidence"]} == {"100", "101"}

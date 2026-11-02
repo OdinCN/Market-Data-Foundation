@@ -1037,6 +1037,8 @@ function ClaimsQueryApiHelp({
       <p>
         返回asset_id、start_date/end_date/buffer_start_date、rows、coverage、status、query_mode/as_of/as_of_basis/local_only、provider_requests/provider_attempts/source_failure。coverage只描述目标水平，不保证计算基期完整。local_not_provided为未采集或来源未返回；provider_missing为FRED提供方缺值，不称官方null；zero_denominator不能计算比率。补源失败保留本地值与安全分类，不补零。
       </p>
+      <h4>响应示例（合成字段节选，非完整响应）</h4>
+      <p>示例本周值202000、上周值200000，周差2000，周比率0.01（显示为1%）。</p>
       <CodeBlock
         copyLabel="复制Claims响应示例"
         text={JSON.stringify(
@@ -1046,7 +1048,7 @@ function ClaimsQueryApiHelp({
               {
                 series_id: "ICSA",
                 week_ending: "2026-10-24",
-                value: "194000",
+                value: "202000",
                 unit: "Number",
                 weekly_change_ratio: {
                   value: "0.01",

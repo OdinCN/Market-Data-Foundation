@@ -447,6 +447,10 @@ class ClaimsReleaseRecords:
 def merge_evidence(proofs):
     """Conflicting official evidence stays visible instead of choosing a value."""
     event = copy.deepcopy(proofs[0])
+    # Event metadata remains representative; only these unmerged documents own
+    # raw bytes and original locators. Never attach merged claims to one PDF.
+    event["evidence"] = copy.deepcopy(proofs)
+    event["metadata_scope"] = "representative_evidence_only"
     event["evidence_ids"] = [p["evidence_id"] for p in proofs]
     event["claims"], event["conflicts"] = [], []
     grouped = {}
@@ -459,13 +463,17 @@ def merge_evidence(proofs):
         confirmed = [(c, eid) for c, eid in candidates if c["value"] is not None]
         if confirmed:
             claim = copy.deepcopy(confirmed[0][0])
-        claim["evidence_ids"] = sorted({eid for _, eid in candidates})
+        supporters = confirmed or candidates
+        claim["evidence_id"] = supporters[0][1]
+        claim["evidence_ids"] = sorted({eid for _, eid in supporters})
         if len({Decimal(c["value"]) for c, _ in confirmed}) > 1:
             claim.update(
                 value=None,
                 value_identity=None,
                 confirmation_state="conflict",
                 missing_reason="official_evidence_conflict",
+                evidence_id=None,
+                evidence=None,
             )
             event["conflicts"].append(
                 dict(scope=list(key), reason="official_evidence_conflict")

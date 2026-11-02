@@ -190,3 +190,24 @@ def test_unicode_minus_and_true_current_pdf_snapshot_evidence():
     assert parse_release_pages(sample, URL)["evidence_kind"] == "official_archive"
     with pytest.raises(ClaimsError, match="named_official_url_required"):
         parse_release_pages(sample, "https://www.dol.gov/ui/data.pdf?invented=archive")
+
+
+def test_merge_retains_original_proofs_and_only_true_nonnull_supporters():
+    first = dict(
+        parse_release_pages(pages(), URL), evidence_id="first", raw_sha256="0" * 64
+    )
+    second = copy.deepcopy(first)
+    second.update(evidence_id="second", raw_sha256="1" * 64)
+    first["claims"][0].update(value=None, confirmation_state="unknown")
+    second["claims"][0]["evidence"]["page"] = 9
+    originals = copy.deepcopy([first, second])
+    merged = merge_evidence([first, second])
+    claim = merged["claims"][0]
+    assert claim["value"] == "100"
+    assert claim["evidence_id"] == "second"
+    assert claim["evidence_ids"] == ["second"]
+    assert claim["evidence"]["page"] == 9
+    assert merged["evidence"] == originals
+    assert [first, second] == originals
+    merged["evidence"][0]["claims"].clear()
+    assert first["claims"]

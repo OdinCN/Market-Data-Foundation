@@ -60,7 +60,39 @@ def responses(tmp_path, monkeypatch):
         available_at=(captured - timedelta(minutes=1)).isoformat(),
         obtained_at=(captured - timedelta(minutes=1)).isoformat(),
         parser_revision="synthetic-prior-parser",
+        source_url="https://www.dol.gov/ui/data.pdf?os=v0",
+        evidence_kind="official_current_report_snapshot",
+        raw_sha256="1" * 64,
+        raw_locator="synthetic-public-prior-fixture.txt",
+        source_version=dict(
+            value="2026-10-28", precision="date", basis="synthetic_source_version"
+        ),
     )
+    for claim in previous_event["claims"]:
+        claim["evidence"]["source_url"] = previous_event["source_url"]
+    # Earlier proof alone supports one original prior; the latest PDF does not.
+    prior = next(
+        c
+        for c in previous_event["claims"]
+        if c["series_id"] == "ICNSA"
+        and c["role"] == "official_previously_reported_prior"
+    )
+    prior.update(
+        value="95",
+        confirmation_state="confirmed",
+        value_identity="synthetic-prior-value",
+    )
+    prior["evidence"].update(
+        page=2, fragment="Synthetic earlier proof: original prior 95"
+    )
+    event["claims"] = [
+        c
+        for c in event["claims"]
+        if not (
+            c["series_id"] == "ICNSA"
+            and c["role"] == "official_previously_reported_prior"
+        )
+    ]
     monkeypatch.setattr(
         ClaimsReleaseRecords,
         "_rows",
@@ -95,12 +127,19 @@ def responses(tmp_path, monkeypatch):
             "&query_mode=history&as_of_basis=available&as_of=2026-10-31T18%3A00%3A00Z"
         ),
         "releases": (
-            "/releases?event_id=dol-claims-2026-10-29"
-            "&reference_week=2026-10-24&source_version=2026-10-29"
+            "/releases?event_id=dol-claims-2026-10-29&reference_week=2026-10-24"
         ),
         "source_history": (
             "/releases?reference_week=2026-10-17&read_mode=source_history"
         ),
+        "source_version_filtered": (
+            "/releases?event_id=dol-claims-2026-10-29&read_mode=source_history"
+            "&source_version=2026-10-28&reference_week=2026-10-17"
+        ),
+        "available_before_latest": "/releases?event_id=dol-claims-2026-10-29&as_of="
+        + previous_event["available_at"].replace("+", "%2B"),
+        "available_before_all": "/releases?as_of="
+        + (captured - timedelta(minutes=2)).isoformat().replace("+", "%2B"),
         **{
             name: "/" + name
             for name in ("jobs", "executions", "strategy", "schedule", "api-help")
@@ -120,6 +159,42 @@ def responses(tmp_path, monkeypatch):
             if (e.get("asset") or {}).get("identity") == "mdf.macro.dol.claims"
         )
     assert len(calls) == before
+    conflicting = copy.deepcopy(event)
+    conflicting.update(
+        evidence_id="synthetic-conflicting-evidence", raw_sha256="2" * 64
+    )
+    conflicting["claims"][0].update(
+        value="101", value_identity="synthetic-conflicting-value"
+    )
+    conflicting["claims"][0]["evidence"]["fragment"] = (
+        "Synthetic conflicting actual 101"
+    )
+    monkeypatch.setattr(
+        ClaimsReleaseRecords,
+        "_rows",
+        lambda self, cutoff: [
+            copy.deepcopy(e)
+            for e in (event, conflicting)
+            if e["available_at"] <= cutoff.isoformat()
+        ],
+    )
+    with client(app) as http:
+        response = http.get(PREFIX + "/releases")
+        assert response.status_code == 200
+        result["release_conflict"] = response.json()
+    assert len(calls) == before
+    from tests.test_claims_jobs import service_for, submit
+
+    gap_job = submit(service_for([]), tmp_path / "gap-job", "2006-11-02", "2026-11-02")
+    gap_job.update(
+        job_id="c1400000-0000-4000-8000-000000000002",
+        request_id="c1400000-0000-4000-8000-000000000002",
+    )
+    host.journal.save(gap_job)
+    with client(app) as http:
+        response = http.get(PREFIX + "/executions")
+        assert response.status_code == 200
+        result["gap_executions"] = response.json()
 
     class FailedSource:
         request_count, attempts = 0, 0

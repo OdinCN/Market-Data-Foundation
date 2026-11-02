@@ -1,4 +1,4 @@
-# 美国初请与续请：R1 第 1–4 段
+# 美国初请与续请：R1 第 1–4b 段
 
 已提供周频领域、FRED 正式 API 有界采集、PostgreSQL 持久化、同截止查询、
 DEV CLI、DOL 周报材料及事件回读，以及独立 HTTP、官方日历和统一 worker 入口。
@@ -389,3 +389,22 @@ OpenAPI与生成TypeScript已包含 Claims 请求路径，API说明、预览、c
 本段未请求新外部来源、未接触DEV PostgreSQL或18761运行服务、未启动真实到期worker、
 未运行Playwright/Chromium宽窄窗现场验收、未跑全仓pytest；这些属于下一联调段及整包收尾。
 具体测试结果与剩余入口见ignored `artifacts/segment4/简报.md`。
+
+
+## 第4b段发布证据归属与执行详情
+
+来源历史继续使用真实 event_id；前端选择身份为 `(event_id, evidence_id)`，
+不删除同事件材料。重新读取时保留仍可见的证据选择。
+事件聚合保留完整 `evidence[]`，每份含自己的 URL、来源版本、SHA256、取得/可用时间和
+原始 claims；顶层材料字段仅代表首份材料，标记 `metadata_scope=representative_evidence_only`。
+聚合 claim 的 `evidence_id` 指定原文定位所属材料，`evidence_ids` 只列非空值支撑材料；
+无值时列未知材料，冲突时列冲突候选，选定的 `evidence_id/evidence/value_identity` 均为空。
+前端由选定 proof 的原始 claim 取得定位，各 proof 原值可单独展开；未出现在某 PDF 的值
+不会挂到该 PDF 的摘要。冲突双方原值保留，不以首份材料覆盖。
+所有 proof 先受 available cutoff 和精确版本/参考周过滤，晚取得证据不倒填。
+公布值已确认与实际发布时刻未知可同时成立；缺少具名共识时预期差仍未计算。
+
+执行详情展示中文系列、范围内最新有值截止周、覆盖与未截断缺口总量；缺周样本最多16个，
+技术字段折叠。材料获取/解析/回读状态与连续数值回读分开，未知失败阶段不补造成功状态；
+安全分类译为可读原因，完整分类在技术详情。日历仅改中文措辞，材料计划不提升为实际时刻。
+查询帮助示例标明合成字段节选，并给出与比率一致的本周/上周示例值。

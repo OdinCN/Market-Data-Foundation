@@ -379,6 +379,16 @@ class ClaimsTimeSeriesHost(GdpTimeSeriesHost):
                     "embargo_header; prior roles never imply first release time"
                 ),
                 read_modes=["event", "source_history"],
+                evidence_identity=(
+                    "source_history: (event_id, evidence_id); event_id unchanged"
+                ),
+                aggregation=(
+                    "event: full evidence[] with each original claims/raw metadata; "
+                    "top-level metadata_scope=representative_evidence_only; "
+                    "claim evidence_id selects original locator, evidence_ids lists "
+                    "nonnull supporters or conflicting candidates; conflict has no "
+                    "selected evidence/locator"
+                ),
                 evidence_kinds=["official_current_report_snapshot", "official_archive"],
                 surprise="null without named pre-release consensus",
             ),

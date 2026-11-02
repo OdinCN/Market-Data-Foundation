@@ -53,6 +53,8 @@ export type Claim = {
   normalization?: { display_decimal_places: number };
   continuous_version: { revision: number; batch_id: string } | null;
   evidence_id?: string;
+  evidence_ids?: string[];
+  confirmation_state?: string;
   association_missing?: string | null;
   mdf_first_captured?: { value: string; versions: unknown[] } | null;
   mdf_pre_event_last_consumable_previous?: {
@@ -282,6 +284,8 @@ export function MacroReleaseRecords({
         (profile.id === "retail" && id.startsWith("44X72:") ? "headline" : id),
     )?.[1] ?? "材料所列指标";
   const statistics: Record<string, string> = {
+    weekly_level: "周水平",
+    official_four_week_average: "官方四周均值",
     index: "指数水平",
     level: "水平",
     mom_pct: "环比",
@@ -290,6 +294,7 @@ export function MacroReleaseRecords({
     official_annualized_qoq: "官方年化季环比",
   };
   const units: Record<string, string> = {
+    Number: "原始计数",
     index: "指数点",
     percent: "%",
     thousand_jobs: "千岗位",
@@ -369,8 +374,7 @@ export function MacroReleaseRecords({
       <p>只读本地发布证据；不联网、不写入。</p>
       {claims && (
         <p>
-          actual为本次材料公布值；官方原前值与本次报告前值分别列示。MDF事前值缺少实际发布截止及版本证据时保持unknown。材料仅覆盖已留存报告，连续值未绑定，不以event
-          actual替代当前值。
+          本次材料公布值、官方原前值与本次报告前值分别列示。MDF事前值缺少实际发布截止及版本证据时保持未知。材料仅覆盖已留存报告；事件值尚未绑定连续版本，不能替代当前序列值。
         </p>
       )}
       {gdp && (
@@ -451,9 +455,11 @@ export function MacroReleaseRecords({
                         : "时刻"}
                     </td>
                     <td>
-                      {item.state === "confirmed"
-                        ? "材料已确认"
-                        : "当期值缺证据"}
+                      {claims && item.conflicts?.length
+                        ? "材料存在冲突"
+                        : item.state === "confirmed"
+                          ? "材料已确认"
+                          : "当期值缺证据"}
                     </td>
                     <td>{beijingTime(item.available_at)}</td>
                   </tr>
@@ -512,7 +518,9 @@ export function MacroReleaseRecords({
               )}
               {!!event.conflicts?.length && (
                 <p>
-                  存在材料冲突或解析修正；按明确修正选择，否则保留先前证明值。完整选择轨迹见实际响应。
+                  {claims
+                    ? "存在材料冲突；冲突项不选定值，各份材料原始值与原文分别保留。"
+                    : "存在材料冲突或解析修正；按明确修正选择，否则保留先前证明值。完整选择轨迹见实际响应。"}
                 </p>
               )}
               {!!event.prior_event_values?.length && (
@@ -575,7 +583,9 @@ export function MacroReleaseRecords({
                         <td>
                           {claims
                             ? claim.value === null
-                              ? "unknown（材料未说明）"
+                              ? claim.confirmation_state === "conflict"
+                                ? "材料冲突（未选定值）"
+                                : "未知（材料未说明）"
                               : retailDecimalText(claim.value)
                             : (claim.value ?? "—")}{" "}
                           {units[claim.unit] ?? claim.unit}
@@ -634,13 +644,59 @@ export function MacroReleaseRecords({
                         <td>
                           <details>
                             <summary>
-                              {claim.locator.kind === "official_report_fragment"
-                                ? `报告第${claim.locator.page ?? "未知"}页 · ${claim.locator.reference_header}`
-                                : claim.locator.kind === "official_table_cell"
-                                  ? `${tableLabel(claim.locator.table)} · ${claim.locator.row} · ${claim.locator.column}`
-                                  : `材料段落 ${claim.locator.start}–${claim.locator.end}`}
+                              {claims && claim.confirmation_state === "conflict"
+                                ? "多材料冲突，分别查看原始材料"
+                                : claim.locator.kind ===
+                                    "official_report_fragment"
+                                  ? `报告第${claim.locator.page ?? "未知"}页 · ${claim.locator.reference_header}`
+                                  : claim.locator.kind === "official_table_cell"
+                                    ? `${tableLabel(claim.locator.table)} · ${claim.locator.row} · ${claim.locator.column}`
+                                    : `材料段落 ${claim.locator.start}–${claim.locator.end}`}
                             </summary>
                             {claim.locator.excerpt}
+                            {claims &&
+                              (claim.evidence_ids ?? [claim.evidence_id]).map(
+                                (id) => {
+                                  const proof = event.evidence.find(
+                                    (p) => p.evidence_id === id,
+                                  );
+                                  const original = proof?.claims.find(
+                                    (c) =>
+                                      c.series_id === claim.series_id &&
+                                      c.reference_week ===
+                                        claim.reference_week &&
+                                      c.role === claim.role,
+                                  );
+                                  return proof && original ? (
+                                    <p key={id}>
+                                      支撑材料：
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const target =
+                                            document.getElementById(
+                                              `claims-proof-${proof.evidence_id}`,
+                                            ) as HTMLDetailsElement | null;
+                                          if (target) {
+                                            target.open = true;
+                                            target.scrollIntoView?.({
+                                              block: "nearest",
+                                            });
+                                          }
+                                        }}
+                                      >
+                                        {proof.evidence_id}
+                                      </button>
+                                      ；原文值：
+                                      {original.value === null
+                                        ? "未知"
+                                        : retailDecimalText(original.value)}
+                                      ；{original.locator.excerpt}
+                                      ；材料摘要：{proof.raw_sha256}
+                                    </p>
+                                  ) : null;
+                                },
+                              )}
                             <p>
                               内容身份：{claim.value_identity}
                               ；选定证据：{claim.evidence_id ?? "未记录"}
@@ -656,6 +712,7 @@ export function MacroReleaseRecords({
               {event.evidence.map((proof) => (
                 <details
                   key={proof.evidence_id}
+                  id={claims ? `claims-proof-${proof.evidence_id}` : undefined}
                   open={
                     initialEvidenceId === proof.evidence_id ? true : undefined
                   }
@@ -669,9 +726,17 @@ export function MacroReleaseRecords({
                       正式来源材料
                     </a>{" "}
                     · 取得 {beijingTime(proof.obtained_at)}
+                    {claims && ` · 来源版本 ${proof.source_version.value}`}
                   </p>
                   <p>
-                    材料留存：{proof.retention.kind} ·{" "}
+                    材料留存：
+                    {claims
+                      ? ({
+                          official_archive: "官方档案",
+                          official_current_report_snapshot: "官方当前报告快照",
+                        }[proof.retention.kind] ?? "已保存材料")
+                      : proof.retention.kind}{" "}
+                    ·{" "}
                     {proof.retention.exact_original_retained
                       ? "原始HTTP字节（导入方声明）"
                       : "非完整原始HTTP字节"}{" "}
@@ -684,14 +749,34 @@ export function MacroReleaseRecords({
                     <br />
                     证据：{proof.evidence_id}
                   </p>
-                  <pre
-                    style={{
-                      whiteSpace: "pre-wrap",
-                      overflowWrap: "anywhere",
-                    }}
-                  >
-                    {JSON.stringify(proof.claims, null, 2)}
-                  </pre>
+                  {claims && (
+                    <details>
+                      <summary>
+                        本材料原始公布与修订值（{proof.claims.length}项）
+                      </summary>
+                      {proof.claims.map((c, i) => (
+                        <p key={i}>
+                          {seriesLabel(c.series_id)} · {referenceText(c)} ·{" "}
+                          {roles[c.role] ?? c.role}：
+                          {c.value === null
+                            ? "未知（材料未说明）"
+                            : retailDecimalText(c.value)}
+                          ；{c.locator.excerpt}
+                        </p>
+                      ))}
+                    </details>
+                  )}
+                  <details>
+                    <summary>材料与解析技术字段</summary>
+                    <pre
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {JSON.stringify(proof.claims, null, 2)}
+                    </pre>
+                  </details>
                 </details>
               ))}
             </section>

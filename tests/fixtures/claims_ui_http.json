@@ -6479,6 +6479,7 @@
               "reference_header": "WEEK ENDING October 24 October 17 Change"
             },
             "value_identity": "a2c9d10a6ad7c1a153239492ac2abe0189d0d6dab5fe600d59895d85def24225",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6501,6 +6502,7 @@
               "reference_header": "WEEK ENDING October 24 October 17 Change"
             },
             "value_identity": "d359ed252471cfe52619d3160a8258cf9ad5a60702353a78e8e723da4a1993c0",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6523,6 +6525,7 @@
               "reference_header": "WEEK ENDING October 24 October 17 Change"
             },
             "value_identity": "20acbd0a998fb29703ffcdc184aa620326786989b975a7d5500bee9916388c4c",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6545,6 +6548,7 @@
               "reference_header": "WEEK ENDING October 24 October 17 Change"
             },
             "value_identity": "1b03f17b759a81156c587b5d87a195829ed14de0ab801d8686b397ce0d6cdedd",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6567,28 +6571,7 @@
               "reference_header": "WEEK ENDING October 24 October 17 Change"
             },
             "value_identity": "becc0d2823db528c4c2391f29203e82140abc2e85ce26fa99b9c1a30779f9f69",
-            "evidence_ids": [
-              "synthetic-public-evidence",
-              "synthetic-public-prior-evidence"
-            ]
-          },
-          {
-            "series_id": "ICNSA",
-            "week_ending": "2026-10-17",
-            "statistic": "weekly_level",
-            "role": "official_previously_reported_prior",
-            "value": null,
-            "unit": "Number",
-            "confirmation_state": "unknown",
-            "missing_reason": "official_original_prior_not_stated",
-            "evidence": {
-              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
-              "page": null,
-              "fragment": null,
-              "reference_header": "WEEK ENDING October 24 October 17 Change"
-            },
-            "value_identity": null,
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6611,6 +6594,7 @@
               "reference_header": "WEEK ENDING October 17 October 10 Change"
             },
             "value_identity": "d6bfabc0449cf771e2e20590a6b0d09fde4abdfc7d3641ffefaeefd6bf431554",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6633,6 +6617,7 @@
               "reference_header": "WEEK ENDING October 17 October 10 Change"
             },
             "value_identity": "e3877d1af9419a8fd70630be71ec83ee32e9d5e4404cf09f81e1a68f55280e9b",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6655,6 +6640,7 @@
               "reference_header": "WEEK ENDING October 17 October 10 Change"
             },
             "value_identity": "f1447d7c158928fd8a9f5ae2be141241fb06a4b77e80f55f9ae5b8ef898629e3",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6677,6 +6663,7 @@
               "reference_header": "WEEK ENDING October 17 October 10 Change"
             },
             "value_identity": "93c8c01e077b257963cb53c381ce994ed94670ce51d623f34b1083770f6b2b88",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6699,6 +6686,7 @@
               "reference_header": "WEEK ENDING October 17 October 10 Change"
             },
             "value_identity": "bb7561962132aa8d396c819b4bc4ee44596bfdc3c0b44929b7a1ad33ac28171f",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6721,6 +6709,7 @@
               "reference_header": "WEEK ENDING October 17 October 10 Change"
             },
             "value_identity": null,
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6743,6 +6732,7 @@
               "reference_header": "WEEK ENDING October 24 October 17 Change"
             },
             "value_identity": "f0472c5387e02a1602075a2b06955837df23225c1cfe091a21222ae3990660fc",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6765,6 +6755,7 @@
               "reference_header": "WEEK ENDING October 24 October 17 Change"
             },
             "value_identity": "5507f5da0bff15955a902c2434a906532b6e20ea32e134bf59e59b52c092b772",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6787,6 +6778,7 @@
               "reference_header": "WEEK ENDING October 24 October 17 Change"
             },
             "value_identity": "5a9011a6d205e34411af0838adc34f9c88c802f6d1a99b1a0aee1b3519fb5d1c",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6809,6 +6801,7 @@
               "reference_header": "WEEK ENDING October 17 October 10 Change"
             },
             "value_identity": "4a91912e4dc89e4b298358e207f6e89d16c56a38c5b974e00a5a81a56bfe64dc",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6831,6 +6824,7 @@
               "reference_header": "WEEK ENDING October 17 October 10 Change"
             },
             "value_identity": "3b215754da8ff3d3005bd97d02c33eed90595f931ceb4cdbe83fcd9ac6815a4b",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
               "synthetic-public-prior-evidence"
@@ -6853,8 +6847,31 @@
               "reference_header": "WEEK ENDING October 17 October 10 Change"
             },
             "value_identity": "23cdbf63daae78030a8b8b50429ca2c4cdbc8528c7b35547e45124106af3db1b",
+            "evidence_id": "synthetic-public-evidence",
             "evidence_ids": [
               "synthetic-public-evidence",
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "ICNSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "official_previously_reported_prior",
+            "value": "95",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": "official_original_prior_not_stated",
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 2,
+              "fragment": "Synthetic earlier proof: original prior 95",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "synthetic-prior-value",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
               "synthetic-public-prior-evidence"
             ]
           }
@@ -6873,6 +6890,705 @@
         "raw_locator": "synthetic-public-fixture.txt",
         "obtained_at": "2026-11-01T18:00:00+00:00",
         "available_at": "2026-11-01T18:00:00+00:00",
+        "evidence": [
+          {
+            "event_id": "dol-claims-2026-10-29",
+            "source_date": "2026-10-29",
+            "source_version": {
+              "value": "2026-10-29",
+              "precision": "date",
+              "basis": "official_report_header"
+            },
+            "scheduled_publication_at": "2026-10-29T08:30:00-04:00",
+            "schedule_basis": "embargo_header",
+            "official_actual_publication_at": null,
+            "official_actual_publication_precision": "unknown",
+            "parser_revision": "dol-regular-state-claims-v3",
+            "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+            "evidence_kind": "official_archive",
+            "original_agency": "DOL-ETA",
+            "claims": [
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-24",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "100",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Initial Claims (SA) 100 90 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "a2c9d10a6ad7c1a153239492ac2abe0189d0d6dab5fe600d59895d85def24225"
+              },
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "90",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Initial Claims (SA) 100 90 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "d359ed252471cfe52619d3160a8258cf9ad5a60702353a78e8e723da4a1993c0"
+              },
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": "80",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 1,
+                  "fragment": "previous week's level was revised up by 10 from 80 to 90",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "20acbd0a998fb29703ffcdc184aa620326786989b975a7d5500bee9916388c4c"
+              },
+              {
+                "series_id": "ICNSA",
+                "week_ending": "2026-10-24",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "110",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Initial Claims (NSA) 110 100 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "1b03f17b759a81156c587b5d87a195829ed14de0ab801d8686b397ce0d6cdedd"
+              },
+              {
+                "series_id": "ICNSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "100",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Initial Claims (NSA) 110 100 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "becc0d2823db528c4c2391f29203e82140abc2e85ce26fa99b9c1a30779f9f69"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "200",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (SA) 200 210 -10",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "d6bfabc0449cf771e2e20590a6b0d09fde4abdfc7d3641ffefaeefd6bf431554"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "210",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (SA) 200 210 -10",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "e3877d1af9419a8fd70630be71ec83ee32e9d5e4404cf09f81e1a68f55280e9b"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": "215",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 1,
+                  "fragment": "previous week's level was revised down by 5 from 215 to 210",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "f1447d7c158928fd8a9f5ae2be141241fb06a4b77e80f55f9ae5b8ef898629e3"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "220",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (NSA) 220 215 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "93c8c01e077b257963cb53c381ce994ed94670ce51d623f34b1083770f6b2b88"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "215",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (NSA) 220 215 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "bb7561962132aa8d396c819b4bc4ee44596bfdc3c0b44929b7a1ad33ac28171f"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": null,
+                "unit": "Number",
+                "confirmation_state": "unknown",
+                "missing_reason": "official_original_prior_not_stated",
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": null,
+                  "fragment": null,
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": null
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-24",
+                "statistic": "official_four_week_average",
+                "role": "actual",
+                "value": "105",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "f0472c5387e02a1602075a2b06955837df23225c1cfe091a21222ae3990660fc"
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "prior_as_reported_in_this_event",
+                "value": "100",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "5507f5da0bff15955a902c2434a906532b6e20ea32e134bf59e59b52c092b772"
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "official_previously_reported_prior",
+                "value": "105",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 1,
+                  "fragment": "previous week's average was revised down by 5 from 105 to 100",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "5a9011a6d205e34411af0838adc34f9c88c802f6d1a99b1a0aee1b3519fb5d1c"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "actual",
+                "value": "205",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "4a91912e4dc89e4b298358e207f6e89d16c56a38c5b974e00a5a81a56bfe64dc"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-10",
+                "statistic": "official_four_week_average",
+                "role": "prior_as_reported_in_this_event",
+                "value": "200",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "3b215754da8ff3d3005bd97d02c33eed90595f931ceb4cdbe83fcd9ac6815a4b"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-10",
+                "statistic": "official_four_week_average",
+                "role": "official_previously_reported_prior",
+                "value": "195",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 1,
+                  "fragment": "previous week's average was revised up by 5 from 195 to 200",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "23cdbf63daae78030a8b8b50429ca2c4cdbc8528c7b35547e45124106af3db1b"
+              }
+            ],
+            "consensus": null,
+            "surprise": null,
+            "surprise_missing": [
+              "named_consensus_unavailable"
+            ],
+            "actual_available": true,
+            "mdf_pre_event_available_prior": null,
+            "mdf_pre_event_prior_missing": "no_verified_actual_publication_cutoff",
+            "continuous_version_bound": false,
+            "evidence_id": "synthetic-public-evidence",
+            "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "raw_locator": "synthetic-public-fixture.txt",
+            "obtained_at": "2026-11-01T18:00:00+00:00",
+            "available_at": "2026-11-01T18:00:00+00:00"
+          },
+          {
+            "event_id": "dol-claims-2026-10-29",
+            "source_date": "2026-10-29",
+            "source_version": {
+              "value": "2026-10-28",
+              "precision": "date",
+              "basis": "synthetic_source_version"
+            },
+            "scheduled_publication_at": "2026-10-29T08:30:00-04:00",
+            "schedule_basis": "embargo_header",
+            "official_actual_publication_at": null,
+            "official_actual_publication_precision": "unknown",
+            "parser_revision": "synthetic-prior-parser",
+            "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+            "evidence_kind": "official_current_report_snapshot",
+            "original_agency": "DOL-ETA",
+            "claims": [
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-24",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "100",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Initial Claims (SA) 100 90 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "a2c9d10a6ad7c1a153239492ac2abe0189d0d6dab5fe600d59895d85def24225"
+              },
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "90",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Initial Claims (SA) 100 90 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "d359ed252471cfe52619d3160a8258cf9ad5a60702353a78e8e723da4a1993c0"
+              },
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": "80",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 1,
+                  "fragment": "previous week's level was revised up by 10 from 80 to 90",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "20acbd0a998fb29703ffcdc184aa620326786989b975a7d5500bee9916388c4c"
+              },
+              {
+                "series_id": "ICNSA",
+                "week_ending": "2026-10-24",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "110",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Initial Claims (NSA) 110 100 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "1b03f17b759a81156c587b5d87a195829ed14de0ab801d8686b397ce0d6cdedd"
+              },
+              {
+                "series_id": "ICNSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "100",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Initial Claims (NSA) 110 100 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "becc0d2823db528c4c2391f29203e82140abc2e85ce26fa99b9c1a30779f9f69"
+              },
+              {
+                "series_id": "ICNSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": "95",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": "official_original_prior_not_stated",
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 2,
+                  "fragment": "Synthetic earlier proof: original prior 95",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "synthetic-prior-value"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "200",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (SA) 200 210 -10",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "d6bfabc0449cf771e2e20590a6b0d09fde4abdfc7d3641ffefaeefd6bf431554"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "210",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (SA) 200 210 -10",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "e3877d1af9419a8fd70630be71ec83ee32e9d5e4404cf09f81e1a68f55280e9b"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": "215",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 1,
+                  "fragment": "previous week's level was revised down by 5 from 215 to 210",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "f1447d7c158928fd8a9f5ae2be141241fb06a4b77e80f55f9ae5b8ef898629e3"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "220",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (NSA) 220 215 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "93c8c01e077b257963cb53c381ce994ed94670ce51d623f34b1083770f6b2b88"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "215",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (NSA) 220 215 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "bb7561962132aa8d396c819b4bc4ee44596bfdc3c0b44929b7a1ad33ac28171f"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": null,
+                "unit": "Number",
+                "confirmation_state": "unknown",
+                "missing_reason": "official_original_prior_not_stated",
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": null,
+                  "fragment": null,
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": null
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-24",
+                "statistic": "official_four_week_average",
+                "role": "actual",
+                "value": "105",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "f0472c5387e02a1602075a2b06955837df23225c1cfe091a21222ae3990660fc"
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "prior_as_reported_in_this_event",
+                "value": "100",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "5507f5da0bff15955a902c2434a906532b6e20ea32e134bf59e59b52c092b772"
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "official_previously_reported_prior",
+                "value": "105",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 1,
+                  "fragment": "previous week's average was revised down by 5 from 105 to 100",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "5a9011a6d205e34411af0838adc34f9c88c802f6d1a99b1a0aee1b3519fb5d1c"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "actual",
+                "value": "205",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "4a91912e4dc89e4b298358e207f6e89d16c56a38c5b974e00a5a81a56bfe64dc"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-10",
+                "statistic": "official_four_week_average",
+                "role": "prior_as_reported_in_this_event",
+                "value": "200",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "3b215754da8ff3d3005bd97d02c33eed90595f931ceb4cdbe83fcd9ac6815a4b"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-10",
+                "statistic": "official_four_week_average",
+                "role": "official_previously_reported_prior",
+                "value": "195",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 1,
+                  "fragment": "previous week's average was revised up by 5 from 195 to 200",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "23cdbf63daae78030a8b8b50429ca2c4cdbc8528c7b35547e45124106af3db1b"
+              }
+            ],
+            "consensus": null,
+            "surprise": null,
+            "surprise_missing": [
+              "named_consensus_unavailable"
+            ],
+            "actual_available": true,
+            "mdf_pre_event_available_prior": null,
+            "mdf_pre_event_prior_missing": "no_verified_actual_publication_cutoff",
+            "continuous_version_bound": false,
+            "evidence_id": "synthetic-public-prior-evidence",
+            "raw_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "raw_locator": "synthetic-public-prior-fixture.txt",
+            "obtained_at": "2026-11-01T17:59:00+00:00",
+            "available_at": "2026-11-01T17:59:00+00:00"
+          }
+        ],
+        "metadata_scope": "representative_evidence_only",
         "evidence_ids": [
           "synthetic-public-evidence",
           "synthetic-public-prior-evidence"
@@ -6991,24 +7707,6 @@
               "reference_header": "WEEK ENDING October 24 October 17 Change"
             },
             "value_identity": "becc0d2823db528c4c2391f29203e82140abc2e85ce26fa99b9c1a30779f9f69"
-          },
-          {
-            "series_id": "ICNSA",
-            "week_ending": "2026-10-17",
-            "statistic": "weekly_level",
-            "role": "official_previously_reported_prior",
-            "value": null,
-            "unit": "Number",
-            "confirmation_state": "unknown",
-            "missing_reason": "official_original_prior_not_stated",
-            "evidence": {
-              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
-              "page": null,
-              "fragment": null,
-              "reference_header": "WEEK ENDING October 24 October 17 Change"
-            },
-            "value_identity": null
           },
           {
             "series_id": "CCSA",
@@ -7246,17 +7944,17 @@
         "event_id": "dol-claims-2026-10-29",
         "source_date": "2026-10-29",
         "source_version": {
-          "value": "2026-10-29",
+          "value": "2026-10-28",
           "precision": "date",
-          "basis": "official_report_header"
+          "basis": "synthetic_source_version"
         },
         "scheduled_publication_at": "2026-10-29T08:30:00-04:00",
         "schedule_basis": "embargo_header",
         "official_actual_publication_at": null,
         "official_actual_publication_precision": "unknown",
         "parser_revision": "synthetic-prior-parser",
-        "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
-        "evidence_kind": "official_archive",
+        "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+        "evidence_kind": "official_current_report_snapshot",
         "original_agency": "DOL-ETA",
         "claims": [
           {
@@ -7270,7 +7968,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 3,
               "fragment": "Initial Claims (SA) 100 90 +10",
               "reference_header": "WEEK ENDING October 24 October 17 Change"
@@ -7288,7 +7986,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 3,
               "fragment": "Initial Claims (SA) 100 90 +10",
               "reference_header": "WEEK ENDING October 24 October 17 Change"
@@ -7306,7 +8004,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 1,
               "fragment": "previous week's level was revised up by 10 from 80 to 90",
               "reference_header": "WEEK ENDING October 24 October 17 Change"
@@ -7324,7 +8022,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 3,
               "fragment": "Initial Claims (NSA) 110 100 +10",
               "reference_header": "WEEK ENDING October 24 October 17 Change"
@@ -7342,7 +8040,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 3,
               "fragment": "Initial Claims (NSA) 110 100 +10",
               "reference_header": "WEEK ENDING October 24 October 17 Change"
@@ -7354,18 +8052,18 @@
             "week_ending": "2026-10-17",
             "statistic": "weekly_level",
             "role": "official_previously_reported_prior",
-            "value": null,
+            "value": "95",
             "unit": "Number",
-            "confirmation_state": "unknown",
+            "confirmation_state": "confirmed",
             "missing_reason": "official_original_prior_not_stated",
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
-              "page": null,
-              "fragment": null,
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 2,
+              "fragment": "Synthetic earlier proof: original prior 95",
               "reference_header": "WEEK ENDING October 24 October 17 Change"
             },
-            "value_identity": null
+            "value_identity": "synthetic-prior-value"
           },
           {
             "series_id": "CCSA",
@@ -7378,7 +8076,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 3,
               "fragment": "Insured Unemployment (SA) 200 210 -10",
               "reference_header": "WEEK ENDING October 17 October 10 Change"
@@ -7396,7 +8094,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 3,
               "fragment": "Insured Unemployment (SA) 200 210 -10",
               "reference_header": "WEEK ENDING October 17 October 10 Change"
@@ -7414,7 +8112,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 1,
               "fragment": "previous week's level was revised down by 5 from 215 to 210",
               "reference_header": "WEEK ENDING October 17 October 10 Change"
@@ -7432,7 +8130,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 3,
               "fragment": "Insured Unemployment (NSA) 220 215 +5",
               "reference_header": "WEEK ENDING October 17 October 10 Change"
@@ -7450,7 +8148,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 3,
               "fragment": "Insured Unemployment (NSA) 220 215 +5",
               "reference_header": "WEEK ENDING October 17 October 10 Change"
@@ -7468,7 +8166,7 @@
             "missing_reason": "official_original_prior_not_stated",
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": null,
               "fragment": null,
               "reference_header": "WEEK ENDING October 17 October 10 Change"
@@ -7486,7 +8184,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 3,
               "fragment": "4-Wk Moving Average (SA) 105 100 +5",
               "reference_header": "WEEK ENDING October 24 October 17 Change"
@@ -7504,7 +8202,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 3,
               "fragment": "4-Wk Moving Average (SA) 105 100 +5",
               "reference_header": "WEEK ENDING October 24 October 17 Change"
@@ -7522,7 +8220,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 1,
               "fragment": "previous week's average was revised down by 5 from 105 to 100",
               "reference_header": "WEEK ENDING October 24 October 17 Change"
@@ -7540,7 +8238,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 3,
               "fragment": "4-Wk Moving Average (SA) 205 200 +5",
               "reference_header": "WEEK ENDING October 17 October 10 Change"
@@ -7558,7 +8256,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 3,
               "fragment": "4-Wk Moving Average (SA) 205 200 +5",
               "reference_header": "WEEK ENDING October 17 October 10 Change"
@@ -7576,7 +8274,7 @@
             "missing_reason": null,
             "evidence": {
               "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
-              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
               "page": 1,
               "fragment": "previous week's average was revised up by 5 from 195 to 200",
               "reference_header": "WEEK ENDING October 17 October 10 Change"
@@ -7594,14 +8292,1181 @@
         "mdf_pre_event_prior_missing": "no_verified_actual_publication_cutoff",
         "continuous_version_bound": false,
         "evidence_id": "synthetic-public-prior-evidence",
-        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-        "raw_locator": "synthetic-public-fixture.txt",
+        "raw_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "raw_locator": "synthetic-public-prior-fixture.txt",
         "obtained_at": "2026-11-01T17:59:00+00:00",
         "available_at": "2026-11-01T17:59:00+00:00"
       }
     ],
     "as_of": "2026-11-02T18:00:00+00:00",
     "read_mode": "source_history"
+  },
+  "source_version_filtered": {
+    "events": [
+      {
+        "event_id": "dol-claims-2026-10-29",
+        "source_date": "2026-10-29",
+        "source_version": {
+          "value": "2026-10-28",
+          "precision": "date",
+          "basis": "synthetic_source_version"
+        },
+        "scheduled_publication_at": "2026-10-29T08:30:00-04:00",
+        "schedule_basis": "embargo_header",
+        "official_actual_publication_at": null,
+        "official_actual_publication_precision": "unknown",
+        "parser_revision": "synthetic-prior-parser",
+        "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+        "evidence_kind": "official_current_report_snapshot",
+        "original_agency": "DOL-ETA",
+        "claims": [
+          {
+            "series_id": "ICSA",
+            "week_ending": "2026-10-24",
+            "statistic": "weekly_level",
+            "role": "actual",
+            "value": "100",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Initial Claims (SA) 100 90 +10",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "a2c9d10a6ad7c1a153239492ac2abe0189d0d6dab5fe600d59895d85def24225"
+          },
+          {
+            "series_id": "ICSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "prior_as_reported_in_this_event",
+            "value": "90",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Initial Claims (SA) 100 90 +10",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "d359ed252471cfe52619d3160a8258cf9ad5a60702353a78e8e723da4a1993c0"
+          },
+          {
+            "series_id": "ICSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "official_previously_reported_prior",
+            "value": "80",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 1,
+              "fragment": "previous week's level was revised up by 10 from 80 to 90",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "20acbd0a998fb29703ffcdc184aa620326786989b975a7d5500bee9916388c4c"
+          },
+          {
+            "series_id": "ICNSA",
+            "week_ending": "2026-10-24",
+            "statistic": "weekly_level",
+            "role": "actual",
+            "value": "110",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Initial Claims (NSA) 110 100 +10",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "1b03f17b759a81156c587b5d87a195829ed14de0ab801d8686b397ce0d6cdedd"
+          },
+          {
+            "series_id": "ICNSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "prior_as_reported_in_this_event",
+            "value": "100",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Initial Claims (NSA) 110 100 +10",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "becc0d2823db528c4c2391f29203e82140abc2e85ce26fa99b9c1a30779f9f69"
+          },
+          {
+            "series_id": "ICNSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "official_previously_reported_prior",
+            "value": "95",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": "official_original_prior_not_stated",
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 2,
+              "fragment": "Synthetic earlier proof: original prior 95",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "synthetic-prior-value"
+          },
+          {
+            "series_id": "CCSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "actual",
+            "value": "200",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Insured Unemployment (SA) 200 210 -10",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "d6bfabc0449cf771e2e20590a6b0d09fde4abdfc7d3641ffefaeefd6bf431554"
+          },
+          {
+            "series_id": "CCSA",
+            "week_ending": "2026-10-10",
+            "statistic": "weekly_level",
+            "role": "prior_as_reported_in_this_event",
+            "value": "210",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Insured Unemployment (SA) 200 210 -10",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "e3877d1af9419a8fd70630be71ec83ee32e9d5e4404cf09f81e1a68f55280e9b"
+          },
+          {
+            "series_id": "CCSA",
+            "week_ending": "2026-10-10",
+            "statistic": "weekly_level",
+            "role": "official_previously_reported_prior",
+            "value": "215",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 1,
+              "fragment": "previous week's level was revised down by 5 from 215 to 210",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "f1447d7c158928fd8a9f5ae2be141241fb06a4b77e80f55f9ae5b8ef898629e3"
+          },
+          {
+            "series_id": "CCNSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "actual",
+            "value": "220",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Insured Unemployment (NSA) 220 215 +5",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "93c8c01e077b257963cb53c381ce994ed94670ce51d623f34b1083770f6b2b88"
+          },
+          {
+            "series_id": "CCNSA",
+            "week_ending": "2026-10-10",
+            "statistic": "weekly_level",
+            "role": "prior_as_reported_in_this_event",
+            "value": "215",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Insured Unemployment (NSA) 220 215 +5",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "bb7561962132aa8d396c819b4bc4ee44596bfdc3c0b44929b7a1ad33ac28171f"
+          },
+          {
+            "series_id": "CCNSA",
+            "week_ending": "2026-10-10",
+            "statistic": "weekly_level",
+            "role": "official_previously_reported_prior",
+            "value": null,
+            "unit": "Number",
+            "confirmation_state": "unknown",
+            "missing_reason": "official_original_prior_not_stated",
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": null,
+              "fragment": null,
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": null
+          },
+          {
+            "series_id": "IC4WSA",
+            "week_ending": "2026-10-24",
+            "statistic": "official_four_week_average",
+            "role": "actual",
+            "value": "105",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "f0472c5387e02a1602075a2b06955837df23225c1cfe091a21222ae3990660fc"
+          },
+          {
+            "series_id": "IC4WSA",
+            "week_ending": "2026-10-17",
+            "statistic": "official_four_week_average",
+            "role": "prior_as_reported_in_this_event",
+            "value": "100",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "5507f5da0bff15955a902c2434a906532b6e20ea32e134bf59e59b52c092b772"
+          },
+          {
+            "series_id": "IC4WSA",
+            "week_ending": "2026-10-17",
+            "statistic": "official_four_week_average",
+            "role": "official_previously_reported_prior",
+            "value": "105",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 1,
+              "fragment": "previous week's average was revised down by 5 from 105 to 100",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "5a9011a6d205e34411af0838adc34f9c88c802f6d1a99b1a0aee1b3519fb5d1c"
+          },
+          {
+            "series_id": "CC4WSA",
+            "week_ending": "2026-10-17",
+            "statistic": "official_four_week_average",
+            "role": "actual",
+            "value": "205",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "4a91912e4dc89e4b298358e207f6e89d16c56a38c5b974e00a5a81a56bfe64dc"
+          },
+          {
+            "series_id": "CC4WSA",
+            "week_ending": "2026-10-10",
+            "statistic": "official_four_week_average",
+            "role": "prior_as_reported_in_this_event",
+            "value": "200",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "3b215754da8ff3d3005bd97d02c33eed90595f931ceb4cdbe83fcd9ac6815a4b"
+          },
+          {
+            "series_id": "CC4WSA",
+            "week_ending": "2026-10-10",
+            "statistic": "official_four_week_average",
+            "role": "official_previously_reported_prior",
+            "value": "195",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 1,
+              "fragment": "previous week's average was revised up by 5 from 195 to 200",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "23cdbf63daae78030a8b8b50429ca2c4cdbc8528c7b35547e45124106af3db1b"
+          }
+        ],
+        "consensus": null,
+        "surprise": null,
+        "surprise_missing": [
+          "named_consensus_unavailable"
+        ],
+        "actual_available": true,
+        "mdf_pre_event_available_prior": null,
+        "mdf_pre_event_prior_missing": "no_verified_actual_publication_cutoff",
+        "continuous_version_bound": false,
+        "evidence_id": "synthetic-public-prior-evidence",
+        "raw_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "raw_locator": "synthetic-public-prior-fixture.txt",
+        "obtained_at": "2026-11-01T17:59:00+00:00",
+        "available_at": "2026-11-01T17:59:00+00:00"
+      }
+    ],
+    "as_of": "2026-11-02T18:00:00+00:00",
+    "read_mode": "source_history"
+  },
+  "available_before_latest": {
+    "events": [
+      {
+        "event_id": "dol-claims-2026-10-29",
+        "source_date": "2026-10-29",
+        "source_version": {
+          "value": "2026-10-28",
+          "precision": "date",
+          "basis": "synthetic_source_version"
+        },
+        "scheduled_publication_at": "2026-10-29T08:30:00-04:00",
+        "schedule_basis": "embargo_header",
+        "official_actual_publication_at": null,
+        "official_actual_publication_precision": "unknown",
+        "parser_revision": "synthetic-prior-parser",
+        "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+        "evidence_kind": "official_current_report_snapshot",
+        "original_agency": "DOL-ETA",
+        "claims": [
+          {
+            "series_id": "ICSA",
+            "week_ending": "2026-10-24",
+            "statistic": "weekly_level",
+            "role": "actual",
+            "value": "100",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Initial Claims (SA) 100 90 +10",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "a2c9d10a6ad7c1a153239492ac2abe0189d0d6dab5fe600d59895d85def24225",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "ICSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "prior_as_reported_in_this_event",
+            "value": "90",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Initial Claims (SA) 100 90 +10",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "d359ed252471cfe52619d3160a8258cf9ad5a60702353a78e8e723da4a1993c0",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "ICSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "official_previously_reported_prior",
+            "value": "80",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 1,
+              "fragment": "previous week's level was revised up by 10 from 80 to 90",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "20acbd0a998fb29703ffcdc184aa620326786989b975a7d5500bee9916388c4c",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "ICNSA",
+            "week_ending": "2026-10-24",
+            "statistic": "weekly_level",
+            "role": "actual",
+            "value": "110",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Initial Claims (NSA) 110 100 +10",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "1b03f17b759a81156c587b5d87a195829ed14de0ab801d8686b397ce0d6cdedd",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "ICNSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "prior_as_reported_in_this_event",
+            "value": "100",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Initial Claims (NSA) 110 100 +10",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "becc0d2823db528c4c2391f29203e82140abc2e85ce26fa99b9c1a30779f9f69",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "ICNSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "official_previously_reported_prior",
+            "value": "95",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": "official_original_prior_not_stated",
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 2,
+              "fragment": "Synthetic earlier proof: original prior 95",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "synthetic-prior-value",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "CCSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "actual",
+            "value": "200",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Insured Unemployment (SA) 200 210 -10",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "d6bfabc0449cf771e2e20590a6b0d09fde4abdfc7d3641ffefaeefd6bf431554",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "CCSA",
+            "week_ending": "2026-10-10",
+            "statistic": "weekly_level",
+            "role": "prior_as_reported_in_this_event",
+            "value": "210",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Insured Unemployment (SA) 200 210 -10",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "e3877d1af9419a8fd70630be71ec83ee32e9d5e4404cf09f81e1a68f55280e9b",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "CCSA",
+            "week_ending": "2026-10-10",
+            "statistic": "weekly_level",
+            "role": "official_previously_reported_prior",
+            "value": "215",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 1,
+              "fragment": "previous week's level was revised down by 5 from 215 to 210",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "f1447d7c158928fd8a9f5ae2be141241fb06a4b77e80f55f9ae5b8ef898629e3",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "CCNSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "actual",
+            "value": "220",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Insured Unemployment (NSA) 220 215 +5",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "93c8c01e077b257963cb53c381ce994ed94670ce51d623f34b1083770f6b2b88",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "CCNSA",
+            "week_ending": "2026-10-10",
+            "statistic": "weekly_level",
+            "role": "prior_as_reported_in_this_event",
+            "value": "215",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "Insured Unemployment (NSA) 220 215 +5",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "bb7561962132aa8d396c819b4bc4ee44596bfdc3c0b44929b7a1ad33ac28171f",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "CCNSA",
+            "week_ending": "2026-10-10",
+            "statistic": "weekly_level",
+            "role": "official_previously_reported_prior",
+            "value": null,
+            "unit": "Number",
+            "confirmation_state": "unknown",
+            "missing_reason": "official_original_prior_not_stated",
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": null,
+              "fragment": null,
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": null,
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "IC4WSA",
+            "week_ending": "2026-10-24",
+            "statistic": "official_four_week_average",
+            "role": "actual",
+            "value": "105",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "f0472c5387e02a1602075a2b06955837df23225c1cfe091a21222ae3990660fc",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "IC4WSA",
+            "week_ending": "2026-10-17",
+            "statistic": "official_four_week_average",
+            "role": "prior_as_reported_in_this_event",
+            "value": "100",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "5507f5da0bff15955a902c2434a906532b6e20ea32e134bf59e59b52c092b772",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "IC4WSA",
+            "week_ending": "2026-10-17",
+            "statistic": "official_four_week_average",
+            "role": "official_previously_reported_prior",
+            "value": "105",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 1,
+              "fragment": "previous week's average was revised down by 5 from 105 to 100",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "5a9011a6d205e34411af0838adc34f9c88c802f6d1a99b1a0aee1b3519fb5d1c",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "CC4WSA",
+            "week_ending": "2026-10-17",
+            "statistic": "official_four_week_average",
+            "role": "actual",
+            "value": "205",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "4a91912e4dc89e4b298358e207f6e89d16c56a38c5b974e00a5a81a56bfe64dc",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "CC4WSA",
+            "week_ending": "2026-10-10",
+            "statistic": "official_four_week_average",
+            "role": "prior_as_reported_in_this_event",
+            "value": "200",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 3,
+              "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "3b215754da8ff3d3005bd97d02c33eed90595f931ceb4cdbe83fcd9ac6815a4b",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          },
+          {
+            "series_id": "CC4WSA",
+            "week_ending": "2026-10-10",
+            "statistic": "official_four_week_average",
+            "role": "official_previously_reported_prior",
+            "value": "195",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+              "page": 1,
+              "fragment": "previous week's average was revised up by 5 from 195 to 200",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "23cdbf63daae78030a8b8b50429ca2c4cdbc8528c7b35547e45124106af3db1b",
+            "evidence_id": "synthetic-public-prior-evidence",
+            "evidence_ids": [
+              "synthetic-public-prior-evidence"
+            ]
+          }
+        ],
+        "consensus": null,
+        "surprise": null,
+        "surprise_missing": [
+          "named_consensus_unavailable"
+        ],
+        "actual_available": true,
+        "mdf_pre_event_available_prior": null,
+        "mdf_pre_event_prior_missing": "no_verified_actual_publication_cutoff",
+        "continuous_version_bound": false,
+        "evidence_id": "synthetic-public-prior-evidence",
+        "raw_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "raw_locator": "synthetic-public-prior-fixture.txt",
+        "obtained_at": "2026-11-01T17:59:00+00:00",
+        "available_at": "2026-11-01T17:59:00+00:00",
+        "evidence": [
+          {
+            "event_id": "dol-claims-2026-10-29",
+            "source_date": "2026-10-29",
+            "source_version": {
+              "value": "2026-10-28",
+              "precision": "date",
+              "basis": "synthetic_source_version"
+            },
+            "scheduled_publication_at": "2026-10-29T08:30:00-04:00",
+            "schedule_basis": "embargo_header",
+            "official_actual_publication_at": null,
+            "official_actual_publication_precision": "unknown",
+            "parser_revision": "synthetic-prior-parser",
+            "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+            "evidence_kind": "official_current_report_snapshot",
+            "original_agency": "DOL-ETA",
+            "claims": [
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-24",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "100",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Initial Claims (SA) 100 90 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "a2c9d10a6ad7c1a153239492ac2abe0189d0d6dab5fe600d59895d85def24225"
+              },
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "90",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Initial Claims (SA) 100 90 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "d359ed252471cfe52619d3160a8258cf9ad5a60702353a78e8e723da4a1993c0"
+              },
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": "80",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 1,
+                  "fragment": "previous week's level was revised up by 10 from 80 to 90",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "20acbd0a998fb29703ffcdc184aa620326786989b975a7d5500bee9916388c4c"
+              },
+              {
+                "series_id": "ICNSA",
+                "week_ending": "2026-10-24",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "110",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Initial Claims (NSA) 110 100 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "1b03f17b759a81156c587b5d87a195829ed14de0ab801d8686b397ce0d6cdedd"
+              },
+              {
+                "series_id": "ICNSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "100",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Initial Claims (NSA) 110 100 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "becc0d2823db528c4c2391f29203e82140abc2e85ce26fa99b9c1a30779f9f69"
+              },
+              {
+                "series_id": "ICNSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": "95",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": "official_original_prior_not_stated",
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 2,
+                  "fragment": "Synthetic earlier proof: original prior 95",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "synthetic-prior-value"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "200",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (SA) 200 210 -10",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "d6bfabc0449cf771e2e20590a6b0d09fde4abdfc7d3641ffefaeefd6bf431554"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "210",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (SA) 200 210 -10",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "e3877d1af9419a8fd70630be71ec83ee32e9d5e4404cf09f81e1a68f55280e9b"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": "215",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 1,
+                  "fragment": "previous week's level was revised down by 5 from 215 to 210",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "f1447d7c158928fd8a9f5ae2be141241fb06a4b77e80f55f9ae5b8ef898629e3"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "220",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (NSA) 220 215 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "93c8c01e077b257963cb53c381ce994ed94670ce51d623f34b1083770f6b2b88"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "215",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (NSA) 220 215 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "bb7561962132aa8d396c819b4bc4ee44596bfdc3c0b44929b7a1ad33ac28171f"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": null,
+                "unit": "Number",
+                "confirmation_state": "unknown",
+                "missing_reason": "official_original_prior_not_stated",
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": null,
+                  "fragment": null,
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": null
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-24",
+                "statistic": "official_four_week_average",
+                "role": "actual",
+                "value": "105",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "f0472c5387e02a1602075a2b06955837df23225c1cfe091a21222ae3990660fc"
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "prior_as_reported_in_this_event",
+                "value": "100",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "5507f5da0bff15955a902c2434a906532b6e20ea32e134bf59e59b52c092b772"
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "official_previously_reported_prior",
+                "value": "105",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 1,
+                  "fragment": "previous week's average was revised down by 5 from 105 to 100",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "5a9011a6d205e34411af0838adc34f9c88c802f6d1a99b1a0aee1b3519fb5d1c"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "actual",
+                "value": "205",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "4a91912e4dc89e4b298358e207f6e89d16c56a38c5b974e00a5a81a56bfe64dc"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-10",
+                "statistic": "official_four_week_average",
+                "role": "prior_as_reported_in_this_event",
+                "value": "200",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "3b215754da8ff3d3005bd97d02c33eed90595f931ceb4cdbe83fcd9ac6815a4b"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-10",
+                "statistic": "official_four_week_average",
+                "role": "official_previously_reported_prior",
+                "value": "195",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/ui/data.pdf?os=v0",
+                  "page": 1,
+                  "fragment": "previous week's average was revised up by 5 from 195 to 200",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "23cdbf63daae78030a8b8b50429ca2c4cdbc8528c7b35547e45124106af3db1b"
+              }
+            ],
+            "consensus": null,
+            "surprise": null,
+            "surprise_missing": [
+              "named_consensus_unavailable"
+            ],
+            "actual_available": true,
+            "mdf_pre_event_available_prior": null,
+            "mdf_pre_event_prior_missing": "no_verified_actual_publication_cutoff",
+            "continuous_version_bound": false,
+            "evidence_id": "synthetic-public-prior-evidence",
+            "raw_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "raw_locator": "synthetic-public-prior-fixture.txt",
+            "obtained_at": "2026-11-01T17:59:00+00:00",
+            "available_at": "2026-11-01T17:59:00+00:00"
+          }
+        ],
+        "metadata_scope": "representative_evidence_only",
+        "evidence_ids": [
+          "synthetic-public-prior-evidence"
+        ],
+        "conflicts": []
+      }
+    ],
+    "as_of": "2026-11-01T17:59:00+00:00",
+    "read_mode": "event"
+  },
+  "available_before_all": {
+    "events": [],
+    "as_of": "2026-11-01T17:58:00+00:00",
+    "read_mode": "event"
   },
   "jobs": {
     "jobs": [
@@ -12532,6 +14397,8 @@
         "event",
         "source_history"
       ],
+      "evidence_identity": "source_history: (event_id, evidence_id); event_id unchanged",
+      "aggregation": "event: full evidence[] with each original claims/raw metadata; top-level metadata_scope=representative_evidence_only; claim evidence_id selects original locator, evidence_ids lists nonnull supporters or conflicting candidates; conflict has no selected evidence/locator",
       "evidence_kinds": [
         "official_current_report_snapshot",
         "official_archive"
@@ -12654,6 +14521,1560 @@
     ],
     "evidence_refs": [
       "src/market_data_foundation/historical/claims_contract.py:CLAIMS_SOURCE"
+    ]
+  },
+  "release_conflict": {
+    "events": [
+      {
+        "event_id": "dol-claims-2026-10-29",
+        "source_date": "2026-10-29",
+        "source_version": {
+          "value": "2026-10-29",
+          "precision": "date",
+          "basis": "official_report_header"
+        },
+        "scheduled_publication_at": "2026-10-29T08:30:00-04:00",
+        "schedule_basis": "embargo_header",
+        "official_actual_publication_at": null,
+        "official_actual_publication_precision": "unknown",
+        "parser_revision": "dol-regular-state-claims-v3",
+        "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+        "evidence_kind": "official_archive",
+        "original_agency": "DOL-ETA",
+        "claims": [
+          {
+            "series_id": "ICSA",
+            "week_ending": "2026-10-24",
+            "statistic": "weekly_level",
+            "role": "actual",
+            "value": null,
+            "unit": "Number",
+            "confirmation_state": "conflict",
+            "missing_reason": "official_evidence_conflict",
+            "evidence": null,
+            "value_identity": null,
+            "evidence_id": null,
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "ICSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "prior_as_reported_in_this_event",
+            "value": "90",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 3,
+              "fragment": "Initial Claims (SA) 100 90 +10",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "d359ed252471cfe52619d3160a8258cf9ad5a60702353a78e8e723da4a1993c0",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "ICSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "official_previously_reported_prior",
+            "value": "80",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 1,
+              "fragment": "previous week's level was revised up by 10 from 80 to 90",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "20acbd0a998fb29703ffcdc184aa620326786989b975a7d5500bee9916388c4c",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "ICNSA",
+            "week_ending": "2026-10-24",
+            "statistic": "weekly_level",
+            "role": "actual",
+            "value": "110",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 3,
+              "fragment": "Initial Claims (NSA) 110 100 +10",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "1b03f17b759a81156c587b5d87a195829ed14de0ab801d8686b397ce0d6cdedd",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "ICNSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "prior_as_reported_in_this_event",
+            "value": "100",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 3,
+              "fragment": "Initial Claims (NSA) 110 100 +10",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "becc0d2823db528c4c2391f29203e82140abc2e85ce26fa99b9c1a30779f9f69",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "CCSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "actual",
+            "value": "200",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 3,
+              "fragment": "Insured Unemployment (SA) 200 210 -10",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "d6bfabc0449cf771e2e20590a6b0d09fde4abdfc7d3641ffefaeefd6bf431554",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "CCSA",
+            "week_ending": "2026-10-10",
+            "statistic": "weekly_level",
+            "role": "prior_as_reported_in_this_event",
+            "value": "210",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 3,
+              "fragment": "Insured Unemployment (SA) 200 210 -10",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "e3877d1af9419a8fd70630be71ec83ee32e9d5e4404cf09f81e1a68f55280e9b",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "CCSA",
+            "week_ending": "2026-10-10",
+            "statistic": "weekly_level",
+            "role": "official_previously_reported_prior",
+            "value": "215",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 1,
+              "fragment": "previous week's level was revised down by 5 from 215 to 210",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "f1447d7c158928fd8a9f5ae2be141241fb06a4b77e80f55f9ae5b8ef898629e3",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "CCNSA",
+            "week_ending": "2026-10-17",
+            "statistic": "weekly_level",
+            "role": "actual",
+            "value": "220",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 3,
+              "fragment": "Insured Unemployment (NSA) 220 215 +5",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "93c8c01e077b257963cb53c381ce994ed94670ce51d623f34b1083770f6b2b88",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "CCNSA",
+            "week_ending": "2026-10-10",
+            "statistic": "weekly_level",
+            "role": "prior_as_reported_in_this_event",
+            "value": "215",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 3,
+              "fragment": "Insured Unemployment (NSA) 220 215 +5",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "bb7561962132aa8d396c819b4bc4ee44596bfdc3c0b44929b7a1ad33ac28171f",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "CCNSA",
+            "week_ending": "2026-10-10",
+            "statistic": "weekly_level",
+            "role": "official_previously_reported_prior",
+            "value": null,
+            "unit": "Number",
+            "confirmation_state": "unknown",
+            "missing_reason": "official_original_prior_not_stated",
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": null,
+              "fragment": null,
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": null,
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "IC4WSA",
+            "week_ending": "2026-10-24",
+            "statistic": "official_four_week_average",
+            "role": "actual",
+            "value": "105",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 3,
+              "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "f0472c5387e02a1602075a2b06955837df23225c1cfe091a21222ae3990660fc",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "IC4WSA",
+            "week_ending": "2026-10-17",
+            "statistic": "official_four_week_average",
+            "role": "prior_as_reported_in_this_event",
+            "value": "100",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 3,
+              "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "5507f5da0bff15955a902c2434a906532b6e20ea32e134bf59e59b52c092b772",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "IC4WSA",
+            "week_ending": "2026-10-17",
+            "statistic": "official_four_week_average",
+            "role": "official_previously_reported_prior",
+            "value": "105",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 1,
+              "fragment": "previous week's average was revised down by 5 from 105 to 100",
+              "reference_header": "WEEK ENDING October 24 October 17 Change"
+            },
+            "value_identity": "5a9011a6d205e34411af0838adc34f9c88c802f6d1a99b1a0aee1b3519fb5d1c",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "CC4WSA",
+            "week_ending": "2026-10-17",
+            "statistic": "official_four_week_average",
+            "role": "actual",
+            "value": "205",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 3,
+              "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "4a91912e4dc89e4b298358e207f6e89d16c56a38c5b974e00a5a81a56bfe64dc",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "CC4WSA",
+            "week_ending": "2026-10-10",
+            "statistic": "official_four_week_average",
+            "role": "prior_as_reported_in_this_event",
+            "value": "200",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 3,
+              "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "3b215754da8ff3d3005bd97d02c33eed90595f931ceb4cdbe83fcd9ac6815a4b",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          },
+          {
+            "series_id": "CC4WSA",
+            "week_ending": "2026-10-10",
+            "statistic": "official_four_week_average",
+            "role": "official_previously_reported_prior",
+            "value": "195",
+            "unit": "Number",
+            "confirmation_state": "confirmed",
+            "missing_reason": null,
+            "evidence": {
+              "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+              "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+              "page": 1,
+              "fragment": "previous week's average was revised up by 5 from 195 to 200",
+              "reference_header": "WEEK ENDING October 17 October 10 Change"
+            },
+            "value_identity": "23cdbf63daae78030a8b8b50429ca2c4cdbc8528c7b35547e45124106af3db1b",
+            "evidence_id": "synthetic-public-evidence",
+            "evidence_ids": [
+              "synthetic-conflicting-evidence",
+              "synthetic-public-evidence"
+            ]
+          }
+        ],
+        "consensus": null,
+        "surprise": null,
+        "surprise_missing": [
+          "named_consensus_unavailable",
+          "event_actual_unconfirmed"
+        ],
+        "actual_available": false,
+        "mdf_pre_event_available_prior": null,
+        "mdf_pre_event_prior_missing": "no_verified_actual_publication_cutoff",
+        "continuous_version_bound": false,
+        "evidence_id": "synthetic-public-evidence",
+        "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "raw_locator": "synthetic-public-fixture.txt",
+        "obtained_at": "2026-11-01T18:00:00+00:00",
+        "available_at": "2026-11-01T18:00:00+00:00",
+        "evidence": [
+          {
+            "event_id": "dol-claims-2026-10-29",
+            "source_date": "2026-10-29",
+            "source_version": {
+              "value": "2026-10-29",
+              "precision": "date",
+              "basis": "official_report_header"
+            },
+            "scheduled_publication_at": "2026-10-29T08:30:00-04:00",
+            "schedule_basis": "embargo_header",
+            "official_actual_publication_at": null,
+            "official_actual_publication_precision": "unknown",
+            "parser_revision": "dol-regular-state-claims-v3",
+            "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+            "evidence_kind": "official_archive",
+            "original_agency": "DOL-ETA",
+            "claims": [
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-24",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "100",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Initial Claims (SA) 100 90 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "a2c9d10a6ad7c1a153239492ac2abe0189d0d6dab5fe600d59895d85def24225"
+              },
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "90",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Initial Claims (SA) 100 90 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "d359ed252471cfe52619d3160a8258cf9ad5a60702353a78e8e723da4a1993c0"
+              },
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": "80",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 1,
+                  "fragment": "previous week's level was revised up by 10 from 80 to 90",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "20acbd0a998fb29703ffcdc184aa620326786989b975a7d5500bee9916388c4c"
+              },
+              {
+                "series_id": "ICNSA",
+                "week_ending": "2026-10-24",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "110",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Initial Claims (NSA) 110 100 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "1b03f17b759a81156c587b5d87a195829ed14de0ab801d8686b397ce0d6cdedd"
+              },
+              {
+                "series_id": "ICNSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "100",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Initial Claims (NSA) 110 100 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "becc0d2823db528c4c2391f29203e82140abc2e85ce26fa99b9c1a30779f9f69"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "200",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (SA) 200 210 -10",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "d6bfabc0449cf771e2e20590a6b0d09fde4abdfc7d3641ffefaeefd6bf431554"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "210",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (SA) 200 210 -10",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "e3877d1af9419a8fd70630be71ec83ee32e9d5e4404cf09f81e1a68f55280e9b"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": "215",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 1,
+                  "fragment": "previous week's level was revised down by 5 from 215 to 210",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "f1447d7c158928fd8a9f5ae2be141241fb06a4b77e80f55f9ae5b8ef898629e3"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "220",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (NSA) 220 215 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "93c8c01e077b257963cb53c381ce994ed94670ce51d623f34b1083770f6b2b88"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "215",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (NSA) 220 215 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "bb7561962132aa8d396c819b4bc4ee44596bfdc3c0b44929b7a1ad33ac28171f"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": null,
+                "unit": "Number",
+                "confirmation_state": "unknown",
+                "missing_reason": "official_original_prior_not_stated",
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": null,
+                  "fragment": null,
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": null
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-24",
+                "statistic": "official_four_week_average",
+                "role": "actual",
+                "value": "105",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "f0472c5387e02a1602075a2b06955837df23225c1cfe091a21222ae3990660fc"
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "prior_as_reported_in_this_event",
+                "value": "100",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "5507f5da0bff15955a902c2434a906532b6e20ea32e134bf59e59b52c092b772"
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "official_previously_reported_prior",
+                "value": "105",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 1,
+                  "fragment": "previous week's average was revised down by 5 from 105 to 100",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "5a9011a6d205e34411af0838adc34f9c88c802f6d1a99b1a0aee1b3519fb5d1c"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "actual",
+                "value": "205",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "4a91912e4dc89e4b298358e207f6e89d16c56a38c5b974e00a5a81a56bfe64dc"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-10",
+                "statistic": "official_four_week_average",
+                "role": "prior_as_reported_in_this_event",
+                "value": "200",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "3b215754da8ff3d3005bd97d02c33eed90595f931ceb4cdbe83fcd9ac6815a4b"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-10",
+                "statistic": "official_four_week_average",
+                "role": "official_previously_reported_prior",
+                "value": "195",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 1,
+                  "fragment": "previous week's average was revised up by 5 from 195 to 200",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "23cdbf63daae78030a8b8b50429ca2c4cdbc8528c7b35547e45124106af3db1b"
+              }
+            ],
+            "consensus": null,
+            "surprise": null,
+            "surprise_missing": [
+              "named_consensus_unavailable"
+            ],
+            "actual_available": true,
+            "mdf_pre_event_available_prior": null,
+            "mdf_pre_event_prior_missing": "no_verified_actual_publication_cutoff",
+            "continuous_version_bound": false,
+            "evidence_id": "synthetic-public-evidence",
+            "raw_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "raw_locator": "synthetic-public-fixture.txt",
+            "obtained_at": "2026-11-01T18:00:00+00:00",
+            "available_at": "2026-11-01T18:00:00+00:00"
+          },
+          {
+            "event_id": "dol-claims-2026-10-29",
+            "source_date": "2026-10-29",
+            "source_version": {
+              "value": "2026-10-29",
+              "precision": "date",
+              "basis": "official_report_header"
+            },
+            "scheduled_publication_at": "2026-10-29T08:30:00-04:00",
+            "schedule_basis": "embargo_header",
+            "official_actual_publication_at": null,
+            "official_actual_publication_precision": "unknown",
+            "parser_revision": "dol-regular-state-claims-v3",
+            "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+            "evidence_kind": "official_archive",
+            "original_agency": "DOL-ETA",
+            "claims": [
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-24",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "101",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Synthetic conflicting actual 101",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "synthetic-conflicting-value"
+              },
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "90",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Initial Claims (SA) 100 90 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "d359ed252471cfe52619d3160a8258cf9ad5a60702353a78e8e723da4a1993c0"
+              },
+              {
+                "series_id": "ICSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": "80",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 1,
+                  "fragment": "previous week's level was revised up by 10 from 80 to 90",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "20acbd0a998fb29703ffcdc184aa620326786989b975a7d5500bee9916388c4c"
+              },
+              {
+                "series_id": "ICNSA",
+                "week_ending": "2026-10-24",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "110",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Initial Claims (NSA) 110 100 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "1b03f17b759a81156c587b5d87a195829ed14de0ab801d8686b397ce0d6cdedd"
+              },
+              {
+                "series_id": "ICNSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "100",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Initial Claims (NSA) 110 100 +10",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "becc0d2823db528c4c2391f29203e82140abc2e85ce26fa99b9c1a30779f9f69"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "200",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (SA) 200 210 -10",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "d6bfabc0449cf771e2e20590a6b0d09fde4abdfc7d3641ffefaeefd6bf431554"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "210",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (SA) 200 210 -10",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "e3877d1af9419a8fd70630be71ec83ee32e9d5e4404cf09f81e1a68f55280e9b"
+              },
+              {
+                "series_id": "CCSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": "215",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 1,
+                  "fragment": "previous week's level was revised down by 5 from 215 to 210",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "f1447d7c158928fd8a9f5ae2be141241fb06a4b77e80f55f9ae5b8ef898629e3"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-17",
+                "statistic": "weekly_level",
+                "role": "actual",
+                "value": "220",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (NSA) 220 215 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "93c8c01e077b257963cb53c381ce994ed94670ce51d623f34b1083770f6b2b88"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "prior_as_reported_in_this_event",
+                "value": "215",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "Insured Unemployment (NSA) 220 215 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "bb7561962132aa8d396c819b4bc4ee44596bfdc3c0b44929b7a1ad33ac28171f"
+              },
+              {
+                "series_id": "CCNSA",
+                "week_ending": "2026-10-10",
+                "statistic": "weekly_level",
+                "role": "official_previously_reported_prior",
+                "value": null,
+                "unit": "Number",
+                "confirmation_state": "unknown",
+                "missing_reason": "official_original_prior_not_stated",
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": null,
+                  "fragment": null,
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": null
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-24",
+                "statistic": "official_four_week_average",
+                "role": "actual",
+                "value": "105",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "f0472c5387e02a1602075a2b06955837df23225c1cfe091a21222ae3990660fc"
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "prior_as_reported_in_this_event",
+                "value": "100",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 105 100 +5",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "5507f5da0bff15955a902c2434a906532b6e20ea32e134bf59e59b52c092b772"
+              },
+              {
+                "series_id": "IC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "official_previously_reported_prior",
+                "value": "105",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 1,
+                  "fragment": "previous week's average was revised down by 5 from 105 to 100",
+                  "reference_header": "WEEK ENDING October 24 October 17 Change"
+                },
+                "value_identity": "5a9011a6d205e34411af0838adc34f9c88c802f6d1a99b1a0aee1b3519fb5d1c"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-17",
+                "statistic": "official_four_week_average",
+                "role": "actual",
+                "value": "205",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "4a91912e4dc89e4b298358e207f6e89d16c56a38c5b974e00a5a81a56bfe64dc"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-10",
+                "statistic": "official_four_week_average",
+                "role": "prior_as_reported_in_this_event",
+                "value": "200",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 3,
+                  "fragment": "4-Wk Moving Average (SA) 205 200 +5",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "3b215754da8ff3d3005bd97d02c33eed90595f931ceb4cdbe83fcd9ac6815a4b"
+              },
+              {
+                "series_id": "CC4WSA",
+                "week_ending": "2026-10-10",
+                "statistic": "official_four_week_average",
+                "role": "official_previously_reported_prior",
+                "value": "195",
+                "unit": "Number",
+                "confirmation_state": "confirmed",
+                "missing_reason": null,
+                "evidence": {
+                  "source_name": "DOL-ETA Unemployment Insurance Weekly Claims",
+                  "source_url": "https://www.dol.gov/sites/dolgov/files/OPA/newsreleases/ui-claims/synthetic.pdf",
+                  "page": 1,
+                  "fragment": "previous week's average was revised up by 5 from 195 to 200",
+                  "reference_header": "WEEK ENDING October 17 October 10 Change"
+                },
+                "value_identity": "23cdbf63daae78030a8b8b50429ca2c4cdbc8528c7b35547e45124106af3db1b"
+              }
+            ],
+            "consensus": null,
+            "surprise": null,
+            "surprise_missing": [
+              "named_consensus_unavailable"
+            ],
+            "actual_available": true,
+            "mdf_pre_event_available_prior": null,
+            "mdf_pre_event_prior_missing": "no_verified_actual_publication_cutoff",
+            "continuous_version_bound": false,
+            "evidence_id": "synthetic-conflicting-evidence",
+            "raw_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+            "raw_locator": "synthetic-public-fixture.txt",
+            "obtained_at": "2026-11-01T18:00:00+00:00",
+            "available_at": "2026-11-01T18:00:00+00:00"
+          }
+        ],
+        "metadata_scope": "representative_evidence_only",
+        "evidence_ids": [
+          "synthetic-public-evidence",
+          "synthetic-conflicting-evidence"
+        ],
+        "conflicts": [
+          {
+            "scope": [
+              "ICSA",
+              "2026-10-24",
+              "actual"
+            ],
+            "reason": "official_evidence_conflict"
+          }
+        ]
+      }
+    ],
+    "as_of": "2026-11-02T18:00:00+00:00",
+    "read_mode": "event"
+  },
+  "gap_executions": {
+    "executions": [
+      {
+        "action": "init",
+        "asset": "claims",
+        "classification": null,
+        "created_at": "2026-11-02T18:00:00+00:00",
+        "end": "2026-11-02",
+        "finished_at": "2026-11-02T18:00:00+00:00",
+        "job_id": "c1400000-0000-4000-8000-000000000002",
+        "origin": "manual",
+        "request_id": "c1400000-0000-4000-8000-000000000002",
+        "result": {
+          "completion": "local_readback_verified",
+          "coverage": {
+            "available": 0,
+            "expected": 6264,
+            "missing_rows": 6264,
+            "provider_missing_values": 0
+          },
+          "end_date": "2026-11-02",
+          "event_binding_status": "scope_only",
+          "material": {
+            "status": "unbound"
+          },
+          "provider_attempts": 0,
+          "provider_requests": 0,
+          "readback": {
+            "actual_missing": [],
+            "actual_weeks": {},
+            "actuals_verified": false,
+            "as_of_basis": "available",
+            "verified": true
+          },
+          "readback_digest": "8b671e08765608eb7445455eb8b3e4d4fc951442bdef840217b83d86906e2d53",
+          "saved_points": 0,
+          "saved_revisions": 0,
+          "series_coverage": {
+            "CC4WSA": {
+              "available": 0,
+              "expected": 1044,
+              "latest_week": null,
+              "missing_weeks": [
+                "2026-10-31",
+                "2026-10-24",
+                "2026-10-17",
+                "2026-10-10",
+                "2026-10-03",
+                "2026-09-26",
+                "2026-09-19",
+                "2026-09-12",
+                "2026-09-05",
+                "2026-08-29",
+                "2026-08-22",
+                "2026-08-15",
+                "2026-08-08",
+                "2026-08-01",
+                "2026-07-25",
+                "2026-07-18"
+              ],
+              "missing_weeks_total": 1044,
+              "missing_weeks_truncated": true,
+              "trailing_missing_weeks": [
+                "2026-10-31",
+                "2026-10-24",
+                "2026-10-17",
+                "2026-10-10",
+                "2026-10-03",
+                "2026-09-26",
+                "2026-09-19",
+                "2026-09-12",
+                "2026-09-05",
+                "2026-08-29",
+                "2026-08-22",
+                "2026-08-15",
+                "2026-08-08",
+                "2026-08-01",
+                "2026-07-25",
+                "2026-07-18"
+              ],
+              "trailing_missing_weeks_total": 1044,
+              "trailing_missing_weeks_truncated": true
+            },
+            "CCNSA": {
+              "available": 0,
+              "expected": 1044,
+              "latest_week": null,
+              "missing_weeks": [
+                "2026-10-31",
+                "2026-10-24",
+                "2026-10-17",
+                "2026-10-10",
+                "2026-10-03",
+                "2026-09-26",
+                "2026-09-19",
+                "2026-09-12",
+                "2026-09-05",
+                "2026-08-29",
+                "2026-08-22",
+                "2026-08-15",
+                "2026-08-08",
+                "2026-08-01",
+                "2026-07-25",
+                "2026-07-18"
+              ],
+              "missing_weeks_total": 1044,
+              "missing_weeks_truncated": true,
+              "trailing_missing_weeks": [
+                "2026-10-31",
+                "2026-10-24",
+                "2026-10-17",
+                "2026-10-10",
+                "2026-10-03",
+                "2026-09-26",
+                "2026-09-19",
+                "2026-09-12",
+                "2026-09-05",
+                "2026-08-29",
+                "2026-08-22",
+                "2026-08-15",
+                "2026-08-08",
+                "2026-08-01",
+                "2026-07-25",
+                "2026-07-18"
+              ],
+              "trailing_missing_weeks_total": 1044,
+              "trailing_missing_weeks_truncated": true
+            },
+            "CCSA": {
+              "available": 0,
+              "expected": 1044,
+              "latest_week": null,
+              "missing_weeks": [
+                "2026-10-31",
+                "2026-10-24",
+                "2026-10-17",
+                "2026-10-10",
+                "2026-10-03",
+                "2026-09-26",
+                "2026-09-19",
+                "2026-09-12",
+                "2026-09-05",
+                "2026-08-29",
+                "2026-08-22",
+                "2026-08-15",
+                "2026-08-08",
+                "2026-08-01",
+                "2026-07-25",
+                "2026-07-18"
+              ],
+              "missing_weeks_total": 1044,
+              "missing_weeks_truncated": true,
+              "trailing_missing_weeks": [
+                "2026-10-31",
+                "2026-10-24",
+                "2026-10-17",
+                "2026-10-10",
+                "2026-10-03",
+                "2026-09-26",
+                "2026-09-19",
+                "2026-09-12",
+                "2026-09-05",
+                "2026-08-29",
+                "2026-08-22",
+                "2026-08-15",
+                "2026-08-08",
+                "2026-08-01",
+                "2026-07-25",
+                "2026-07-18"
+              ],
+              "trailing_missing_weeks_total": 1044,
+              "trailing_missing_weeks_truncated": true
+            },
+            "IC4WSA": {
+              "available": 0,
+              "expected": 1044,
+              "latest_week": null,
+              "missing_weeks": [
+                "2026-10-31",
+                "2026-10-24",
+                "2026-10-17",
+                "2026-10-10",
+                "2026-10-03",
+                "2026-09-26",
+                "2026-09-19",
+                "2026-09-12",
+                "2026-09-05",
+                "2026-08-29",
+                "2026-08-22",
+                "2026-08-15",
+                "2026-08-08",
+                "2026-08-01",
+                "2026-07-25",
+                "2026-07-18"
+              ],
+              "missing_weeks_total": 1044,
+              "missing_weeks_truncated": true,
+              "trailing_missing_weeks": [
+                "2026-10-31",
+                "2026-10-24",
+                "2026-10-17",
+                "2026-10-10",
+                "2026-10-03",
+                "2026-09-26",
+                "2026-09-19",
+                "2026-09-12",
+                "2026-09-05",
+                "2026-08-29",
+                "2026-08-22",
+                "2026-08-15",
+                "2026-08-08",
+                "2026-08-01",
+                "2026-07-25",
+                "2026-07-18"
+              ],
+              "trailing_missing_weeks_total": 1044,
+              "trailing_missing_weeks_truncated": true
+            },
+            "ICNSA": {
+              "available": 0,
+              "expected": 1044,
+              "latest_week": null,
+              "missing_weeks": [
+                "2026-10-31",
+                "2026-10-24",
+                "2026-10-17",
+                "2026-10-10",
+                "2026-10-03",
+                "2026-09-26",
+                "2026-09-19",
+                "2026-09-12",
+                "2026-09-05",
+                "2026-08-29",
+                "2026-08-22",
+                "2026-08-15",
+                "2026-08-08",
+                "2026-08-01",
+                "2026-07-25",
+                "2026-07-18"
+              ],
+              "missing_weeks_total": 1044,
+              "missing_weeks_truncated": true,
+              "trailing_missing_weeks": [
+                "2026-10-31",
+                "2026-10-24",
+                "2026-10-17",
+                "2026-10-10",
+                "2026-10-03",
+                "2026-09-26",
+                "2026-09-19",
+                "2026-09-12",
+                "2026-09-05",
+                "2026-08-29",
+                "2026-08-22",
+                "2026-08-15",
+                "2026-08-08",
+                "2026-08-01",
+                "2026-07-25",
+                "2026-07-18"
+              ],
+              "trailing_missing_weeks_total": 1044,
+              "trailing_missing_weeks_truncated": true
+            },
+            "ICSA": {
+              "available": 0,
+              "expected": 1044,
+              "latest_week": null,
+              "missing_weeks": [
+                "2026-10-31",
+                "2026-10-24",
+                "2026-10-17",
+                "2026-10-10",
+                "2026-10-03",
+                "2026-09-26",
+                "2026-09-19",
+                "2026-09-12",
+                "2026-09-05",
+                "2026-08-29",
+                "2026-08-22",
+                "2026-08-15",
+                "2026-08-08",
+                "2026-08-01",
+                "2026-07-25",
+                "2026-07-18"
+              ],
+              "missing_weeks_total": 1044,
+              "missing_weeks_truncated": true,
+              "trailing_missing_weeks": [
+                "2026-10-31",
+                "2026-10-24",
+                "2026-10-17",
+                "2026-10-10",
+                "2026-10-03",
+                "2026-09-26",
+                "2026-09-19",
+                "2026-09-12",
+                "2026-09-05",
+                "2026-08-29",
+                "2026-08-22",
+                "2026-08-15",
+                "2026-08-08",
+                "2026-08-01",
+                "2026-07-25",
+                "2026-07-18"
+              ],
+              "trailing_missing_weeks_total": 1044,
+              "trailing_missing_weeks_truncated": true
+            }
+          },
+          "start_date": "2006-11-02",
+          "status": "unavailable"
+        },
+        "stage": null,
+        "start": "2006-11-02",
+        "started_at": "2026-11-02T18:00:00+00:00",
+        "state": "complete",
+        "id": "c1400000-0000-4000-8000-000000000002"
+      },
+      {
+        "action": "init",
+        "asset": "claims",
+        "classification": null,
+        "created_at": "2026-11-02T18:00:00+00:00",
+        "end": "2026-09-26",
+        "finished_at": "2026-11-02T18:00:00+00:00",
+        "job_id": "c1400000-0000-4000-8000-000000000001",
+        "origin": "manual",
+        "request_id": "c1400000-0000-4000-8000-000000000001",
+        "result": {
+          "completion": "local_readback_verified",
+          "coverage": {
+            "available": 24,
+            "expected": 24,
+            "missing_rows": 0,
+            "provider_missing_values": 0
+          },
+          "end_date": "2026-09-26",
+          "event_binding_status": "scope_only",
+          "material": {
+            "classification": "claims_dol_material_failed",
+            "http_status": null,
+            "status": "unavailable"
+          },
+          "provider_attempts": 6,
+          "provider_requests": 6,
+          "readback": {
+            "actual_missing": [],
+            "actual_weeks": {},
+            "actuals_verified": false,
+            "as_of_basis": "available",
+            "verified": true
+          },
+          "readback_digest": "cb85a201c5de8a6373feafffbba237f2473ca27e0f1a3c910736bce846b62451",
+          "saved_points": 24,
+          "saved_revisions": 0,
+          "series_coverage": {
+            "CC4WSA": {
+              "available": 4,
+              "expected": 4,
+              "latest_week": "2026-09-26",
+              "missing_weeks": [],
+              "missing_weeks_total": 0,
+              "missing_weeks_truncated": false,
+              "trailing_missing_weeks": [],
+              "trailing_missing_weeks_total": 0,
+              "trailing_missing_weeks_truncated": false
+            },
+            "CCNSA": {
+              "available": 4,
+              "expected": 4,
+              "latest_week": "2026-09-26",
+              "missing_weeks": [],
+              "missing_weeks_total": 0,
+              "missing_weeks_truncated": false,
+              "trailing_missing_weeks": [],
+              "trailing_missing_weeks_total": 0,
+              "trailing_missing_weeks_truncated": false
+            },
+            "CCSA": {
+              "available": 4,
+              "expected": 4,
+              "latest_week": "2026-09-26",
+              "missing_weeks": [],
+              "missing_weeks_total": 0,
+              "missing_weeks_truncated": false,
+              "trailing_missing_weeks": [],
+              "trailing_missing_weeks_total": 0,
+              "trailing_missing_weeks_truncated": false
+            },
+            "IC4WSA": {
+              "available": 4,
+              "expected": 4,
+              "latest_week": "2026-09-26",
+              "missing_weeks": [],
+              "missing_weeks_total": 0,
+              "missing_weeks_truncated": false,
+              "trailing_missing_weeks": [],
+              "trailing_missing_weeks_total": 0,
+              "trailing_missing_weeks_truncated": false
+            },
+            "ICNSA": {
+              "available": 4,
+              "expected": 4,
+              "latest_week": "2026-09-26",
+              "missing_weeks": [],
+              "missing_weeks_total": 0,
+              "missing_weeks_truncated": false,
+              "trailing_missing_weeks": [],
+              "trailing_missing_weeks_total": 0,
+              "trailing_missing_weeks_truncated": false
+            },
+            "ICSA": {
+              "available": 4,
+              "expected": 4,
+              "latest_week": "2026-09-26",
+              "missing_weeks": [],
+              "missing_weeks_total": 0,
+              "missing_weeks_truncated": false,
+              "trailing_missing_weeks": [],
+              "trailing_missing_weeks_total": 0,
+              "trailing_missing_weeks_truncated": false
+            }
+          },
+          "start_date": "2026-09-01",
+          "status": "complete"
+        },
+        "stage": null,
+        "start": "2026-09-01",
+        "started_at": "2026-11-02T18:00:00+00:00",
+        "state": "complete",
+        "id": "c1400000-0000-4000-8000-000000000001"
+      }
     ]
   },
   "source_failure": {
@@ -12833,7 +16254,7 @@
             "roles": [
               "actual"
             ],
-            "scheduled_publication_at": "2026-10-29T08:30:00-04:00",
+            "scheduled_publication_at": null,
             "schedule_basis": "embargo_header",
             "association": "scope_only",
             "continuous_version_bound": false
@@ -13722,7 +17143,6 @@
             },
             "reference_week": "2026-10-17",
             "roles": [
-              "official_previously_reported_prior",
               "prior_as_reported_in_this_event"
             ],
             "scheduled_publication_at": null,
