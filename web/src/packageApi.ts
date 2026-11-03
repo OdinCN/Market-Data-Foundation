@@ -82,3 +82,19 @@ export const putPackage = (
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(command),
   });
+
+export const verifyPackageSource = (
+  transport: Transport,
+  id: string,
+  source: string,
+  revision: string,
+) =>
+  exchange<Package>(
+    transport,
+    `/api/r5/packages/${encodeURIComponent(id)}/sources/${encodeURIComponent(source)}/verify`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expected_revision: revision }),
+    },
+  );

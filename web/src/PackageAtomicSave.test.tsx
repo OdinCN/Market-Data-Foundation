@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -226,8 +227,10 @@ it("real CAS conflict does not publish password and reread requires fresh input"
     enabled_capability_ids: ["pce"],
     source_changes: [],
   });
-  click("保存配置");
-  await screen.findByText(/配置已被其他操作更新/);
+  click("保存整包配置（BLS入口）");
+  await within(screen.getByLabelText("BLS 保存反馈")).findByText(
+    /配置已被其他操作更新/,
+  );
   expect(button("保存配置").disabled).toBe(true);
   expect(screen.queryByLabelText("BLS 新凭据")).toBeNull();
   click("重读核对配置");
@@ -256,9 +259,11 @@ it("lost replacement receipt survives closing; reread never claims to verify the
   choose("美国 CPI");
   enterKey();
   h.packages.loseNext();
+  click("保存整包配置（BLS入口）");
   click("保存配置");
-  click("保存配置");
-  await screen.findByText(/提交结果未知，配置可能已生效/);
+  await within(screen.getByLabelText("BLS 保存反馈")).findByText(
+    /提交结果未知，配置可能已生效/,
+  );
   expect(screen.queryByLabelText("BLS 新凭据")).toBeNull();
   expect(button("保存配置").disabled).toBe(true);
   click("取消");
@@ -296,8 +301,12 @@ it("route changes while a replacement is in flight cannot enable a second save o
   await ready();
   choose("美国 CPI");
   enterKey();
-  click("保存配置");
+  click("保存整包配置（BLS入口）");
   await waitFor(() => expect(reached).toBe(true));
+  expect(
+    within(screen.getByLabelText("BLS 保存反馈")).getByText(/正在保存/),
+  ).toBeTruthy();
+  expect(button("保存配置").disabled).toBe(true);
   await act(async () => {
     location.hash = "ui=r5&view=access&package=tdx";
     window.dispatchEvent(new Event("hashchange"));
@@ -345,8 +354,10 @@ it("a confirmed rejection drops submitted password and never automatically retri
   await ready();
   choose("美国 CPI");
   enterKey();
-  click("保存配置");
-  await screen.findByText(/保存被拒绝或确认未提交/);
+  click("保存整包配置（BLS入口）");
+  await within(screen.getByLabelText("BLS 保存反馈")).findByText(
+    /保存被拒绝或确认未提交/,
+  );
   expect((screen.getByLabelText("BLS 新凭据") as HTMLInputElement).value).toBe(
     "",
   );
@@ -378,5 +389,248 @@ it.each(["read_only", "write_unknown"])(
     expect(
       h.packages.requests.every((request) => request.method === "GET"),
     ).toBe(true);
+  },
+);
+
+it("FRED replacement can be cancelled, and verification requires explicit saved intent", async () => {
+  const h = host();
+  await putPackage(h.transport, "macro", {
+    expected_revision: null,
+    enabled_capability_ids: ["claims"],
+    source_changes: [],
+  });
+  let requests = 0;
+  let release: (() => void) | undefined;
+  const transport: Transport = async (input, init) => {
+    if (String(input).endsWith("/sources/FRED/verify")) {
+      requests++;
+      expect(JSON.parse(String(init?.body))).toEqual({
+        expected_revision: "r1",
+      });
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const body = await getPackage(h.transport, "macro", signal());
+      body.source_verifications = [
+        {
+          source_id: "FRED",
+          checked_at: "2026-11-03T11:00:00Z",
+          current: true,
+          request_status: "failed",
+          authentication: "unknown",
+          reason: "http_forbidden",
+          http_status: 403,
+        },
+      ];
+      return new Response(JSON.stringify(body), { status: 200 });
+    }
+    return h.transport(input, init);
+  };
+  open(transport);
+  await ready();
+  tab("来源配置");
+  expect(screen.getByRole("region", { name: "能力与来源关系" })).toBeTruthy();
+  expect(screen.getByText(/DOL 官方周报日历/)).toBeTruthy();
+  expect(screen.getByText(/CSV 备用数值通路未装配/)).toBeTruthy();
+  enterKey("FRED", "synthetic-ui-fred");
+  expect(button("验证已保存的 FRED 配置").disabled).toBe(true);
+  click("取消替换 FRED 凭据");
+  expect(requests).toBe(0);
+  click("验证已保存的 FRED 配置");
+  expect(button("正在验证…").disabled).toBe(true);
+  click("正在验证…");
+  expect(requests).toBe(1);
+  await act(async () => release?.());
+  await screen.findByText(/HTTP 403：访问被拒绝/);
+  expect(screen.getByText("请求失败")).toBeTruthy();
+  expect(screen.getByText("2026-11-03 19:00:00 北京时间")).toBeTruthy();
+  expect(
+    screen.getByText(/美国初请与续请失业金 · 数值来源：FRED/),
+  ).toBeTruthy();
+  expect(screen.queryByText("FRED · FRED")).toBeNull();
+  expect(h.packages.requests.filter((r) => r.method === "PUT")).toHaveLength(1);
+});
+
+it("a verification configuration conflict clears old authentication success and requires reread", async () => {
+  const h = host();
+  await putPackage(h.transport, "macro", {
+    expected_revision: null,
+    enabled_capability_ids: ["claims"],
+    source_changes: [],
+  });
+  const transport: Transport = async (input, init) => {
+    if (String(input).endsWith("/sources/FRED/verify"))
+      return new Response(
+        JSON.stringify({
+          status: "CONFLICT",
+          classification: "verification_configuration_changed",
+          effect: "NONE",
+        }),
+        { status: 409 },
+      );
+    const response = await h.transport(input, init);
+    if (String(input) === "/api/r5/packages/macro" && init?.method === "GET") {
+      const body = await response.json();
+      body.source_verifications = [
+        {
+          source_id: "FRED",
+          current: true,
+          checked_at: "2026-11-03T11:00:00Z",
+          request_status: "succeeded",
+          authentication: "confirmed",
+          reason: "request_succeeded",
+          http_status: 200,
+        },
+      ];
+      return new Response(JSON.stringify(body), { status: 200 });
+    }
+    return response;
+  };
+  open(transport);
+  await ready();
+  tab("来源配置");
+  expect(screen.getByText("认证已确认")).toBeTruthy();
+  click("验证已保存的 FRED 配置");
+  await screen.findByText("配置或凭据已变化，请重新验证");
+  expect(screen.queryByText("认证已确认")).toBeNull();
+  expect(button("验证已保存的 FRED 配置").disabled).toBe(true);
+  expect(button("重读核对配置").disabled).toBe(false);
+});
+
+it("all nine capabilities deduplicate complete relationships without hiding distinct paths", async () => {
+  const h = host();
+  const original = await getPackage(h.transport, "macro", signal());
+  const cpi = original.capabilities.find((cap) => cap.capability_id === "cpi")!;
+  expect(cpi.source_relations!.length).toBe(3);
+  const transport: Transport = async (input, init) => {
+    const response = await h.transport(input, init);
+    if (String(input) === "/api/r5/packages/macro" && init?.method === "GET") {
+      const body = await response.json();
+      const cap = body.capabilities.find(
+        (item: { capability_id: string }) => item.capability_id === "cpi",
+      );
+      cap.source_relations.push({
+        ...cap.source_relations[0],
+        backup_status: "synthetic distinct backup",
+      });
+      return new Response(JSON.stringify(body), { status: 200 });
+    }
+    return response;
+  };
+  open(transport);
+  await ready();
+  tab("来源配置");
+  const region = screen.getByRole("region", { name: "能力与来源关系" });
+  const details = region.querySelectorAll("details");
+  expect(details).toHaveLength(9);
+  for (const [index, detail] of [...details].entries()) {
+    const relations = original.capabilities[index].source_relations ?? [];
+    const distinct = new Set(
+      relations.map((r) =>
+        JSON.stringify([
+          r.source_id,
+          r.numeric_path,
+          r.original_institution,
+          r.release_calendar,
+          r.backup_status,
+        ]),
+      ),
+    ).size;
+    expect(within(detail).queryAllByText("数值通路")).toHaveLength(
+      distinct + (original.capabilities[index].capability_id === "cpi" ? 1 : 0),
+    );
+  }
+  expect(
+    within(details[0]).getByText("synthetic distinct backup"),
+  ).toBeTruthy();
+  expect(
+    (await getPackage(h.transport, "macro", signal())).capabilities.find(
+      (cap) => cap.capability_id === "cpi",
+    )!.source_relations,
+  ).toHaveLength(3);
+});
+
+it("each adjacent entry shares one atomic save, with cancellation and all pending changes disclosed", async () => {
+  const h = host();
+  open(h.transport);
+  await ready();
+  choose("美国 CPI");
+  choose("美国 PCE价格指数");
+  choose("美国零售销售");
+  choose("美国初请与续请失业金");
+  tab("来源配置");
+  for (const source of ["BEA", "BLS", "Census", "FRED"]) {
+    enterKey(source, `synthetic-${source}`);
+    expect(button(`保存整包配置（${source}入口）`).disabled).toBe(false);
+    expect(button(`取消替换 ${source} 凭据`).disabled).toBe(false);
+  }
+  expect(
+    screen.getAllByText(
+      /能力启停 4 项变更；凭据替换 BEA \/ BLS \/ Census \/ FRED/,
+    ),
+  ).toHaveLength(4);
+  click("取消替换 Census 凭据");
+  expect(h.packages.requests.filter((r) => r.method !== "GET")).toHaveLength(0);
+  click("保存整包配置（FRED入口）");
+  await within(screen.getByLabelText("FRED 保存反馈")).findByText(/配置已保存/);
+  const writes = h.packages.requests.filter((r) => r.method === "PUT");
+  expect(writes).toHaveLength(1);
+  expect(writes[0].body.enabled_capability_ids).toEqual([
+    "cpi",
+    "pce",
+    "retail",
+    "claims",
+  ]);
+  expect(writes[0].body.source_changes).toEqual([
+    {
+      source_id: "BEA",
+      credential_action: "replace",
+      credential_value: "synthetic-BEA",
+    },
+    {
+      source_id: "BLS",
+      credential_action: "replace",
+      credential_value: "synthetic-BLS",
+    },
+    { source_id: "Census", credential_action: "keep" },
+    {
+      source_id: "FRED",
+      credential_action: "replace",
+      credential_value: "synthetic-FRED",
+    },
+  ]);
+  const saved = await getPackage(h.transport, "macro", signal());
+  expect(saved.config_revision).toBe("r1");
+  expect(saved.enabled_capability_ids).toEqual(
+    [...writes[0].body.enabled_capability_ids].sort(),
+  );
+  expect(h.packages.requests.some((r) => r.method === "POST")).toBe(false);
+});
+
+it.each([
+  ["tdx", "daily_raw", "TDX"],
+  ["kd", "current_rank", "KD"],
+])(
+  "%s shows unassembled verification instead of an unsupported POST action",
+  async (packageId, capabilityId, source) => {
+    const h = host();
+    await putPackage(h.transport, packageId, {
+      expected_revision: null,
+      enabled_capability_ids: [capabilityId],
+      source_changes: [],
+    });
+    open(h.transport);
+    await act(async () => {
+      location.hash = `ui=r5&view=access&package=${packageId}`;
+      window.dispatchEvent(new Event("hashchange"));
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "管理此包" }));
+    await screen.findByRole("tab", { name: "来源配置" });
+    tab("来源配置");
+    expect(screen.getByText("当前环境未装配此来源的配置验证。")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: `验证已保存的 ${source} 配置` }),
+    ).toBeNull();
+    expect(h.packages.requests.some((r) => r.method === "POST")).toBe(false);
   },
 );

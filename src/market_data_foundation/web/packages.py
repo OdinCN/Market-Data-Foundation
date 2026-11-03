@@ -6,8 +6,12 @@ references never enter public responses. No runtime eligibility is inferred
 from contracts. Credential writes require explicit trusted Host assembly.
 """
 
+import hmac
 import json
+import secrets
+import threading
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Request
 from fastapi.exceptions import RequestValidationError
@@ -28,6 +32,9 @@ from market_data_foundation.web.package_catalog import (
     PackageView,
     Permission,
     SaveCommand,
+    SourceVerification,
+    VerificationFacts,
+    VerifyCommand,
     key,
 )
 from market_data_foundation.web.package_store import (
@@ -78,6 +85,103 @@ class PackageHost:
         self.history = history
         self.credential_replace_enabled = credential_replace_enabled
         self.credential_loader = credential_loader
+        self.source_verifier = None
+        self._verification_lock = threading.Lock()
+        self._verification_salt = secrets.token_bytes(32)
+        self._verifications = {}
+
+    def _credential_identity(self, package_id, source_id, record):
+        value = self.load_credential(package_id, source_id, record=record)
+        return hmac.digest(self._verification_salt, (value or "").encode(), "sha256")
+
+    def verification_views(self, package_id, record):
+        views = []
+        for source in sorted(self.store._sources(package_id)):
+            cached = self._verifications.get((package_id, source))
+            result = SourceVerification(source_id=source)
+            if cached:
+                revision, identity, observation = cached
+                try:
+                    current = (
+                        record is not None
+                        and record.revision == revision
+                        and hmac.compare_digest(
+                            identity,
+                            self._credential_identity(package_id, source, record),
+                        )
+                    )
+                except PackageError:
+                    current = False
+                result = (
+                    observation
+                    if current
+                    else SourceVerification(
+                        source_id=source,
+                        checked_at=observation.checked_at,
+                        current=False,
+                        reason="configuration_changed",
+                    )
+                )
+            views.append(result)
+        return views
+
+    def verify(self, request, package_id, source_id, command):
+        access = self.access(request, package_id)
+        if access.write_eligible is not True:
+            raise PackageError("package_write_not_authorized", 403, "REJECTED")
+        if source_id not in self.store._sources(package_id):
+            raise PackageError("illegal_source_change", 422, "REJECTED")
+        if not self._verification_lock.acquire(blocking=False):
+            raise PackageError("verification_in_flight", 409, "CONFLICT")
+        try:
+            record = self.store.read(self.environment_id, package_id)
+            if record is None or record.revision != command.expected_revision:
+                raise PackageError("config_revision_conflict", 409, "CONFLICT")
+            previous = self.verification_views(package_id, record)
+            recent = next(v for v in previous if v.source_id == source_id)
+            if (
+                recent.current
+                and recent.checked_at
+                and (datetime.now(UTC) - recent.checked_at < timedelta(seconds=30))
+            ):
+                return self.project(package_id, record, access)
+            credential = self.load_credential(package_id, source_id, record=record)
+            identity = hmac.digest(
+                self._verification_salt, (credential or "").encode(), "sha256"
+            )
+            if credential is None:
+                facts = VerificationFacts(reason="credential_missing")
+            elif self.source_verifier is None:
+                facts = VerificationFacts(reason="verification_not_assembled")
+            else:
+                # Trusted binding receives the same snapshot's effective secret.
+                # No raw provider exception or request URL is ever retained.
+                try:
+                    facts = self.source_verifier(source_id, credential, record)
+                    if not isinstance(facts, VerificationFacts):
+                        raise TypeError()
+                except Exception:
+                    facts = VerificationFacts(
+                        request_status="failed", reason="unexpected_exception"
+                    )
+            observation = SourceVerification(
+                source_id=source_id, checked_at=datetime.now(UTC), **facts.model_dump()
+            )
+            current = self.store.read(self.environment_id, package_id)
+            if current != record or not hmac.compare_digest(
+                identity, self._credential_identity(package_id, source_id, current)
+            ):
+                raise PackageError(
+                    "verification_configuration_changed", 409, "CONFLICT"
+                )
+            self._verifications[package_id, source_id] = (
+                record.revision,
+                identity,
+                observation,
+            )
+            return self.project(package_id, record, access)
+        finally:
+            self._verification_lock.release()
 
     def credential_states(self, package_id, record, *, source_ids=None):
         sources = {
@@ -320,12 +424,13 @@ class PackageHost:
             name=package.name,
             domain=package.domain,
             description=package.description,
-            capabilities=list(package.capabilities),
+            capabilities=self.catalog.capabilities(package_id),
             configuration_state="PRESENT" if record else "ABSENT",
             config_revision=record.revision if record else None,
             enabled_capability_ids=list(enabled),
             required_sources=required,
             credential_states=credentials,
+            source_verifications=self.verification_views(package_id, record),
             history_completeness="COMPLETE" if complete else "UNKNOWN",
             assets=[
                 AssetView(identity=i, revisions=v) for i, v in sorted(grouped.items())
@@ -400,7 +505,7 @@ class PackageRoute(APIRoute):
             try:
                 if request.url.query:
                     raise PackageError("invalid_request", 422, "REJECTED")
-                if request.method == "PUT":
+                if request.method in {"PUT", "POST"}:
                     try:
                         json.loads(
                             await request.body(), object_pairs_hook=_unique_members
@@ -463,6 +568,17 @@ def package_router(host: PackageHost | None) -> APIRouter:
     )
     def save_package(request: Request, package_id: str, command: SaveCommand):
         return configured().save(request, package_id, command)
+
+    @router.post(
+        "/api/r5/packages/{package_id}/sources/{source_id}/verify",
+        response_model=PackageView,
+        responses=errors,
+        operation_id="verify_package_source",
+    )
+    def verify_source(
+        request: Request, package_id: str, source_id: str, command: VerifyCommand
+    ):
+        return configured().verify(request, package_id, source_id, command)
 
     return router
 

@@ -28,6 +28,7 @@ from market_data_foundation.web.pce_dev_host import CANDIDATE_LISTENER
 from market_data_foundation.web.readonly_host import (
     ReadonlySettings,
     admitted_package_save,
+    admitted_package_verify,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,7 +67,8 @@ class TimeSeriesHandler(CandidateHandler):
     def request_admitted(self, request):
         if request.method == "POST":
             return (
-                admitted_job(request, prefix="/api/r5/cpi/timeseries")
+                admitted_package_verify(request)
+                or admitted_job(request, prefix="/api/r5/cpi/timeseries")
                 or admitted_job(request, prefix="/api/r5/ppi/timeseries")
                 or admitted_job(request, prefix="/api/r5/pce/timeseries")
                 or admitted_job(request, prefix="/api/r5/consumption/timeseries")

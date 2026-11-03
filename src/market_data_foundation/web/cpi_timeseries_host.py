@@ -55,6 +55,7 @@ from market_data_foundation.web.readonly_host import (
     ReadonlyRuntime,
     _clock,
     admitted_package_save,
+    admitted_package_verify,
 )
 
 
@@ -843,6 +844,9 @@ class TimeSeriesRuntime(ReadonlyRuntime):
                 claims_options.request_control_path,
             ]
         bind_jolts(self, jolts_options, occupied_paths=paths)
+        from market_data_foundation.web.source_verification import bind_source_verifier
+
+        bind_source_verifier(self, claims_options)
 
     def retail_read_service(self):
         return self.retail_service()
@@ -1232,8 +1236,14 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
             or r.methods <= {"GET", "HEAD"}
             or (
                 settings.package_config_save
-                and r.methods == {"PUT"}
-                and r.path == "/api/r5/packages/{package_id}"
+                and (
+                    (r.methods == {"PUT"} and r.path == "/api/r5/packages/{package_id}")
+                    or (
+                        r.methods == {"POST"}
+                        and r.path
+                        == "/api/r5/packages/{package_id}/sources/{source_id}/verify"
+                    )
+                )
             )
         ]
         for route in router.routes:
@@ -1273,7 +1283,9 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
 
     @app.middleware("http")
     async def boundary(request, call_next):
-        config_put = settings.package_config_save and admitted_package_save(request)
+        config_put = settings.package_config_save and (
+            admitted_package_save(request) or admitted_package_verify(request)
+        )
         prefixes = (
             *PREFIXES,
             "/api/r5/pce/timeseries",

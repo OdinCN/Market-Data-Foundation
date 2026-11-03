@@ -90,10 +90,15 @@ class Store:
         pass
 
 
-def setup(tmp_path, monkeypatch, **overrides):
+def setup(tmp_path, monkeypatch, *, package_config_save=False, **overrides):
     from market_data_foundation.historical.claims_release import ClaimsReleaseRecords
 
-    _, previous, *_ = old.setup(tmp_path, monkeypatch, enabled_caps=("claims",))
+    _, previous, *_ = old.setup(
+        tmp_path,
+        monkeypatch,
+        enabled_caps=("claims",),
+        package_config_save=package_config_save,
+    )
     with (previous.settings.config_directory / "secret.toml").open("a") as f:
         f.write('\n[fred]\napi_key="synthetic-fred-key"\n')
     monkeypatch.setattr(ClaimsReleaseRecords, "_rows", lambda *args: [])

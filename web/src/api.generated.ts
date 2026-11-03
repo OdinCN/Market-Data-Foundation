@@ -39,6 +39,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/r5/packages/{package_id}/sources/{source_id}/verify": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Verify Source */
+    post: operations["verify_package_source"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/r5/cpi/query": {
     parameters: {
       query?: never;
@@ -444,6 +461,8 @@ export interface components {
       definition_ref: components["schemas"]["ContractKeyDTO"];
       /** Required Sources */
       required_sources: string[];
+      /** Source Relations */
+      source_relations?: components["schemas"]["SourceRelation"][];
     };
     /** CatalogDTO */
     CatalogDTO: {
@@ -1750,6 +1769,8 @@ export interface components {
       required_sources: string[];
       /** Credential States */
       credential_states: components["schemas"]["CredentialState"][];
+      /** Source Verifications */
+      source_verifications?: components["schemas"]["SourceVerification"][];
       /**
        * History Completeness
        * @enum {string}
@@ -2154,6 +2175,73 @@ export interface components {
       /** Evidence Capability */
       evidence_capability: string[];
     };
+    /** SourceRelation */
+    SourceRelation: {
+      /** Source Id */
+      source_id: string;
+      /** Numeric Path */
+      numeric_path: string;
+      /** Original Institution */
+      original_institution: string;
+      /** Release Calendar */
+      release_calendar: string;
+      /**
+       * Backup Status
+       * @default 未装配备用数值通路
+       */
+      backup_status: string;
+    };
+    /** SourceVerification */
+    SourceVerification: {
+      /**
+       * Request Status
+       * @default not_run
+       * @enum {string}
+       */
+      request_status: "not_run" | "succeeded" | "failed";
+      /**
+       * Authentication
+       * @default unknown
+       * @enum {string}
+       */
+      authentication: "unknown" | "confirmed" | "rejected";
+      /**
+       * Reason
+       * @default not_checked
+       * @enum {string}
+       */
+      reason:
+        | "not_checked"
+        | "configuration_changed"
+        | "credential_missing"
+        | "verification_not_assembled"
+        | "source_not_admitted"
+        | "request_succeeded"
+        | "http_forbidden"
+        | "http_unauthorized"
+        | "rate_limited"
+        | "http_failure"
+        | "timeout"
+        | "transport_failure"
+        | "protocol_failure"
+        | "request_invalid"
+        | "unexpected_exception"
+        | "business_error"
+        | "response_invalid"
+        | "admission_denied"
+        | "credential_storage_unavailable";
+      /** Http Status */
+      http_status?: number | null;
+      /** Source Id */
+      source_id: string;
+      /** Checked At */
+      checked_at?: string | null;
+      /**
+       * Current
+       * @default true
+       */
+      current: boolean;
+    };
     /** StorageDTO */
     "StorageDTO-Input": {
       /**
@@ -2203,6 +2291,11 @@ export interface components {
        * @enum {string}
        */
       qualification: "QUALIFIED_READ_ONLY" | "UNKNOWN" | "DEFER";
+    };
+    /** VerifyCommand */
+    VerifyCommand: {
+      /** Expected Revision */
+      expected_revision: string;
     };
     /** VersionDTO */
     VersionDTO: {
@@ -2374,6 +2467,78 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["SaveCommand"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageView"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Not Found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Conflict */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Unprocessable Content */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+      /** @description Service Unavailable */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PackageFailure"];
+        };
+      };
+    };
+  };
+  verify_package_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        package_id: string;
+        source_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["VerifyCommand"];
       };
     };
     responses: {

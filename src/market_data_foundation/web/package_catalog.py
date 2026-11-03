@@ -5,6 +5,7 @@ The complete code inventory remains available through /api/r5/sources.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import Field, SecretStr, field_validator
@@ -64,11 +65,20 @@ def key(reference):
     return reference.identity, reference.revision
 
 
+class SourceRelation(DTO):
+    source_id: str
+    numeric_path: str
+    original_institution: str
+    release_calendar: str
+    backup_status: str = "未装配备用数值通路"
+
+
 class CapabilityView(DTO):
     capability_id: str
     title: str
     definition_ref: ContractRef
     required_sources: list[str]
+    source_relations: list[SourceRelation] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -87,7 +97,8 @@ PACKAGES = (
         "macro",
         "宏观数据接入包",
         "Macro",
-        "CPI、PPI、PCE价格指数、美国消费与收入、就业、零售销售与GDP增长；启用配置不代表来源准入或当前可执行。",
+        "美国 CPI、PPI、JOLTS、就业、零售销售、消费与收入、初请与续请失业金、"
+        "GDP与增长、PCE价格指数九族；启用配置不代表来源准入或当前可执行。",
         (
             CapabilityView(
                 capability_id="cpi",
@@ -103,7 +114,7 @@ PACKAGES = (
             ),
             CapabilityView(
                 capability_id="jolts",
-                title="美国 JOLTS（分段开发）",
+                title="美国 JOLTS",
                 definition_ref=ref(JOLTS_DEFINITION),
                 required_sources=["BLS"],
             ),
@@ -210,6 +221,41 @@ class PackageCatalog:
                         raise PackageError("package_catalog_mapping_invalid")
                 self.entries[package.package_id, cap.capability_id] = rows
 
+    def capabilities(self, package_id):
+        calendars = {
+            "BLS": "BLS 官方发布日历",
+            "BEA": "BEA 官方发布日历",
+            "Census": "Census MARTS 官方发布日历",
+            "FRED": "DOL 官方周报日历（DOL/ETA）",
+        }
+        return [
+            cap.model_copy(
+                update={
+                    "source_relations": [
+                        SourceRelation(
+                            source_id=row.source_name,
+                            numeric_path=row.source_contract.product,
+                            original_institution=(
+                                "DOL/ETA"
+                                if row.source_name == "FRED"
+                                else row.source_name
+                            ),
+                            release_calendar=calendars.get(row.source_name, "未装配"),
+                            backup_status=(
+                                "CSV 备用数值通路未装配，不是当前可用来源"
+                                if cap.capability_id == "claims"
+                                else "未装配备用数值通路"
+                            ),
+                        )
+                        for row in self.entries[package_id, cap.capability_id]
+                        if row.binding_contract is not None
+                        and row.source_contract is not None
+                    ]
+                }
+            )
+            for cap in self.package(package_id).capabilities
+        ]
+
     def package(self, package_id):
         if package_id not in self.packages:
             raise PackageError("unknown_package", 404, "REJECTED")
@@ -261,6 +307,43 @@ class CredentialState(DTO):
     replace_supported: bool = False
 
 
+class VerifyCommand(DTO):
+    expected_revision: str = Field(pattern=r"^r[1-9][0-9]*$", max_length=32)
+
+
+class VerificationFacts(DTO):
+    request_status: Literal["not_run", "succeeded", "failed"] = "not_run"
+    authentication: Literal["unknown", "confirmed", "rejected"] = "unknown"
+    reason: Literal[
+        "not_checked",
+        "configuration_changed",
+        "credential_missing",
+        "verification_not_assembled",
+        "source_not_admitted",
+        "request_succeeded",
+        "http_forbidden",
+        "http_unauthorized",
+        "rate_limited",
+        "http_failure",
+        "timeout",
+        "transport_failure",
+        "protocol_failure",
+        "request_invalid",
+        "unexpected_exception",
+        "business_error",
+        "response_invalid",
+        "admission_denied",
+        "credential_storage_unavailable",
+    ] = "not_checked"
+    http_status: int | None = None
+
+
+class SourceVerification(VerificationFacts):
+    source_id: str
+    checked_at: datetime | None = None
+    current: bool = True
+
+
 class HistoryEvidence(DTO):
     definition_ref: ContractRef
     holding: Literal["present", "absent", "unknown"]
@@ -309,6 +392,7 @@ class PackageView(DTO):
     enabled_capability_ids: list[str]
     required_sources: list[str]
     credential_states: list[CredentialState]
+    source_verifications: list[SourceVerification] = Field(default_factory=list)
     history_completeness: Literal["COMPLETE", "UNKNOWN"]
     assets: list[AssetView]
     write_eligible: bool | None

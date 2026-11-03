@@ -364,3 +364,118 @@ def test_success_then_local_job_failure_never_requeries_or_reexecutes(
         == result
     )
     assert len(fake.calls) == 1
+
+
+@pytest.mark.parametrize("status", [200, 204, 302, 401, 403, 429])
+def test_safe_repeated_metadata_preserves_status_without_cookie_values(
+    monkeypatch, status
+):
+    body = b"[]"
+    pairs = [
+        ("Set-Cookie", "synthetic-cookie-a"),
+        ("set-cookie", "synthetic-cookie-b"),
+        ("Vary", "Origin"),
+        ("vary", "Accept-Encoding"),
+        ("Cache-Control", "private"),
+        ("Cache-Control", "max-age=0"),
+        ("Content-Length", "2"),
+        ("Retry-After", "60"),
+    ]
+    result, observed = exact_response(monkeypatch, status, pairs, body)
+    assert result.status == status
+    assert result.body == (body if status == 200 else b"")
+    assert result.headers["vary"] == "Origin, Accept-Encoding"
+    assert result.headers["cache-control"] == "private, max-age=0"
+    assert result.headers["retry-after"] == "60"
+    assert "set-cookie" not in result.headers
+    assert observed["reads"] == (1 if status == 200 else 0)
+    assert observed["closed"]
+
+
+def exact_response(monkeypatch, status, pairs, body, limit=32):
+    observed = {"reads": 0, "closed": False}
+
+    class Response:
+        def getheaders(self):
+            return pairs
+
+        def read(self, size):
+            observed["reads"] += 1
+            assert size == limit + 1
+            return body
+
+    Response.status = status
+
+    class Connection:
+        def __init__(self, host, *, timeout):
+            assert host == "api.census.gov" and timeout == 20
+
+        def request(self, *args, **kwargs):
+            pass
+
+        def getresponse(self):
+            return Response()
+
+        def close(self):
+            observed["closed"] = True
+
+    monkeypatch.setattr(live.http.client, "HTTPSConnection", Connection)
+    return live.ExactCensusTransport().get(
+        ENDPOINT,
+        {"get": "cell_value", "key": DUMMY},
+        timeout=20,
+        max_response_bytes=limit,
+    ), observed
+
+
+@pytest.mark.parametrize(
+    "pairs,body,classification",
+    [
+        (
+            [("Content-Length", "2"), ("content-length", "2")],
+            b"[]",
+            "duplicate_http_header",
+        ),
+        (
+            [("Content-Length", "2"), ("Content-Length", "3")],
+            b"[]",
+            "duplicate_http_header",
+        ),
+        ([("Content-Length", "2, 2")], b"[]", "content_length_invalid"),
+        (
+            [("Content-Length", "2"), ("Transfer-Encoding", "chunked")],
+            b"[]",
+            "ambiguous_http_framing",
+        ),
+        ([("Transfer-Encoding", "gzip, chunked")], b"[]", "transfer_encoding_invalid"),
+        (
+            [("Transfer-Encoding", "chunked"), ("Transfer-Encoding", "chunked")],
+            b"[]",
+            "duplicate_http_header",
+        ),
+        (
+            [("Content-Type", "application/json"), ("Content-Type", "text/html")],
+            b"[]",
+            "duplicate_http_header",
+        ),
+        ([("Content-Length", "33")], b"", "response_too_large"),
+        ([], b"x" * 33, "response_too_large"),
+    ],
+)
+def test_unsafe_framing_and_size_remain_rejected_with_safe_status(
+    monkeypatch, pairs, body, classification
+):
+    with pytest.raises(live.CensusProtocolError) as failure:
+        exact_response(monkeypatch, 200, pairs, body)
+    assert str(failure.value) == "census_retail_" + classification
+    assert failure.value.http_status == 200
+    assert DUMMY not in str(failure.value)
+
+
+def test_chunked_bounded_response_and_incomplete_length(monkeypatch):
+    result, _ = exact_response(
+        monkeypatch, 200, [("Transfer-Encoding", "chunked")], b"[]"
+    )
+    assert result.body == b"[]"
+    with pytest.raises(http.client.IncompleteRead):
+        exact_response(monkeypatch, 200, [("Content-Length", "3")], b"[]")
