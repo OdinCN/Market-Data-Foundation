@@ -8,6 +8,11 @@ type Help = {
   missing: string;
   example: Record<string, unknown>;
   failureExample: string;
+  periodNotice?: string;
+  releaseHelp?: string;
+  collectionHelp?: string;
+  historyRequest?: string;
+  releaseRequest?: string;
 };
 const historyParameters = [
   [
@@ -289,7 +294,261 @@ const retail: Help = {
   failureExample:
     'HTTP 403\n{"status":"ERROR","classification":"local_read_not_authorized"}\nHTTP 200（部分返回，字段节选）\n{"status":"PARTIAL","source_failure":null,"source_no_content":[{"classification":"census_retail_no_content","http_status":204,"response_bytes":0,"start_month":"2026-10","end_month":"2026-10"}],"persisted":false}',
 };
+
+const gdp: Help = {
+  parameters: [
+    [
+      "start / end",
+      "是",
+      "YYYY-Qn，包含首尾；季度范围1900–9999；最多800个目标季度；水平比较另需前4季度缓冲，表单起点≥1901-Q1",
+    ],
+    [
+      "series",
+      "否 / 八项全部",
+      "原生 SeriesCode CSV；下表八项可多选，不接受月度 basket / adjustment / measure / columns / vintage_mode",
+    ],
+    [
+      "local_only",
+      "否 / true（API默认）",
+      "boolean 查询文本 true / false；当前表单显式 false，历史 true；服务授权约束保留，临时补源不写库，部分失败保留本地值",
+    ],
+    [
+      "query_mode",
+      "否 / current（有as_of时history）",
+      "current / history；history 必须有带时区截止，current 不得带截止",
+    ],
+    [
+      "as_of",
+      "历史必填",
+      "带时区 ISO8601；北京时间表单转为+08:00，禁止无时区截止",
+    ],
+    [
+      "as_of_basis",
+      "current: observed；history: available",
+      "observed / available；表单历史固定available，MDF提交确认时间，不重建官方vintage",
+    ],
+  ],
+  fields: [
+    [
+      "start_quarter / end_quarter / series_ids",
+      "string / string / string[]",
+      "原生季度边界与系列代码",
+    ],
+    [
+      "points[].quarter / series_id / value",
+      "string / string / decimal string|null",
+      "季度倒序，同季按注册指标顺序；缺行和官方null均保留逐点状态，零不等于缺值",
+    ],
+    [
+      "value_unit / statistic / chained_base",
+      "string / string / string|null",
+      "million_chained_2017_USD / SAAR_level；percent / official_annualized_qoq；percentage_points / contribution_to_annualized_gdp_growth",
+    ],
+    [
+      "change_1q_ratio / change_4q_ratio",
+      "decimal string|null",
+      "仅两个水平系列；未年化，同截止端点，0.01=1%；其余六项为null，不派生官方增长或贡献",
+    ],
+    [
+      "availability / missing_reason / calculation_missing",
+      "string / string|null / object",
+      "available或missing；区分local_record_missing、official_null、local_availability_unconfirmed；计算缺值按指标记录，不补零",
+    ],
+    [
+      "coverage / status",
+      "object / string",
+      "expected / available / official_null / missing；complete / partial / unavailable，不保证比较基期齐全",
+    ],
+    [
+      "origin / observed_at / available_at / revision / batch_id",
+      "string / ISO / ISO|null / integer|null / string|null",
+      "local或upstream；取得与提交确认时间分开。本地revision不是官方估计；临时值无持久批次",
+    ],
+    [
+      "estimate_kind / event_binding_status",
+      "string / string",
+      "连续NIPA固定unknown / unconfirmed；数值相同或日历触发均不证明官方首发",
+    ],
+    [
+      "related_releases",
+      "object[]",
+      "季度与指标相关材料；estimate_kind区分advance/second/third；scope_only且continuous_version_bound=false",
+    ],
+    [
+      "publication_events / points[].publication_events",
+      "object[]",
+      "季度+估计的日历计划，release_at显示北京时间；取消/未知不推定已发布，也不证明事件值",
+    ],
+    [
+      "query_mode / as_of / as_of_basis / local_only",
+      "string / ISO|null / string / boolean",
+      "模式、含时区截止、MDF时间口径与本地读取限制；历史不回退最新或补源",
+    ],
+    [
+      "provider_requests / provider_attempts / source_failure",
+      "integer / integer / string|null",
+      "本次来源请求/尝试及失败分类；补源失败保留已有本地数据，不把缺口视为官方null。GDP无persisted字段；query不写库",
+    ],
+  ],
+  periodNotice:
+    "季度 quarter 是统计归属季度。当前查询显式 local_only=false，优先本地，缺口自动请求上游；history 显式 true，只读本地，全部比较端点使用同一 available 截止。available_at 是 MDF 提交确认可用时间；observed_at 不是官方发布时间，不重建官方 vintage。",
+  releaseHelp:
+    "reference_quarter=YYYY-Qn、event_id、source_version=YYYY-MM-DD、read_mode=event/source_history、as_of=带时区MDF可用截止。返回 events、as_of、read_mode、missing。事件按 reference_quarter + estimate_kind 标识。claims.role：actual=本次估计，previous_estimate=同季度前次估计，prior_original=上季度修订前，prior_revised=上季度修订后；previous_estimate_revision_pp 为百分点差。当前摘要仅覆盖 A191RL，其余七项为 not_covered_by_summary_adapter；scope_only 且 continuous_version_bound=false，不以数值相等认定版本绑定，无具名共识不计算 surprise。",
+  source:
+    "BEA T10106 / T10406 金额按 UNIT_MULT=6，不按表头 billions 再缩放；官方增长读 T10101，贡献读 T10102。四表有独立观察时间，不是原子发布快照；链价水平不可任意相加。原生历史起点未核验。",
+  coverage:
+    "coverage 区分 expected / available / official_null / missing；complete / partial / unavailable 只描述目标值，不保证比较基期完整；本地 revision 不是官方估计版本，连续NIPA estimate_kind=unknown、event_binding_status=unconfirmed。",
+  missing:
+    "local_record_missing、official_null、local_availability_unconfirmed 与派生 calculation_missing 分别保留，缺值不补零；补源失败保留本地值及 source_failure 安全分类。",
+  example: {
+    start_quarter: "2026-Q3",
+    end_quarter: "2026-Q3",
+    points: [
+      {
+        series_id: "A191RL",
+        quarter: "2026-Q3",
+        value: "3.4",
+        value_unit: "percent",
+        change_1q_ratio: null,
+        change_4q_ratio: null,
+        estimate_kind: "unknown",
+        event_binding_status: "unconfirmed",
+      },
+    ],
+    local_only: false,
+    provider_requests: 0,
+    provider_attempts: 0,
+    source_failure: null,
+  },
+  failureExample:
+    'HTTP 400\n{"status":"ERROR","classification":"gdp_timeseries_history_cutoff_required"}\nHTTP 403\n{"status":"ERROR","classification":"gdp_source_query_not_enabled"}\nHTTP 503\n{"status":"ERROR","classification":"gdp_timeseries_not_enabled"}',
+  collectionHelp:
+    "POST jobs 精确四键 request_id/action/start/end；UUID，action=init/update，季度 YYYY-Qn，八系列一起采集。202 只代表任务受理，GET jobs/executions 核验真实运行、完成及回读状态。PUT strategy 控制策略；GET strategy/schedule 读取独立 worker 心跳与计划，启用不代表进程运行，日历不代表已执行。",
+  historyRequest:
+    "/query?start=2026-Q2&end=2026-Q3&series=A191RX,A191RL&local_only=true&query_mode=history&as_of_basis=available&as_of=2026-11-02T20%3A00%3A00%2B08%3A00",
+  releaseRequest: "/releases?reference_quarter=2026-Q3&read_mode=event",
+};
+
+const claims: Help = {
+  parameters: [
+    [
+      "start / end",
+      "是",
+      "YYYY-MM-DD，含首尾自然日，投影其中周六；最大36600天（100年），表单起点≥1901-01-01；默认最近约52周可编辑",
+    ],
+    [
+      "series",
+      "否 / 全部六系列",
+      "原生 FRED ID CSV：ICSA,ICNSA,CCSA,CCNSA,IC4WSA,CC4WSA；不接受月份 reference_month、basket、adjustment、measure、columns 或 vintage_mode",
+    ],
+    [
+      "local_only",
+      "否 / true（API默认）",
+      "boolean 查询文本 true / false；当前表单显式 false，历史 true；来源受服务授权约束，补源不写库，不覆盖本地值或提供方缺值",
+    ],
+    [
+      "query_mode",
+      "否 / current（有as_of时history）",
+      "current / history；显式 history 必须有截止，current 不得带截止",
+    ],
+    [
+      "as_of",
+      "历史必填",
+      "带时区 ISO8601，inclusive 截止；北京时间表单转 +08:00，历史不回退最新值",
+    ],
+    [
+      "as_of_basis",
+      "否 / available",
+      "available / observed；表单固定 available，全部操作数同 cutoff",
+    ],
+  ],
+  fields: [
+    [
+      "asset_id / start_date / end_date / buffer_start_date",
+      "string",
+      "资产与自然日范围；计算含28天缓冲",
+    ],
+    [
+      "rows[].series_id / week_ending / value / unit",
+      "string / string / decimal string|null / string",
+      "每 series 独立周六，整体倒序，同周按请求 series 顺序稳定；单位 Number",
+    ],
+    [
+      "rows[].weekly_change / weekly_change_ratio / local_four_week_average",
+      "object（local_four_week_average可null）；value为decimal string|null",
+      "周数值差 Number；周比率 ratio（0.01=1%）；本地四周均值 Number、local_derived。IC4WSA/CC4WSA 为官方四周均值，不以本地均值替代，也不重复派生",
+    ],
+    [
+      "rows[].provenance.origin / observed_at / available_at / revision / batch_id",
+      "string / ISO / ISO|null / integer|null / string|null",
+      "以上均位于 rows[].provenance；取得与提交确认时间分开，临时值无持久批次。rows[].value_origin 标识官方系列经 FRED 传输，first_capture_provenance 保留首次本地捕获，不证明官方首发",
+    ],
+    [
+      "coverage / status / source_failure",
+      "object / string / string|null",
+      "coverage.expected / available / missing_rows / provider_missing_values 为目标值计数；不保证计算基期完整。status=complete/partial/unavailable；补源失败保留本地结果及安全分类",
+    ],
+    [
+      "query_mode / as_of / as_of_basis / local_only",
+      "string / ISO|null / string / boolean",
+      "查询模式、同截止和本地限制；历史无最新回退或上游请求",
+    ],
+    [
+      "provider_requests / provider_attempts",
+      "integer / integer",
+      "本次逻辑来源请求及实际 HTTP 尝试数；query 不落库",
+    ],
+    [
+      "rows[].related_releases / 派生inputs",
+      "object[] / object[]",
+      "材料关联与每项计算操作数溯源；材料 actual 不自动绑定当前连续版本",
+    ],
+  ],
+  periodNotice:
+    "week_ending 为各系列独立所属周，初请与续请不可从发布日期减固定天数推导。当前表单 local_only=false 自动临时补缺；history true，只读本地，所有操作数同 available 截止；取得时间不等于提交确认时间。",
+  releaseHelp:
+    "as_of、read_mode=event/source_history、event_id=dol-claims-YYYY-MM-DD、reference_week=周六YYYY-MM-DD、source_version=YYYY-MM-DD 严格过滤；reference_week 为材料覆盖过滤，可含 actual 与 prior，不使用 reference_month。返回 events/as_of/read_mode。actual=本次值；official_previously_reported_prior=材料明确引述官方原前值；prior_as_reported_in_this_event=本次报告前值。MDF事前值缺足够时间及版本证明时 unknown；连续版本未绑定时 event actual 不代表当前值。",
+  source:
+    "原机构 DOL-ETA，传输提供者 FRED，不静默替换提供者。FRED realtime_start/end 保持日期精度及 fred_not_disambiguated 依据，last_updated 不是官方发布时间。只显示已保存材料支持的历史发布；embargo 仅是计划，未知实际时间不补造；无具名共识不计算 surprise。",
+  coverage:
+    "各系列分别保留所属周与修订；coverage 只描述目标水平，不保证四周计算基期完整；零不等于缺值。",
+  missing:
+    "local_not_provided 为未采集或来源未返回；provider_missing 是 FRED 提供方缺值，不称官方 null；zero_denominator 不可计算比率；缺周不补零。",
+  example: {
+    asset_id: "mdf.macro.dol.claims",
+    rows: [
+      {
+        series_id: "ICSA",
+        week_ending: "2026-10-24",
+        value: "202000",
+        unit: "Number",
+        weekly_change: { value: "2000", unit: "Number" },
+        weekly_change_ratio: {
+          value: "0.01",
+          unit: "ratio",
+          missing_reason: null,
+        },
+      },
+    ],
+    as_of_basis: "available",
+    local_only: false,
+    provider_requests: 0,
+    provider_attempts: 0,
+    source_failure: null,
+  },
+  failureExample:
+    'HTTP 400\n{"status":"ERROR","classification":"claims_history_cutoff_required"}\nHTTP 403\n{"status":"ERROR","classification":"claims_source_query_not_enabled"}\nHTTP 503\n{"status":"ERROR","classification":"claims_timeseries_not_enabled"}',
+  collectionHelp:
+    "POST jobs 精确四键 request_id/action/start/end；UUID，action=init/update，六系列一起采集。初始化默认20日历年可修改，含28天计算缓冲。202 仅证明 durable running 回执；GET jobs/executions 追踪，complete 需本地回读，材料状态另列。紧凑回执 series_coverage 保留各自 latest_week、missing_weeks_total/trailing_missing_weeks_total；缺周样本最多16且显式 truncated，完整序列由 query 获取。GET strategy/schedule 读取独立 worker 心跳及计划，reference_week=null 表示参考周待发布材料确认；GET 不刷新日历、不启动 worker。",
+  historyRequest:
+    "/query?start=2026-10-01&end=2026-10-31&series=ICSA,CCSA&query_mode=history&local_only=true&as_of_basis=available&as_of=2026-11-02T18%3A00%3A00Z",
+  releaseRequest:
+    "/releases?event_id=dol-claims-2026-10-29&reference_week=2026-10-24&source_version=2026-10-29&read_mode=event",
+};
+
 export function nativeQueryHelp(profile: MacroProfile): Help | undefined {
+  if (profile.id === "gdp") return gdp;
+  if (profile.id === "claims") return claims;
   return profile.id === "retail"
     ? retail
     : profile.id === "consumption"

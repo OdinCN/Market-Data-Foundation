@@ -736,7 +736,7 @@ it("disambiguates identical execution IDs from CPI and PPI in the unified list",
   );
   expect(detail.getByText("美国 PPI")).toBeTruthy();
   expect(detail.getByText("2010-01 至 2026-09")).toBeTruthy();
-  expect(detail.getByText("自动策略 · 最近真实执行摘要")).toBeTruthy();
+  expect(detail.getByText("自动策略")).toBeTruthy();
   fireEvent.click(
     list.getByRole("button", { name: /选择 same-native-id 美国 CPI/ }),
   );

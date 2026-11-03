@@ -242,37 +242,33 @@ export function CpiQueryApiHelp({
   request: RequestDescription;
   profile?: MacroProfile;
 }) {
-  if (profile.id === "claims")
-    return (
-      <ClaimsQueryApiHelp
-        profile={profile}
-        availability={availability}
-        request={request}
-      />
-    );
-  if (profile.id === "gdp")
-    return (
-      <GdpQueryApiHelp
-        profile={profile}
-        availability={availability}
-        request={request}
-      />
-    );
   const nativeHelp = nativeQueryHelp(profile);
   const employment = profile.id === "employment";
   const permission = availability.data?.web_capabilities.query;
   return (
     <section aria-label={`${profile.label} API说明`} className="cpi-api-help">
-      <RelatedReleaseHelp />
-      <h4>GET {profile.basePath}/releases</h4>
-      <p>
-        发布记录只读本地证据，不联网、不写入、不自动建表。参数：event_id（精确事件）、as_of（含时区的MDF可用截止）、read_mode=event/source_history、reference_month（事件覆盖月，可多月）、source_version（YYYY-MM-DD档案日期）。日期精度保留；历史证据晚取得不会倒填。缺少正式材料、修订或共识时返回具体
-        missing，不回退最新值。
-      </p>
-      <p>
-        claims.role：actual=本次官方公布值；official_previous=官方此前公布的前值；prior_revised=上期值（本次修订后）。value_identity是内容身份；连续版本仅在明确版本证据支持时关联，数值相等不构成证明。MDF首次捕获、发布前最后可消费值、具名冻结共识与预期差逐口径返回，缺前值不阻断合格预期差。完整合同见{" "}
-        {profile.basePath}/api-help 的 release_records。
-      </p>
+      {nativeHelp?.releaseHelp ? (
+        <>
+          <h4>GET {profile.basePath}/releases</h4>
+          <p>
+            发布记录只读本地证据，不联网、不写入、不自动建表。
+            {nativeHelp.releaseHelp}
+          </p>
+        </>
+      ) : (
+        <>
+          <RelatedReleaseHelp />
+          <h4>GET {profile.basePath}/releases</h4>
+          <p>
+            发布记录只读本地证据，不联网、不写入、不自动建表。参数：event_id（精确事件）、as_of（含时区的MDF可用截止）、read_mode=event/source_history、reference_month（事件覆盖月，可多月）、source_version（YYYY-MM-DD档案日期）。日期精度保留；历史证据晚取得不会倒填。缺少正式材料、修订或共识时返回具体
+            missing，不回退最新值。
+          </p>
+          <p>
+            claims.role：actual=本次官方公布值；official_previous=官方此前公布的前值；prior_revised=上期值（本次修订后）。value_identity是内容身份；连续版本仅在明确版本证据支持时关联，数值相等不构成证明。MDF首次捕获、发布前最后可消费值、具名冻结共识与预期差逐口径返回，缺前值不阻断合格预期差。完整合同见{" "}
+            {profile.basePath}/api-help 的 release_records。
+          </p>
+        </>
+      )}
       <h4>GET {profile.basePath}/query</h4>
       {profile.historyNotice && <p>{profile.historyNotice}</p>}
       <p>
@@ -367,14 +363,21 @@ export function CpiQueryApiHelp({
           ])}
         />
       </details>
-      <p>
-        年月 month 是统计归属月份，不是发布时间或入库时间。current
-        优先读取本地，缺口可从上游补取，但查询不落库；history
-        只读本地记录，不补取上游；默认按 available 截止，也可显式选择 observed。
-        observed 不证明当时已入库，也不重建官方历史版本。 无 as_of 的 history
-        读取现有本地记录，不承诺某个历史时点。available_at 是 MDF
-        提交后确认的可用时间，observed_at 是来源响应观察时间，二者不可互换。
-      </p>
+      {nativeHelp?.periodNotice ? (
+        <p>{nativeHelp.periodNotice}</p>
+      ) : (
+        <>
+          <p>
+            年月 month 是统计归属月份，不是发布时间或入库时间。current
+            优先读取本地，缺口可从上游补取，但查询不落库；history
+            只读本地记录，不补取上游；默认按 available 截止，也可显式选择
+            observed。 observed 不证明当时已入库，也不重建官方历史版本。 无
+            as_of 的 history 读取现有本地记录，不承诺某个历史时点。available_at
+            是 MDF 提交后确认的可用时间，observed_at
+            是来源响应观察时间，二者不可互换。
+          </p>
+        </>
+      )}
       <details>
         <summary>返回字段、类型与单位</summary>
         <CompactTable
@@ -742,369 +745,21 @@ export function CpiQueryApiHelp({
             PCE 价格分别采集和验收。
           </p>
         )}
+        {nativeHelp?.collectionHelp && <p>{nativeHelp.collectionHelp}</p>}
       </details>
       <RequestPreview request={request} />
-    </section>
-  );
-}
-
-function GdpQueryApiHelp({
-  profile,
-  availability,
-  request,
-}: {
-  profile: MacroProfile;
-  availability: CpiAvailability;
-  request: RequestDescription;
-}) {
-  return (
-    <section aria-label={`${profile.label} API说明`} className="cpi-api-help">
-      <h4>GET {profile.basePath}/query</h4>
-      <p>
-        当前 DEV 接口：
-        {availability.failure
-          ? "服务状态暂未核实"
-          : availability.data?.web_capabilities.query
-            ? "已开放查询"
-            : "未开放或资格待核实"}
-        。注册资产不自动启用读取；访问受服务授权约束。
-      </p>
-      <CompactTable
-        label="查询参数"
-        headers={["参数", "必填 / 默认", "类型与取值"]}
-        rows={[
-          [
-            "start / end",
-            "是",
-            "YYYY-Qn，包含首尾；季度范围1900–9999；最多800个目标季度；水平比较另需前4季度缓冲，表单起点≥1901-Q1",
-          ],
-          [
-            "series",
-            "否 / 八项全部",
-            "原生 SeriesCode CSV；下表八项可多选，不接受月度 basket / adjustment / measure / columns / vintage_mode",
-          ],
-          [
-            "local_only",
-            "否 / true",
-            "true / false；默认显式 true。仅当前查询且 source_allowed=true 时可勾选临时补源并发送 false，不写库，部分失败保留本地值；历史强制 true",
-          ],
-          [
-            "query_mode",
-            "否 / current（有as_of时history）",
-            "current / history；history 必须有带时区截止，current 不得带截止",
-          ],
-          [
-            "as_of",
-            "历史必填",
-            "带时区 ISO8601；北京时间表单转为+08:00，禁止无时区截止",
-          ],
-          [
-            "as_of_basis",
-            "current: observed；history: available",
-            "observed / available；表单历史固定available，MDF提交确认时间，不重建官方vintage",
-          ],
-        ]}
-      />
-      <details>
-        <summary>8个统计序列</summary>
-        <CompactTable
-          label="统计序列"
-          headers={["series_id", "指标 / 原生单位"]}
-          rows={profile.series.map(([id, title]) => [id, title])}
+      {nativeHelp?.historyRequest && (
+        <CodeBlock
+          copyLabel="复制历史示例"
+          text={profile.basePath + nativeHelp.historyRequest}
         />
-      </details>
-      <p>
-        {profile.historyNotice} BEA T10106 / T10406 的金额按
-        UNIT_MULT=6，不按表头 billions 再缩放；官方增长读 T10101，贡献读
-        T10102。四表有独立观察时间，不是原子发布快照；链价水平不可任意相加。原生历史起点未核验。
-      </p>
-      <details>
-        <summary>返回字段、类型与单位</summary>
-        <CompactTable
-          label="返回字段"
-          headers={["字段", "类型 / nullable", "单位与含义"]}
-          rows={[
-            [
-              "start_quarter / end_quarter / series_ids",
-              "string / string / string[]",
-              "原生季度边界与系列代码",
-            ],
-            [
-              "points[].quarter / series_id / value",
-              "string / string / decimal string|null",
-              "季度倒序，同季按注册指标顺序；缺行和官方null均保留逐点状态，零不等于缺值",
-            ],
-            [
-              "value_unit / statistic / chained_base",
-              "string / string / string|null",
-              "million_chained_2017_USD / SAAR_level；percent / official_annualized_qoq；percentage_points / contribution_to_annualized_gdp_growth",
-            ],
-            [
-              "change_1q_ratio / change_4q_ratio",
-              "decimal string|null",
-              "仅两个水平系列；未年化，同截止端点，0.01=1%；其余六项为null，不派生官方增长或贡献",
-            ],
-            [
-              "availability / missing_reason / calculation_missing",
-              "string / string|null / object",
-              "available或missing；区分local_record_missing、official_null、local_availability_unconfirmed；计算缺值按指标记录，不补零",
-            ],
-            [
-              "coverage / status",
-              "object / string",
-              "expected / available / official_null / missing；complete / partial / unavailable，不保证比较基期齐全",
-            ],
-            [
-              "origin / observed_at / available_at / revision / batch_id",
-              "string / ISO / ISO|null / integer|null / string|null",
-              "local或upstream；取得与提交确认时间分开。本地revision不是官方估计；临时值无持久批次",
-            ],
-            [
-              "estimate_kind / event_binding_status",
-              "string / string",
-              "连续NIPA固定unknown / unconfirmed；数值相同或日历触发均不证明官方首发",
-            ],
-            [
-              "related_releases",
-              "object[]",
-              "季度与指标相关材料；estimate_kind区分advance/second/third；scope_only且continuous_version_bound=false",
-            ],
-            [
-              "publication_events / points[].publication_events",
-              "object[]",
-              "季度+估计的日历计划，release_at显示北京时间；取消/未知不推定已发布，也不证明事件值",
-            ],
-            [
-              "query_mode / as_of / as_of_basis / local_only",
-              "string / ISO|null / string / boolean",
-              "模式、含时区截止、MDF时间口径与本地读取限制；历史不回退最新或补源",
-            ],
-            [
-              "provider_requests / provider_attempts / source_failure",
-              "integer / integer / string|null",
-              "本次来源请求/尝试及失败分类；补源失败保留已有本地数据，不把缺口视为官方null。GDP无persisted字段；query不写库",
-            ],
-          ]}
+      )}
+      {nativeHelp?.releaseRequest && (
+        <CodeBlock
+          copyLabel="复制发布示例"
+          text={profile.basePath + nativeHelp.releaseRequest}
         />
-      </details>
-      <h4>GET {profile.basePath}/releases</h4>
-      <p>
-        只读本地真实发布材料。reference_quarter=YYYY-Qn、event_id、source_version=YYYY-MM-DD、read_mode=event/source_history、as_of=带时区MDF可用截止均可选。返回
-        events、as_of、read_mode、missing，与月度合同不同。
-      </p>
-      <p>
-        事件按 reference_quarter + estimate_kind
-        标识。claims.role：actual=本次估计，previous_estimate=同季度前一次估计，prior_original=上季度修订前，prior_revised=上季度修订后。previous_estimate_revision_pp
-        是百分点差；来源版本保持日期精度，actual_at为空不补造时刻。晚取得材料不倒填MDF可用时间。当前摘要仅覆盖A191RL，其余七项返回not_covered_by_summary_adapter；无具名合格共识不计算surprise。日历计划独立于材料证据。
-      </p>
-      <h4>请求示例</h4>
-      <RequestPreview request={request} />
-      <CodeBlock
-        copyLabel="复制GDP历史示例"
-        text={`${profile.basePath}/query?start=2026-Q2&end=2026-Q3&series=A191RX,A191RL&local_only=true&query_mode=history&as_of_basis=available&as_of=2026-11-02T20%3A00%3A00%2B08%3A00`}
-      />
-      <CodeBlock
-        copyLabel="复制GDP发布示例"
-        text={`${profile.basePath}/releases?reference_quarter=2026-Q3&read_mode=event`}
-      />
-      <h4>响应示例（合成字段节选）</h4>
-      <CodeBlock
-        copyLabel="复制GDP响应示例"
-        text={JSON.stringify(
-          {
-            start_quarter: "2026-Q3",
-            end_quarter: "2026-Q3",
-            points: [
-              {
-                series_id: "A191RL",
-                quarter: "2026-Q3",
-                value: "3.4",
-                value_unit: "percent",
-                change_1q_ratio: null,
-                change_4q_ratio: null,
-                estimate_kind: "unknown",
-                event_binding_status: "unconfirmed",
-              },
-            ],
-            local_only: true,
-            source_failure: null,
-          },
-          null,
-          2,
-        )}
-      />
-      <h4>错误与缺值</h4>
-      <CompactTable
-        label="错误响应"
-        headers={["HTTP", "classification / 语义"]}
-        rows={[
-          [
-            "400",
-            "unsupported_parameters、duplicate_parameter、invalid_local_only、gdp_timeseries_history_cutoff_required；非法季度/系列/时区截止被拒绝",
-          ],
-          [
-            "403",
-            "local_read_not_authorized、gdp_source_query_not_enabled或能力权限分类；不静默切换供应商",
-          ],
-          [
-            "503",
-            "gdp_timeseries_not_enabled、gdp_service_not_bound或存储失败分类；未部署时不代表空数据",
-          ],
-          [
-            "200 partial / unavailable",
-            "已有结果保留，逐点missing_reason及source_failure说明缺口；不将unknown推断为官方首发",
-          ],
-        ]}
-      />
-      <CodeBlock
-        copyLabel="复制GDP错误示例"
-        text={
-          'HTTP 503\n{"status":"ERROR","classification":"gdp_timeseries_not_enabled"}'
-        }
-      />
-      <p>
-        完整服务说明：{profile.basePath}
-        /api-help。采集、周期策略和执行记录暂未开放。
-      </p>
-    </section>
-  );
-}
-
-function ClaimsQueryApiHelp({
-  profile,
-  availability,
-  request,
-}: {
-  profile: MacroProfile;
-  availability: CpiAvailability;
-  request: RequestDescription;
-}) {
-  const base = profile.basePath;
-  return (
-    <section aria-label={`${profile.label} API说明`} className="cpi-api-help">
-      <h4>查询参数与权限</h4>
-      <p>
-        GET {base}/query；
-        {availability.data?.web_capabilities.query
-          ? "已开放查询"
-          : "服务资格待核实"}
-        。原机构 DOL-ETA，传输提供者 FRED；不替换其他提供者。
-      </p>
-      <CompactTable
-        label="Claims查询参数"
-        headers={["参数", "默认 / 类型与含义"]}
-        rows={[
-          [
-            "start / end",
-            "必填 YYYY-MM-DD，含首尾自然日，投影其中周六；最大36600天（100年），表单起点≥1901-01-01；默认最近约52周可编辑",
-          ],
-          [
-            "series",
-            "六条原生FRED ID的CSV，默认全部：ICSA,ICNSA,CCSA,CCNSA,IC4WSA,CC4WSA",
-          ],
-          [
-            "local_only",
-            "API默认true；本表单显式true。授权后当前查询可false临时补缺，不写库；历史强制本地",
-          ],
-          [
-            "query_mode",
-            "current默认；有as_of推定history，显式history必须有截止",
-          ],
-          [
-            "as_of",
-            "带时区ISO8601，包含边界；北京时间表单转+08:00，历史无最新回退",
-          ],
-          [
-            "as_of_basis",
-            "available默认，也接受observed；表单固定available，全部操作数同cutoff",
-          ],
-        ]}
-      />
-      <h4>六系列、字段与单位</h4>
-      <CompactTable
-        label="Claims系列"
-        headers={["series_id", "原生统计量"]}
-        rows={profile.series.map(([id, title]) => [id, title])}
-      />
-      <p>
-        rows[].week_ending为每series独立周六，整体倒序，同周按请求series顺序稳定。value为decimal
-        string|null，单位Number；IC4WSA/CC4WSA是官方四周均值，不能用本地均值替代。
-      </p>
-      <p>
-        weekly_change.value为周数值差（Number）；weekly_change_ratio.value为十进制ratio（0.01展示1%）；local_four_week_average.value为四个周水平的本地均值（Number、local_derived），官方均值系列不再计算。各派生保留inputs溯源；body不转成百分数。
-      </p>
-      <h4>响应与缺值</h4>
-      <p>
-        返回asset_id、start_date/end_date/buffer_start_date、rows、coverage、status、query_mode/as_of/as_of_basis/local_only、provider_requests/provider_attempts/source_failure。coverage只描述目标水平，不保证计算基期完整。local_not_provided为未采集或来源未返回；provider_missing为FRED提供方缺值，不称官方null；zero_denominator不能计算比率。补源失败保留本地值与安全分类，不补零。
-      </p>
-      <h4>响应示例（合成字段节选，非完整响应）</h4>
-      <p>示例本周值202000、上周值200000，周差2000，周比率0.01（显示为1%）。</p>
-      <CodeBlock
-        copyLabel="复制Claims响应示例"
-        text={JSON.stringify(
-          {
-            asset_id: "mdf.macro.dol.claims",
-            rows: [
-              {
-                series_id: "ICSA",
-                week_ending: "2026-10-24",
-                value: "202000",
-                unit: "Number",
-                weekly_change_ratio: {
-                  value: "0.01",
-                  unit: "ratio",
-                  missing_reason: null,
-                },
-              },
-            ],
-            as_of_basis: "available",
-            local_only: true,
-          },
-          null,
-          2,
-        )}
-      />
-      <h4>来源、时间与修订限制</h4>
-      <p>
-        {profile.historyNotice} FRED
-        realtime_start/end保持日期精度及fred_not_disambiguated依据，last_updated不是官方发布时间。首次本地捕获不等于官方首发，取得时间与available提交确认时间分开。无具名共识不计算surprise。连续版本未绑定时event
-        actual不代表当前值。只显示已保存材料支持的历史发布，材料embargo仅是计划，未知实际时间不补造。
-      </p>
-      <h4>发布记录与定位</h4>
-      <p>
-        GET {base}
-        /releases：as_of、read_mode=event/source_history、event_id=dol-claims-YYYY-MM-DD、reference_week=周六YYYY-MM-DD、source_version=YYYY-MM-DD严格过滤；reference_week为材料覆盖过滤，可含actual与prior，不使用reference_month。返回events/as_of/read_mode。actual=本次值；official_previously_reported_prior=材料明确引述官方原前值；prior_as_reported_in_this_event=本次报告前值。MDF事前值缺足够时间及版本证明时unknown。
-      </p>
-      <CodeBlock
-        copyLabel="复制Claims发布示例"
-        text={`${base}/releases?event_id=dol-claims-2026-10-29&reference_week=2026-10-24&source_version=2026-10-29&read_mode=event`}
-      />
-      <h4>查询请求与历史示例</h4>
-      <RequestPreview request={request} />
-      <CodeBlock
-        copyLabel="复制Claims历史示例"
-        text={`${base}/query?start=2026-10-01&end=2026-10-31&series=ICSA,CCSA&query_mode=history&local_only=true&as_of_basis=available&as_of=2026-11-02T18%3A00%3A00Z`}
-      />
-      <h4>采集、周期及执行</h4>
-      <p>
-        POST {base}/jobs
-        精确四键request_id/action/start/end；UUID，action=init/update，六系列一起采集。初始化按后端20日历年预置，可修改，含28天来源计算缓冲。202仅证明durable
-        running回执，GET
-        jobs/executions追踪；complete证明本地回读完成，材料状态另列。紧凑回执series_coverage保留各自latest_week及missing_weeks_total/trailing_missing_weeks_total；缺周样本最多16且显式truncated，完整序列由query获取。
-      </p>
-      <CodeBlock
-        copyLabel="复制Claims采集示例"
-        text={`curl -X POST '${window.location.origin}${base}/jobs' -H 'Origin: ${window.location.origin}' -H 'Content-Type: application/json' --data '{"request_id":"c1400000-0000-4000-8000-000000000001","action":"init","start":"2006-11-02","end":"2026-11-02"}'`}
-      />
-      <CodeBlock
-        copyLabel="复制Claims策略示例"
-        text={`curl -X PUT '${window.location.origin}${base}/strategy' -H 'Origin: ${window.location.origin}' -H 'Content-Type: application/json' --data '{"enabled":true}'`}
-      />
-      <p>
-        PUT strategy一键启停；GET
-        strategy/schedule提供策略与独立worker心跳。启用不代表进程已运行。未来日历只有发布计划，reference_week=null表示“参考周待发布材料确认”，不得推导初请/续请周。GET不刷新日历，不启动worker。400非法/重复/未知参数，403权限，503能力或存储不可用；200部分返回保留缺项。完整机器说明：GET{" "}
-        {base}/api-help。
-      </p>
+      )}
     </section>
   );
 }

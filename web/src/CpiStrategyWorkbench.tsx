@@ -17,11 +17,13 @@ import type { Transport } from "./api";
 import { formatBeijingTime } from "./beijingTime";
 import { releaseLink, releaseReasonTexts } from "./macroReleaseLinks";
 import { Fact, WorkflowTable } from "./WorkflowTable";
+import { keyOf } from "./workflowModel";
 import { useVisiblePolling } from "./useVisiblePolling";
 import {
   monthValid,
   cpiRequest,
   readCpiStrategy,
+  readCpiExecutions,
   saveCpiStrategy,
   type CpiAvailability,
   type CpiExecution,
@@ -178,12 +180,14 @@ function ResultFacts({
   result: Record<string, unknown> | null | undefined;
 }) {
   if (!result) return <p>执行结果未记录</p>;
-  if (
-    result.result &&
-    typeof result.result === "object" &&
-    !Array.isArray(result.result)
-  )
-    return <ResultFacts result={result.result as Record<string, unknown>} />;
+  // Some automatic receipts wrap the job result. Preserve statistics recorded
+  // on either level; a missing statistic must never become a synthetic zero.
+  const facts: Record<string, unknown> = { ...result };
+  let nested = result.result;
+  while (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    Object.assign(facts, nested);
+    nested = (nested as Record<string, unknown>).result;
+  }
   const labels: Record<string, string> = {
     saved_points: "新增观测",
     saved_revisions: "新增修订",
@@ -193,23 +197,144 @@ function ResultFacts({
     actual_http_total: "累计实际请求",
   };
   const entries = Object.entries(labels).filter(
-    ([key]) => result[key] !== undefined,
+    ([key]) => facts[key] !== undefined,
   );
   return entries.length ? (
     <dl>
       {entries.map(([key, label]) => (
         <Fact key={key} name={label}>
-          {typeof result[key] === "boolean"
-            ? result[key]
+          {typeof facts[key] === "boolean"
+            ? facts[key]
               ? "完整"
               : "存在缺口"
-            : typeof result[key] === "number"
-              ? String(result[key])
+            : typeof facts[key] === "number"
+              ? String(facts[key])
               : "未记录"}
         </Fact>
       ))}
     </dl>
   ) : null;
+}
+export function latestRealExecution(executions: readonly CpiExecution[]) {
+  const time = (e: CpiExecution) =>
+    e.started_at ?? (e.state !== "running" ? e.finished_at : null);
+  return executions
+    .filter(
+      (e) =>
+        [
+          "running",
+          "complete",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "outcome_unknown",
+          "unknown",
+        ].includes(e.state) &&
+        !!time(e) &&
+        Number.isFinite(Date.parse(time(e)!)),
+    )
+    .slice()
+    .sort(
+      (a, b) =>
+        Date.parse(time(b)!) - Date.parse(time(a)!) || a.id.localeCompare(b.id),
+    )[0];
+}
+
+function RecentExecution({
+  transport,
+  profile,
+  generation,
+  visible,
+}: {
+  transport: Transport;
+  profile: MacroProfile;
+  generation: number;
+  visible: boolean;
+}) {
+  const records = useVisiblePolling(
+    (signal) => readCpiExecutions(transport, signal, profile),
+    [transport, profile.id, generation],
+    visible,
+  );
+  const execution = latestRealExecution(records.data?.executions ?? []);
+  const automatic = latestRealExecution(
+    (records.data?.executions ?? []).filter((e) => e.origin !== "manual"),
+  );
+  const href = execution
+    ? `#${new URLSearchParams({
+        ui: "r5",
+        view: "collection",
+        tab: "executions",
+        asset: profile.asset.identity,
+        asset_revision: profile.asset.revision,
+        execution_asset: keyOf(profile.asset),
+        execution_schedule: "all",
+        job: execution.id,
+      })}`
+    : "";
+  return (
+    <section aria-label="最近真实执行摘要">
+      <h4>最近真实执行摘要</h4>
+      {records.stale || records.failure ? (
+        <p role="alert">
+          执行记录读取失败，最近结果暂未核实；保留的记录可能已陈旧。
+        </p>
+      ) : null}
+      {!records.data ? (
+        <p>
+          {records.failure
+            ? "执行记录暂不可读，无法确认最近真实执行。"
+            : "正在读取真实执行记录…"}
+        </p>
+      ) : !execution ? (
+        <p>无真实执行记录；心跳、计划与任务受理不代表已执行。</p>
+      ) : (
+        <>
+          <p>
+            本资产最近执行来源：
+            {execution.origin === "manual" ? "手动采集" : "自动策略"}。
+          </p>
+          {execution.state === "running" && (
+            <p>任务执行中，尚未确认完成；受理回执不代表采集成功。</p>
+          )}
+          {execution.origin === "manual" && !automatic && (
+            <p>自动策略尚无真实执行记录；以下为手动采集结果。</p>
+          )}
+          <dl>
+            <Fact name="采集方式">
+              {cpiActionText(
+                execution.origin === "manual"
+                  ? execution.action
+                  : (execution.stage ?? execution.action),
+              )}
+            </Fact>
+            <Fact name="范围">
+              {execution.start ?? "未记录"} 至 {execution.end ?? "未记录"}
+            </Fact>
+            <Fact name="开始时间（北京时间）">
+              {formatBeijingTime(execution.started_at, "未记录")}
+            </Fact>
+            <Fact name="结束时间（北京时间）">
+              {formatBeijingTime(execution.finished_at, "未记录")}
+            </Fact>
+            <Fact name="执行结果">
+              {cpiExecutionStateText(
+                execution.state,
+                execution.result,
+                profile,
+                execution,
+              )}
+            </Fact>
+            {execution.classification && (
+              <Fact name="结果分类">{execution.classification}</Fact>
+            )}
+          </dl>
+          <ResultFacts result={execution.result} />
+          <a href={href}>打开对应执行详情</a>
+        </>
+      )}
+    </section>
+  );
 }
 export function CpiExecutionDetail({
   execution: e,
@@ -257,7 +382,7 @@ export function CpiExecutionDetail({
         <Fact name="记录编号">{e.id}</Fact>
         <Fact name="关联资产">{macroAssetLabel(profile)}</Fact>
         <Fact name="来源">
-          {e.origin !== "manual" ? "自动策略 · 最近真实执行摘要" : "手动采集"}
+          {e.origin !== "manual" ? "自动策略" : "手动采集"}
         </Fact>
         <Fact name="采集方式">
           {cpiActionText(
@@ -833,56 +958,64 @@ function CpiStrategyWorkbenchContent({
                 <p>{currentCalendarError}</p>
               </details>
             )}
-            <h4>最近真实执行摘要</h4>
-            {data.last_result && (
-              <dl>
-                <Fact name="最近执行状态">
-                  {quarterly
-                    ? cpiExecutionStateText(
-                        typeof data.last_result.state === "string"
-                          ? data.last_result.state
-                          : undefined,
-                        data.last_result,
-                        profile,
-                      )
-                    : cpiStateText(
-                        typeof data.last_result.state === "string"
-                          ? data.last_result.state
-                          : null,
-                      )}
-                </Fact>
-                <Fact name="最近执行阶段">
-                  {cpiActionText(
-                    typeof data.last_result.stage === "string"
-                      ? data.last_result.stage
-                      : typeof data.last_result.action === "string"
-                        ? data.last_result.action
-                        : "",
-                  )}
-                </Fact>
-                <Fact name="最近开始时间（北京时间）">
-                  {formatBeijingTime(
-                    typeof data.last_result.started_at === "string"
-                      ? data.last_result.started_at
-                      : null,
-                    "未记录",
-                  )}
-                </Fact>
-                {typeof data.last_result.classification === "string" && (
-                  <Fact name="最近结果分类">
-                    {data.last_result.classification}
+            <RecentExecution
+              transport={transport}
+              profile={profile}
+              generation={generation}
+              visible={detailVisible && !!entry.availability.data}
+            />
+            <details>
+              <summary>策略上次执行回执与审计</summary>
+              {data.last_result && (
+                <dl>
+                  <Fact name="最近执行状态">
+                    {quarterly
+                      ? cpiExecutionStateText(
+                          typeof data.last_result.state === "string"
+                            ? data.last_result.state
+                            : undefined,
+                          data.last_result,
+                          profile,
+                        )
+                      : cpiStateText(
+                          typeof data.last_result.state === "string"
+                            ? data.last_result.state
+                            : null,
+                        )}
                   </Fact>
-                )}
-              </dl>
-            )}
-            <ResultFacts result={data.last_result} />
-            {weekly ? (
-              <ClaimsCollectionDetails result={data.last_result} />
-            ) : quarterly ? (
-              <GdpCollectionDetails result={data.last_result} />
-            ) : (
-              <MacroSourceCoverage result={data.last_result} />
-            )}
+                  <Fact name="最近执行阶段">
+                    {cpiActionText(
+                      typeof data.last_result.stage === "string"
+                        ? data.last_result.stage
+                        : typeof data.last_result.action === "string"
+                          ? data.last_result.action
+                          : "",
+                    )}
+                  </Fact>
+                  <Fact name="最近开始时间（北京时间）">
+                    {formatBeijingTime(
+                      typeof data.last_result.started_at === "string"
+                        ? data.last_result.started_at
+                        : null,
+                      "未记录",
+                    )}
+                  </Fact>
+                  {typeof data.last_result.classification === "string" && (
+                    <Fact name="最近结果分类">
+                      {data.last_result.classification}
+                    </Fact>
+                  )}
+                </dl>
+              )}
+              <ResultFacts result={data.last_result} />
+              {weekly ? (
+                <ClaimsCollectionDetails result={data.last_result} />
+              ) : quarterly ? (
+                <GdpCollectionDetails result={data.last_result} />
+              ) : (
+                <MacroSourceCoverage result={data.last_result} />
+              )}
+            </details>
             <h4>{periodLabel}计划与执行结果</h4>
             <p className="small">
               时间基准：北京时间（UTC+08:00）。计划时间不代表已经执行。

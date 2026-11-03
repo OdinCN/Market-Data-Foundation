@@ -78,7 +78,7 @@ afterEach(() => {
   location.hash = "";
   vi.restoreAllMocks();
 });
-function wire() {
+function wire(sourceFailure = false) {
   const calls: string[] = [];
   const transport: Transport = async (input, init) => {
     const path = String(input),
@@ -91,7 +91,10 @@ function wire() {
           ? url.searchParams.get("query_mode") === "history"
             ? fixture.history
             : url.searchParams.get("local_only") === "false"
-              ? fixture.source_failure
+              ? {
+                  ...(sourceFailure ? fixture.source_failure : fixture.query),
+                  local_only: false,
+                }
               : fixture.query
           : op === "releases"
             ? url.searchParams.get("read_mode") === "source_history"
@@ -291,12 +294,12 @@ it("renders serialized rows in descending weeks, Number precision, distinct mean
   );
   fireEvent.click(screen.getByRole("tab", { name: "原始响应" }));
   expect(screen.getByLabelText("原始 HTTP 正文").textContent).toBe(
-    JSON.stringify(fixture.query),
+    JSON.stringify({ ...fixture.query, local_only: false }),
   );
   expect(f.calls.filter((p) => p.includes("/query?")).length).toBe(1);
 });
 it("forces historical local available cutoff and retains local values on source failure", async () => {
-  const f = wire();
+  const f = wire(true);
   render(
     <CpiTimeSeries
       profile={profile}
@@ -305,11 +308,6 @@ it("forces historical local available cutoff and retains local values on source 
     />,
   );
   setRange();
-  fireEvent.click(
-    screen.getByRole("checkbox", {
-      name: "允许本次当前查询临时补源（不写库）",
-    }),
-  );
   fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
   await screen.findByRole("table", { name: `${profile.label} 范围数据` });
   expect(
@@ -529,10 +527,10 @@ it("routes the Claims asset through App without another family query", async () 
       .every((p) => p.startsWith(profile.basePath)),
   ).toBe(true);
   fireEvent.click(screen.getByRole("tab", { name: "API说明" }));
-  expect(screen.getByRole("heading", { name: "发布记录与定位" })).toBeTruthy();
   expect(
-    screen.getByRole("button", { name: "复制Claims策略示例" }),
+    screen.getByRole("heading", { name: `GET ${profile.basePath}/releases` }),
   ).toBeTruthy();
+  expect(screen.getByText("采集与策略接口")).toBeTruthy();
 });
 
 it("checks the actual registered Claims provider binding and permits its source collection route", async () => {
@@ -597,7 +595,7 @@ it("selects each retained evidence version of the same Claims event independentl
   );
 });
 
-it("cancels a pending Claims supplement when source permission changes and restores a local preview", async () => {
+it("cancels a pending Claims supplement when source permission changes while preserving the current request contract", async () => {
   let signal: AbortSignal | undefined;
   const transport: Transport = async (_path, init) => {
     signal = init?.signal as AbortSignal;
@@ -611,11 +609,6 @@ it("cancels a pending Claims supplement when source permission changes and resto
     />,
   );
   setRange();
-  fireEvent.click(
-    screen.getByRole("checkbox", {
-      name: "允许本次当前查询临时补源（不写库）",
-    }),
-  );
   fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
   await flush();
   expect(signal?.aborted).toBe(false);
@@ -631,15 +624,15 @@ it("cancels a pending Claims supplement when source permission changes and resto
   );
   await flush();
   expect(signal?.aborted).toBe(true);
-  const toggle = screen.getByRole("checkbox", {
-    name: "允许本次当前查询临时补源（不写库）",
-  }) as HTMLInputElement;
-  expect(toggle.disabled).toBe(true);
-  expect(toggle.checked).toBe(false);
+  expect(
+    screen.queryByRole("checkbox", {
+      name: "允许本次当前查询临时补源（不写库）",
+    }),
+  ).toBeNull();
   expect(
     screen
       .getAllByLabelText("请求 URL")
-      .every((e) => e.textContent?.includes("local_only=true")),
+      .every((e) => e.textContent?.includes("local_only=false")),
   ).toBe(true);
 });
 

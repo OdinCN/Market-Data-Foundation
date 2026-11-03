@@ -73,7 +73,10 @@ function wire() {
       return response(
         url.searchParams.get("query_mode") === "history"
           ? fixture.history
-          : fixture.query,
+          : {
+              ...fixture.query,
+              local_only: url.searchParams.get("local_only") !== "false",
+            },
       );
     if (url.pathname === profile.basePath + "/releases")
       return response(
@@ -257,7 +260,7 @@ it("shares the query table and raw exchange, with descending quarters and native
   expect(table.textContent).toContain("2026-11-25 21:30:00");
   fireEvent.click(screen.getByRole("tab", { name: "原始响应" }));
   expect(screen.getByLabelText("原始 HTTP 正文").textContent).toBe(
-    JSON.stringify(fixture.query),
+    JSON.stringify({ ...fixture.query, local_only: false }),
   );
   expect(screen.getByRole("button", { name: "复制原始响应" })).toBeTruthy();
   fireEvent.click(screen.getByRole("tab", { name: "表格" }));
@@ -328,10 +331,11 @@ it("provides native parameter, field, unit, release and error documentation", ()
   );
   fireEvent.click(screen.getByRole("tab", { name: "API说明" }));
   const help = screen.getByRole("region", { name: "GDP与增长 API说明" });
-  for (const name of ["查询参数", "返回字段", "错误响应"])
+  for (const name of ["查询参数", "返回字段"])
     expect(
       within(help).getByRole("table", { name, hidden: true }),
     ).toBeTruthy();
+  expect(within(help).getByText("失败示例与诊断")).toBeTruthy();
   for (const text of [
     "start_quarter",
     "percentage_points",

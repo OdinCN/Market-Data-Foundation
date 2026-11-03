@@ -279,14 +279,6 @@ function CpiTimeSeriesContent({
   );
   const [columnsEdited, setColumnsEdited] = useState(false);
   const [history, setHistory] = useState(false);
-  const [allowUpstream, setAllowUpstream] = useState(false);
-  useEffect(() => {
-    if (
-      (gdp || claims) &&
-      (availability.data?.source_allowed !== true || availability.failure)
-    )
-      setAllowUpstream(false);
-  }, [gdp, claims, availability.data?.source_allowed, availability.failure]);
   const [asOf, setAsOf] = useState("");
   const [result, setResult] = useState<RangeResult | null>(null);
   const [failure, setFailure] = useState(false);
@@ -349,11 +341,7 @@ function CpiTimeSeriesContent({
     query_mode: history ? "history" : "current",
     ...(gdp || claims
       ? {
-          local_only:
-            history ||
-            !allowUpstream ||
-            availability.data?.source_allowed !== true ||
-            !!availability.failure,
+          local_only: history,
         }
       : {}),
     ...(history
@@ -482,13 +470,8 @@ function CpiTimeSeriesContent({
       </div>
       <div hidden={tab !== "query"}>
         <p className="muted">
-          {gdp || claims ? (
-            "默认只读本地（local_only=true）；当前查询可在服务授权后显式允许临时补源，不写库。历史查询始终只读本地。"
-          ) : (
-            <>
-              当前查询优先读取本地，缺口可向 {profile.provider} 查询，不保存。
-            </>
-          )}
+          当前查询优先读取本地，缺口自动向 {profile.provider}{" "}
+          请求临时补源，不保存；来源访问受服务授权约束。
           历史截止查询只读已入库记录。
         </p>
         <CpiAvailabilityNotice profile={profile} availability={availability} />
@@ -627,39 +610,11 @@ function CpiTimeSeriesContent({
               onChange={(event) =>
                 change(() => {
                   setHistory(event.target.checked);
-                  if (event.target.checked) setAllowUpstream(false);
                 })
               }
             />
             <span>历史截止查询</span>
           </label>
-          {(gdp || claims) && (
-            <label className="cpi-history-toggle">
-              <input
-                type="checkbox"
-                checked={
-                  !history &&
-                  allowUpstream &&
-                  availability.data?.source_allowed === true &&
-                  !availability.failure
-                }
-                disabled={
-                  history ||
-                  availability.data?.source_allowed !== true ||
-                  !!availability.failure
-                }
-                onChange={(event) =>
-                  change(() => setAllowUpstream(event.target.checked))
-                }
-              />
-              <span>允许本次当前查询临时补源（不写库）</span>
-            </label>
-          )}
-          {(gdp || claims) && (
-            <p className="small">
-              默认只读本地。临时补源仅在服务明确授权的当前查询中可用；部分失败保留本地值。历史查询强制只读本地。
-            </p>
-          )}
           {history && (
             <div className="cpi-history-fields">
               <p className="small">按入库时间查看截止时已保存的数据。</p>

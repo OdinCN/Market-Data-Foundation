@@ -366,7 +366,9 @@ export function validClaimsJob(j: CpiJob): boolean {
     j.job_id === j.request_id &&
     ["init", "update"].includes(j.action) &&
     dayRangeValid(j.start, j.end) &&
-    ["running", "complete", "failed", "unknown"].includes(j.state) &&
+    ["running", "complete", "failed", "unknown", "cancelled"].includes(
+      j.state,
+    ) &&
     instant(j.created_at) &&
     [j.started_at, j.finished_at].every((v) => v === null || instant(v)) &&
     (j.classification === null || typeof j.classification === "string") &&

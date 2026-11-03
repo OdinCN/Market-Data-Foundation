@@ -578,7 +578,7 @@ export type CpiJobIntent =
   MacroPaths["/api/r5/cpi/timeseries/jobs"]["post"]["requestBody"]["content"]["application/json"];
 export type CpiJob = CpiJobIntent & {
   job_id: string;
-  state: "running" | "complete" | "failed" | "unknown";
+  state: "running" | "complete" | "failed" | "unknown" | "cancelled";
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -823,6 +823,7 @@ export async function readCpiExecutions(
         !!e &&
         typeof e.id === "string" &&
         !!e.id &&
+        (!("asset" in e) || e.asset === profile.id) &&
         (["claims", "gdp"].includes(profile.id)
           ? ["manual", "schedule"]
           : ["manual", "automatic"]
