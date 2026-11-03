@@ -3,6 +3,9 @@
 No Web registration, database connection, DDL or live execution on import.
 """
 
+import tomllib
+from pathlib import Path
+
 from market_data_foundation.historical import cpi_timeseries as _core
 from market_data_foundation.historical.bls_timeseries_profile import JOLTS_PROFILE
 from market_data_foundation.historical.cpi_request_control import CpiRequestControl
@@ -18,12 +21,15 @@ JoltsTimeSeriesError = _core.CpiTimeSeriesError
 
 
 class BlsJoltsRangeSource(BlsRangeSource):
+    max_range_requests = 8
+
     def __init__(self, *, allow_live=False, **options):
         if type(allow_live) is not bool:
             raise JoltsTimeSeriesError("jolts_live_opt_in_invalid")
         self._live_allowed = allow_live
         options.setdefault("secret_path", _core.DEFAULT_SECRET_PATH)
         options.setdefault("max_transport_attempts", 1)
+        options.setdefault("max_requests", self.max_range_requests)
         if options.get("request_control") is None:
             options["request_control"] = CpiRequestControl(
                 _core.DEFAULT_REQUEST_CONTROL_PATH
@@ -107,6 +113,63 @@ class JoltsTimeSeriesService(_core.CpiTimeSeriesService):
         return super().query_range(
             start_month, end_month, allow_upstream=allow_upstream, **options
         )
+
+
+def build_service(*, allow_live=False, request_control_path, **options):
+    """Explicit writer binding over the shared PG/Garage store; no bootstrap."""
+    source = BlsJoltsRangeSource(
+        allow_live=allow_live,
+        registered=options.get("registered", True),
+        credential_loader=options.get("credential_loader"),
+        secret_path=options.get("secret_path", _core.DEFAULT_SECRET_PATH),
+        request_control=CpiRequestControl(Path(request_control_path)),
+        max_requests=8,
+        max_transport_attempts=1,
+    )
+    service = _core.build_service(profile=JOLTS_PROFILE, **options)
+    return JoltsTimeSeriesService(service.store, source)
+
+
+def build_read_service(*, runtime_path, secret_path):
+    """Short read-only connection; no source credential, raw access or DDL."""
+    from market_data_foundation.historical.cpi_timeseries_store import (
+        PostgresTimeSeriesStore,
+    )
+    from market_data_foundation.storage.market_dataset_postgres import connect_dev
+
+    connection = None
+    try:
+        secret = tomllib.loads(Path(secret_path).read_text())
+        connection = connect_dev(
+            secret["postgres"]["password"], runtime_path=Path(runtime_path)
+        )
+        connection.execute("SET default_transaction_read_only=on")
+        return JoltsTimeSeriesService(
+            PostgresTimeSeriesStore(connection, None, profile=JOLTS_PROFILE),
+            BlsJoltsRangeSource(),
+        )
+    except Exception:
+        if connection is not None:
+            connection.close()
+        raise JoltsTimeSeriesError("jolts_read_configuration_failed") from None
+
+
+def latest_view_sql():
+    units = " ".join(
+        f"WHEN '{sid}' THEN '{meta['value_unit']}'"
+        for sid, meta in SERIES_METADATA.items()
+    )
+    return f"""CREATE OR REPLACE VIEW {JOLTS_PROFILE.schema}.jolts_latest AS
+        SELECT series_id,month,revision AS local_revision,observed_at,available_at,
+            version_status,batch_id,index_value AS value,
+            CASE series_id {units} END AS value_unit,
+            coalesce(provider_extra,'{{}}'::jsonb) || jsonb_build_object(
+                'pct_changes',coalesce(provider_extra->'pct_changes','{{}}'::jsonb)
+                || jsonb_strip_nulls(jsonb_build_object(
+                    '1',bls_pct_1m::text,'3',bls_pct_3m::text,
+                    '6',bls_pct_6m::text,'12',bls_pct_12m::text)))
+                AS provider_calculations,footnotes
+        FROM {JOLTS_PROFILE.schema}.latest"""
 
 
 def rates_view_sql():

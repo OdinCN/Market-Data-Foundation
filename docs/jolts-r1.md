@@ -1,4 +1,6 @@
-# JOLTS R1 第1段：来源合同与基础适配
+# JOLTS R1：分段交付记录
+
+## 第1段：来源合同与基础适配
 
 本段是全国非农合计、SA 的八项连续序列基础，**不是整族验收通过**。
 基线为已合并主线；沿用 `docs/macro-family-development-review.md` 的开发与审查约束，
@@ -108,3 +110,88 @@ download.bls.gov 和 downloadt.bls.gov 的目录请求均为403；data.bls.gov �
 
 本段没有写DEV业务库、执行DDL、切换18761、改变八族策略、重启/延长服务、修改主控handoff或CHECKPOINT，
 也没有 push、创建PR、合并或生产部署。完成返回与测试/来源分类见事务 `artifacts/segment1`。
+
+
+## 第2段：持久化、查询 API 与受控手工采集
+
+第2段基于第1段本地提交 `c14cc3b0db0f80a488b1091da33fd497baabccfd`，
+交付独立 DEV 存储和实际 HTTP/采集闭环；仍不表示整族验收或生产部署。
+第1段上文的“尚未注册/未入库”描述保留为当段状态，以本节增量为准。
+
+### 实现与操作入口
+
+- [JOLTS 读写工厂](../src/market_data_foundation/historical/jolts_timeseries.py)
+  复用共享 PostgreSQL/Garage store；写工厂不自动 bootstrap，来源必须显式
+  `allow_live=True`。读工厂使用短连接并设置 `default_transaction_read_only=on`，
+  无来源凭据加载、raw 写入或 DDL。共享 BLS 请求合同仍为注册20年/未注册10年窗口，
+  本族每范围最多8逻辑请求、默认单次传输、20秒 HTTP 超时。
+- [手工 Host](../src/market_data_foundation/web/jolts_timeseries.py) 复用
+  `TimeSeriesHost` 的权限、任务 journal、UUID 重放、异步 dispatch 和同截止回读；
+  [独立 app 工厂](../src/market_data_foundation/web/jolts_runtime.py) 只装配 JOLTS。
+  调用方提供现有 `PackageHost` 以及显式 read/collect/source 开关；默认全部关闭。
+  声明 [候选 capability](../src/market_data_foundation/historical/jolts_binding.py)
+  不启用它，且 `source_qualified=false`。
+- 路径为 `/api/r5/jolts/timeseries/{query,status,api-help,jobs,executions}`。
+  GET `/jobs` 读取任务，POST `/jobs` 手工执行；POST 继续使用共享 operator/origin/JSON
+  准入合同。API 帮助和 OpenAPI 说明相同默认值；Decimal 值以字符串序列化。
+  独立 app 不挂到18761，不启动周期 worker。
+- query 必填 `start/end=YYYY-MM`，可选 `series=原生ID,...`、`columns=...`。
+  默认全部八序列、`local_only=true`；显式当前 `local_only=false` 只临时补缺。
+  history/as_of 始终本地，available 截止包含等号，所有比较操作数用相同 cutoff。
+  `measure=index` 沿就业原生值接口命名，不表示价格指数；不支持篮子或季调过滤。
+  查询、帮助、状态、任务列表 GET 均不 DDL、不刷新日历、不创建任务或状态文件。
+- POST body 为 `request_id`（规范UUID）、`action`（init/initialize/update）、
+  `start`、`end` 及可选 `series`。`init` 仅补缺，`initialize/update` 显式刷新指定范围
+  和12月比较缓冲。回执含实际来源计数、saved_points/saved_revisions、按 available
+  的 readback 和最终 complete/failed/unknown；相同请求重放不调用来源。
+  不推断官方事件，材料回执单独为 `jolts_release_material_pending`。
+- 显式 bootstrap 入口为 `uv run python scripts/jolts_timeseries.py --runtime <绝对路径>`
+  `--secret <现有秘密文件绝对路径> --state-directory <独立事务目录> prepare-schema`。
+  同脚本提供 `status` 和默认本地 `query --start ... --end ...`。
+  [只读授权 SQL](../scripts/sql/jolts-readonly-r1.sql) 在 owner 事务内单独执行；
+  不修改密码或全局角色属性。为当前 owner 后续创建的本 schema 表/视图默认授予 SELECT；
+  其它 owner 创建对象仍须另行核验。
+
+### 已观察的 DEV 最大效果
+
+仅在192.168.10.4既有 DEV 数据库新建 `mdf_jolts_timeseries_dev_r1`。
+对象为 `batches`、`revisions`、内部 `latest`、原生值投影 `jolts_latest` 和
+`jolts_timeseries_rates`。raw 使用既有配置 Garage 的独立
+`jolts-timeseries/dev-r1/sha256/` namespace。业务数值和来源原文不进入 Git。
+
+本段实际新抓取5个 BLS 逻辑请求/5次 HTTP 尝试（上限8/16，超时20秒），均为200。
+未重试第1段403入口，也没有 FRED 请求或提供者替换。先采集2025-07至08历史小窗及
+12月缓冲，112个值入库；指定范围重复更新新增点/修订均为0；同 request_id HTTP重放
+零来源调用。随后显式临时查询2026-08返回8项，业务库数量仍为112，临时点的
+available_at/raw_locator均为空。
+
+在剩余预算内，初始化2006-09至2026-08的240个月目标；加2005-09起比较缓冲，
+最终共4个持久批次、2016个版本/最新点（每序列252个月），无合成业务写入。
+该窗口按已验证历史终点指定；不声称当前日历月推导的默认240月建议已全部有值。
+八序列分别 HTTP 回读各240项；1920个目标原值逐项与本次新取得 BLS 原文一致，
+目标区间派生无缺口。latest 的单位、原计算与脚注，以及 rates 的数量差/ratio与
+独立官方比率百分点差，各1920项与 API 同截止结果一致。
+
+真实 available 边界：小窗首批提交确认前1微秒返回0项，恰好截止及后1微秒均返回16项；
+这些历史读取零来源调用。读连接实际拒绝 CREATE TABLE（ReadOnlySqlTransaction）。
+`odin_dba` 的5对象 SELECT、schema USAGE 均通过目录 ACL 检查，CREATE 与全部表写权限
+均为 false；默认权限也已核对。未使用该身份独立登录，因此只报告 ACL 检查。
+
+### 验证、证据与后续
+
+[HTTP 回归](../tests/test_jolts_web.py) 使用隔离合成来源验证默认本地/显式临时补缺、
+Decimal长小数和列投影、历史同截止、任务重放/读回及 changed-only、权限拒绝与发布/周期
+禁用；数量0/null/缺行和合成修订继续由第1段回归覆盖，不写真实业务数据。
+相关共享查询、来源、关系存储、就业/消费收入/Claims、catalog/package/API帮助及
+qualification 回归与 live DEV 验证分开执行。命令及退出码留事务，不在文档预写测试通过数。
+
+事务 `artifacts/segment2` 保存 bootstrap/ACL、来源计数及原文、真实 HTTP 字节正文、
+任务执行和按系列回读、视图校验、qualification v2 observations、测试退出记录与简报。
+来源真实取得时间与 MDF 提交后 available 时间不倒填；第1段留存只作合同/证据复核，
+本次实际业务入库使用本段新取得响应，不冒称已重建官方首发或历史 vintage。
+
+定义/FAQ/方法正文资格仍缺；具名发布材料和事件归属另缺，source_qualified继续为false。
+这两类缺口不会禁用已可追溯的连续序列。下一段从独立全国JOLTS日历、年度五年有界回修、
+发布修订证据和周期/真实worker继续；之后接共享UI/API说明、真实浏览器和整包回归。
+现有八族运行配置、数据与开关、18761和既有worker、主控handoff/CHECKPOINT均未修改；
+本段无push、PR、合并或生产动作。

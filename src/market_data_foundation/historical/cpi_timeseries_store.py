@@ -699,6 +699,12 @@ class PostgresTimeSeriesStore:
                 if actual != expected:
                     raise CpiStorageError("cpi_timeseries_schema_shape_mismatch")
                 self.connection.execute(_rates_view_sql(profile=self.profile))
+                if self.profile is JOLTS_PROFILE:
+                    from market_data_foundation.historical.jolts_timeseries import (
+                        latest_view_sql,
+                    )
+
+                    self.connection.execute(latest_view_sql())
                 if self.profile is EMPLOYMENT_PROFILE:
                     from market_data_foundation.historical import (
                         employment_timeseries,

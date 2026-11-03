@@ -22,6 +22,7 @@ from market_data_foundation.historical.consumption_contract import (
 from market_data_foundation.historical.daily_bars import RAW_DAILY_BARS
 from market_data_foundation.historical.employment_contract import BLS_EMPLOYMENT
 from market_data_foundation.historical.gdp_contract import GDP_DEFINITION
+from market_data_foundation.historical.jolts_contract import JOLTS_DEFINITION
 from market_data_foundation.historical.retail_contract import CENSUS_RETAIL
 from market_data_foundation.web.dto import DTO
 from market_data_foundation.web.source_catalog import (
@@ -98,6 +99,12 @@ PACKAGES = (
                 capability_id="ppi",
                 title="美国 PPI",
                 definition_ref=ref(BLS_PPI_FINAL_DEMAND),
+                required_sources=["BLS"],
+            ),
+            CapabilityView(
+                capability_id="jolts",
+                title="美国 JOLTS（分段开发）",
+                definition_ref=ref(JOLTS_DEFINITION),
                 required_sources=["BLS"],
             ),
             CapabilityView(

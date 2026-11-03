@@ -409,13 +409,13 @@ class TimeSeriesHost:
             }
             | (
                 {"series"}
-                if self.profile.key in {"employment", "consumption"}
+                if self.profile.key in {"employment", "consumption", "jolts"}
                 else set()
             ),
         )
         if not self.query_allowed:
             raise WebError("local_read_not_authorized", 403)
-        if self.profile.key in {"employment", "consumption"} and (
+        if self.profile.key in {"employment", "consumption", "jolts"} and (
             "basket" in params
             or "adjustment" in params
             or params.get(
@@ -425,7 +425,7 @@ class TimeSeriesHost:
         ):
             raise WebError(self.profile.key + "_series_filter_required")
         local_only = params.get(
-            "local_only", "true" if self.profile is CPI_PROFILE else "false"
+            "local_only", "true" if self.profile.key in {"cpi", "jolts"} else "false"
         )
         if local_only not in {"true", "false"}:
             raise WebError("invalid_local_only")
@@ -451,7 +451,7 @@ class TimeSeriesHost:
             upstream=upstream, credential_loader=self.effective_credential
         ) as service:
             result = execute_profile(service, "query", params, profile=self.profile)
-            if hasattr(service, "store"):
+            if hasattr(service, "store") and self.profile.key != "jolts":
                 ReleaseRecords(service.store).link_result(result)
         return self.publication_metadata(result)
 
@@ -625,7 +625,13 @@ class TimeSeriesHost:
                         service, command["start"], command["end"], written
                     )
                 read_start, read_end = command["start"], command["end"]
-                if self.profile.key in {"ppi", "pce", "employment", "consumption"}:
+                if self.profile.key in {
+                    "ppi",
+                    "pce",
+                    "employment",
+                    "consumption",
+                    "jolts",
+                }:
                     months = [
                         p["month"]
                         for p in written.get("source_returned_series_months", [])

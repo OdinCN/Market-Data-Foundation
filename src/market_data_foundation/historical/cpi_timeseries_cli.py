@@ -72,7 +72,7 @@ def selected_series(params, *, query=False, profile=CPI_PROFILE):
         if not values or not set(values) <= set(profile.series_ids):
             raise InterfaceError("unsupported_series")
         return values
-    if profile.key in {"employment", "consumption"}:
+    if profile.key in {"employment", "consumption", "jolts"}:
         if basket is not None or adjustment is not None:
             if basket != "all" or adjustment != "all":
                 raise InterfaceError(profile.key + "_series_filter_required")
@@ -329,7 +329,9 @@ def execute(service, action, params=None, *, scheduler=None):
     )
 
     columns = selected_columns(params.get("columns"), profile.key)
-    local_only = params.get("local_only", False)
+    if profile.key == "jolts" and measure != "index":
+        raise InterfaceError("jolts_measure_not_supported")
+    local_only = params.get("local_only", profile.key == "jolts")
     as_of = params.get("as_of")
     query_mode = params.get("query_mode") or (
         "history"
@@ -350,7 +352,11 @@ def execute(service, action, params=None, *, scheduler=None):
         or ("available" if query_mode == "history" or as_of is not None else None),
         **options,
     )
-    if getattr(service, "profile", CPI_PROFILE).key in {"employment", "consumption"}:
+    if getattr(service, "profile", CPI_PROFILE).key in {
+        "employment",
+        "consumption",
+        "jolts",
+    }:
         if measure != ("native" if profile.key == "consumption" else "index"):
             raise InterfaceError(profile.key + "_measure_not_supported")
         if profile.key == "consumption":

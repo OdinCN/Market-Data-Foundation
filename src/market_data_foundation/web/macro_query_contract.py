@@ -39,7 +39,7 @@ def query_openapi(family):
             "CSV headline/control/ex_auto or all; core aliases control. "
             "Default headline,control. Six shared source inputs; ex_auto=44X72-441."
         )
-    elif family in {"employment", "consumption"}:
+    elif family in {"employment", "consumption", "jolts"}:
         descriptions["series"] = (
             "CSV allowlisted CES/CPS IDs; omitted preserves original five. "
             "Includes private/EPOP/eleven non-overlapping major sectors; "
@@ -76,6 +76,13 @@ def query_openapi(family):
             "native only (default); value is native amount/rate. "
             "Select display columns separately. Saving rate supports "
             "percentage-point changes only."
+        )
+    if family == "jolts":
+        descriptions["series"] = "CSV eight national SA JOLTS IDs; default all."
+        descriptions["measure"] = "index only; native quantity/rate value."
+        descriptions["local_only"] = (
+            "Default true; false permits explicit temporary current source fill. "
+            "History always local. GET never writes."
         )
     result = {
         "parameters": [
@@ -197,7 +204,7 @@ def job_openapi(family):
         "start": {"type": "string", "pattern": r"^[0-9]{4}-(0[1-9]|1[0-2])$"},
         "end": {"type": "string", "pattern": r"^[0-9]{4}-(0[1-9]|1[0-2])$"},
     }
-    if family in {"cpi", "ppi", "employment", "consumption"}:
+    if family in {"cpi", "ppi", "employment", "consumption", "jolts"}:
         properties["series"] = {
             "type": "string",
             "description": (

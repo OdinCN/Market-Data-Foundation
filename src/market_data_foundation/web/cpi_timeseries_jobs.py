@@ -24,7 +24,7 @@ class WebError(ValueError):
 def validate_command(command, max_months, *, profile=CPI_PROFILE):
     if not isinstance(command, dict) or set(command) - (
         {"series"}
-        if profile.key in {"cpi", "ppi", "employment", "consumption"}
+        if profile.key in {"cpi", "ppi", "employment", "consumption", "jolts"}
         else set()
     ) != {
         "request_id",
@@ -54,7 +54,7 @@ def validate_command(command, max_months, *, profile=CPI_PROFILE):
 
 def verify_readback(written, readback, command, *, profile=CPI_PROFILE):
     """Coverage includes explicit source nulls; an absent row is a different gap."""
-    if profile.key in {"ppi", "pce", "employment", "consumption"}:
+    if profile.key in {"ppi", "pce", "employment", "consumption", "jolts"}:
         return verify_ppi_readback(written, readback, command, profile=profile)
     expected = {
         (s, m)
@@ -78,7 +78,7 @@ def verify_readback(written, readback, command, *, profile=CPI_PROFILE):
             for field in (
                 (
                     "value"
-                    if profile.key in {"employment", "consumption"}
+                    if profile.key in {"employment", "consumption", "jolts"}
                     else "index_value"
                 ),
                 "revision",
@@ -107,7 +107,9 @@ def verify_readback(written, readback, command, *, profile=CPI_PROFILE):
         k
         for k, p in actual.items()
         if p.get(
-            "value" if profile.key in {"employment", "consumption"} else "index_value"
+            "value"
+            if profile.key in {"employment", "consumption", "jolts"}
+            else "index_value"
         )
         is None
     )
@@ -185,7 +187,7 @@ def verify_ppi_readback(written, readback, command, *, profile):
             for field in (
                 (
                     "value"
-                    if profile.key in {"employment", "consumption"}
+                    if profile.key in {"employment", "consumption", "jolts"}
                     else "index_value"
                 ),
                 "revision",
@@ -228,7 +230,9 @@ def verify_ppi_readback(written, readback, command, *, profile):
         k
         for k, p in actual.items()
         if p.get(
-            "value" if profile.key in {"employment", "consumption"} else "index_value"
+            "value"
+            if profile.key in {"employment", "consumption", "jolts"}
+            else "index_value"
         )
         is None
     }

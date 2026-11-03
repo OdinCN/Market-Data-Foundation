@@ -1,0 +1,78 @@
+"""Explicit standalone JOLTS composition; never touches the shared preview."""
+
+from pathlib import Path
+
+from fastapi import FastAPI
+
+from market_data_foundation.historical.cpi_request_control import CpiRequestControl
+from market_data_foundation.historical.jolts_timeseries import (
+    BlsJoltsRangeSource,
+    build_read_service,
+    build_service,
+)
+from market_data_foundation.web.cpi_timeseries_api import timeseries_router
+from market_data_foundation.web.jolts_timeseries import JoltsTimeSeriesHost
+
+
+def create_jolts_app(
+    *,
+    packages,
+    runtime_path,
+    secret_path,
+    state_directory,
+    allow_read=False,
+    allow_collect=False,
+    allow_source=False,
+    read_factory=None,
+    write_factory=None,
+    query_factory=None,
+    **host_options,
+):
+    if any(type(v) is not bool for v in (allow_read, allow_collect, allow_source)):
+        raise ValueError("jolts_explicit_permissions_required")
+    state = Path(state_directory)
+    if not state.is_absolute() or ".." in state.parts:
+        raise ValueError("jolts_absolute_state_directory_required")
+    control = state / "jolts-bls-request-control.json"
+
+    def read():
+        return build_read_service(runtime_path=runtime_path, secret_path=secret_path)
+
+    def query(*, credential_loader):
+        service = read()
+        try:
+            service.source = BlsJoltsRangeSource(
+                allow_live=True,
+                credential_loader=credential_loader,
+                request_control=CpiRequestControl(control),
+                max_requests=8,
+            )
+            return service
+        except BaseException:
+            service.close()
+            raise
+
+    def write(*, credential_loader):
+        return build_service(
+            runtime_path=runtime_path,
+            secret_path=secret_path,
+            allow_live=True,
+            credential_loader=credential_loader,
+            request_control_path=control,
+        )
+
+    host = JoltsTimeSeriesHost(
+        packages=packages,
+        state_path=state / "jolts-state.json",
+        job_directory=state / "jolts-jobs",
+        query_allowed=allow_read,
+        allow_collect=allow_collect,
+        read_service_factory=read_factory or read,
+        write_service_factory=(write_factory or write) if allow_collect else None,
+        query_service_factory=(query_factory or query) if allow_source else None,
+        **host_options,
+    )
+    app = FastAPI(title="MDF JOLTS manual DEV API")
+    app.include_router(timeseries_router(host))
+    app.state.jolts_host = host
+    return app

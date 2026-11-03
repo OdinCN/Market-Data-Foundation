@@ -2,6 +2,15 @@
 
 
 def query_columns(family):
+    if family == "jolts":
+        return (
+            "value",
+            "change_1m_level",
+            "change_1m_ratio",
+            "change_12m_ratio",
+            "change_1m_percentage_points",
+            "change_12m_percentage_points",
+        )
     if family == "consumption":
         return (
             "value",
