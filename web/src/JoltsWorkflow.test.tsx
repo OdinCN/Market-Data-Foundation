@@ -140,7 +140,15 @@ it("JOLTS unknown calendar preserves a direct official link and real execution d
             String(path).endsWith("/strategy")
               ? fixture.strategy
               : String(path).endsWith("/schedule")
-                ? fixture.schedule
+                ? {
+                    ...fixture.schedule,
+                    calendar: {
+                      error: "http_403",
+                      primary_source:
+                        "https://www.bls.gov/schedule/news_release/bls.ics",
+                      next_refresh_at: "2026-11-04T06:19:27+00:00",
+                    },
+                  }
                 : fixture.executions,
           ),
         )
@@ -158,9 +166,18 @@ it("JOLTS unknown calendar preserves a direct official link and real execution d
   ).toBe(fixture.executions.executions[0].id);
   expect(
     screen
-      .getByRole("link", { name: "BLS 全国 JOLTS 官方日历" })
+      .getByRole("link", {
+        name: "https://www.bls.gov/schedule/news_release/bls.ics",
+      })
       .getAttribute("href"),
   ).toContain("bls.gov/schedule/");
+  for (const name of [
+    "当前日历入口",
+    "日历缓存有效期至（北京时间）",
+    "下次日历刷新（北京时间）",
+  ])
+    expect(screen.getByText(name)).toBeTruthy();
+  expect(screen.getByText(/最近刷新失败/)).toBeTruthy();
   expect(screen.queryByRole("dialog")).toBeNull();
 });
 

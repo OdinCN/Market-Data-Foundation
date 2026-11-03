@@ -1,14 +1,15 @@
 """National JOLTS calendar and bounded maintenance over shared execution ports."""
 
 from datetime import timedelta
+from urllib.parse import urlsplit
 from uuid import NAMESPACE_URL, uuid5
 
 from market_data_foundation.historical.bls_timeseries_profile import JOLTS_PROFILE
-from market_data_foundation.historical.bls_web_transport import fetch_bls_page
 from market_data_foundation.historical.cpi_release_schedule import (
     ICS_URL,
     CpiReleaseScheduler,
     _aware,
+    _fetch_calendar,
     _instant,
     _keys,
     now_utc,
@@ -44,12 +45,11 @@ POLICY = {
 
 
 def fetch_official_page(url, *, observer=None):
-    from urllib.parse import urlsplit
-
-    return fetch_bls_page(
+    return _fetch_calendar(
         url,
+        "text/calendar" if url == ICS_URL else "text/html",
+        title="JOLTS",
         allowed_path=urlsplit(url).path,
-        timeout=20,
         request_control=CpiRequestControl(DEFAULT_REQUEST_CONTROL_PATH),
         observer=observer,
     )
@@ -108,6 +108,39 @@ class JoltsReleaseScheduler(CpiReleaseScheduler):
             "policy": POLICY,
             "work": state.get("work", {}),
         }
+        # Older DEV observations predate the shared refresh envelope. Derive
+        # display metadata without changing acquisition times or writing on GET.
+        calendar = result["calendar"] = dict(result["calendar"])
+        acquired = calendar.get("acquired_at") or calendar.get("fetched_at")
+        calendar.setdefault("primary_source", self.ics_url)
+        calendar.setdefault("source", self.ics_url)
+        calendar.setdefault(
+            "refresh_mode",
+            "unavailable"
+            if not acquired
+            else "cache"
+            if calendar.get("error")
+            else "primary",
+        )
+        calendar.setdefault(
+            "cache_valid_until",
+            (_instant(acquired) + timedelta(hours=24)).isoformat()
+            if acquired
+            else None,
+        )
+        calendar["refresh_attempts"] = [
+            {
+                "source": row.get("source") or row.get("source_url"),
+                "outcome": row.get("outcome")
+                or ("accepted" if row.get("success") else "failed"),
+                **{
+                    key: row[key]
+                    for key in ("classification", "http_status")
+                    if key in row
+                },
+            }
+            for row in calendar.get("refresh_attempts", [])
+        ]
         annual = state.get("work", {}).get(f"annual:{at.year}", {})
         result["annual_maintenance"] = dict(
             start=annual_window(at.year)[0],

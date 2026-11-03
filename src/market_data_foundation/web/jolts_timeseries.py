@@ -193,9 +193,6 @@ class JoltsTimeSeriesHost(TimeSeriesHost):
             ]
         }
 
-    def strategy(self):
-        return {**self.auto_strategy.get(), "policy": POLICY}
-
     def schedule(self):
         value = self.auto_strategy.get()
         return {

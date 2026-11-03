@@ -392,3 +392,84 @@ def test_api_help_matches_bounded_release_and_maintenance_policy(setup):
         assert policy["annual_target_months"] == 60
         assert "each numerically confirmed" in policy["annual_rule"]
         assert "source gaps" in help_doc["collection_parameters"]["completion"]
+
+
+def test_legacy_failed_calendar_envelope_is_read_only(tmp_path):
+    sch = scheduler(tmp_path)
+    state = sch._read()
+    state["calendar"] = {
+        "error": "http_403",
+        "next_refresh_at": "2026-11-04T06:19:27+00:00",
+        "refresh_attempts": [
+            {"source_url": sch.ics_url, "success": False, "http_status": 403}
+        ],
+    }
+    sch._save(state)
+    before = sch.state_path.read_bytes()
+    result = sch.status()
+    assert result["calendar_status"] == "unavailable"
+    calendar = result["calendar"]
+    assert calendar["source"] == sch.ics_url
+    assert calendar["refresh_mode"] == "unavailable"
+    assert calendar["cache_valid_until"] is None
+    assert calendar["refresh_attempts"][0]["outcome"] == "failed"
+    assert "acquired_at" not in calendar
+    assert sch.state_path.read_bytes() == before
+
+
+def test_jolts_reuses_shared_bls_web_headers_and_admission(monkeypatch):
+    from market_data_foundation.historical import cpi_release_schedule as shared
+    from market_data_foundation.historical.jolts_release_schedule import (
+        fetch_official_page,
+    )
+
+    calls = []
+    monkeypatch.setattr(
+        shared,
+        "fetch_bls_page",
+        lambda url, **options: calls.append((url, options)) or b"ok",
+    )
+    for url in (
+        shared.ICS_URL,
+        "https://www.bls.gov/news.release/archives/jolts_11032026.htm",
+    ):
+        assert fetch_official_page(url) == b"ok"
+    for url, options in calls:
+        assert (
+            options["headers"]["User-Agent"]
+            == "Market-Data-Foundation JOLTS calendar/1.0"
+        )
+        assert options["timeout"] == 20
+        assert options["request_control"] is not None
+        assert options["allowed_path"] == url.removeprefix("https://www.bls.gov")
+
+
+def test_strategy_uses_shared_official_time_without_guessing_reference_month(setup):
+    _, host, _, _, _ = setup
+    host.scheduler.import_calendar(
+        ics(event("national", "20261103T100000", summary=TITLE)), AT
+    )
+    before = host.scheduler.state_path.read_bytes()
+    value = host.strategy()
+    assert value["next_release_at"] == "2026-11-03T15:00:00+00:00"
+    assert value["execution_state"] == "paused"
+    assert value["policy"]["annual_target_months"] == 60
+    assert host.scheduler.status()["targets"] == []
+    assert host.scheduler.state_path.read_bytes() == before
+
+
+def test_strategy_reports_real_process_and_heartbeat(setup):
+    import json
+    import os
+
+    _, host, _, _, _ = setup
+    host.update_strategy({"enabled": True})
+    path = host.auto_strategy.strategy_path.with_name("jolts-worker.json")
+    path.write_text(json.dumps({"pid": os.getpid(), "state": "running"}))
+    host.auto_strategy.heartbeat("idle")
+    view = host.strategy()
+    assert view["enabled"] is True
+    assert view["execution_state"] == "idle"
+    assert view["worker"]["state"] == "idle"
+    assert view["worker"]["last_heartbeat_at"] == AT.isoformat()
+    assert view["worker"]["process"]["pid"] == os.getpid()

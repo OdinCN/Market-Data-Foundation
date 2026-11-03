@@ -428,7 +428,9 @@ def parse_official_ics(raw, *, profile=CPI_PROFILE, known_uids=()):
     return sorted(events.values(), key=lambda event: event["uid"])
 
 
-def _fetch_calendar(url, accept, *, title="CPI"):
+def _fetch_calendar(
+    url, accept, *, title="CPI", allowed_path=None, **transport_options
+):
     try:
         return fetch_bls_page(
             url,
@@ -438,7 +440,9 @@ def _fetch_calendar(url, accept, *, title="CPI"):
             },
             max_bytes=MAX_CALENDAR_BYTES,
             timeout=20,
-            allowed_path="/schedule/news_release/" + url.rsplit("/", 1)[1],
+            allowed_path=allowed_path
+            or "/schedule/news_release/" + url.rsplit("/", 1)[1],
+            **transport_options,
         )
     except BlsWebError as error:
         raise CpiScheduleError(

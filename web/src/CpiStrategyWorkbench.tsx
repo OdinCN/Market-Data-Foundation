@@ -916,46 +916,28 @@ function CpiStrategyWorkbenchContent({
                 )}
               </Fact>
             </dl>
-            {profile.id === "jolts" && (
-              <p>
-                官方日历入口：
-                <a
-                  className="calendar-source-link"
-                  href={
-                    refresh?.primary_source ??
-                    "https://www.bls.gov/schedule/news_release/jolts.htm"
-                  }
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  BLS 全国 JOLTS 官方日历
-                </a>
-              </p>
-            )}
-            {refresh?.refresh_mode && (
-              <dl>
-                <Fact name="当前日历入口">
-                  {refresh.source ? (
-                    <a
-                      href={refresh.source}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="calendar-source-link"
-                    >
-                      {refresh.source}
-                    </a>
-                  ) : (
-                    "未获取"
-                  )}
-                </Fact>
-                <Fact name="日历缓存有效期至（北京时间）">
-                  {formatBeijingTime(refresh.cache_valid_until, "未记录")}
-                </Fact>
-                <Fact name="下次日历刷新（北京时间）">
-                  {formatBeijingTime(refresh.next_refresh_at, "未记录")}
-                </Fact>
-              </dl>
-            )}
+            <dl>
+              <Fact name="当前日历入口">
+                {refresh?.source || refresh?.primary_source ? (
+                  <a
+                    href={refresh.source ?? refresh.primary_source}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="calendar-source-link"
+                  >
+                    {refresh.source ?? refresh.primary_source}
+                  </a>
+                ) : (
+                  "未记录"
+                )}
+              </Fact>
+              <Fact name="日历缓存有效期至（北京时间）">
+                {formatBeijingTime(refresh?.cache_valid_until, "未记录")}
+              </Fact>
+              <Fact name="下次日历刷新（北京时间）">
+                {formatBeijingTime(refresh?.next_refresh_at, "未记录")}
+              </Fact>
+            </dl>
             {!data.enabled && <p>策略已暂停。</p>}
             {refresh?.refresh_mode === "fallback" ? (
               <p role="status">
