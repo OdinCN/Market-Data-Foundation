@@ -84,7 +84,7 @@ class JoltsTimeSeriesHost(TimeSeriesHost):
             "release_records": {
                 "supported": True,
                 "local_only": True,
-                "material_scope": "national JOLTS archive; partial narrative claims",
+                "material_scope": "national JOLTS archive; event scope only",
             },
             "periodic_policy": POLICY,
             "baskets": [],

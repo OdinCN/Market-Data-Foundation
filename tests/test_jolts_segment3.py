@@ -128,10 +128,9 @@ def test_material_identity_partial_and_no_rounded_level_claims():
     doc = parse_material(RAW, URL, "jolts")
     assert doc["reference_month"] == "2026-09"
     assert doc["actual_at"] is None and doc["surprise"] is None
-    assert doc["claims"][0]["series_id"] == OPENINGS_RATE
-    assert doc["claims"][0]["value"] == "4.3"
-    assert len(doc["missing_scopes"]) == 7
-    assert doc["claims"][0]["continuous_version"] is None
+    assert doc["claims"] == []
+    assert len(doc["missing_scopes"]) == 8
+    assert "jolts_narrative_numeric_scope_not_verified" in doc["missing"]
     for raw, url in (
         (RAW.replace(b"TURNOVER -", b"TURNOVER STATE -"), URL),
         (RAW, URL.replace("11032026", "11042026")),
@@ -139,6 +138,36 @@ def test_material_identity_partial_and_no_rounded_level_claims():
     ):
         with pytest.raises(CpiTimeSeriesError):
             parse_material(raw, url, "jolts")
+
+
+@pytest.mark.parametrize(
+    "narrative",
+    [
+        b"Not seasonally adjusted. The job openings rate was at 4.3 percent.",
+        b"Seasonally adjusted. The job openings rate was at 4.3 percent in August.",
+        b"Seasonally adjusted. The job openings rate was at 4.3 percent "
+        b"in September 2025.",
+        b"Seasonally adjusted. In manufacturing, the job openings rate "
+        b"was at 4.3 percent.",
+        b"Seasonally adjusted. In the Northeast, the job openings rate "
+        b"was at 4.3 percent.",
+        b"Seasonally adjusted. <h2>State estimates</h2>"
+        b"The job openings rate was at 4.3 percent.",
+        b"Seasonally adjusted. <table><tr><td>The job openings rate "
+        b"was at 4.3 percent.</td></tr></table>",
+        b"Seasonally adjusted. <h2>Revisions</h2>"
+        b"The job openings rate was at 4.3 percent.",
+    ],
+)
+def test_material_unverified_numeric_scopes_remain_scope_only(narrative):
+    header = RAW[: RAW.index(b"<p>Seasonally adjusted.")]
+    doc = parse_material(header + b"<p>" + narrative + b"</p>", URL, "jolts")
+    assert doc["reference_month"] == "2026-09"
+    assert doc["event_id"] == "bls:jolts:2026-11-03"
+    assert doc["claims"] == []
+    assert len(doc["missing_scopes"]) == 8
+    assert {scope["adjustment"] for scope in doc["missing_scopes"]} == {"sa"}
+    assert {scope["reference_month"] for scope in doc["missing_scopes"]} == {"2026-09"}
 
 
 def test_release_records_cutoff_and_read_get_no_effects(setup):
@@ -149,7 +178,14 @@ def test_release_records_cutoff_and_read_get_no_effects(setup):
     saved = repo.import_material(RAW, URL, material_format="original_http_body")
     before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
     with client(app) as http:
-        assert http.get(PREFIX + "/releases").json()["events"]
+        event = http.get(PREFIX + "/releases").json()["events"][0]
+        assert event["claims"] == []
+        assert len(event["missing_scopes"]) == 8
+        assert event["state"] == "unknown"
+        assert (
+            "jolts_narrative_numeric_scope_not_verified"
+            in event["material_deficiencies"][0]["missing"]
+        )
         assert (
             http.get(
                 PREFIX + "/releases",

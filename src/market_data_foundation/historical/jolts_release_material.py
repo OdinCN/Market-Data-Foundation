@@ -1,4 +1,4 @@
-"""Conservative national JOLTS narrative evidence with explicit table gaps."""
+"""National JOLTS event scope; numeric claims await verified table mappings."""
 
 import re
 from datetime import date
@@ -8,7 +8,6 @@ from market_data_foundation.historical.jolts_contract import METRICS
 from market_data_foundation.historical.macro_release_material import (
     Material,
     _date,
-    claim,
     month,
 )
 
@@ -36,31 +35,11 @@ def parse_jolts_material(raw, url):
     embargo = material.text.lower().find("embargoed until")
     if embargo < 0 or _date(material.text[embargo : embargo + 500]) != released:
         raise CpiTimeSeriesError("release_archive_header_date_conflict")
+    # A document's national title/SA phrase cannot establish the scope of a
+    # particular number. Prose can describe NSA, earlier periods, industries or
+    # regions. Until a retained official table has a qualified mapping of its
+    # headers and cells, preserve event scope without manufacturing actuals.
     claims = []
-    # A rate is admitted only when an explicitly SA national narrative reports
-    # this exact named statistic. Rounded million-level prose is not a cell value.
-    if "seasonally adjusted" in material.text.lower():
-        for name, sid in (
-            ("job openings", "JOR"),
-            ("hires", "HIR"),
-            ("quits", "QUR"),
-            ("layoffs and discharges", "LDR"),
-        ):
-            pattern = (
-                r"(?:The\s+)?" + re.escape(name) + r" rate(?:,)?\s+"
-                r"(?:was\s+(?:unchanged\s+)?at\s+|at\s+)(\d+(?:\.\d+)?)\s+percent"
-            )
-            match = re.search(pattern, material.text, re.I)
-            if match:
-                claims.append(
-                    claim(
-                        "JTS000000000000000" + sid,
-                        "level",
-                        ref,
-                        match[1],
-                        {"kind": "official_narrative", "excerpt": match[0]},
-                    )
-                )
     scopes = [
         dict(
             series_id=m.series_id,
@@ -71,7 +50,6 @@ def parse_jolts_material(raw, url):
             reason="jolts_statistic_not_verified_in_material",
         )
         for m in METRICS
-        if m.series_id not in {c["series_id"] for c in claims}
     ]
     return dict(
         event_id="bls:jolts:" + released.isoformat(),
@@ -98,11 +76,12 @@ def parse_jolts_material(raw, url):
         missing=[
             "actual_publication_instant_not_proven",
             "jolts_statistical_tables_not_parsed",
+            "jolts_narrative_numeric_scope_not_verified",
             "official_previous_and_revised_values_not_verified",
             "continuous_version_not_bound_to_material",
             "consensus_source_unavailable",
         ],
-        parser_revision="national-jolts-narrative-v1",
+        parser_revision="national-jolts-scope-v2",
         consensus=None,
         surprise=None,
     )
