@@ -5,12 +5,13 @@ facts escape this module; provider messages, bodies, keys and URLs do not.
 """
 
 import json
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from urllib.parse import urlencode
 
 from market_data_foundation.canonical.model import ContractError
 from market_data_foundation.historical.bls_cpi_direct import ENDPOINT as BLS_ENDPOINT
 from market_data_foundation.historical.bls_cpi_direct_live import ExactOneHttpsTransport
+from market_data_foundation.historical.census_retail import _DECIMAL as CENSUS_DECIMAL
 from market_data_foundation.historical.census_retail import ENDPOINT as CENSUS_ENDPOINT
 from market_data_foundation.historical.census_retail_live import ExactCensusTransport
 from market_data_foundation.historical.claims_source import (
@@ -31,6 +32,42 @@ from market_data_foundation.historical.pce_timeseries_source import (
 )
 from market_data_foundation.source_request_policy import classify_source_exception
 from market_data_foundation.web.package_catalog import VerificationFacts
+
+
+def _valid_census_cell(doc):
+    # MARTS appends predicate dimensions already selected in get. The actual
+    # one-cell response repeats these four dimensions, with identical values.
+    targets = {
+        "time": "2025-01",
+        "category_code": "44X72",
+        "data_type_code": "SM",
+        "seasonally_adj": "yes",
+        "error_data": "no",
+        "us": "1",
+    }
+    if not isinstance(doc, list) or len(doc) != 2:
+        return False
+    header, row = doc
+    if (
+        not isinstance(header, list)
+        or not all(isinstance(field, str) for field in header)
+        or set(header) != {*targets, "cell_value"}
+        or not isinstance(row, list)
+        or len(row) != len(header)
+        or not all(isinstance(value, str) for value in row)
+    ):
+        return False
+    repeated = {"category_code", "data_type_code", "seasonally_adj", "error_data"}
+    for field in {*targets, "cell_value"}:
+        indices = [i for i, name in enumerate(header) if name == field]
+        if len(indices) not in ((1, 2) if field in repeated else (1,)):
+            return False
+        if any(row[i] != row[indices[0]] for i in indices):
+            return False
+        if field in targets and row[indices[0]] != targets[field]:
+            return False
+    value = row[header.index("cell_value")]
+    return CENSUS_DECIMAL.fullmatch(value) is not None and Decimal(value) > 0
 
 
 def response_facts(source, status, body):
@@ -105,23 +142,7 @@ def response_facts(source, status, body):
                 )
             )
     elif source == "Census":
-        if isinstance(doc, list) and len(doc) > 1 and isinstance(doc[0], list):
-            header = doc[0]
-            fields = {"cell_value", "time", "category_code", "data_type_code"}
-            if all(header.count(field) == 1 for field in fields):
-                positions = {field: header.index(field) for field in fields}
-                try:
-                    valid = all(
-                        isinstance(row, list)
-                        and len(row) == len(header)
-                        and row[positions["time"]] == "2025-01"
-                        and row[positions["category_code"]] == "44X72"
-                        and row[positions["data_type_code"]] == "SM"
-                        and Decimal(row[positions["cell_value"]]).is_finite()
-                        for row in doc[1:]
-                    )
-                except InvalidOperation, TypeError, ValueError:
-                    valid = False
+        valid = _valid_census_cell(doc)
         business_error = isinstance(doc, dict) and ("error" in doc or "errors" in doc)
     if business_error or not valid:
         return VerificationFacts(
@@ -130,13 +151,16 @@ def response_facts(source, status, body):
             reason="business_error" if business_error else "response_invalid",
         )
     # BEA GetDatasetList requires a valid UserID (official API guide).
-    # Census also requires a key; this probe conservatively leaves its
-    # authentication conclusion unknown. BLS success alone is insufficient.
+    # Census requires a key (official MARTS examples); only a valid requested
+    # numeric cell, obtained with the saved key, establishes confirmation.
+    # BLS success alone is insufficient.
     return VerificationFacts(
         request_status="succeeded",
         http_status=200,
         reason="request_succeeded",
-        authentication="confirmed" if source in {"FRED", "BEA"} else "unknown",
+        authentication="confirmed"
+        if source in {"FRED", "BEA", "Census"}
+        else "unknown",
     )
 
 

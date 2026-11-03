@@ -25,6 +25,27 @@ VERIFY = PATH + "/sources/FRED/verify"
 FIRST, SECOND = "synthetic-fred-first", "synthetic-fred-second"
 
 
+CENSUS_HEADER = [
+    "data_type_code",
+    "seasonally_adj",
+    "category_code",
+    "cell_value",
+    "error_data",
+    "time",
+    "us",
+]
+CENSUS_ROW = ["SM", "yes", "44X72", "623148", "no", "2025-01", "1"]
+
+
+def census_body(header=None, row=None):
+    return json.dumps(
+        [
+            CENSUS_HEADER if header is None else header,
+            CENSUS_ROW if row is None else row,
+        ]
+    ).encode()
+
+
 def save(http, revision, value=FIRST):
     return http.put(
         PATH,
@@ -191,10 +212,9 @@ def test_verification_competing_save_and_legacy_change_never_publish_old_success
         (
             "Census",
             200,
-            b'[["cell_value","time","category_code","data_type_code"],'
-            b'["1","2025-01","44X72","SM"]]',
+            census_body(),
             "request_succeeded",
-            "unknown",
+            "confirmed",
         ),
         (
             "BLS",
@@ -478,15 +498,12 @@ def test_census_non_success_never_establishes_authentication(status, reason):
     [("623148", True), ("NaN", False), ("suppressed", False), (None, False)],
 )
 def test_census_requires_actual_matching_numeric_cell(value, valid):
-    body = json.dumps(
-        [
-            ["cell_value", "time", "category_code", "data_type_code"],
-            [value, "2025-01", "44X72", "SM"],
-        ]
-    ).encode()
+    row = CENSUS_ROW.copy()
+    row[CENSUS_HEADER.index("cell_value")] = value
+    body = census_body(row=row)
     result = response_facts("Census", 200, body)
     assert (result.request_status == "succeeded") is valid
-    assert result.authentication == "unknown"
+    assert result.authentication == ("confirmed" if valid else "unknown")
 
 
 @pytest.mark.parametrize(
@@ -540,10 +557,7 @@ def test_census_verifier_one_shared_admission_exact_numeric_query(
         retail_request_control=control,
         packages=SimpleNamespace(timeseries_hosts={"retail": host}),
     )
-    body = (
-        b'[["cell_value","time","category_code","data_type_code"],'
-        b'["623148","2025-01","44X72","SM"]]'
-    )
+    body = census_body()
     exchange = Mock(
         side_effect=TimeoutError("synthetic private timeout")
         if status is None
@@ -553,7 +567,8 @@ def test_census_verifier_one_shared_admission_exact_numeric_query(
     monkeypatch.setattr(module.ExactCensusTransport, "get", exchange)
     module.bind_source_verifier(runtime, None)
     result = runtime.packages.source_verifier("Census", FIRST, None)
-    assert result.reason == reason and result.authentication == "unknown"
+    assert result.reason == reason
+    assert result.authentication == ("confirmed" if status == 200 else "unknown")
     assert exchange.call_count == 1
     params = exchange.call_args.args[1]
     assert params == {
@@ -574,3 +589,90 @@ def test_census_verifier_one_shared_admission_exact_numeric_query(
         len(json.loads((tmp_path / "census-control.json").read_text())["requests"]) == 1
     )
     assert FIRST not in result.model_dump_json()
+
+
+def duplicated_census_cell():
+    header, row = CENSUS_HEADER.copy(), CENSUS_ROW.copy()
+    for field in ("category_code", "data_type_code", "seasonally_adj", "error_data"):
+        header.append(field)
+        row.append(row[CENSUS_HEADER.index(field)])
+    return header, row
+
+
+def test_census_actual_observed_duplicate_shape_and_permuted_columns_are_valid():
+    header, row = duplicated_census_cell()
+    assert len(header) == len(row) == 11
+    for h, r in ((header, row), (list(reversed(header)), list(reversed(row)))):
+        facts = response_facts("Census", 200, census_body(h, r))
+        assert (
+            facts.request_status == "succeeded" and facts.authentication == "confirmed"
+        )
+
+
+@pytest.mark.parametrize(
+    "field", ["category_code", "data_type_code", "seasonally_adj", "error_data"]
+)
+def test_census_each_conflicting_duplicate_dimension_is_rejected(field):
+    header, row = duplicated_census_cell()
+    row[len(header) - 1 - list(reversed(header)).index(field)] = "synthetic-conflict"
+    facts = response_facts("Census", 200, census_body(header, row))
+    assert facts.reason == "response_invalid" and facts.authentication == "unknown"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("time", "2024-01"),
+        ("category_code", "441"),
+        ("data_type_code", "MPCSM"),
+        ("seasonally_adj", "no"),
+        ("error_data", "yes"),
+        ("us", "2"),
+        ("cell_value", ""),
+        ("cell_value", "NaN"),
+        ("cell_value", "0"),
+        ("cell_value", "-1"),
+        ("cell_value", True),
+    ],
+)
+def test_census_wrong_numeric_scope_or_unavailable_value_never_confirms(field, value):
+    row = CENSUS_ROW.copy()
+    row[CENSUS_HEADER.index(field)] = value
+    facts = response_facts("Census", 200, census_body(row=row))
+    assert facts.reason == "response_invalid" and facts.authentication == "unknown"
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "short_row",
+        "extra_row",
+        "empty_row",
+        "extra_field",
+        "duplicate_cell",
+        "duplicate_time",
+        "triple_dimension",
+    ],
+)
+def test_census_ambiguous_columns_and_rows_are_rejected(case):
+    header, row = duplicated_census_cell()
+    if case == "short_row":
+        row.pop()
+    elif case == "extra_field":
+        header.append("unknown")
+        row.append("synthetic")
+    elif case in {"duplicate_cell", "duplicate_time", "triple_dimension"}:
+        field = {
+            "duplicate_cell": "cell_value",
+            "duplicate_time": "time",
+            "triple_dimension": "category_code",
+        }[case]
+        header.append(field)
+        row.append(row[CENSUS_HEADER.index(field)])
+    body = json.loads(census_body(header, row))
+    if case == "extra_row":
+        body.append(row.copy())
+    elif case == "empty_row":
+        body[1] = []
+    facts = response_facts("Census", 200, json.dumps(body).encode())
+    assert facts.reason == "response_invalid" and facts.authentication == "unknown"
