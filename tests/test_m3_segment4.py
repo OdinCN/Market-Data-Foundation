@@ -65,23 +65,9 @@ def test_job_resume_uses_same_collection_and_keeps_coverage_separate(tmp_path):
         "end": "2025-09",
     }
     first = h.submit(command)
-    assert (
-        first["state"] == "failed" and first["classification"] == "m3_resume_required"
-    )
-    assert (
-        first["result"]["remaining_requests"] == 9
-        and first["result"]["provider_requests"] == 6
-    )
-    first_collection = first["collection_id"]
-    second = h.submit(command, resume=True)
-    assert (
-        second["collection_id"] == first_collection
-        and second["result"]["remaining_requests"] == 3
-    )
-    third = h.submit(command, resume=True)
-    assert third["state"] == "complete" and third["result"]["remaining_requests"] == 0
-    assert third["result"]["readback"]["verified"] and len(wire.calls) == 15
-    assert h.submit(command, resume=True) == third and len(wire.calls) == 15
+    assert first["state"] == "complete" and first["result"]["remaining_requests"] == 0
+    assert first["result"]["readback"]["verified"] and len(wire.calls) == 15
+    assert h.submit(command, resume=True) == first and len(wire.calls) == 15
     assert len(h.executions()["executions"]) == 1
 
 

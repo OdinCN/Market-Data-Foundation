@@ -44,7 +44,7 @@ def check(condition, reason):
 
 @dataclass(frozen=True)
 class M3Request:
-    """Two months maximum; slot is selected in get, never a guessed predicate."""
+    """Bounded historical range; slot is selected in get, never a predicate."""
 
     dataset: Dataset
     category_code: Literal["MDM", "NXA"]
@@ -65,7 +65,7 @@ class M3Request:
             first, last = month_number(self.start_month), month_number(self.end_month)
         except Exception:
             raise ContractError("census_m3_month_invalid") from None
-        check(0 <= last - first <= 1, "month_window_invalid")
+        check(0 <= last - first < 240, "month_window_invalid")
         check((self.category_code, self.data_type_code) in SERIES, "type_invalid")
 
     @property

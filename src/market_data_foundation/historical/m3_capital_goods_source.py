@@ -15,6 +15,7 @@ from market_data_foundation.historical.census_retail_live import (
     HttpResult,
     _response_headers,
 )
+from market_data_foundation.historical.cpi_request_control import CpiRequestControlError
 from market_data_foundation.historical.m3_capital_goods import (
     MAX_RESPONSE_BYTES,
     QUALIFICATION,
@@ -40,10 +41,11 @@ ENDPOINTS = frozenset(
 
 
 class M3SourceError(RuntimeError):
-    def __init__(self, classification, attempts=0, http_status=None):
+    def __init__(self, classification, attempts=0, http_status=None, retry_at=None):
         self.classification = classification
         self.attempts = attempts
         self.http_status = http_status
+        self.retry_at = retry_at
         super().__init__(classification)
 
 
@@ -121,7 +123,7 @@ class M3CandidateSource:
         check(self._enabled is True, "explicit_opt_in_required")
         check(type(request) is M3Request, "request_invalid")
         check(type(timeout) in (int, float) and 0 < timeout <= 20, "timeout_invalid")
-        attempts, status = 0, None
+        attempts, status, retry_at = 0, None, None
         try:
             key = self._credential_loader()
             check(
@@ -145,9 +147,14 @@ class M3CandidateSource:
                     "http_result_invalid",
                 )
                 status = result.status
-                admission.record_response(status, result.headers)
+                retry_at = admission.record_response(status, result.headers)
             if status != 200:
-                raise M3SourceError("census_m3_http_failure", attempts, status)
+                raise M3SourceError(
+                    "census_m3_http_failure",
+                    attempts,
+                    status,
+                    retry_at.isoformat() if retry_at else None,
+                )
             check(
                 result.headers.get("content-type", "").split(";", 1)[0].lower()
                 == "application/json"
@@ -160,6 +167,15 @@ class M3CandidateSource:
             )
         except M3SourceError:
             raise
+        except CpiRequestControlError as error:
+            raise M3SourceError(
+                "census_m3_rate_wait"
+                if error.retry_at
+                else "census_m3_request_control_unknown",
+                attempts,
+                error.http_status,
+                error.retry_at.isoformat() if error.retry_at else None,
+            ) from None
         except Exception as error:
             if isinstance(error, ContractError):
                 classification = "response_contract_invalid"
@@ -188,7 +204,7 @@ def qualify_candidate(source, request, *, artifact_directory: Path, allow_live=F
         symbols,
         date.fromisoformat(request.start_month + "-01"),
         date.fromisoformat(request.end_month + "-01"),
-        2,
+        len(request.months),
         {"qualification": QUALIFICATION, "stage": request.report_stage},
     )
     binding = Binding(

@@ -171,7 +171,16 @@ class M3ProductHost(M3QueryHost):
         if not self.allow_read:
             raise WebError("local_read_not_authorized", 403)
         validate_command(command, 2400, profile=M3_PROFILE)
-        old = self.journal.read(command["request_id"])
+        # The shared journal distinguishes a live execution lock from an
+        # interrupted running record; explicit recovery must use that view.
+        old = next(
+            (
+                j
+                for j in self.journal.list()
+                if j["request_id"] == command["request_id"]
+            ),
+            None,
+        )
         if old:
             if any(old.get(k) != v for k, v in command.items()):
                 raise WebError("request_id_conflict", 409)
@@ -218,12 +227,21 @@ class M3ProductHost(M3QueryHost):
                     on_started(dict(job))
                 service = self.write_factory(credential_loader=credential_loader)
                 try:
+
+                    def progress(value):
+                        job["result"] = {
+                            **value,
+                            "completion": "collection_in_progress",
+                        }
+                        self.journal.save(job)
+
                     written = service.collect_range(
                         command["start"],
                         command["end"],
                         dataset="m3",
                         confirm_write=True,
                         resume_id=job["collection_id"],
+                        on_progress=progress,
                     )
                     readback = service.query_range(
                         command["start"], command["end"], dataset="m3"
@@ -243,12 +261,24 @@ class M3ProductHost(M3QueryHost):
                     and readback["provider_requests"] == 0
                 )
                 missing = written["missing"]
+                waiting = bool(
+                    written["source_failure"]
+                    and written["source_failure"].get("retry_at")
+                )
                 job.update(
-                    state="complete" if done and verified else "failed",
+                    state="complete"
+                    if done and verified
+                    else "waiting"
+                    if waiting
+                    else "failed",
                     classification=None
                     if done and verified
                     else "m3_storage_outcome_unknown"
                     if written["storage_failure"]
+                    else "m3_source_wait"
+                    if waiting
+                    else "m3_source_failed"
+                    if written["source_failure"]
                     else "m3_resume_required",
                     result={
                         **written,
@@ -259,7 +289,9 @@ class M3ProductHost(M3QueryHost):
                             "official_null": 0,
                             "missing": len(missing),
                         },
-                        "completion": "source_coverage_partial"
+                        "completion": "collection_pending"
+                        if written["remaining_requests"]
+                        else "source_coverage_partial"
                         if missing
                         else "local_readback_verified",
                         "event_binding_status": "unconfirmed",
@@ -268,7 +300,7 @@ class M3ProductHost(M3QueryHost):
                             "point_count": written["readback_points"],
                             "expected_points": readback["coverage"]["expected"],
                             "missing": missing,
-                            "source_missing": missing,
+                            "source_missing": written["source_missing"],
                             "source_unavailable": [],
                             "source_unavailable_count": 0,
                         },

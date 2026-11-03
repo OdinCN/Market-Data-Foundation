@@ -465,7 +465,7 @@ function CpiTimeSeriesCollectionContent({
       <p>
         共 {profile.series.length} 种口径一起采集。
         {profile.id === "m3"
-          ? "本次最多执行六个来源分片；如未完成，请使用原请求继续。"
+          ? "历史按已验证的最多240个月窗口逐指标获取，后台推进并持久记录进度；实际错误可按原请求恢复。"
           : "长范围由后端自动分批，无需手动拆分。"}
       </p>
       <details>
@@ -704,7 +704,8 @@ function CpiTimeSeriesCollectionContent({
                   </dl>
                 </button>
                 {(profile.id === "retail" || profile.id === "m3") &&
-                  ["failed", "unknown"].includes(job.state) && (
+                  (["failed", "unknown"].includes(job.state) ||
+                    (profile.id === "m3" && job.state === "waiting")) && (
                     <button
                       disabled={busy || !enabled || !confirmed}
                       onClick={() => void resumeJob(job)}

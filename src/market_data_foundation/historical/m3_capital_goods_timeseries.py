@@ -22,7 +22,9 @@ from market_data_foundation.historical.m3_capital_goods_store import (
     _rows,
 )
 
-MAX_SOURCE_REQUESTS = 6
+MAX_QUERY_SOURCE_REQUESTS = 6
+COLLECTION_WINDOW_MONTHS = 240
+MAX_COLLECTION_REQUESTS = 3600
 QUERY_SOURCE_BUDGET_SECONDS = 15.0
 
 
@@ -32,10 +34,10 @@ def _months(start, end):
     return tuple(month_at(n) for n in range(first, last + 1))
 
 
-def _planned_requests(dataset, months, indexed, series_ids=SERIES_IDS):
-    """Bound each provider request to two adjacent months and one series."""
-    for offset in range(0, len(months), 2):
-        window = months[offset : offset + 2]
+def _planned_requests(dataset, months, indexed, series_ids=SERIES_IDS, window_months=2):
+    """Query windows stay small; collection uses verified bounded historical windows."""
+    for offset in range(0, len(months), window_months):
+        window = months[offset : offset + window_months]
         for (category, kind), series in SERIES.items():
             if series not in series_ids:
                 continue
@@ -52,6 +54,8 @@ def _failure(error, request):
     # Provider text, URLs, credentials and exception messages are never exposed.
     accepted = {
         "census_m3_http_failure",
+        "census_m3_rate_wait",
+        "census_m3_request_control_unknown",
         "census_m3_timeout",
         "census_m3_transport_failure",
         "census_m3_protocol_failure",
@@ -79,6 +83,7 @@ def _failure(error, request):
         classification, status, attempts = "census_m3_source_failure", None, None
     return {
         "classification": classification,
+        "retry_at": getattr(error, "retry_at", None),
         "http_status": status,
         "attempts": attempts,
         "series_id": SERIES[(request.category_code, request.data_type_code)],
@@ -87,17 +92,25 @@ def _failure(error, request):
     }
 
 
-def _bound(value):
+def _bound(value, maximum=MAX_QUERY_SOURCE_REQUESTS):
     check(
-        type(value) is int and 1 <= value <= MAX_SOURCE_REQUESTS,
+        type(value) is int and 1 <= value <= maximum,
         "source_request_budget_invalid",
     )
     return value
 
 
 class M3TimeSeriesService:
-    def __init__(self, store, source=None):
+    def __init__(
+        self, store, source=None, *, collection_window_months=COLLECTION_WINDOW_MONTHS
+    ):
         self.store, self.source = store, source
+        check(
+            type(collection_window_months) is int
+            and 1 <= collection_window_months <= COLLECTION_WINDOW_MONTHS,
+            "collection_window_invalid",
+        )
+        self.collection_window_months = collection_window_months
 
     def fetch_batch(self, dataset, start, end):
         check(self.source is not None, "source_not_bound")
@@ -115,12 +128,13 @@ class M3TimeSeriesService:
         *,
         dataset="m3",
         confirm_write=False,
-        max_source_requests=MAX_SOURCE_REQUESTS,
+        max_source_requests=MAX_COLLECTION_REQUESTS,
         resume_id=None,
+        on_progress=None,
     ):
         """Revalidate all inputs unless resuming the same collection."""
         check(confirm_write is True, "explicit_write_opt_in_required")
-        _bound(max_source_requests)
+        _bound(max_source_requests, MAX_COLLECTION_REQUESTS)
         M3Request(dataset, "MDM", start, start)
         months = _months(start, end)
         collection_id = str(uuid4()) if resume_id is None else resume_id
@@ -131,11 +145,7 @@ class M3TimeSeriesService:
         except TypeError, ValueError, AttributeError:
             valid_id = False
         check(valid_id, "collection_id_invalid")
-        planned = list(_planned_requests(dataset, months, {}))
-        planned_by_key = {
-            (r.category_code, r.data_type_code, r.start_month, r.end_month): r
-            for r in planned
-        }
+        completed_targets = set()
         completed_keys, completed, confirmed_points = set(), [], 0
         storage_failure = None
         from market_data_foundation.historical.m3_capital_goods_store import _same
@@ -155,14 +165,21 @@ class M3TimeSeriesService:
                 meta.get("fragment_end"),
             )
             check(
-                key in planned_by_key
-                and type(meta.get("confirmed")) is bool
+                type(meta.get("confirmed")) is bool
                 and type(meta.get("expected")) is list,
                 "collection_progress_invalid",
             )
-            request = planned_by_key[key]
+            request = M3Request(dataset, key[0], key[2], key[3], key[1])
+            check(
+                start <= request.start_month <= request.end_month <= end,
+                "collection_progress_invalid",
+            )
             expected = meta["expected"]
             series = SERIES[(request.category_code, request.data_type_code)]
+            check(
+                not completed_targets.intersection((series, m) for m in request.months),
+                "collection_progress_overlap",
+            )
             check(
                 len(expected) == len(request.months)
                 and all(
@@ -205,13 +222,32 @@ class M3TimeSeriesService:
                     storage_failure = "census_m3_storage_outcome_unknown"
                     break
             completed_keys.add(key)
+            completed_targets.update((series, month) for month in request.months)
             completed.append(batch_id)
-        plan = [
-            r
-            for r in planned
-            if (r.category_code, r.data_type_code, r.start_month, r.end_month)
-            not in completed_keys
-        ]
+        # Subtract this collection's confirmed fragments, not unrelated local values.
+        # Uncovered contiguous months bridge old fragments and new wide batches.
+        plan = []
+        for (category, kind), series in SERIES.items():
+            pending = [m for m in months if (series, m) not in completed_targets]
+            windows = []
+            for month in pending:
+                if (
+                    not windows
+                    or len(windows[-1]) >= self.collection_window_months
+                    or month_number(month) != month_number(windows[-1][-1]) + 1
+                ):
+                    windows.append([])
+                windows[-1].append(month)
+            plan.extend(
+                M3Request(dataset, category, w[0], w[-1], kind) for w in windows
+            )
+        plan.sort(
+            key=lambda r: (
+                r.start_month,
+                tuple(SERIES).index((r.category_code, r.data_type_code)),
+            )
+        )
+        planned_count = len(completed_keys) + len(plan)
         attempts = calls = saved_points = saved_revisions = 0
         failure = None
         for request in [] if storage_failure else plan[:max_source_requests]:
@@ -245,8 +281,25 @@ class M3TimeSeriesService:
                     request.end_month,
                 )
             )
+            completed_targets.update(
+                (SERIES[(request.category_code, request.data_type_code)], m)
+                for m in request.months
+            )
             saved_points += receipt["saved_points"]
             saved_revisions += receipt["saved_revisions"]
+            if on_progress:
+                on_progress(
+                    {
+                        "phase": "collecting",
+                        "completed_requests": len(completed_keys),
+                        "remaining_requests": planned_count - len(completed_keys),
+                        "requested_points": len(completed_targets),
+                        "expected_points": len(months) * len(SERIES_IDS),
+                        "provider_requests": calls,
+                        "saved_points": saved_points,
+                        "saved_revisions": saved_revisions,
+                    }
+                )
         try:
             after = self.store.read_range(dataset, start, end)
             readback = "confirmed"
@@ -257,16 +310,38 @@ class M3TimeSeriesService:
         present = {
             (r["series_id"], r["month"]) for r in after if r["value"] is not None
         }
+        after_keys = {(r["series_id"], r["month"]) for r in after}
+        if completed_targets - after_keys:
+            storage_failure = "census_m3_storage_outcome_unknown"
+            readback = "incomplete"
+
+        def pending_reason(series, month):
+            return (
+                "source_request_failed"
+                if failure
+                and failure["series_id"] == series
+                and failure["start_month"] <= month <= failure["end_month"]
+                else "not_requested"
+            )
+
         missing = [
-            {"series_id": s, "month": m}
+            {
+                "series_id": s,
+                "month": m,
+                "reason": "storage_readback_missing"
+                if (s, m) in completed_targets and (s, m) not in after_keys
+                else "source_unavailable"
+                if (s, m) in completed_targets
+                else pending_reason(s, m),
+            }
             for m in months
             for s in SERIES_IDS
             if (s, m) not in present
         ]
-        remaining = len(planned) - len(completed_keys)
+        remaining = planned_count - len(completed_keys)
         return {
             "status": "complete"
-            if not remaining and not missing and not storage_failure
+            if not remaining and not storage_failure and not failure
             else "partial",
             "collection_id": collection_id,
             "saved_points": saved_points,
@@ -277,6 +352,22 @@ class M3TimeSeriesService:
             "completed_batches": completed,
             "remaining_requests": remaining,
             "missing": missing,
+            "source_missing": [
+                r for r in missing if r["reason"] == "source_unavailable"
+            ],
+            "pending": [
+                {
+                    "series_id": series,
+                    "month": month,
+                    "reason": pending_reason(series, month),
+                }
+                for series in SERIES_IDS
+                for month in months
+                if (series, month) not in completed_targets
+            ],
+            "requested_points": len(completed_targets),
+            "planned_requests": planned_count,
+            "completed_requests": len(completed_keys),
             "source_failure": failure,
             "storage_failure": storage_failure,
             "readback_status": readback,
@@ -358,9 +449,9 @@ class M3TimeSeriesService:
         budget_exhausted = False
         if allow_upstream:
             plan = list(_planned_requests(dataset, months, indexed, series_ids))
-            budget_exhausted = len(plan) > MAX_SOURCE_REQUESTS
+            budget_exhausted = len(plan) > MAX_QUERY_SOURCE_REQUESTS
             deadline = time.monotonic() + QUERY_SOURCE_BUDGET_SECONDS
-            for request in plan[:MAX_SOURCE_REQUESTS]:
+            for request in plan[:MAX_QUERY_SOURCE_REQUESTS]:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0.1:
                     budget_exhausted = True

@@ -69,6 +69,7 @@ export function cpiExecutionStateText(
   _profile: MacroProfile = CPI_PROFILE,
   scope: { start?: string | null; end?: string | null } = {},
 ) {
+  if (_profile.id === "m3" && state === "waiting") return "等待来源准入";
   if (_profile.id === "claims") {
     const data = (result?.result ?? result) as Record<string, unknown> | null;
     const c = data?.coverage as Record<string, number> | undefined;
@@ -361,6 +362,45 @@ export function CpiExecutionDetail({
   return (
     <>
       <h3>执行详情</h3>
+      {profile.id === "m3" && result && (
+        <dl>
+          <Fact name="已确认来源分片">
+            {String(result.completed_requests ?? "未记录")}
+          </Fact>
+          <Fact name="待请求分片">
+            {String(result.remaining_requests ?? "未记录")}
+          </Fact>
+          {!!result.source_failure &&
+            typeof result.source_failure === "object" &&
+            !!(result.source_failure as Record<string, unknown>).retry_at && (
+              <Fact name="来源准入重试时间（北京时间）">
+                {formatBeijingTime(
+                  String(
+                    (result.source_failure as Record<string, unknown>).retry_at,
+                  ),
+                )}
+              </Fact>
+            )}
+          <Fact name="已确认请求点数">
+            {String(result.requested_points ?? "未记录")}
+          </Fact>
+          {Array.isArray(result.pending) && (
+            <Fact name="尚未确认请求的指标月">
+              {String(result.pending.length)}
+            </Fact>
+          )}
+          {!!result.source_failure && (
+            <Fact name="来源状态">
+              {typeof result.source_failure === "object"
+                ? String(
+                    (result.source_failure as Record<string, unknown>)
+                      .classification ?? "来源请求失败",
+                  )
+                : "来源请求失败"}
+            </Fact>
+          )}
+        </dl>
+      )}
       {material && (
         <section aria-label="发布材料执行结果">
           <h4>发布材料</h4>

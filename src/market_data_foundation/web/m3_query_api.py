@@ -346,7 +346,10 @@ def timeseries_router(host):
                     "worker": "explicit CLI process only",
                 },
                 "collection": (
-                    "Manual bounded fragments; resume uses same collection ID."
+                    "Background historical windows up to 240 months per indicator; "
+                    "progress is durable. Scheduled work is not failure. "
+                    "Recovery retains the same collection ID. "
+                    "Source gaps and unrequested targets are distinct."
                 ),
             }
         except Exception as error:

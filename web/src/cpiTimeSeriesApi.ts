@@ -595,7 +595,13 @@ export type CpiJobIntent =
   MacroPaths["/api/r5/cpi/timeseries/jobs"]["post"]["requestBody"]["content"]["application/json"];
 export type CpiJob = CpiJobIntent & {
   job_id: string;
-  state: "running" | "complete" | "failed" | "unknown" | "cancelled";
+  state:
+    | "running"
+    | "complete"
+    | "failed"
+    | "unknown"
+    | "cancelled"
+    | "waiting";
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -641,7 +647,8 @@ export function validJob(
     uuidValid(job.request_id) &&
     ["init", "initialize", "update"].includes(job.action) &&
     rangeValid(job.start, job.end) &&
-    ["running", "complete", "failed", "unknown"].includes(job.state) &&
+    (["running", "complete", "failed", "unknown"].includes(job.state) ||
+      (profile.id === "m3" && job.state === "waiting")) &&
     Number.isFinite(Date.parse(job.created_at)) &&
     [job.started_at, job.finished_at].every(
       (v) =>

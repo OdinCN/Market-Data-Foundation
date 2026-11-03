@@ -53,7 +53,7 @@ class Wire:
 def service():
     wire = Wire()
     store = InMemoryM3Store(Raw(), clock=lambda: wire.at + timedelta(seconds=1))
-    return M3TimeSeriesService(store, wire), wire
+    return M3TimeSeriesService(store, wire, collection_window_months=2), wire
 
 
 def test_cross_year_partial_collection_resumes_only_missing_without_refetch():
@@ -86,15 +86,25 @@ def test_cross_year_partial_collection_resumes_only_missing_without_refetch():
 
 def test_long_collection_is_bounded_and_resumable_in_subsequent_calls():
     s, wire = service()
-    first = s.collect_range("2023-11", "2024-08", confirm_write=True)
+    first = s.collect_range(
+        "2023-11", "2024-08", confirm_write=True, max_source_requests=6
+    )
     assert first["provider_requests"] == 6 and first["budget_exhausted"]
     assert first["saved_points"] == 12 and len(first["missing"]) == 18
     second = s.collect_range(
-        "2023-11", "2024-08", confirm_write=True, resume_id=first["collection_id"]
+        "2023-11",
+        "2024-08",
+        confirm_write=True,
+        max_source_requests=6,
+        resume_id=first["collection_id"],
     )
     assert second["provider_requests"] == 6 and second["budget_exhausted"]
     third = s.collect_range(
-        "2023-11", "2024-08", confirm_write=True, resume_id=first["collection_id"]
+        "2023-11",
+        "2024-08",
+        confirm_write=True,
+        max_source_requests=6,
+        resume_id=first["collection_id"],
     )
     assert third["provider_requests"] == 3 and third["status"] == "complete"
     assert len(s.store.rows) == 30
@@ -218,16 +228,26 @@ def test_new_update_fetches_existing_scope_and_records_only_actual_revision():
 
 def test_resume_survives_new_service_instance_and_checks_scope():
     s, wire = service()
-    first = s.collect_range("2023-11", "2024-08", confirm_write=True)
+    first = s.collect_range(
+        "2023-11", "2024-08", confirm_write=True, max_source_requests=6
+    )
     assert first["provider_requests"] == 6 and first["budget_exhausted"]
     restarted = M3TimeSeriesService(s.store, wire)
     second = restarted.collect_range(
-        "2023-11", "2024-08", confirm_write=True, resume_id=first["collection_id"]
+        "2023-11",
+        "2024-08",
+        confirm_write=True,
+        max_source_requests=6,
+        resume_id=first["collection_id"],
     )
-    assert second["provider_requests"] == 6
+    assert second["provider_requests"] == 3 and second["status"] == "complete"
     with pytest.raises(Exception, match="collection_scope_mismatch"):
         restarted.collect_range(
-            "2023-11", "2024-07", confirm_write=True, resume_id=first["collection_id"]
+            "2023-11",
+            "2024-07",
+            confirm_write=True,
+            max_source_requests=6,
+            resume_id=first["collection_id"],
         )
 
 
