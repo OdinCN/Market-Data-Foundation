@@ -233,6 +233,8 @@ def parse_official_history(raw, *, profile=CPI_PROFILE):
     title = (
         "Employment Situation"
         if profile is EMPLOYMENT_PROFILE
+        else "Job Openings and Labor Turnover Survey"
+        if profile.key == "jolts"
         else "Consumer Price Index"
         if profile.key == "cpi"
         else "Producer Price Index"
@@ -310,6 +312,11 @@ def parse_official_ics(raw, *, profile=CPI_PROFILE, known_uids=()):
         if profile.key == "cpi"
         else {"employment situation"}
         if profile is EMPLOYMENT_PROFILE
+        else {
+            "job openings and labor turnover survey",
+            "job openings and labor turnover",
+        }
+        if profile.key == "jolts"
         else {"producer price index", "producer price indexes"}
     )
     if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_CALENDAR_BYTES:
@@ -421,7 +428,9 @@ def parse_official_ics(raw, *, profile=CPI_PROFILE, known_uids=()):
     return sorted(events.values(), key=lambda event: event["uid"])
 
 
-def _fetch_calendar(url, accept, *, title="CPI"):
+def _fetch_calendar(
+    url, accept, *, title="CPI", allowed_path=None, **transport_options
+):
     try:
         return fetch_bls_page(
             url,
@@ -431,7 +440,9 @@ def _fetch_calendar(url, accept, *, title="CPI"):
             },
             max_bytes=MAX_CALENDAR_BYTES,
             timeout=20,
-            allowed_path="/schedule/news_release/" + url.rsplit("/", 1)[1],
+            allowed_path=allowed_path
+            or "/schedule/news_release/" + url.rsplit("/", 1)[1],
+            **transport_options,
         )
     except BlsWebError as error:
         raise CpiScheduleError(
@@ -593,6 +604,8 @@ class CpiReleaseScheduler:
         self.calendar_title = (
             "Employment Situation"
             if profile is EMPLOYMENT_PROFILE
+            else "Job Openings and Labor Turnover Survey"
+            if profile.key == "jolts"
             else "Consumer Price Index"
             if profile.key == "cpi"
             else "Producer Price Index"

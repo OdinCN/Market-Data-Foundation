@@ -1,4 +1,5 @@
 import {
+  JOLTS,
   CLAIMS,
   GDP,
   assetTitle,
@@ -20,7 +21,8 @@ export type MacroProfile = Readonly<{
     | "retail"
     | "consumption"
     | "gdp"
-    | "claims";
+    | "claims"
+    | "jolts";
   label: string;
   provider: "BLS" | "BEA" | "Census" | "FRED";
   asset: Key;
@@ -285,4 +287,39 @@ export const CLAIMS_PROFILE: MacroProfile = Object.freeze({
   ] as const,
   historyNotice:
     "原机构 DOL-ETA，提供者 FRED。原生截止周为周六，初请与续请各有独立参考周。默认最近约52周可编辑；初始化20日历年可编辑，来源额外读取28天计算缓冲。Number计数不代表新增失业人数或跨周去重个人。官方四周均值独立于MDF本地四周均值；缺周不补零，首次捕获不代表官方首发。",
+});
+
+export const JOLTS_PROFILE: MacroProfile = Object.freeze({
+  id: "jolts",
+  label: "JOLTS",
+  provider: "BLS",
+  asset: JOLTS,
+  basePath: "/api/r5/jolts/timeseries",
+  series: [
+    [
+      "JTS000000000000000JOL",
+      "职位空缺 · 千岗位 · 月末存量",
+      "job_openings",
+      "sa",
+    ],
+    ["JTS000000000000000HIL", "招聘 · 千人次 · 月内流量", "hires", "sa"],
+    ["JTS000000000000000QUL", "主动离职 · 千人次 · 月内流量", "quits", "sa"],
+    [
+      "JTS000000000000000LDL",
+      "裁员与解雇 · 千人次 · 月内流量",
+      "layoffs_discharges",
+      "sa",
+    ],
+    ["JTS000000000000000JOR", "职位空缺率 · %", "job_openings_rate", "sa"],
+    ["JTS000000000000000HIR", "招聘率 · %", "hires_rate", "sa"],
+    ["JTS000000000000000QUR", "主动离职率 · %", "quits_rate", "sa"],
+    [
+      "JTS000000000000000LDR",
+      "裁员与解雇率 · %",
+      "layoffs_discharges_rate",
+      "sa",
+    ],
+  ] as const,
+  historyNotice:
+    "全国非农合计、季调（SA）八项。数量为千岗位/千人次流量，流量不代表去重人数；职位空缺月末存量不可跨月求和。官方Rate已是percent（4.3即4.3%）；数量月差保留原单位，数量累计ratio按百分比展示，比率变化为百分点。零值有效，null与缺行不补零。初始化240月可编辑，实际覆盖以本地和来源返回为准。首次捕获不是官方首发；日历计划不当实际发布，连续版本未绑定官方事件。source_qualified=false：官方定义/方法与具名发布正文资格仍缺，网页403缺口保留。",
 });

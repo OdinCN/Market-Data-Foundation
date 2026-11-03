@@ -185,6 +185,9 @@ def test_default_is_actual_catalog_without_host_scope_or_network(monkeypatch):
         assert gdp["catalog_identities"] == ["mdf.source.bea.nipa.gdp-growth@r1"]
         claims = next(f for f in data["families"] if f["identity"] == "CLAIMS")
         assert claims["catalog_identities"] == ["mdf.source.fred.dol.claims@r1"]
+        jolts = next(f for f in data["families"] if f["identity"] == "JOLTS")
+        assert jolts["catalog_identities"] == ["mdf.source.bls.jolts@r1"]
+        assert jolts["qualification"] == "UNKNOWN"
         macro = {e["identity"] for e in data["entries"] if e["domain"] == "Macro"}
         linked = [
             identity for f in data["families"] for identity in f["catalog_identities"]

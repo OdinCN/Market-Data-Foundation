@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from market_data_foundation.historical.consumption_metadata import METADATA
+from market_data_foundation.historical.jolts_contract import METADATA as JOLTS_METADATA
 
 
 @dataclass(frozen=True)
@@ -300,6 +301,19 @@ CONSUMPTION_PROFILE = BlsTimeSeriesProfile(
 )
 
 
+JOLTS_PROFILE = BlsTimeSeriesProfile(
+    key="jolts",
+    label="JOLTS; US total nonfarm; seasonally adjusted; candidate metadata",
+    series_ids=tuple(s for s, _ in JOLTS_METADATA),
+    explicit_series_metadata=JOLTS_METADATA,
+    schema="mdf_jolts_timeseries_dev_r1",
+    raw_prefix="jolts-timeseries/dev-r1/sha256/",
+    earliest_month=None,
+    lock_id=78328741642028109,
+    rates_view="jolts_timeseries_rates",
+)
+
+
 def validate_profile(profile):
     """Only builtins may supply SQL identifiers, series and raw namespaces."""
     if all(
@@ -310,6 +324,7 @@ def validate_profile(profile):
             PCE_PROFILE,
             EMPLOYMENT_PROFILE,
             CONSUMPTION_PROFILE,
+            JOLTS_PROFILE,
         )
     ):
         raise ValueError("bls_timeseries_profile_invalid")

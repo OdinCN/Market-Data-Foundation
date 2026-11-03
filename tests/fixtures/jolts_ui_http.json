@@ -1,0 +1,329 @@
+{
+  "evidence": "synthetic real Host and HTTP serializer; no DEV data",
+  "query_wire": "{\"start_month\":\"2026-07\",\"end_month\":\"2026-08\",\"series_ids\":[\"JTS000000000000000JOL\",\"JTS000000000000000JOR\"],\"points\":[{\"series_id\":\"JTS000000000000000JOL\",\"month\":\"2026-07\",\"availability\":\"available\",\"provider_calculations\":{\"net_changes\":{\"1\":\"-0.1\"},\"pct_changes\":{\"1\":\"-2.3\"}},\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\",\"raw_locator\":\"mdf-s3://mdf-artifacts/jolts-timeseries/dev-r1/sha256/d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672/raw-response.bin\",\"revision\":1,\"available_at\":\"2026-11-03T00:00:00+00:00\",\"version_status\":\"active\",\"evidence_url\":null,\"origin\":\"local\",\"calculation_inputs\":{\"change_1m_level\":{\"numerator_month\":\"2026-07\",\"numerator_origin\":\"local\",\"denominator_month\":\"2026-06\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"100\"},\"change_1m_ratio\":{\"numerator_month\":\"2026-07\",\"numerator_origin\":\"local\",\"denominator_month\":\"2026-06\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"100\"},\"change_12m_ratio\":{\"numerator_month\":\"2026-07\",\"numerator_origin\":\"local\",\"denominator_month\":\"2025-07\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"100\"}},\"change_1m_level\":\"-100\",\"change_1m_ratio\":\"-1.0000\",\"change_12m_ratio\":\"-1.0000\",\"provider_status\":{\"preliminary\":true,\"revised\":null,\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"basis\":\"provider_footnotes_only\"},\"indicator\":\"job_openings\",\"statistic\":\"level\",\"value_unit\":\"thousand_jobs\",\"reference_basis\":\"last_business_day_stock\",\"rate_denominator\":null,\"provider\":\"BLS\",\"survey\":\"JOLTS\",\"geography\":\"US\",\"industry\":\"total_nonfarm\",\"seasonal_adjustment\":\"SA\",\"frequency\":\"monthly\",\"start_month\":null,\"evidence_start_month\":\"2000-12\",\"coverage_basis\":\"sampled_bls_api_not_catalog_native_start\",\"native_metadata_status\":\"native_report_verified_definitions_pending\",\"native_metadata_source_url\":\"https://data.bls.gov/pdq/SurveyOutputServlet\",\"value\":\"0\",\"mdf_first_captured\":{\"value\":\"0\",\"statistic\":\"level\",\"basis\":\"mdf_captured_provider_value\",\"as_of\":\"2026-11-03T00:00:00+00:00\",\"versions\":[{\"series_id\":\"JTS000000000000000JOL\",\"month\":\"2026-07\",\"revision\":1,\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"available_at\":\"2026-11-03T00:00:00+00:00\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\"}]},\"related_release_events\":[],\"publication_event\":null},{\"series_id\":\"JTS000000000000000JOL\",\"month\":\"2026-08\",\"availability\":\"available\",\"provider_calculations\":{\"net_changes\":{\"1\":\"-0.1\"},\"pct_changes\":{\"1\":\"-2.3\"}},\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\",\"raw_locator\":\"mdf-s3://mdf-artifacts/jolts-timeseries/dev-r1/sha256/d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672/raw-response.bin\",\"revision\":1,\"available_at\":\"2026-11-03T00:00:00+00:00\",\"version_status\":\"active\",\"evidence_url\":null,\"origin\":\"local\",\"calculation_inputs\":{\"change_1m_level\":{\"numerator_month\":\"2026-08\",\"numerator_origin\":\"local\",\"denominator_month\":\"2026-07\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"0\"},\"change_1m_ratio\":{\"numerator_month\":\"2026-08\",\"numerator_origin\":\"local\",\"denominator_month\":\"2026-07\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"0\"},\"change_12m_ratio\":{\"numerator_month\":\"2026-08\",\"numerator_origin\":\"local\",\"denominator_month\":\"2025-08\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"100\"}},\"change_1m_level\":\"100\",\"change_1m_ratio\":null,\"change_12m_ratio\":\"0.0000\",\"provider_status\":{\"preliminary\":true,\"revised\":null,\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"basis\":\"provider_footnotes_only\"},\"indicator\":\"job_openings\",\"statistic\":\"level\",\"value_unit\":\"thousand_jobs\",\"reference_basis\":\"last_business_day_stock\",\"rate_denominator\":null,\"provider\":\"BLS\",\"survey\":\"JOLTS\",\"geography\":\"US\",\"industry\":\"total_nonfarm\",\"seasonal_adjustment\":\"SA\",\"frequency\":\"monthly\",\"start_month\":null,\"evidence_start_month\":\"2000-12\",\"coverage_basis\":\"sampled_bls_api_not_catalog_native_start\",\"native_metadata_status\":\"native_report_verified_definitions_pending\",\"native_metadata_source_url\":\"https://data.bls.gov/pdq/SurveyOutputServlet\",\"value\":\"100\",\"mdf_first_captured\":{\"value\":\"100\",\"statistic\":\"level\",\"basis\":\"mdf_captured_provider_value\",\"as_of\":\"2026-11-03T00:00:00+00:00\",\"versions\":[{\"series_id\":\"JTS000000000000000JOL\",\"month\":\"2026-08\",\"revision\":1,\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"available_at\":\"2026-11-03T00:00:00+00:00\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\"}]},\"related_release_events\":[],\"publication_event\":null},{\"series_id\":\"JTS000000000000000JOR\",\"month\":\"2026-07\",\"availability\":\"available\",\"provider_calculations\":{\"net_changes\":{\"1\":\"-0.1\"},\"pct_changes\":{\"1\":\"-2.3\"}},\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\",\"raw_locator\":\"mdf-s3://mdf-artifacts/jolts-timeseries/dev-r1/sha256/d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672/raw-response.bin\",\"revision\":1,\"available_at\":\"2026-11-03T00:00:00+00:00\",\"version_status\":\"active\",\"evidence_url\":null,\"origin\":\"local\",\"calculation_inputs\":{\"change_1m_percentage_points\":{\"numerator_month\":\"2026-07\",\"numerator_origin\":\"local\",\"denominator_month\":\"2026-06\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"4.3\"},\"change_12m_percentage_points\":{\"numerator_month\":\"2026-07\",\"numerator_origin\":\"local\",\"denominator_month\":\"2025-07\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"4.3\"}},\"change_1m_percentage_points\":\"-0.1\",\"change_12m_percentage_points\":\"-0.1\",\"provider_status\":{\"preliminary\":true,\"revised\":null,\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"basis\":\"provider_footnotes_only\"},\"indicator\":\"job_openings\",\"statistic\":\"official_rate\",\"value_unit\":\"percent\",\"reference_basis\":\"last_business_day_stock\",\"rate_denominator\":\"employment_plus_job_openings\",\"provider\":\"BLS\",\"survey\":\"JOLTS\",\"geography\":\"US\",\"industry\":\"total_nonfarm\",\"seasonal_adjustment\":\"SA\",\"frequency\":\"monthly\",\"start_month\":null,\"evidence_start_month\":\"2000-12\",\"coverage_basis\":\"sampled_bls_api_not_catalog_native_start\",\"native_metadata_status\":\"native_report_verified_definitions_pending\",\"native_metadata_source_url\":\"https://data.bls.gov/pdq/SurveyOutputServlet\",\"value\":\"4.2\",\"mdf_first_captured\":{\"value\":\"4.2\",\"statistic\":\"level\",\"basis\":\"mdf_captured_provider_value\",\"as_of\":\"2026-11-03T00:00:00+00:00\",\"versions\":[{\"series_id\":\"JTS000000000000000JOR\",\"month\":\"2026-07\",\"revision\":1,\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"available_at\":\"2026-11-03T00:00:00+00:00\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\"}]},\"related_release_events\":[],\"publication_event\":null},{\"series_id\":\"JTS000000000000000JOR\",\"month\":\"2026-08\",\"availability\":\"available\",\"provider_calculations\":{\"net_changes\":{\"1\":\"-0.1\"},\"pct_changes\":{\"1\":\"-2.3\"}},\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\",\"raw_locator\":\"mdf-s3://mdf-artifacts/jolts-timeseries/dev-r1/sha256/d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672/raw-response.bin\",\"revision\":1,\"available_at\":\"2026-11-03T00:00:00+00:00\",\"version_status\":\"active\",\"evidence_url\":null,\"origin\":\"local\",\"calculation_inputs\":{\"change_1m_percentage_points\":{\"numerator_month\":\"2026-08\",\"numerator_origin\":\"local\",\"denominator_month\":\"2026-07\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"4.2\"},\"change_12m_percentage_points\":{\"numerator_month\":\"2026-08\",\"numerator_origin\":\"local\",\"denominator_month\":\"2025-08\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"4.3\"}},\"change_1m_percentage_points\":\"0.1\",\"change_12m_percentage_points\":\"0.0\",\"provider_status\":{\"preliminary\":true,\"revised\":null,\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"basis\":\"provider_footnotes_only\"},\"indicator\":\"job_openings\",\"statistic\":\"official_rate\",\"value_unit\":\"percent\",\"reference_basis\":\"last_business_day_stock\",\"rate_denominator\":\"employment_plus_job_openings\",\"provider\":\"BLS\",\"survey\":\"JOLTS\",\"geography\":\"US\",\"industry\":\"total_nonfarm\",\"seasonal_adjustment\":\"SA\",\"frequency\":\"monthly\",\"start_month\":null,\"evidence_start_month\":\"2000-12\",\"coverage_basis\":\"sampled_bls_api_not_catalog_native_start\",\"native_metadata_status\":\"native_report_verified_definitions_pending\",\"native_metadata_source_url\":\"https://data.bls.gov/pdq/SurveyOutputServlet\",\"value\":\"4.3\",\"mdf_first_captured\":{\"value\":\"4.3\",\"statistic\":\"level\",\"basis\":\"mdf_captured_provider_value\",\"as_of\":\"2026-11-03T00:00:00+00:00\",\"versions\":[{\"series_id\":\"JTS000000000000000JOR\",\"month\":\"2026-08\",\"revision\":1,\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"available_at\":\"2026-11-03T00:00:00+00:00\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\"}]},\"related_release_events\":[],\"publication_event\":null}],\"missing\":[],\"complete\":true,\"coverage_complete\":true,\"source_unavailable\":[],\"withdrawn\":[],\"calculation_missing\":[{\"series_id\":\"JTS000000000000000JOL\",\"month\":\"2026-08\",\"metric\":\"change_1m_ratio\",\"required_month\":\"2026-07\",\"reason\":\"zero_denominator\"}],\"persisted\":false,\"provider_requests\":0,\"provider_attempts\":0,\"source_request_count\":0,\"source_returned_series_months\":[],\"as_of\":null,\"as_of_semantics\":\"source_response_observed_at_not_mdf_commit_or_historical_vintage\",\"vintage_mode\":\"observed\",\"units\":{\"value\":\"per_series_value_unit\",\"change_1m_level\":\"per_series_value_unit\",\"change_1m_ratio\":\"ratio\",\"change_12m_ratio\":\"ratio\",\"change_1m_percentage_points\":\"percentage_points\",\"change_12m_percentage_points\":\"percentage_points\"},\"calculation_method\":\"Openings are last-business-day stocks; hires/quits/layoffs are monthly flows, not unique-person counts. Official rate values are separate BLS series, never reconstructed using CES. Level differences retain each series unit; level growth is a same-cutoff cumulative ratio, rounded to 4 places. Rate differences are percentage points only. Provider net_changes/pct_changes and footnotes remain separate. Revision 1 is first local capture, not official first release; annual five-year revisions may change previously final values. Official metadata and release material qualification pending.\",\"provider\":\"BLS\",\"source_qualified\":false,\"official_vintage_supported\":false,\"publication_event\":null,\"source_version\":null,\"surprise\":null,\"surprise_reason\":\"event_actual_and_named_prior_consensus_not_proven\",\"source_attempted_series_months\":[],\"source_unprovided\":[],\"query_mode\":\"current\",\"as_of_basis\":\"observed\",\"publication_events\":[],\"metadata\":{\"publication_event\":{\"label\":\"官方日历时间\",\"description\":\"来自官方日历，不代表当前修订值当时已知；历史默认按入库可用时间，显式 observed 按来源响应观察时间。as_of 仅展示截止前取得的日历及月份证据；缺失时不推算。\",\"semantics\":\"official_month_event_not_current_value_revision_time\",\"binds_current_revision\":false},\"as_of_default_basis\":\"available\",\"query_mode_default\":\"current\"}}",
+  "projected_wire": "{\"start_month\":\"2026-07\",\"end_month\":\"2026-08\",\"series_ids\":[\"JTS000000000000000JOL\",\"JTS000000000000000JOR\"],\"points\":[{\"series_id\":\"JTS000000000000000JOL\",\"month\":\"2026-07\",\"availability\":\"available\",\"provider_calculations\":{\"net_changes\":{\"1\":\"-0.1\"},\"pct_changes\":{\"1\":\"-2.3\"}},\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\",\"raw_locator\":\"mdf-s3://mdf-artifacts/jolts-timeseries/dev-r1/sha256/d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672/raw-response.bin\",\"revision\":1,\"available_at\":\"2026-11-03T00:00:00+00:00\",\"version_status\":\"active\",\"evidence_url\":null,\"origin\":\"local\",\"calculation_inputs\":{\"change_1m_level\":{\"numerator_month\":\"2026-07\",\"numerator_origin\":\"local\",\"denominator_month\":\"2026-06\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"100\"},\"change_1m_ratio\":{\"numerator_month\":\"2026-07\",\"numerator_origin\":\"local\",\"denominator_month\":\"2026-06\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"100\"},\"change_12m_ratio\":{\"numerator_month\":\"2026-07\",\"numerator_origin\":\"local\",\"denominator_month\":\"2025-07\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"100\"}},\"provider_status\":{\"preliminary\":true,\"revised\":null,\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"basis\":\"provider_footnotes_only\"},\"indicator\":\"job_openings\",\"statistic\":\"level\",\"value_unit\":\"thousand_jobs\",\"reference_basis\":\"last_business_day_stock\",\"rate_denominator\":null,\"provider\":\"BLS\",\"survey\":\"JOLTS\",\"geography\":\"US\",\"industry\":\"total_nonfarm\",\"seasonal_adjustment\":\"SA\",\"frequency\":\"monthly\",\"start_month\":null,\"evidence_start_month\":\"2000-12\",\"coverage_basis\":\"sampled_bls_api_not_catalog_native_start\",\"native_metadata_status\":\"native_report_verified_definitions_pending\",\"native_metadata_source_url\":\"https://data.bls.gov/pdq/SurveyOutputServlet\",\"value\":\"0\",\"mdf_first_captured\":{\"value\":\"0\",\"statistic\":\"level\",\"basis\":\"mdf_captured_provider_value\",\"as_of\":\"2026-11-03T00:00:00+00:00\",\"versions\":[{\"series_id\":\"JTS000000000000000JOL\",\"month\":\"2026-07\",\"revision\":1,\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"available_at\":\"2026-11-03T00:00:00+00:00\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\"}]},\"related_release_events\":[],\"publication_event\":null},{\"series_id\":\"JTS000000000000000JOL\",\"month\":\"2026-08\",\"availability\":\"available\",\"provider_calculations\":{\"net_changes\":{\"1\":\"-0.1\"},\"pct_changes\":{\"1\":\"-2.3\"}},\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\",\"raw_locator\":\"mdf-s3://mdf-artifacts/jolts-timeseries/dev-r1/sha256/d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672/raw-response.bin\",\"revision\":1,\"available_at\":\"2026-11-03T00:00:00+00:00\",\"version_status\":\"active\",\"evidence_url\":null,\"origin\":\"local\",\"calculation_inputs\":{\"change_1m_level\":{\"numerator_month\":\"2026-08\",\"numerator_origin\":\"local\",\"denominator_month\":\"2026-07\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"0\"},\"change_1m_ratio\":{\"numerator_month\":\"2026-08\",\"numerator_origin\":\"local\",\"denominator_month\":\"2026-07\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"0\"},\"change_12m_ratio\":{\"numerator_month\":\"2026-08\",\"numerator_origin\":\"local\",\"denominator_month\":\"2025-08\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"100\"}},\"provider_status\":{\"preliminary\":true,\"revised\":null,\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"basis\":\"provider_footnotes_only\"},\"indicator\":\"job_openings\",\"statistic\":\"level\",\"value_unit\":\"thousand_jobs\",\"reference_basis\":\"last_business_day_stock\",\"rate_denominator\":null,\"provider\":\"BLS\",\"survey\":\"JOLTS\",\"geography\":\"US\",\"industry\":\"total_nonfarm\",\"seasonal_adjustment\":\"SA\",\"frequency\":\"monthly\",\"start_month\":null,\"evidence_start_month\":\"2000-12\",\"coverage_basis\":\"sampled_bls_api_not_catalog_native_start\",\"native_metadata_status\":\"native_report_verified_definitions_pending\",\"native_metadata_source_url\":\"https://data.bls.gov/pdq/SurveyOutputServlet\",\"value\":\"100\",\"mdf_first_captured\":{\"value\":\"100\",\"statistic\":\"level\",\"basis\":\"mdf_captured_provider_value\",\"as_of\":\"2026-11-03T00:00:00+00:00\",\"versions\":[{\"series_id\":\"JTS000000000000000JOL\",\"month\":\"2026-08\",\"revision\":1,\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"available_at\":\"2026-11-03T00:00:00+00:00\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\"}]},\"related_release_events\":[],\"publication_event\":null},{\"series_id\":\"JTS000000000000000JOR\",\"month\":\"2026-07\",\"availability\":\"available\",\"provider_calculations\":{\"net_changes\":{\"1\":\"-0.1\"},\"pct_changes\":{\"1\":\"-2.3\"}},\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\",\"raw_locator\":\"mdf-s3://mdf-artifacts/jolts-timeseries/dev-r1/sha256/d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672/raw-response.bin\",\"revision\":1,\"available_at\":\"2026-11-03T00:00:00+00:00\",\"version_status\":\"active\",\"evidence_url\":null,\"origin\":\"local\",\"calculation_inputs\":{\"change_1m_percentage_points\":{\"numerator_month\":\"2026-07\",\"numerator_origin\":\"local\",\"denominator_month\":\"2026-06\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"4.3\"},\"change_12m_percentage_points\":{\"numerator_month\":\"2026-07\",\"numerator_origin\":\"local\",\"denominator_month\":\"2025-07\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"4.3\"}},\"provider_status\":{\"preliminary\":true,\"revised\":null,\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"basis\":\"provider_footnotes_only\"},\"indicator\":\"job_openings\",\"statistic\":\"official_rate\",\"value_unit\":\"percent\",\"reference_basis\":\"last_business_day_stock\",\"rate_denominator\":\"employment_plus_job_openings\",\"provider\":\"BLS\",\"survey\":\"JOLTS\",\"geography\":\"US\",\"industry\":\"total_nonfarm\",\"seasonal_adjustment\":\"SA\",\"frequency\":\"monthly\",\"start_month\":null,\"evidence_start_month\":\"2000-12\",\"coverage_basis\":\"sampled_bls_api_not_catalog_native_start\",\"native_metadata_status\":\"native_report_verified_definitions_pending\",\"native_metadata_source_url\":\"https://data.bls.gov/pdq/SurveyOutputServlet\",\"value\":\"4.2\",\"mdf_first_captured\":{\"value\":\"4.2\",\"statistic\":\"level\",\"basis\":\"mdf_captured_provider_value\",\"as_of\":\"2026-11-03T00:00:00+00:00\",\"versions\":[{\"series_id\":\"JTS000000000000000JOR\",\"month\":\"2026-07\",\"revision\":1,\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"available_at\":\"2026-11-03T00:00:00+00:00\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\"}]},\"related_release_events\":[],\"publication_event\":null},{\"series_id\":\"JTS000000000000000JOR\",\"month\":\"2026-08\",\"availability\":\"available\",\"provider_calculations\":{\"net_changes\":{\"1\":\"-0.1\"},\"pct_changes\":{\"1\":\"-2.3\"}},\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\",\"raw_locator\":\"mdf-s3://mdf-artifacts/jolts-timeseries/dev-r1/sha256/d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672/raw-response.bin\",\"revision\":1,\"available_at\":\"2026-11-03T00:00:00+00:00\",\"version_status\":\"active\",\"evidence_url\":null,\"origin\":\"local\",\"calculation_inputs\":{\"change_1m_percentage_points\":{\"numerator_month\":\"2026-08\",\"numerator_origin\":\"local\",\"denominator_month\":\"2026-07\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"4.2\"},\"change_12m_percentage_points\":{\"numerator_month\":\"2026-08\",\"numerator_origin\":\"local\",\"denominator_month\":\"2025-08\",\"denominator_origin\":\"local\",\"denominator_observed_at\":\"2026-11-03T00:00:00+00:00\",\"denominator_revision\":1,\"denominator_available_at\":\"2026-11-03T00:00:00+00:00\",\"derived_origin\":\"local\",\"comparison_value\":\"4.3\"}},\"provider_status\":{\"preliminary\":true,\"revised\":null,\"footnotes\":[{\"code\":\"P\",\"text\":\"preliminary\"}],\"basis\":\"provider_footnotes_only\"},\"indicator\":\"job_openings\",\"statistic\":\"official_rate\",\"value_unit\":\"percent\",\"reference_basis\":\"last_business_day_stock\",\"rate_denominator\":\"employment_plus_job_openings\",\"provider\":\"BLS\",\"survey\":\"JOLTS\",\"geography\":\"US\",\"industry\":\"total_nonfarm\",\"seasonal_adjustment\":\"SA\",\"frequency\":\"monthly\",\"start_month\":null,\"evidence_start_month\":\"2000-12\",\"coverage_basis\":\"sampled_bls_api_not_catalog_native_start\",\"native_metadata_status\":\"native_report_verified_definitions_pending\",\"native_metadata_source_url\":\"https://data.bls.gov/pdq/SurveyOutputServlet\",\"value\":\"4.3\",\"mdf_first_captured\":{\"value\":\"4.3\",\"statistic\":\"level\",\"basis\":\"mdf_captured_provider_value\",\"as_of\":\"2026-11-03T00:00:00+00:00\",\"versions\":[{\"series_id\":\"JTS000000000000000JOR\",\"month\":\"2026-08\",\"revision\":1,\"batch_id\":\"d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6\",\"observed_at\":\"2026-11-03T00:00:00+00:00\",\"available_at\":\"2026-11-03T00:00:00+00:00\",\"raw_sha256\":\"d6d1698bf2d50b42fa818cce8a0dff8c4d86f64d959f9e92f960d27a7a12b672\"}]},\"related_release_events\":[],\"publication_event\":null}],\"missing\":[],\"complete\":true,\"coverage_complete\":true,\"source_unavailable\":[],\"withdrawn\":[],\"calculation_missing\":[],\"persisted\":false,\"provider_requests\":0,\"provider_attempts\":0,\"source_request_count\":0,\"source_returned_series_months\":[],\"as_of\":null,\"as_of_semantics\":\"source_response_observed_at_not_mdf_commit_or_historical_vintage\",\"vintage_mode\":\"observed\",\"units\":{\"value\":\"per_series_value_unit\",\"change_1m_level\":\"per_series_value_unit\",\"change_1m_ratio\":\"ratio\",\"change_12m_ratio\":\"ratio\",\"change_1m_percentage_points\":\"percentage_points\",\"change_12m_percentage_points\":\"percentage_points\"},\"calculation_method\":\"Openings are last-business-day stocks; hires/quits/layoffs are monthly flows, not unique-person counts. Official rate values are separate BLS series, never reconstructed using CES. Level differences retain each series unit; level growth is a same-cutoff cumulative ratio, rounded to 4 places. Rate differences are percentage points only. Provider net_changes/pct_changes and footnotes remain separate. Revision 1 is first local capture, not official first release; annual five-year revisions may change previously final values. Official metadata and release material qualification pending.\",\"provider\":\"BLS\",\"source_qualified\":false,\"official_vintage_supported\":false,\"publication_event\":null,\"source_version\":null,\"surprise\":null,\"surprise_reason\":\"event_actual_and_named_prior_consensus_not_proven\",\"source_attempted_series_months\":[],\"source_unprovided\":[],\"query_mode\":\"current\",\"as_of_basis\":\"observed\",\"selected_columns\":[\"value\"],\"publication_events\":[],\"metadata\":{\"publication_event\":{\"label\":\"官方日历时间\",\"description\":\"来自官方日历，不代表当前修订值当时已知；历史默认按入库可用时间，显式 observed 按来源响应观察时间。as_of 仅展示截止前取得的日历及月份证据；缺失时不推算。\",\"semantics\":\"official_month_event_not_current_value_revision_time\",\"binds_current_revision\":false},\"as_of_default_basis\":\"available\",\"query_mode_default\":\"current\"}}",
+  "history_wire": "{\"start_month\":\"2026-07\",\"end_month\":\"2026-08\",\"series_ids\":[\"JTS000000000000000JOL\",\"JTS000000000000000JOR\"],\"points\":[],\"missing\":[{\"series_id\":\"JTS000000000000000JOL\",\"month\":\"2026-07\",\"reason\":\"availability_evidence_insufficient\"},{\"series_id\":\"JTS000000000000000JOL\",\"month\":\"2026-08\",\"reason\":\"availability_evidence_insufficient\"},{\"series_id\":\"JTS000000000000000JOR\",\"month\":\"2026-07\",\"reason\":\"availability_evidence_insufficient\"},{\"series_id\":\"JTS000000000000000JOR\",\"month\":\"2026-08\",\"reason\":\"availability_evidence_insufficient\"}],\"complete\":false,\"coverage_complete\":false,\"source_unavailable\":[],\"withdrawn\":[],\"calculation_missing\":[],\"persisted\":false,\"provider_requests\":0,\"provider_attempts\":0,\"source_request_count\":0,\"source_returned_series_months\":[],\"as_of\":\"2026-11-02T00:00:00+00:00\",\"as_of_semantics\":\"mdf_post_commit_confirmation_available_at\",\"vintage_mode\":\"available\",\"units\":{\"value\":\"per_series_value_unit\",\"change_1m_level\":\"per_series_value_unit\",\"change_1m_ratio\":\"ratio\",\"change_12m_ratio\":\"ratio\",\"change_1m_percentage_points\":\"percentage_points\",\"change_12m_percentage_points\":\"percentage_points\"},\"calculation_method\":\"Openings are last-business-day stocks; hires/quits/layoffs are monthly flows, not unique-person counts. Official rate values are separate BLS series, never reconstructed using CES. Level differences retain each series unit; level growth is a same-cutoff cumulative ratio, rounded to 4 places. Rate differences are percentage points only. Provider net_changes/pct_changes and footnotes remain separate. Revision 1 is first local capture, not official first release; annual five-year revisions may change previously final values. Official metadata and release material qualification pending.\",\"provider\":\"BLS\",\"source_qualified\":false,\"official_vintage_supported\":false,\"publication_event\":null,\"source_version\":null,\"surprise\":null,\"surprise_reason\":\"event_actual_and_named_prior_consensus_not_proven\",\"source_attempted_series_months\":[],\"source_unprovided\":[],\"query_mode\":\"history\",\"as_of_basis\":\"available\",\"publication_events\":[],\"metadata\":{\"publication_event\":{\"label\":\"官方日历时间\",\"description\":\"来自官方日历，不代表当前修订值当时已知；历史默认按入库可用时间，显式 observed 按来源响应观察时间。as_of 仅展示截止前取得的日历及月份证据；缺失时不推算。\",\"semantics\":\"official_month_event_not_current_value_revision_time\",\"binds_current_revision\":false},\"as_of_default_basis\":\"available\",\"query_mode_default\":\"current\"}}",
+  "status": {
+    "schema": "mdf_jolts_timeseries_dev_r1",
+    "latest_months": {
+      "JTS000000000000000JOL": "2026-08",
+      "JTS000000000000000JOR": "2026-08",
+      "JTS000000000000000HIL": "2026-08",
+      "JTS000000000000000HIR": "2026-08",
+      "JTS000000000000000QUL": "2026-08",
+      "JTS000000000000000QUR": "2026-08",
+      "JTS000000000000000LDL": "2026-08",
+      "JTS000000000000000LDR": "2026-08"
+    },
+    "observation_count": 112,
+    "revision_count": 0,
+    "batch_count": 1,
+    "asset_id": "mdf.macro.bls.jolts",
+    "definition_ref": {
+      "identity": "mdf.macro.bls.jolts",
+      "revision": "r1-segment1"
+    },
+    "profile": "jolts",
+    "label": "JOLTS; US total nonfarm; seasonally adjusted; candidate metadata",
+    "source_qualified": false,
+    "web_capabilities": {
+      "query": true,
+      "collect": true,
+      "reason": null
+    },
+    "initialization": {
+      "start": "2006-11",
+      "end": "2026-10",
+      "months": 240,
+      "available": true,
+      "preset_id": "jolts_previous_calendar_month_240m",
+      "reason": null,
+      "anchor_basis": "request_calendar_month_no_release_claim"
+    },
+    "periodic_enabled": false,
+    "calendar_status": "missing"
+  },
+  "strategy": {
+    "exists": false,
+    "enabled": false,
+    "history_start": "2000-12",
+    "history_start_locked": false,
+    "worker": {
+      "last_heartbeat_at": null,
+      "state": "not_started"
+    },
+    "next_due": null,
+    "policy": {
+      "release_update": "latest explicitly mapped due national JOLTS event",
+      "annual_rule": "initial once per calendar year and once after each numerically confirmed mapped release; previous five complete calendar years",
+      "annual_basis": "MDF conservative maintenance rule, not an official benchmark date",
+      "annual_event_dedup": "reference month + scheduled release instant",
+      "release_completion": "all eight targets returned this attempt and locally numeric",
+      "annual_target_months": 60,
+      "comparison_buffer_months": 12,
+      "max_attempts": 3,
+      "retry_seconds": [300, 900],
+      "admission": "one job per tick; shared BLS single-flight, rolling quota and cooldown",
+      "default_series": [
+        "JTS000000000000000JOL",
+        "JTS000000000000000JOR",
+        "JTS000000000000000HIL",
+        "JTS000000000000000HIR",
+        "JTS000000000000000QUL",
+        "JTS000000000000000QUR",
+        "JTS000000000000000LDL",
+        "JTS000000000000000LDR"
+      ]
+    }
+  },
+  "schedule": {
+    "calendar_status": "missing",
+    "calendar_coverage": "no_future_dates",
+    "calendar": {},
+    "targets": [],
+    "calendar_publications": [],
+    "history_start": "2000-12",
+    "signals": {
+      "state": "unsupported",
+      "events": {}
+    },
+    "revision_status": "unsupported",
+    "next_due": "2026-11-03T00:00:00+00:00",
+    "checked_at": "2026-11-03T00:00:00+00:00",
+    "policy": {
+      "release_update": "latest explicitly mapped due national JOLTS event",
+      "annual_rule": "initial once per calendar year and once after each numerically confirmed mapped release; previous five complete calendar years",
+      "annual_basis": "MDF conservative maintenance rule, not an official benchmark date",
+      "annual_event_dedup": "reference month + scheduled release instant",
+      "release_completion": "all eight targets returned this attempt and locally numeric",
+      "annual_target_months": 60,
+      "comparison_buffer_months": 12,
+      "max_attempts": 3,
+      "retry_seconds": [300, 900],
+      "admission": "one job per tick; shared BLS single-flight, rolling quota and cooldown",
+      "default_series": [
+        "JTS000000000000000JOL",
+        "JTS000000000000000JOR",
+        "JTS000000000000000HIL",
+        "JTS000000000000000HIR",
+        "JTS000000000000000QUL",
+        "JTS000000000000000QUR",
+        "JTS000000000000000LDL",
+        "JTS000000000000000LDR"
+      ]
+    },
+    "work": {},
+    "annual_maintenance": {
+      "start": "2021-01",
+      "end": "2025-12",
+      "due_at": "2026-01-01T00:00:00+00:00",
+      "state": "pending",
+      "attempts": 0
+    },
+    "worker": {
+      "last_heartbeat_at": null,
+      "state": "not_started",
+      "enabled": false
+    }
+  },
+  "executions": {
+    "executions": [
+      {
+        "action": "initialize",
+        "asset": "jolts",
+        "classification": null,
+        "created_at": "2026-11-03T00:00:00+00:00",
+        "end": "2026-08",
+        "finished_at": "2026-11-03T00:00:00+00:00",
+        "job_id": "11111111-2222-4333-8444-555555555555",
+        "request_id": "11111111-2222-4333-8444-555555555555",
+        "result": {
+          "coverage_complete": true,
+          "provider_attempts": 1,
+          "provider_requests": 1,
+          "readback": {
+            "expected_points": 16,
+            "local_coverage_complete": true,
+            "missing": [],
+            "point_count": 112,
+            "refresh_coverage_complete": true,
+            "source_missing": [],
+            "source_unavailable": [],
+            "source_unavailable_count": 0,
+            "verified": true,
+            "vintage_mode": "available"
+          },
+          "release_material": {
+            "event_ids": [],
+            "evidence_ids": [],
+            "material_outcomes": [],
+            "numeric_batch_ids": [
+              "d3120606e0d6f05f764bea34a0cc0b208014c5df51f8fb273be4f31f3fdfeba6"
+            ],
+            "provider_requests": 0,
+            "reasons": ["no_due_official_material_selected"],
+            "state": "partial",
+            "transport_calls": 0
+          },
+          "saved_points": 112,
+          "saved_revisions": 0,
+          "source_missing": [],
+          "target_evidence": {
+            "available_series_months": [
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000HIL"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000HIL"
+              },
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000HIR"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000HIR"
+              },
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000JOL"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000JOL"
+              },
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000JOR"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000JOR"
+              },
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000LDL"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000LDL"
+              },
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000LDR"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000LDR"
+              },
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000QUL"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000QUL"
+              },
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000QUR"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000QUR"
+              }
+            ],
+            "source_returned_series_months": [
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000HIL"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000HIL"
+              },
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000HIR"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000HIR"
+              },
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000JOL"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000JOL"
+              },
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000JOR"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000JOR"
+              },
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000LDL"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000LDL"
+              },
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000LDR"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000LDR"
+              },
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000QUL"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000QUL"
+              },
+              {
+                "month": "2026-07",
+                "series_id": "JTS000000000000000QUR"
+              },
+              {
+                "month": "2026-08",
+                "series_id": "JTS000000000000000QUR"
+              }
+            ],
+            "source_unavailable": []
+          }
+        },
+        "start": "2026-07",
+        "started_at": "2026-11-03T00:00:00+00:00",
+        "state": "complete",
+        "id": "11111111-2222-4333-8444-555555555555",
+        "origin": "manual",
+        "execution_kind": null
+      }
+    ]
+  },
+  "releases": {
+    "read_mode": "event",
+    "as_of": "2026-11-03T00:00:00+00:00",
+    "as_of_basis": "available",
+    "events": [],
+    "consensus_snapshots": [],
+    "missing": ["official_release_evidence_not_available_at_cutoff"],
+    "provider_requests": 0,
+    "provider_attempts": 0,
+    "persisted": false,
+    "history_basis": "named_source_archive_evidence_only_no_latest_fallback",
+    "coverage": "only retained official material scopes; ALFRED not implemented"
+  }
+}

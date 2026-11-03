@@ -11,6 +11,7 @@ from market_data_foundation.historical.bls_timeseries_profile import (
     CONSUMPTION_PROFILE,
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
+    JOLTS_PROFILE,
     PCE_PROFILE,
     PPI_PROFILE,
 )
@@ -106,11 +107,14 @@ class TimeSeriesPackages(PackageHost):
                     "mdf.macro.bea.consumption-income",
                     "mdf.macro.bea.gdp-growth",
                     "mdf.macro.dol.claims",
+                    "mdf.macro.bls.jolts",
                 }:
                     unavailable = Eligibility(
                         allowed=False,
                         reasons=[
-                            "claims_timeseries_not_enabled"
+                            "jolts_timeseries_not_enabled"
+                            if revision.definition_ref.identity == "mdf.macro.bls.jolts"
+                            else "claims_timeseries_not_enabled"
                             if revision.definition_ref.identity
                             == "mdf.macro.dol.claims"
                             else "gdp_timeseries_not_enabled"
@@ -251,6 +255,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         retail_query_service_factory=None,
         gdp_options=None,
         claims_options=None,
+        jolts_options=None,
     ):
         super().__init__(
             settings,
@@ -827,6 +832,17 @@ class TimeSeriesRuntime(ReadonlyRuntime):
                 gdp_options.schedule_path.with_name("gdp-strategy.json"),
             ]
         bind_claims(self, claims_options, occupied_paths=paths)
+        from market_data_foundation.web.jolts_runtime import bind_jolts
+
+        if claims_options is not None:
+            paths += [
+                claims_options.schedule_path,
+                claims_options.job_directory,
+                claims_options.schedule_path.with_name("claims-strategy.json"),
+                claims_options.artifacts_path,
+                claims_options.request_control_path,
+            ]
+        bind_jolts(self, jolts_options, occupied_paths=paths)
 
     def retail_read_service(self):
         return self.retail_service()
@@ -1132,6 +1148,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             "consumption",
             "gdp",
             "claims",
+            "jolts",
         } or (capability == "pce" and self.pce_timeseries is None):
             return super()._history(capability, definition, at)
         access = self.accesses[capability]
@@ -1144,6 +1161,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             "consumption": self.consumption_timeseries,
             "gdp": self.gdp_timeseries,
             "claims": self.claims_timeseries,
+            "jolts": self.jolts_timeseries,
         }[capability]
         holding = "unknown"
         if access.metadata_permission == "allowed" and host is not None:
@@ -1173,7 +1191,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             (c.definition_ref.identity, c.definition_ref.revision): c
             for c in self.packages.catalog.package("macro").capabilities
             if c.capability_id
-            in {"ppi", "employment", "retail", "consumption", "gdp", "claims"}
+            in {"ppi", "employment", "retail", "consumption", "gdp", "claims", "jolts"}
         }
         return result.model_copy(
             update={
@@ -1248,6 +1266,9 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
     from market_data_foundation.web.claims_api import timeseries_router as claims_router
 
     app.include_router(claims_router(runtime.claims_timeseries))
+    app.include_router(
+        timeseries_router(runtime.jolts_timeseries, profile=JOLTS_PROFILE)
+    )
     app.state.timeseries_runtime = runtime
 
     @app.middleware("http")
@@ -1259,6 +1280,7 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
             "/api/r5/retail/timeseries",
             "/api/r5/gdp/timeseries",
             "/api/r5/claims/timeseries",
+            "/api/r5/jolts/timeseries",
         )
         job_post = any(admitted_job(request, prefix=prefix) for prefix in prefixes)
         if request.url.path == "/api/r5/retail/timeseries/jobs/resume":
@@ -1282,7 +1304,9 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
             error = (403, "operator_not_authorized")
         else:
             capability = (
-                "claims"
+                "jolts"
+                if request.url.path.startswith("/api/r5/jolts/")
+                else "claims"
                 if request.url.path.startswith("/api/r5/claims/")
                 else "gdp"
                 if request.url.path.startswith("/api/r5/gdp/")

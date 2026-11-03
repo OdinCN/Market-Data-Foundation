@@ -19,6 +19,7 @@ from market_data_foundation.historical.bls_timeseries_profile import (
     CONSUMPTION_PROFILE,
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
+    JOLTS_PROFILE,
     PCE_PROFILE,
     PPI_PROFILE,
     validate_profile,
@@ -201,6 +202,17 @@ def _provider_status(footnotes):
 
 
 def _metrics(profile, series_id):
+    if profile is JOLTS_PROFILE:
+        if profile.series_metadata[series_id]["statistic"] == "official_rate":
+            return (
+                (1, "change_1m_percentage_points"),
+                (12, "change_12m_percentage_points"),
+            )
+        return (
+            (1, "change_1m_level"),
+            (1, "change_1m_ratio"),
+            (12, "change_12m_ratio"),
+        )
     if profile is CONSUMPTION_PROFILE and series_id == "A072RC":
         return (
             (1, "change_1m_percentage_points"),
@@ -772,13 +784,18 @@ class CpiTimeSeriesService:
                                 "change_1m_percentage_points",
                                 "change_12m_percentage_points",
                                 "change_1m_hours",
+                                "change_1m_level",
                             }
                             else _ratio
                             if metric.endswith("_ratio")
                             else _rate
                         )
                         point[metric] = (
-                            _annualized(
+                            None
+                            if self.profile is JOLTS_PROFILE
+                            and metric.endswith("_ratio")
+                            and Decimal(previous["index_value"]) == 0
+                            else _annualized(
                                 point["index_value"],
                                 previous["index_value"],
                                 4 if lag == 3 else 2,
@@ -803,6 +820,16 @@ class CpiTimeSeriesService:
                                 else "mixed"
                             ),
                         }
+                        if self.profile is JOLTS_PROFILE and point[metric] is None:
+                            calculation_missing.append(
+                                {
+                                    "series_id": s,
+                                    "month": month,
+                                    "metric": metric,
+                                    "required_month": previous_month,
+                                    "reason": "zero_denominator",
+                                }
+                            )
                     else:
                         calculation_missing.append(
                             {
@@ -821,7 +848,7 @@ class CpiTimeSeriesService:
                                 ),
                             }
                         )
-                if self.profile is PPI_PROFILE:
+                if self.profile in (PPI_PROFILE, JOLTS_PROFILE):
                     point["provider_status"] = _provider_status(
                         point.get("footnotes", [])
                     )
@@ -891,7 +918,7 @@ class CpiTimeSeriesService:
                 "does not assert complete official monthly percent coverage. "
                 "mom_pct/yoy_pct and change_km_ratio remain derived from T20804."
             )
-        if self.profile in (EMPLOYMENT_PROFILE, CONSUMPTION_PROFILE):
+        if self.profile in (EMPLOYMENT_PROFILE, CONSUMPTION_PROFILE, JOLTS_PROFILE):
             for point in points + unavailable + withdrawn:
                 point["value"] = point.pop("index_value")
                 point.update(self.profile.series_metadata[point["series_id"]])
@@ -939,6 +966,36 @@ class CpiTimeSeriesService:
                     f"change_{k}m_percentage_points": "percentage_points"
                     for k in (1, 12)
                 },
+            }
+        if self.profile is JOLTS_PROFILE:
+            result.update(
+                provider="BLS",
+                source_qualified=False,
+                official_vintage_supported=False,
+                publication_event=None,
+                source_version=None,
+                surprise=None,
+                surprise_reason="event_actual_and_named_prior_consensus_not_proven",
+                calculation_method=(
+                    "Openings are last-business-day stocks; hires/quits/layoffs "
+                    "are monthly flows, not unique-person counts. Official rate "
+                    "values are separate BLS series, never reconstructed using CES. "
+                    "Level differences retain each series unit; level growth is "
+                    "a same-cutoff cumulative ratio, rounded to 4 places. "
+                    "Rate differences are percentage points only. "
+                    "Provider net_changes/pct_changes and footnotes remain separate. "
+                    "Revision 1 is first local capture, not official first release; "
+                    "annual five-year revisions may change previously final values. "
+                    "Official metadata and release material qualification pending."
+                ),
+            )
+            result["units"] = {
+                "value": "per_series_value_unit",
+                "change_1m_level": "per_series_value_unit",
+                "change_1m_ratio": "ratio",
+                "change_12m_ratio": "ratio",
+                "change_1m_percentage_points": "percentage_points",
+                "change_12m_percentage_points": "percentage_points",
             }
         if persist:
             result.update(saved)

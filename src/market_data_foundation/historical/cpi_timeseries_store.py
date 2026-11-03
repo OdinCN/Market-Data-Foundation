@@ -28,6 +28,7 @@ from market_data_foundation.historical.bls_timeseries_profile import (
     CONSUMPTION_PROFILE,
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
+    JOLTS_PROFILE,
     PCE_PROFILE,
     validate_profile,
 )
@@ -321,7 +322,7 @@ def _revision_ddl(*, profile=CPI_PROFILE):
     percents = ",\n        ".join(
         name + " numeric" for name in _percent_columns(profile)
     )
-    comparison = ">=" if profile is EMPLOYMENT_PROFILE else ">"
+    comparison = ">=" if profile in (EMPLOYMENT_PROFILE, JOLTS_PROFILE) else ">"
     zero_guard = (
         "AND (index_value > 0 OR series_id IN "
         "('LNS14000000','LNS11300000','LNS12300000'))"
@@ -359,6 +360,10 @@ def _revision_ddl(*, profile=CPI_PROFILE):
 
 def _rates_view_sql(*, profile=CPI_PROFILE):
     profile = validate_profile(profile)
+    if profile is JOLTS_PROFILE:
+        from market_data_foundation.historical.jolts_timeseries import rates_view_sql
+
+        return rates_view_sql()
     if profile is CONSUMPTION_PROFILE:
         from market_data_foundation.historical.consumption_timeseries import (
             rates_view_sql,
@@ -449,7 +454,10 @@ def _restoration_expectations(points, evidence_url, *, profile=CPI_PROFILE):
                 value is None
                 or (
                     value <= 0
-                    and not (profile is CONSUMPTION_PROFILE and series == "A072RC")
+                    and not (
+                        (profile is CONSUMPTION_PROFILE and series == "A072RC")
+                        or (profile is JOLTS_PROFILE and value == 0)
+                    )
                 )
                 or (series, month) in expected
             ):
@@ -691,6 +699,12 @@ class PostgresTimeSeriesStore:
                 if actual != expected:
                     raise CpiStorageError("cpi_timeseries_schema_shape_mismatch")
                 self.connection.execute(_rates_view_sql(profile=self.profile))
+                if self.profile is JOLTS_PROFILE:
+                    from market_data_foundation.historical.jolts_timeseries import (
+                        latest_view_sql,
+                    )
+
+                    self.connection.execute(latest_view_sql())
                 if self.profile is EMPLOYMENT_PROFILE:
                     from market_data_foundation.historical import (
                         employment_timeseries,

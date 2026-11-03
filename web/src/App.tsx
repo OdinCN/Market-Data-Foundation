@@ -1,4 +1,5 @@
 import {
+  JOLTS_PROFILE,
   CLAIMS_PROFILE,
   GDP_PROFILE,
   CPI_PROFILE,
@@ -41,6 +42,8 @@ import { OverviewPage, PlatformPage } from "./WorkflowRuntime";
 import { Technical } from "./WorkflowTable";
 import { useResource } from "./workflowHooks";
 import {
+  JOLTS,
+  joltsOperationMatches,
   CLAIMS,
   claimsOperationMatches,
   GDP,
@@ -212,21 +215,23 @@ export default function App({
     ((!identity && !operation) || sameKey(key, CPI));
   const macroIdentity = identity ?? operationEntry?.asset?.identity;
   const macroProfile =
-    macroIdentity === CLAIMS.identity
-      ? CLAIMS_PROFILE
-      : macroIdentity === GDP.identity
-        ? GDP_PROFILE
-        : macroIdentity === CONSUMPTION.identity
-          ? CONSUMPTION_PROFILE
-          : macroIdentity === RETAIL.identity
-            ? RETAIL_PROFILE
-            : macroIdentity === EMPLOYMENT.identity
-              ? EMPLOYMENT_PROFILE
-              : macroIdentity === PCE.identity
-                ? PCE_PROFILE
-                : macroIdentity === PPI.identity
-                  ? PPI_PROFILE
-                  : CPI_PROFILE;
+    macroIdentity === JOLTS.identity
+      ? JOLTS_PROFILE
+      : macroIdentity === CLAIMS.identity
+        ? CLAIMS_PROFILE
+        : macroIdentity === GDP.identity
+          ? GDP_PROFILE
+          : macroIdentity === CONSUMPTION.identity
+            ? CONSUMPTION_PROFILE
+            : macroIdentity === RETAIL.identity
+              ? RETAIL_PROFILE
+              : macroIdentity === EMPLOYMENT.identity
+                ? EMPLOYMENT_PROFILE
+                : macroIdentity === PCE.identity
+                  ? PCE_PROFILE
+                  : macroIdentity === PPI.identity
+                    ? PPI_PROFILE
+                    : CPI_PROFILE;
   const collectionList =
     page.view === "collection" &&
     ["periodic", "executions"].includes(page.fields.get("tab") ?? "new");
@@ -243,6 +248,8 @@ export default function App({
       (!collectionList ||
         page.fields.get("tab") !== "periodic" ||
         collectionFilter !== keyOf(RETAIL)) &&
+      (!collectionList || collectionFilter !== keyOf(JOLTS)) &&
+      (macroIdentity !== JOLTS.identity || collectionList) &&
       (!collectionList || collectionFilter !== keyOf(CLAIMS)) &&
       (macroIdentity !== CLAIMS.identity || collectionList) &&
       (!collectionList || collectionFilter !== keyOf(GDP)) &&
@@ -346,6 +353,19 @@ export default function App({
     page.view === "collection",
     GDP_PROFILE,
   );
+  const joltsAvailability = useCpiAvailability(
+    transport,
+    generation,
+    !page.invalid &&
+      ["assets", "collection"].includes(page.view) &&
+      (!operation || joltsOperationMatches(operationEntry)) &&
+      ((macroIdentity === JOLTS.identity &&
+        (!revision || revision === JOLTS.revision)) ||
+        (collectionList &&
+          (collectionFilter === "all" || collectionFilter === keyOf(JOLTS)))),
+    page.view === "collection",
+    JOLTS_PROFILE,
+  );
   const claimsAvailability = useCpiAvailability(
     transport,
     generation,
@@ -360,21 +380,23 @@ export default function App({
     CLAIMS_PROFILE,
   );
   const macroAvailability =
-    macroProfile.id === "claims"
-      ? claimsAvailability
-      : macroProfile.id === "gdp"
-        ? gdpAvailability
-        : macroProfile.id === "consumption"
-          ? consumptionAvailability
-          : macroProfile.id === "retail"
-            ? retailAvailability
-            : macroProfile.id === "employment"
-              ? employmentAvailability
-              : macroProfile.id === "pce"
-                ? pceAvailability
-                : macroProfile.id === "ppi"
-                  ? ppiAvailability
-                  : cpiAvailability;
+    macroProfile.id === "jolts"
+      ? joltsAvailability
+      : macroProfile.id === "claims"
+        ? claimsAvailability
+        : macroProfile.id === "gdp"
+          ? gdpAvailability
+          : macroProfile.id === "consumption"
+            ? consumptionAvailability
+            : macroProfile.id === "retail"
+              ? retailAvailability
+              : macroProfile.id === "employment"
+                ? employmentAvailability
+                : macroProfile.id === "pce"
+                  ? pceAvailability
+                  : macroProfile.id === "ppi"
+                    ? ppiAvailability
+                    : cpiAvailability;
   const catalog = useResource<Catalog>(
     (signal) => request(transport, "/api/r5/cpi", query, signal),
     [transport, generation, query, wantsCatalog, page.view, page.invalid],
@@ -459,6 +481,7 @@ export default function App({
           !sameKey(key, RETAIL) &&
           !sameKey(key, CONSUMPTION) &&
           !sameKey(key, GDP) &&
+          !sameKey(key, JOLTS) &&
           !sameKey(key, CLAIMS)) ||
           (!revision &&
             (page.view !== "assets" ||
@@ -482,6 +505,7 @@ export default function App({
       : asset;
   const menu = menus.find((m) => m[0] === page.view)!;
   const busy =
+    joltsAvailability.busy ||
     claimsAvailability.busy ||
     gdpAvailability.busy ||
     cpiAvailability.busy ||
@@ -704,18 +728,20 @@ export default function App({
                         (!revision ||
                           revision === macroProfile.asset.revision) &&
                         (!operation ||
-                          (macroProfile.id === "claims"
-                            ? claimsOperationMatches(operationEntry)
-                            : macroProfile.id === "retail"
-                              ? retailOperationMatches(operationEntry)
-                              : macroProfile.id === "employment"
-                                ? employmentOperationMatches(operationEntry)
-                                : macroProfile.id === "gdp"
-                                  ? sameKey(operationEntry?.asset, GDP)
-                                  : sameKey(
-                                      selectedAsset?.key,
-                                      macroProfile.asset,
-                                    ))) ? (
+                          (macroProfile.id === "jolts"
+                            ? joltsOperationMatches(operationEntry)
+                            : macroProfile.id === "claims"
+                              ? claimsOperationMatches(operationEntry)
+                              : macroProfile.id === "retail"
+                                ? retailOperationMatches(operationEntry)
+                                : macroProfile.id === "employment"
+                                  ? employmentOperationMatches(operationEntry)
+                                  : macroProfile.id === "gdp"
+                                    ? sameKey(operationEntry?.asset, GDP)
+                                    : sameKey(
+                                        selectedAsset?.key,
+                                        macroProfile.asset,
+                                      ))) ? (
                           <>
                             <CpiTimeSeries
                               profile={macroProfile}
@@ -815,6 +841,7 @@ export default function App({
                       employmentAvailability={employmentAvailability}
                       retailAvailability={retailAvailability}
                       consumptionAvailability={consumptionAvailability}
+                      joltsAvailability={joltsAvailability}
                       claimsAvailability={claimsAvailability}
                       gdpAvailability={gdpAvailability}
                     />

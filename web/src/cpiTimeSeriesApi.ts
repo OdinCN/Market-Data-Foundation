@@ -208,7 +208,15 @@ export async function readCpiStatus(
       if (
         !(error instanceof CpiServiceFailure) ||
         error.status !== 503 ||
-        !["cpi", "ppi", "pce", "employment", "retail", "consumption"].some(
+        ![
+          "cpi",
+          "ppi",
+          "pce",
+          "employment",
+          "retail",
+          "consumption",
+          "jolts",
+        ].some(
           (family) => error.classification === family + "_timeseries_busy",
         ) ||
         attempt >= delays.length
@@ -351,6 +359,7 @@ export type CpiPoint = {
   };
   value?: string | number | null;
   net_change_1m_thousand_jobs?: string | number | null;
+  change_1m_level?: string | number | null;
   change_1m_percentage_points?: string | number | null;
   change_12m_percentage_points?: string | number | null;
   change_1m_hours?: string | number | null;
@@ -426,7 +435,9 @@ export function buildCpiQueryRequest(
                   .map((b) => (b === "core" ? "control" : b))
                   .join(","),
         }
-      : profile.id === "employment" || profile.id === "consumption"
+      : profile.id === "jolts" ||
+          profile.id === "employment" ||
+          profile.id === "consumption"
         ? {
             series:
               scope.series ??
@@ -469,7 +480,9 @@ export async function queryCpiRange(
   if (profile.id === "retail") result = normalizeRetailResult(result, scope);
   const selected = profile.series
     .filter((s) =>
-      profile.id === "employment" || profile.id === "consumption"
+      profile.id === "jolts" ||
+      profile.id === "employment" ||
+      profile.id === "consumption"
         ? (
             scope.series?.split(",") ??
             profile.defaultQuerySeries ??
@@ -528,9 +541,12 @@ export async function queryCpiRange(
     ) ||
     !result.points.every(
       (p) =>
-        (profile.id === "employment" || profile.id === "consumption"
+        (profile.id === "jolts" ||
+        profile.id === "employment" ||
+        profile.id === "consumption"
           ? [
               p.value,
+              p.change_1m_level ?? null,
               p.net_change_1m_thousand_jobs ?? null,
               p.change_1m_percentage_points ?? null,
               p.change_1m_hours ?? null,
@@ -558,6 +574,7 @@ export async function queryCpiRange(
             .every(
               (column) =>
                 column in p ||
+                profile.id === "jolts" ||
                 profile.id === "employment" ||
                 profile.id === "consumption",
             )),

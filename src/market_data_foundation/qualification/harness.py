@@ -9,7 +9,7 @@ from datetime import date, datetime, timezone
 from time import perf_counter
 from typing import Any, Literal
 
-from .contracts import Capability, Fixture
+from .contracts import Capability, Fixture, MacroCapability
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ class Binding:
     provider: str
     implementation: str
     version: str
-    capability: Capability
+    capability: Capability | MacroCapability
     mode: Literal["offline", "live"]
     endpoint: Endpoint = field(default_factory=Endpoint)
 
@@ -47,7 +47,7 @@ class Binding:
             )
         if self.mode not in ("offline", "live"):
             raise ValueError("binding mode must be offline or live")
-        if not isinstance(self.capability, Capability):
+        if not isinstance(self.capability, (Capability, MacroCapability)):
             raise ValueError("binding requires a canonical capability")
 
 
@@ -162,7 +162,12 @@ def observe(
         return value.isoformat() if value is not None else None
 
     return {
-        "schema_version": 2,
+        "schema_version": 3 if isinstance(fixture.capability, MacroCapability) else 2,
+        **(
+            {"capability_scope": "macro"}
+            if isinstance(fixture.capability, MacroCapability)
+            else {}
+        ),
         "provider": binding.provider,
         "implementation": binding.implementation,
         "implementation_version": binding.version,

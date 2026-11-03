@@ -16,6 +16,7 @@ import {
   quarterRangeValid,
   quarterCount,
 } from "./QuarterField";
+import { Fact } from "./WorkflowTable";
 import { DateField } from "./DateField";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
@@ -472,6 +473,23 @@ function CpiTimeSeriesCollectionContent({
           <p className="small">{profile.historyNotice}</p>
         )}
       </details>
+      {profile.id === "jolts" && availability.data && (
+        <details>
+          <summary>本地实际覆盖</summary>
+          <p>
+            本地已持有 {availability.data.observation_count} 项观测、
+            {availability.data.batch_count}{" "}
+            个批次。各项最新月份不证明中间月份完整，完整窗口以查询或采集回读为准。
+          </p>
+          <dl>
+            {profile.series.map(([id, label]) => (
+              <Fact key={id} name={label}>
+                {availability.data?.latest_months[id] ?? "尚无本地记录"}
+              </Fact>
+            ))}
+          </dl>
+        </details>
+      )}
       {maxPeriods != null && (
         <p className="small">
           当前主机每次允许最多 {maxPeriods} {quarterly ? "个季度" : "个月"}。

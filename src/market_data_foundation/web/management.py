@@ -34,6 +34,7 @@ FAMILIES = (
     ("GDP", "美国 GDP 与增长", "gdp_contract"),
     ("RETAIL", "美国零售", "census_retail"),
     ("CLAIMS", "美国初请与续请失业金", "claims_contract"),
+    ("JOLTS", "美国职位空缺与劳动力流动", "jolts_binding"),
     ("FRED_ALFRED", "FRED / ALFRED vintage", "fred_alfred_vintage"),
     ("FOMC", "FOMC 声明", "fomc_statement"),
     ("ECB", "ECB SDMX", "ECB"),

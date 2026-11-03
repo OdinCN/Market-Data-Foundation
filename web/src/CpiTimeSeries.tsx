@@ -183,57 +183,73 @@ function CpiTimeSeriesContent({
 }) {
   const claims = profile.id === "claims";
   const gdp = profile.id === "gdp";
+  const jolts = profile.id === "jolts";
   const consumption = profile.id === "consumption";
   const employment =
-    profile.id === "employment" || consumption || gdp || claims;
+    profile.id === "employment" || jolts || consumption || gdp || claims;
   const retail = profile.id === "retail";
-  const measures = claims
+  const measures = jolts
     ? [
-        { value: "value", label: "原生数值（Number）" },
-        { value: "weekly_change", label: "周数值变化（Number）" },
-        { value: "weekly_change_ratio", label: "周变化比率（%）" },
-        { value: "local_four_week_average", label: "本地四周均值（Number）" },
+        { value: "value", label: "原生值（千岗位 / 千人次 / %）" },
+        { value: "change_1m_level", label: "数量月差（原单位）" },
+        { value: "change_1m_ratio", label: "数量月增长（%）" },
+        { value: "change_12m_ratio", label: "数量年增长（%）" },
+        {
+          value: "change_1m_percentage_points",
+          label: "官方比率月差（百分点）",
+        },
+        {
+          value: "change_12m_percentage_points",
+          label: "官方比率年差（百分点）",
+        },
       ]
-    : gdp
+    : claims
       ? [
-          { value: "value", label: "原生值（金额 / % / 百分点）" },
-          { value: "change_1q_ratio", label: "水平季变（非年化）" },
-          { value: "change_4q_ratio", label: "水平年变" },
+          { value: "value", label: "原生数值（Number）" },
+          { value: "weekly_change", label: "周数值变化（Number）" },
+          { value: "weekly_change_ratio", label: "周变化比率（%）" },
+          { value: "local_four_week_average", label: "本地四周均值（Number）" },
         ]
-      : consumption
+      : gdp
         ? [
-            { value: "value", label: "数值（单位见指标）" },
-            ...globalMeasures.filter((m) => m.value !== "index_value"),
-            {
-              value: "change_1m_percentage_points",
-              label: "储蓄率月变化（百分点）",
-            },
-            {
-              value: "change_12m_percentage_points",
-              label: "储蓄率年变化（百分点）",
-            },
+            { value: "value", label: "原生值（金额 / % / 百分点）" },
+            { value: "change_1q_ratio", label: "水平季变（非年化）" },
+            { value: "change_4q_ratio", label: "水平年变" },
           ]
-        : employment
-          ? employmentMeasures
-          : retail
-            ? [
-                ...globalMeasures.map((item) =>
-                  item.value === "index_value"
-                    ? { ...item, label: "金额（百万当期美元）" }
-                    : item,
-                ),
-                {
-                  value: "official_mpcsm_percent",
-                  label: "官方 MPCSM（percent）",
-                },
-              ]
-            : profile.id === "pce"
+        : consumption
+          ? [
+              { value: "value", label: "数值（单位见指标）" },
+              ...globalMeasures.filter((m) => m.value !== "index_value"),
+              {
+                value: "change_1m_percentage_points",
+                label: "储蓄率月变化（百分点）",
+              },
+              {
+                value: "change_12m_percentage_points",
+                label: "储蓄率年变化（百分点）",
+              },
+            ]
+          : employment
+            ? employmentMeasures
+            : retail
               ? [
-                  ...globalMeasures,
-                  { value: "annualized_3m_ratio", label: "3月年化变化" },
-                  { value: "annualized_6m_ratio", label: "6月年化变化" },
+                  ...globalMeasures.map((item) =>
+                    item.value === "index_value"
+                      ? { ...item, label: "金额（百万当期美元）" }
+                      : item,
+                  ),
+                  {
+                    value: "official_mpcsm_percent",
+                    label: "官方 MPCSM（percent）",
+                  },
                 ]
-              : globalMeasures;
+              : profile.id === "pce"
+                ? [
+                    ...globalMeasures,
+                    { value: "annualized_3m_ratio", label: "3月年化变化" },
+                    { value: "annualized_6m_ratio", label: "6月年化变化" },
+                  ]
+                : globalMeasures;
   const baskets = [
     ...new Map(
       profile.series.map((s) => [
@@ -475,9 +491,15 @@ function CpiTimeSeriesContent({
           历史截止查询只读已入库记录。
         </p>
         <CpiAvailabilityNotice profile={profile} availability={availability} />
-        {profile.historyNotice && (
-          <p className="small">{profile.historyNotice}</p>
-        )}
+        {profile.historyNotice &&
+          (jolts ? (
+            <details>
+              <summary>口径与数据说明</summary>
+              <p className="small">{profile.historyNotice}</p>
+            </details>
+          ) : (
+            <p className="small">{profile.historyNotice}</p>
+          ))}
         {availability.data && (
           <>
             <p>
@@ -554,9 +576,11 @@ function CpiTimeSeriesContent({
                     ? "申领系列"
                     : gdp
                       ? "GDP指标"
-                      : consumption
-                        ? "消费与收入指标"
-                        : "就业指标"
+                      : jolts
+                        ? "JOLTS指标"
+                        : consumption
+                          ? "消费与收入指标"
+                          : "就业指标"
                 }
                 options={profile.series.map((s) => ({
                   value: s[0],
@@ -629,7 +653,14 @@ function CpiTimeSeriesContent({
           )}
           {employment && !series.length && (
             <p role="alert">
-              请至少选择一项{gdp ? "GDP" : consumption ? "消费与收入" : "就业"}
+              请至少选择一项
+              {gdp
+                ? "GDP"
+                : jolts
+                  ? "JOLTS"
+                  : consumption
+                    ? "消费与收入"
+                    : "就业"}
               指标。
             </p>
           )}
@@ -662,7 +693,9 @@ function CpiTimeSeriesContent({
               : consumption
                 ? "按所选原生系列查询；金额为百万美元年率水平，储蓄率为百分数及百分点变化。"
                 : employment
-                  ? "按所选就业系列查询，各指标保留原生单位。"
+                  ? jolts
+                    ? "按所选JOLTS原生系列查询，数量与官方比率各自保留单位。"
+                    : "按所选就业系列查询，各指标保留原生单位。"
                   : retail
                     ? "按所选口径查询，计算复用六项原始输入。"
                     : "按所选统计口径查询，请求使用 measure=index。"}
@@ -761,11 +794,13 @@ function CpiTimeSeriesContent({
                   ? "所有原生数值与周差、本地均值均为Number；周变化比率以百分比显示。官方均值是独立系列，不计算均值的本地四周均值。"
                   : gdp
                     ? "金额为百万2017链价美元（SAAR）；官方年化季环比为%，贡献为百分点。水平季变/年变以%显示，未经年化；其他六项不计算变化。"
-                    : consumption
-                      ? "金额为百万当期/2017链价美元，季调年率水平；变化为累计比率。储蓄率为百分数，其变化列为百分点。"
-                      : employment
-                        ? "CES 千岗位及月净增；失业率、劳动参与率为百分数及百分点变化；时薪为美元/小时及环同比；平均每周工时为小时及小时变化。"
-                        : "变化率以百分比显示；3月、6月为相隔对应月数的累计变化，未经年化。"}
+                    : jolts
+                      ? "数量为千岗位/千人次，数量月差为原单位，累计ratio以%展示；官方Rate已是percent，变化为百分点。0有效，null与缺行分别保留。"
+                      : consumption
+                        ? "金额为百万当期/2017链价美元，季调年率水平；变化为累计比率。储蓄率为百分数，其变化列为百分点。"
+                        : employment
+                          ? "CES 千岗位及月净增；失业率、劳动参与率为百分数及百分点变化；时薪为美元/小时及环同比；平均每周工时为小时及小时变化。"
+                          : "变化率以百分比显示；3月、6月为相隔对应月数的累计变化，未经年化。"}
               </p>
               <div className="table-wrap">
                 <table
@@ -823,31 +858,46 @@ function CpiTimeSeriesContent({
                                 {valueText(
                                   row.point?.[field as keyof RangePoint],
                                   field.endsWith("ratio"),
-                                  claims
-                                    ? field.endsWith("ratio")
+                                  jolts
+                                    ? field.endsWith("ratio") ||
+                                      (field === "value" &&
+                                        row.series_id.endsWith("R"))
                                       ? "%"
-                                      : ""
-                                    : gdp
-                                      ? field.endsWith("ratio") ||
-                                        row.point?.value_unit === "percent"
-                                        ? "%"
-                                        : row.point?.value_unit ===
-                                            "percentage_points"
-                                          ? " 百分点"
+                                      : field.endsWith("percentage_points")
+                                        ? " 百分点"
+                                        : field === "value" ||
+                                            field === "change_1m_level"
+                                          ? row.series_id.endsWith("R")
+                                            ? ""
+                                            : row.series_id.endsWith("JOL")
+                                              ? " 千岗位"
+                                              : " 千人次"
                                           : ""
-                                      : employment
+                                    : claims
+                                      ? field.endsWith("ratio")
+                                        ? "%"
+                                        : ""
+                                      : gdp
                                         ? field.endsWith("ratio") ||
-                                          field === "mom_pct" ||
-                                          field === "yoy_pct"
+                                          row.point?.value_unit === "percent"
                                           ? "%"
-                                          : consumption &&
-                                              field === "value" &&
-                                              row.series_id === "A072RC"
-                                            ? "%"
+                                          : row.point?.value_unit ===
+                                              "percentage_points"
+                                            ? " 百分点"
                                             : ""
-                                        : field === "index_value"
-                                          ? ""
-                                          : "%",
+                                        : employment
+                                          ? field.endsWith("ratio") ||
+                                            field === "mom_pct" ||
+                                            field === "yoy_pct"
+                                            ? "%"
+                                            : consumption &&
+                                                field === "value" &&
+                                                row.series_id === "A072RC"
+                                              ? "%"
+                                              : ""
+                                          : field === "index_value"
+                                            ? ""
+                                            : "%",
                                   claims ||
                                     (gdp &&
                                       field === "value" &&

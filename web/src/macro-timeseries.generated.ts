@@ -556,6 +556,144 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/r5/jolts/timeseries/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Timeseries Status */
+    get: operations["timeseries_status_api_r5_jolts_timeseries_status_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/jolts/timeseries/query": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Timeseries Query */
+    get: operations["timeseries_query_api_r5_jolts_timeseries_query_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/jolts/timeseries/schedule": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Timeseries Schedule */
+    get: operations["timeseries_schedule_api_r5_jolts_timeseries_schedule_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/jolts/timeseries/strategy": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Timeseries Strategy */
+    get: operations["timeseries_strategy_api_r5_jolts_timeseries_strategy_get"];
+    /** Update Strategy */
+    put: operations["update_strategy_api_r5_jolts_timeseries_strategy_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/jolts/timeseries/jobs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Timeseries Jobs */
+    get: operations["timeseries_jobs_api_r5_jolts_timeseries_jobs_get"];
+    put?: never;
+    /** Submit */
+    post: operations["submit_api_r5_jolts_timeseries_jobs_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/jolts/timeseries/executions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Timeseries Executions */
+    get: operations["timeseries_executions_api_r5_jolts_timeseries_executions_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/jolts/timeseries/api-help": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Timeseries Api-Help */
+    get: operations["timeseries_api_help_api_r5_jolts_timeseries_api_help_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/r5/jolts/timeseries/releases": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Timeseries Releases */
+    get: operations["timeseries_releases_api_r5_jolts_timeseries_releases_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/r5/consumption/timeseries/status": {
     parameters: {
       query?: never;
@@ -2257,6 +2395,404 @@ export interface operations {
     };
   };
   timeseries_releases_api_r5_employment_timeseries_releases_get: {
+    parameters: {
+      query?: {
+        /** @description Exact canonical official event ID; BEA PIO shared across metrics and reference months. */
+        event_id?: string;
+        /** @description Optional YYYY-MM event COVERAGE filter, not only primary reference month. */
+        reference_month?: string;
+        /** @description Inclusive aware MDF availability cutoff, also applied to consensus and version associations. */
+        as_of?: string;
+        /** @description event (default) / source_history; retained official archives only; ALFRED not implemented and no latest fallback. */
+        read_mode?: string;
+        /** @description Exact source version DATE YYYY-MM-DD; remains date precision, never midnight publication time. */
+        source_version?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Local retained evidence and per-scope absence; never creates schema or requests upstream. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            /** @enum {string} */
+            read_mode?: "event" | "source_history";
+            /** Format: date-time */
+            as_of: string;
+            /** @constant */
+            as_of_basis: "available";
+            events: {
+              event_id: string;
+              family?: string;
+              reference_month?: string;
+              reference_months: string[];
+              actual_at?: string | null;
+              source_version: {
+                value: string;
+                /** @enum {string} */
+                precision: "date" | "instant" | "interval";
+                basis: string;
+                source: string;
+              };
+              claims: {
+                series_id: string;
+                reference_month: string;
+                statistic: string;
+                unit: string;
+                adjustment: string;
+                role: string;
+                value: string;
+                value_identity: string;
+                evidence_id?: string;
+                continuous_version?: {
+                  [key: string]: unknown;
+                } | null;
+                value_basis?: string;
+                publisher_reported_rate?: boolean;
+                confirmation_state?: string;
+                mdf_first_captured_missing?: string | null;
+                mdf_pre_event_previous_missing?: string | null;
+                mdf_pre_event_previous_basis?: string;
+                mdf_pre_event_guaranteed_previous?: {
+                  [key: string]: unknown;
+                } | null;
+                association?: {
+                  [key: string]: unknown;
+                } | null;
+                association_missing?: string | null;
+                mdf_first_captured?: {
+                  [key: string]: unknown;
+                } | null;
+                mdf_pre_event_last_consumable_previous?: {
+                  [key: string]: unknown;
+                } | null;
+                consensus?: {
+                  [key: string]: unknown;
+                } | null;
+                surprise?: string | null;
+                surprise_missing?: string[];
+                locator?: {
+                  [key: string]: unknown;
+                };
+              }[];
+              evidence: {
+                evidence_id?: string;
+                raw_sha256?: string;
+                raw_locator?: string;
+                obtained_at?: string;
+                available_at?: string;
+                parser_revision?: string;
+                source_url?: string;
+                source_version?: {
+                  value: string;
+                  /** @enum {string} */
+                  precision: "date" | "instant" | "interval";
+                  basis: string;
+                  source: string;
+                };
+                retention?: {
+                  [key: string]: unknown;
+                };
+                claims?: {
+                  series_id: string;
+                  reference_month: string;
+                  statistic: string;
+                  unit: string;
+                  adjustment: string;
+                  role: string;
+                  value: string;
+                  value_identity: string;
+                  evidence_id?: string;
+                  continuous_version?: {
+                    [key: string]: unknown;
+                  } | null;
+                  value_basis?: string;
+                  publisher_reported_rate?: boolean;
+                  confirmation_state?: string;
+                  mdf_first_captured_missing?: string | null;
+                  mdf_pre_event_previous_missing?: string | null;
+                  mdf_pre_event_previous_basis?: string;
+                  mdf_pre_event_guaranteed_previous?: {
+                    [key: string]: unknown;
+                  } | null;
+                  association?: {
+                    [key: string]: unknown;
+                  } | null;
+                  association_missing?: string | null;
+                  mdf_first_captured?: {
+                    [key: string]: unknown;
+                  } | null;
+                  mdf_pre_event_last_consumable_previous?: {
+                    [key: string]: unknown;
+                  } | null;
+                  consensus?: {
+                    [key: string]: unknown;
+                  } | null;
+                  surprise?: string | null;
+                  surprise_missing?: string[];
+                  locator?: {
+                    [key: string]: unknown;
+                  };
+                }[];
+              }[];
+              /** @enum {string} */
+              state: "confirmed" | "unknown";
+              missing?: string[];
+              missing_scopes?: {
+                series_id: string;
+                reference_month: string;
+                statistic: string;
+                unit: string;
+                adjustment: string;
+                reason: string;
+                coverage_basis?: string;
+                evidence_id?: string;
+              }[];
+              conflicts?: {
+                [key: string]: unknown;
+              }[];
+              consensus_snapshots?: {
+                [key: string]: unknown;
+              }[];
+            }[];
+            consensus_snapshots?: {
+              [key: string]: unknown;
+            }[];
+            missing: string[];
+            /** @constant */
+            provider_requests: 0;
+            /** @constant */
+            provider_attempts?: 0;
+            /** @constant */
+            persisted: false;
+            history_basis?: string;
+            coverage?: string;
+          };
+        };
+      };
+    };
+  };
+  timeseries_status_api_r5_jolts_timeseries_status_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  timeseries_query_api_r5_jolts_timeseries_query_get: {
+    parameters: {
+      query: {
+        /** @description Inclusive reference month YYYY-MM. */
+        start: string;
+        /** @description Inclusive reference month YYYY-MM; descending result presentation. */
+        end: string;
+        /** @description Default true; false permits explicit temporary current source fill. History always local. GET never writes. */
+        local_only?: string;
+        /** @description current/history; inferred history with as_of or available basis. */
+        query_mode?: string;
+        /** @description Aware ISO8601 inclusive MDF cutoff; every operand and comparison uses this same cutoff. +08:00 is accepted. */
+        as_of?: string;
+        /** @description observed/available; history defaults available. Must agree with vintage_mode. */
+        as_of_basis?: string;
+        /** @description Alias of as_of_basis. Never official vintage. */
+        vintage_mode?: string;
+        /** @description Optional comma-separated numeric fields: value,change_1m_level,change_1m_ratio,change_12m_ratio,change_1m_percentage_points,change_12m_percentage_points. Omitted preserves existing fields and metadata. */
+        columns?: string;
+        /** @description CSV eight national SA JOLTS IDs; default all. */
+        series?: string;
+        /** @description index only; native quantity/rate value. */
+        measure?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  timeseries_schedule_api_r5_jolts_timeseries_schedule_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  timeseries_strategy_api_r5_jolts_timeseries_strategy_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  update_strategy_api_r5_jolts_timeseries_strategy_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  timeseries_jobs_api_r5_jolts_timeseries_jobs_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  submit_api_r5_jolts_timeseries_jobs_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** Format: uuid */
+          request_id: string;
+          /** @enum {string} */
+          action: "init" | "initialize" | "update";
+          start: string;
+          end: string;
+          /** @description Optional allowlisted CSV subset; omitted collects every profile input. Use only newly admitted IDs for historical backfill. */
+          series?: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  timeseries_executions_api_r5_jolts_timeseries_executions_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  timeseries_api_help_api_r5_jolts_timeseries_api_help_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  timeseries_releases_api_r5_jolts_timeseries_releases_get: {
     parameters: {
       query?: {
         /** @description Exact canonical official event ID; BEA PIO shared across metrics and reference months. */

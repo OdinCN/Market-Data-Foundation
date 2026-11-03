@@ -200,3 +200,15 @@ BEA日历/公共原始材料可复用，但consumption独立解析revision/evide
 Claims 的真实 DEV 采集、暂时进程和 Chromium 1440/960/480 证据与旧七族自然历史查询复核见专属说明。
 共享覆盖列表还须检查相邻文字与原生marker、完整日期和表内滚动，不能以document无横向溢出替代。
 未来自然发布、旧档案、完整vintage、具名共识及odin_dba独立登录的边界继续明确保留。
+
+
+## JOLTS 全国非农 SA 增量
+
+[JOLTS 当前说明](jolts-r1.md) 覆盖八项独立数量/官方 Rate、同截止数量差/ratio和比率百分点差、
+零/null，以及共享查询/采集/策略/执行/API帮助。历史分段状态另存专属阶段记录。
+全国日历须排除 State JOLTS 和 Employment Situation，参考月不按日期猜测。
+发布材料在逐项数值的全国/SA/参考期映射尚未合格前只保留事件 scope，不从叙述中生成 actual；
+首次本地捕获、计划发布、官方首发和数值事件绑定分别核对。
+年度初次和每个已确认发布后的五年维护是 MDF 保守规则，去重、三次预算、UUID恢复、
+共享 BLS single-flight/配额/cooldown均须保留；策略 enabled 不代替实际有界进程证据。
+5A/5B1真实DEV和浏览器证据可在不受相关改动影响时复用，未完成的全量回归保持 pending。

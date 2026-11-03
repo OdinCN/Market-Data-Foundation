@@ -409,13 +409,13 @@ class TimeSeriesHost:
             }
             | (
                 {"series"}
-                if self.profile.key in {"employment", "consumption"}
+                if self.profile.key in {"employment", "consumption", "jolts"}
                 else set()
             ),
         )
         if not self.query_allowed:
             raise WebError("local_read_not_authorized", 403)
-        if self.profile.key in {"employment", "consumption"} and (
+        if self.profile.key in {"employment", "consumption", "jolts"} and (
             "basket" in params
             or "adjustment" in params
             or params.get(
@@ -425,7 +425,7 @@ class TimeSeriesHost:
         ):
             raise WebError(self.profile.key + "_series_filter_required")
         local_only = params.get(
-            "local_only", "true" if self.profile is CPI_PROFILE else "false"
+            "local_only", "true" if self.profile.key in {"cpi", "jolts"} else "false"
         )
         if local_only not in {"true", "false"}:
             raise WebError("invalid_local_only")
@@ -470,6 +470,7 @@ class TimeSeriesHost:
             self.scheduler.status() if snapshot is None else snapshot,
             self.official_origin,
             as_of=result.get("as_of"),
+            as_of_basis=result.get("as_of_basis"),
         )
         events = {
             month: event
@@ -625,7 +626,13 @@ class TimeSeriesHost:
                         service, command["start"], command["end"], written
                     )
                 read_start, read_end = command["start"], command["end"]
-                if self.profile.key in {"ppi", "pce", "employment", "consumption"}:
+                if self.profile.key in {
+                    "ppi",
+                    "pce",
+                    "employment",
+                    "consumption",
+                    "jolts",
+                }:
                     months = [
                         p["month"]
                         for p in written.get("source_returned_series_months", [])

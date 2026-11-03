@@ -27,6 +27,7 @@ from market_data_foundation.historical.bls_cpi_direct_live import (
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
+    JOLTS_PROFILE,
     validate_profile,
 )
 from market_data_foundation.historical.cpi_request_control import (
@@ -263,11 +264,10 @@ def parse_response(
                     index = Decimal(value)
                 except InvalidOperation:
                     raise CpiSourceError("cpi_timeseries_index_invalid") from None
-                zero_rate = profile is EMPLOYMENT_PROFILE and identity in {
-                    "LNS14000000",
-                    "LNS11300000",
-                    "LNS12300000",
-                }
+                zero_rate = profile is JOLTS_PROFILE or (
+                    profile is EMPLOYMENT_PROFILE
+                    and identity in {"LNS14000000", "LNS11300000", "LNS12300000"}
+                )
                 if not index.is_finite() or index < 0 or (index == 0 and not zero_rate):
                     raise CpiSourceError("cpi_timeseries_index_invalid")
             calculations, footnotes = (

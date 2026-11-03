@@ -23,6 +23,7 @@ from market_data_foundation.web.cpi_timeseries_api import (
 )
 from market_data_foundation.web.cpi_timeseries_host import create_timeseries_preview
 from market_data_foundation.web.gdp_runtime import GdpOptions
+from market_data_foundation.web.jolts_runtime import JoltsOptions
 from market_data_foundation.web.pce_dev_host import CANDIDATE_LISTENER
 from market_data_foundation.web.readonly_host import (
     ReadonlySettings,
@@ -73,6 +74,7 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_job(request, prefix="/api/r5/retail/timeseries")
                 or admitted_job(request, prefix="/api/r5/gdp/timeseries")
                 or admitted_job(request, prefix="/api/r5/claims/timeseries")
+                or admitted_job(request, prefix="/api/r5/jolts/timeseries")
                 or (
                     request.url.path == "/api/r5/retail/timeseries/strategy"
                     and admitted_strategy(
@@ -96,6 +98,7 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_strategy(request, prefix="/api/r5/retail/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/gdp/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/claims/timeseries")
+                or admitted_strategy(request, prefix="/api/r5/jolts/timeseries")
             )
         return super().request_admitted(request)
 
@@ -181,6 +184,10 @@ def main():
     parser.add_argument("--gdp-schedule-path", type=Path)
     parser.add_argument("--gdp-job-directory", type=Path)
     parser.add_argument("--gdp-history-start")
+    parser.add_argument("--allow-jolts-local-read", action="store_true")
+    parser.add_argument("--allow-jolts-collect", action="store_true")
+    parser.add_argument("--allow-jolts-source", action="store_true")
+    parser.add_argument("--jolts-state-directory", type=Path)
     args = parser.parse_args()
     if args.enable_claims_timeseries and (
         args.claims_schedule_path is None or args.claims_job_directory is None
@@ -226,8 +233,24 @@ def main():
             read_permission="allowed" if allowed else "unknown",
         )
 
+    jolts_options = None
+    if (
+        args.allow_jolts_local_read
+        or args.allow_jolts_collect
+        or args.allow_jolts_source
+    ):
+        require(
+            args.jolts_state_directory is not None, "jolts_independent_state_required"
+        )
+        jolts_options = JoltsOptions(
+            state_directory=args.jolts_state_directory,
+            allow_read=args.allow_jolts_local_read,
+            allow_collect=args.allow_jolts_collect,
+            allow_source=args.allow_jolts_source,
+        )
     app = create_timeseries_preview(
         settings,
+        jolts_options=jolts_options,
         enabled=True,
         claims_options=ClaimsOptions(
             args.claims_schedule_path,

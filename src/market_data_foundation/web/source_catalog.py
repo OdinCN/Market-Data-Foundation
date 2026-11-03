@@ -79,6 +79,8 @@ from market_data_foundation.historical.gdp_contract import (
     GDP_DEFINITION,
     GDP_SOURCE,
 )
+from market_data_foundation.historical.jolts_binding import JOLTS_BINDING, JOLTS_SOURCE
+from market_data_foundation.historical.jolts_contract import JOLTS_DEFINITION
 from market_data_foundation.historical.sdmx_official import _contracts as sdmx_contracts
 from market_data_foundation.historical.tdx_recent_daily import (
     RECENT_BINDING,
@@ -242,6 +244,15 @@ def directory(query: DirectoryQuery) -> DirectoryDTO:
     """Deterministic bounded allowlist; unknown/unlisted contracts are absent."""
     history_source, history_binding = source_binding()
     specs = (
+        (
+            "Macro",
+            "BLS",
+            "jolts_binding",
+            "JOLTS_SOURCE",
+            JOLTS_SOURCE,
+            JOLTS_BINDING,
+            JOLTS_DEFINITION,
+        ),
         (
             "Macro",
             "BLS",

@@ -123,6 +123,7 @@ function fixture() {
     consumption: false,
     gdp: false,
     claims: false,
+    jolts: false,
   };
   const transport: Transport = async (input, init) => {
     const url = new URL(String(input), "http://synthetic.invalid");

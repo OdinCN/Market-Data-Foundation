@@ -528,6 +528,9 @@ function CpiStrategyWorkbenchContent({
   sixthProfile,
   sixthAvailability,
   sixthVisible = true,
+  ninthProfile,
+  ninthAvailability,
+  ninthVisible = true,
   eighthProfile,
   eighthAvailability,
   eighthVisible = true,
@@ -548,6 +551,9 @@ function CpiStrategyWorkbenchContent({
   additionalProfile?: MacroProfile;
   additionalAvailability?: CpiAvailability;
   additionalVisible?: boolean;
+  ninthProfile?: MacroProfile;
+  ninthAvailability?: CpiAvailability;
+  ninthVisible?: boolean;
   eighthProfile?: MacroProfile;
   eighthAvailability?: CpiAvailability;
   eighthVisible?: boolean;
@@ -624,6 +630,13 @@ function CpiStrategyWorkbenchContent({
     seventhAvailability ?? emptyAvailability,
     !!seventhProfile && seventhVisible,
   );
+  const ninth = useStrategyControl(
+    transport,
+    generation,
+    ninthProfile ?? primaryProfile,
+    ninthAvailability ?? emptyAvailability,
+    !!ninthProfile && ninthVisible,
+  );
   const eighth = useStrategyControl(
     transport,
     generation,
@@ -632,6 +645,16 @@ function CpiStrategyWorkbenchContent({
     !!eighthProfile && eighthVisible,
   );
   const entries = [
+    ...(ninthProfile
+      ? [
+          {
+            profile: ninthProfile,
+            availability: ninthAvailability ?? emptyAvailability,
+            visible: ninthVisible,
+            ...ninth,
+          },
+        ]
+      : []),
     ...(eighthProfile
       ? [
           {
@@ -893,30 +916,28 @@ function CpiStrategyWorkbenchContent({
                 )}
               </Fact>
             </dl>
-            {refresh?.refresh_mode && (
-              <dl>
-                <Fact name="当前日历入口">
-                  {refresh.source ? (
-                    <a
-                      href={refresh.source}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="calendar-source-link"
-                    >
-                      {refresh.source}
-                    </a>
-                  ) : (
-                    "未获取"
-                  )}
-                </Fact>
-                <Fact name="日历缓存有效期至（北京时间）">
-                  {formatBeijingTime(refresh.cache_valid_until, "未记录")}
-                </Fact>
-                <Fact name="下次日历刷新（北京时间）">
-                  {formatBeijingTime(refresh.next_refresh_at, "未记录")}
-                </Fact>
-              </dl>
-            )}
+            <dl>
+              <Fact name="当前日历入口">
+                {refresh?.source || refresh?.primary_source ? (
+                  <a
+                    href={refresh.source ?? refresh.primary_source}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="calendar-source-link"
+                  >
+                    {refresh.source ?? refresh.primary_source}
+                  </a>
+                ) : (
+                  "未记录"
+                )}
+              </Fact>
+              <Fact name="日历缓存有效期至（北京时间）">
+                {formatBeijingTime(refresh?.cache_valid_until, "未记录")}
+              </Fact>
+              <Fact name="下次日历刷新（北京时间）">
+                {formatBeijingTime(refresh?.next_refresh_at, "未记录")}
+              </Fact>
+            </dl>
             {!data.enabled && <p>策略已暂停。</p>}
             {refresh?.refresh_mode === "fallback" ? (
               <p role="status">
