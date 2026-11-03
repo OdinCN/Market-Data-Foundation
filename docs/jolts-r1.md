@@ -77,6 +77,10 @@ API 样本证明返回数值和采样覆盖。定义/方法正文及具名发布
 沿共享准入留存原文；5B1已取得的日历200证据不受此影响。实际失败分类与原文见事务 `artifacts/segment5b2/source-observations.json`；
 不据早期403推断今天仍不可读，也不以今天取得材料重写历史取得时间。
 
+资格声明使用独立 [宏观资格合同](qualification/macro-r1.md)：MacroCapability、明确macro
+scope的fixture及观察v3，保持旧16项证券能力、Fuyao/TDX预算、fixture和观察v2冻结字节。
+本段既有4个403的传输事实/原文不改写；资格适配另存离线v3记录，不新增网络或业务写入。
+
 ## 周期、五年回修与进程
 
 策略文件默认暂停；显式启用与真实 worker 进程、心跳、执行完成和目标可用分别报告。

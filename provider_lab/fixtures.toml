@@ -136,12 +136,3 @@ capability = "finance.f10"
 symbols = ["600000.XSHG"]
 page_size = 1024
 semantics = { origin = "native F10 descriptors and bounded text", history = "unstructured current text; not standardized financial statements" }
-
-[[fixtures]]
-id = "bls-jolts-national-sa-foundation"
-capability = "macro.timeseries"
-symbols = ["JTS000000000000000JOL", "JTS000000000000000JOR", "JTS000000000000000HIL", "JTS000000000000000HIR", "JTS000000000000000QUL", "JTS000000000000000QUR", "JTS000000000000000LDL", "JTS000000000000000LDR"]
-start = 2026-01-01
-end = 2026-08-31
-page_size = 8
-semantics = { provider = "BLS only; no fallback", frequency = "monthly national total nonfarm SA", units = "native Level in Thousands and independent Rate; definitions qualification pending", history = "MDF obtained/available cutoffs, not official vintage", batching = "eight series per year window; live requires explicit opt-in" }

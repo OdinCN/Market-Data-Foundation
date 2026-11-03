@@ -8,6 +8,8 @@ from pathlib import Path
 
 
 class Capability(StrEnum):
+    """Frozen securities qualification scope used by the TDX/Fuyao contracts."""
+
     SECURITY_UNIVERSE = "security.universe"
     SECURITY_METADATA = "security.metadata"
     QUOTE_SNAPSHOT = "quote.snapshot"
@@ -24,13 +26,18 @@ class Capability(StrEnum):
     FINANCE_F10 = "finance.f10"
     FINANCIAL_STATEMENTS = "financial.statements"
     TRADING_CALENDAR = "calendar.trading_days"
-    MACRO_TIMESERIES = "macro.timeseries"
+
+
+class MacroCapability(StrEnum):
+    """Canonical macro scope; never expands securities budgets or matrices."""
+
+    TIMESERIES = "macro.timeseries"
 
 
 @dataclass(frozen=True)
 class Fixture:
     fixture_id: str
-    capability: Capability
+    capability: Capability | MacroCapability
     symbols: tuple[str, ...]
     start: date | None
     end: date | None
@@ -45,7 +52,7 @@ class Fixture:
             or self.page_size < 1
         ):
             raise ValueError("fixture identifier and positive page size are required")
-        if not isinstance(self.capability, Capability):
+        if not isinstance(self.capability, (Capability, MacroCapability)):
             raise ValueError("fixture requires a canonical capability")
         if any(
             type(value) is not date
@@ -64,14 +71,26 @@ class Fixture:
 
 
 def load_fixtures(path: Path) -> tuple[Fixture, ...]:
+    """Load the frozen securities fixture format and capability scope."""
+    return _load_fixtures(path, Capability, scope=None)
+
+
+def load_macro_fixtures(path: Path) -> tuple[Fixture, ...]:
+    """Load explicitly scoped macro fixtures without changing legacy inputs."""
+    return _load_fixtures(path, MacroCapability, scope="macro")
+
+
+def _load_fixtures(path, capability_type, *, scope):
     with path.open("rb") as file:
         document = tomllib.load(file)
     if document.get("schema_version") != 1:
         raise ValueError("unsupported fixture schema version")
+    if document.get("capability_scope") != scope:
+        raise ValueError("fixture capability scope does not match loader")
     fixtures = tuple(
         Fixture(
             fixture_id=row["id"],
-            capability=Capability(row["capability"]),
+            capability=capability_type(row["capability"]),
             symbols=tuple(row["symbols"]),
             start=row.get("start"),
             end=row.get("end"),
