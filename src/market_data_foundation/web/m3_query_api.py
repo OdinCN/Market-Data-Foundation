@@ -15,7 +15,10 @@ from market_data_foundation.historical.m3_capital_goods_timeseries import (
     M3TimeSeriesService,
     _months,
 )
-from market_data_foundation.web.cpi_timeseries_api import admitted_job
+from market_data_foundation.web.cpi_timeseries_api import (
+    admitted_job,
+    admitted_strategy,
+)
 from market_data_foundation.web.cpi_timeseries_dispatch import dispatch_job
 from market_data_foundation.web.cpi_timeseries_jobs import WebError
 from market_data_foundation.web.gdp_api import body, request_schema
@@ -150,6 +153,15 @@ def timeseries_router(host):
                 {"status": "ERROR", "classification": error.classification},
                 error.status,
             )
+        if isinstance(error, CpiTimeSeriesError) and error.classification in {
+            "release_as_of_invalid",
+            "release_read_mode_unsupported",
+            "release_source_version_invalid",
+            "release_reference_month_invalid",
+        }:
+            return JSONResponse(
+                {"status": "ERROR", "classification": error.classification}, 400
+            )
         if isinstance(error, ContractError):
             return JSONResponse(
                 {"status": "ERROR", "classification": "m3_request_invalid"}, 400
@@ -213,13 +225,36 @@ def timeseries_router(host):
 
         return endpoint
 
-    for operation in ("status", "jobs", "executions"):
+    for operation in ("status", "jobs", "executions", "strategy", "schedule"):
         router.add_api_route(
             "/" + operation,
             read_host_operation(operation),
             methods=["GET"],
             name="m3_" + operation,
         )
+
+    @router.get("/releases")
+    def releases(request: Request):
+        try:
+            guard(request)
+            pairs = request.query_params.multi_items()
+            if len(pairs) != len(dict(pairs)):
+                raise WebError("duplicate_parameter")
+            return JSONResponse(host.releases(dict(pairs)))
+        except Exception as error:
+            return failure(error)
+
+    @router.put("/strategy")
+    async def strategy(request: Request):
+        try:
+            if not admitted_strategy(request, prefix=PREFIX):
+                raise WebError("operator_not_authorized", 403)
+            if host is None:
+                raise WebError("m3_timeseries_not_enabled", 503)
+            command = await body(request)
+            return JSONResponse(await run_in_threadpool(host.update_strategy, command))
+        except Exception as error:
+            return failure(error)
 
     async def submit_job(request: Request, *, resume=False):
         try:
@@ -299,6 +334,17 @@ def timeseries_router(host):
                 "history_semantics": (
                     "Local only; MDF confirmation is not an official event release."
                 ),
+                "release_records": {
+                    "path": PREFIX + "/releases",
+                    "local_only": True,
+                    "empty_evidence": "explicit missing; no current-value substitution",
+                },
+                "periodic": {
+                    "strategy": PREFIX + "/strategy",
+                    "schedule": PREFIX + "/schedule",
+                    "default_enabled": False,
+                    "worker": "explicit CLI process only",
+                },
                 "collection": (
                     "Manual bounded fragments; resume uses same collection ID."
                 ),

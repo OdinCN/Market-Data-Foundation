@@ -409,10 +409,28 @@ class ReleaseRecords:
     """Reuse a qualified time-series store's connection/raw port, no fallback."""
 
     def __init__(self, store):
+        from market_data_foundation.historical.m3_capital_goods_store import (
+            LOCK_ID as M3_LOCK,
+        )
+        from market_data_foundation.historical.m3_capital_goods_store import (
+            SCHEMA as M3_SCHEMA,
+        )
+        from market_data_foundation.historical.m3_capital_goods_store import (
+            InMemoryM3Store,
+            PostgresM3Store,
+        )
         from market_data_foundation.historical.retail_timeseries_store import (
             InMemoryRetailStore,
             PostgresRetailStore,
         )
+
+        if isinstance(store, (InMemoryM3Store, PostgresM3Store)):
+            self.store = store
+            self.profile = SimpleNamespace(key="m3", schema=M3_SCHEMA, lock_id=M3_LOCK)
+            self.schema = M3_SCHEMA
+            self.memory = isinstance(store, InMemoryM3Store)
+            self._version_snapshot = None
+            return
 
         if not isinstance(
             store,

@@ -110,6 +110,7 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_strategy(request, prefix="/api/r5/gdp/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/claims/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/jolts/timeseries")
+                or admitted_strategy(request, prefix="/api/r5/m3/timeseries")
             )
         return super().request_admitted(request)
 

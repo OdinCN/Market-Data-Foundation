@@ -248,7 +248,9 @@ export function CpiQueryApiHelp({
   return (
     <section aria-label={`${profile.label} API说明`} className="cpi-api-help">
       {profile.id === "m3" ? (
-        <p>官方事件发布记录尚未接入；连续快照不代表官方首发。</p>
+        <p>
+          发布记录只读已留存的官方证据；未留存材料时显示空态，连续快照不代表官方首发。
+        </p>
       ) : nativeHelp?.releaseHelp ? (
         <>
           <h4>GET {profile.basePath}/releases</h4>
@@ -737,7 +739,7 @@ export function CpiQueryApiHelp({
           GET {profile.basePath}/api-help 提供完整接口合同。POST{" "}
           {profile.basePath}/jobs 提交采集。
           {profile.id === "m3" ? (
-            "本族周期策略尚未接入。"
+            "PUT /api/r5/m3/timeseries/strategy 保存周期策略，GET schedule 查看官方计划及真实进程状态；默认暂停。"
           ) : (
             <>
               PUT {profile.basePath}/strategy

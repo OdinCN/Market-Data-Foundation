@@ -481,12 +481,12 @@ function CpiTimeSeriesContent({
         values={[
           ["query", "查询数据"],
           ["api", "API说明"],
-          ...(!m3 ? [["releases", "发布记录"] as [string, string]] : []),
+          ["releases", "发布记录"],
         ]}
         value={tab}
         onChange={setTab}
       />
-      {!m3 && tab === "releases" && (
+      {tab === "releases" && (
         <MacroReleaseRecords
           key={initialReleaseEvent ?? "all"}
           transport={transport}
@@ -561,7 +561,7 @@ function CpiTimeSeriesContent({
           <div className="field-grid">
             {m3 && (
               <label>
-                报告版本
+                报告类型
                 <select
                   value={dataset}
                   onChange={(event) =>
@@ -570,8 +570,8 @@ function CpiTimeSeriesContent({
                     )
                   }
                 >
-                  <option value="m3">m3 完整报告</option>
-                  <option value="advm3">advm3 预报</option>
+                  <option value="m3">制造业完整报告</option>
+                  <option value="advm3">耐用品预报</option>
                 </select>
               </label>
             )}
@@ -727,7 +727,7 @@ function CpiTimeSeriesContent({
         </form>
         <p className="small">
           {m3
-            ? "按所选三项月频金额查询，报告版本分别保留。"
+            ? "按所选三项月频金额查询，报告类型分别保留。"
             : claims
               ? "按六条原生FRED系列查询，使用自然日范围及周六截止周，不发送月份参数。"
               : gdp

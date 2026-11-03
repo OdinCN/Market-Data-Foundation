@@ -5,6 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from market_data_foundation.historical.cpi_timeseries import month_at, month_number
+from market_data_foundation.historical.m3_schedule import M3AutoStrategy, M3Scheduler
+from market_data_foundation.historical.macro_release_records import ReleaseRecords
 from market_data_foundation.web.cpi_timeseries_api import TimeSeriesHost
 from market_data_foundation.web.cpi_timeseries_jobs import (
     JobJournal,
@@ -55,6 +57,18 @@ class M3ProductHost(M3QueryHost):
         )
         self.allow_collect, self.clock = allow_collect, clock
         self.journal = JobJournal(Path(job_directory), profile=M3_PROFILE)
+        end = month_at(self.clock().year * 12 + self.clock().month - 2)
+        self.scheduler = M3Scheduler(
+            Path(job_directory).parent / "m3-schedule.json",
+            history_start=month_at(month_number(end) - 239),
+            clock=self.clock,
+            submit=self.submit,
+        )
+        self.auto_strategy = M3AutoStrategy(
+            self.scheduler,
+            Path(job_directory).parent / "m3-strategy.json",
+            clock=self.clock,
+        )
 
     def upstream_access(self, source):
         if not self.allow_source:
@@ -67,9 +81,7 @@ class M3ProductHost(M3QueryHost):
         with self.service() as service:
             result = service.store.status()
         source = self.source()
-        end = max((m for m in result["latest_months"].values() if m), default=None)
-        if end is None:
-            end = month_at(self.clock().year * 12 + self.clock().month - 2)
+        end = month_at(self.clock().year * 12 + self.clock().month - 2)
         start = month_at(max(1901 * 12, month_number(end) - 239))
         return {
             **result,
@@ -85,13 +97,62 @@ class M3ProductHost(M3QueryHost):
                 "available": True,
                 "editable": True,
                 "reason": None,
-                "anchor_basis": (
-                    "confirmed_local_available"
-                    if any(result["latest_months"].values())
-                    else "previous_utc_calendar_month_not_release_readiness"
-                ),
+                "anchor_basis": "previous_utc_calendar_month_not_release_readiness",
             },
             "collection_scope": {"max_months": 2400, "series": "three_m3_inputs"},
+        }
+
+    def releases(self, params):
+        if not self.allow_read:
+            raise WebError("local_read_not_authorized", 403)
+        if set(params) - {
+            "event_id",
+            "as_of",
+            "read_mode",
+            "source_version",
+            "reference_month",
+        }:
+            raise WebError("unsupported_parameters")
+        with self.service() as service:
+            return ReleaseRecords(service.store).read(**params)
+
+    def strategy(self):
+        if not self.allow_read:
+            raise WebError("local_read_not_authorized", 403)
+        value = self.auto_strategy.get()
+        return {
+            **value,
+            "calendar_status": self.scheduler.status()["calendar_status"],
+            "next_release_at": self.scheduler.status()["next_due"],
+            "execution_state": value["worker"]["state"],
+        }
+
+    def update_strategy(self, command):
+        if not self.allow_read:
+            raise WebError("local_read_not_authorized", 403)
+        if (
+            type(command) is not dict
+            or set(command) not in ({"enabled"}, {"enabled", "history_start"})
+            or type(command.get("enabled")) is not bool
+        ):
+            raise WebError("invalid_strategy_parameters")
+        if command["enabled"]:
+            access = self.capabilities(self.source())
+            if not access["collect"]:
+                raise WebError(access["reason"], 403)
+        self.auto_strategy.update(
+            enabled=command["enabled"],
+            history_start=command.get(
+                "history_start", self.auto_strategy.get()["history_start"]
+            ),
+        )
+        return self.strategy()
+
+    def schedule(self):
+        value = self.auto_strategy.get()
+        return {
+            **self.scheduler.status(),
+            "worker": {**value["worker"], "enabled": value["enabled"]},
         }
 
     def jobs(self):

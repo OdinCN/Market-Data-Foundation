@@ -1315,6 +1315,7 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
             "/api/r5/gdp/timeseries",
             "/api/r5/claims/timeseries",
             "/api/r5/jolts/timeseries",
+            "/api/r5/m3/timeseries",
         )
         job_post = any(admitted_job(request, prefix=prefix) for prefix in prefixes)
         job_post = job_post or admitted_job(request, prefix="/api/r5/m3/timeseries")

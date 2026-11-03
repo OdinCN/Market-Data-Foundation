@@ -1737,6 +1737,8 @@ export function CollectionWorkbench({
           newEmployment ||
           newRetail ||
           newConsumption ||
+          newM3 ||
+          (filter === keyOf(M3) && m3Availability) ||
           newJolts ||
           (filter === keyOf(JOLTS) && joltsAvailability) ||
           newClaims ||
@@ -1747,6 +1749,15 @@ export function CollectionWorkbench({
           (filter === keyOf(CONSUMPTION) && consumptionAvailability)) ? (
         <CpiStrategyWorkbench
           transport={transport}
+          tenthProfile={
+            (newM3 || m3Target || filter === keyOf(M3)) && m3Availability
+              ? M3_PROFILE
+              : undefined
+          }
+          tenthAvailability={m3Availability}
+          tenthVisible={
+            !invalidIdentity && (filter === "all" || filter === keyOf(M3))
+          }
           ninthProfile={
             (newJolts || joltsTarget || filter === keyOf(JOLTS)) &&
             joltsAvailability

@@ -162,6 +162,7 @@ type Schedule = {
   targets: (Stage & {
     reference_week?: string | null;
     reference_month?: string;
+    dataset?: "m3" | "advm3";
     reference_quarter?: string;
     estimate_kind?: string;
     publication_status?: string;
@@ -535,6 +536,9 @@ function CpiStrategyWorkbenchContent({
   sixthProfile,
   sixthAvailability,
   sixthVisible = true,
+  tenthProfile,
+  tenthAvailability,
+  tenthVisible = true,
   ninthProfile,
   ninthAvailability,
   ninthVisible = true,
@@ -558,6 +562,9 @@ function CpiStrategyWorkbenchContent({
   additionalProfile?: MacroProfile;
   additionalAvailability?: CpiAvailability;
   additionalVisible?: boolean;
+  tenthProfile?: MacroProfile;
+  tenthAvailability?: CpiAvailability;
+  tenthVisible?: boolean;
   ninthProfile?: MacroProfile;
   ninthAvailability?: CpiAvailability;
   ninthVisible?: boolean;
@@ -637,6 +644,13 @@ function CpiStrategyWorkbenchContent({
     seventhAvailability ?? emptyAvailability,
     !!seventhProfile && seventhVisible,
   );
+  const tenth = useStrategyControl(
+    transport,
+    generation,
+    tenthProfile ?? primaryProfile,
+    tenthAvailability ?? emptyAvailability,
+    !!tenthProfile && tenthVisible,
+  );
   const ninth = useStrategyControl(
     transport,
     generation,
@@ -652,6 +666,16 @@ function CpiStrategyWorkbenchContent({
     !!eighthProfile && eighthVisible,
   );
   const entries = [
+    ...(tenthProfile
+      ? [
+          {
+            profile: tenthProfile,
+            availability: tenthAvailability ?? emptyAvailability,
+            visible: tenthVisible,
+            ...tenth,
+          },
+        ]
+      : []),
     ...(ninthProfile
       ? [
           {
@@ -785,7 +809,9 @@ function CpiStrategyWorkbenchContent({
       ? `${target.release_at?.slice(0, 10) ?? "计划日期未知"} · ${target.reference_week ?? "参考周待发布材料确认"}`
       : quarterly
         ? target.reference_quarter
-        : target.reference_month;
+        : profile.id === "m3"
+          ? `${target.reference_month} · ${target.dataset === "advm3" ? "耐用品预报" : "制造业完整报告"}`
+          : target.reference_month;
   const shown = !!selection;
   const currentCalendarError =
     calendar.data?.calendar?.error ?? calendar.data?.calendar_error;
@@ -1067,7 +1093,9 @@ function CpiStrategyWorkbenchContent({
                     className="month-plan-card"
                     role="listitem"
                     key={
-                      quarterly || weekly ? target.key : target.reference_month
+                      quarterly || weekly || profile.id === "m3"
+                        ? target.key
+                        : target.reference_month
                     }
                   >
                     <header>
