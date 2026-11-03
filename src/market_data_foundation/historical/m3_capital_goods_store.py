@@ -412,6 +412,18 @@ class InMemoryM3Store:
                 if batch.collection_id == collection_id
             ]
 
+    def collection_candidates(self, dataset, start, end):
+        with self.lock:
+            return sorted(
+                {
+                    b.collection_id
+                    for b in self.batches.values()
+                    if b.collection_id
+                    and b.dataset == dataset
+                    and b.collection_scope == (start, end)
+                }
+            )
+
     def mark_collection_fragment(self, batch_id):
         with self.lock:
             check(
@@ -425,11 +437,11 @@ class InMemoryM3Store:
         with self.lock:
             return _select(self.rows, dataset, start, end, as_of, basis)
 
-    def status(self):
+    def status(self, dataset="m3"):
         with self.lock:
             latest = {s: None for s in SERIES_IDS}
             for row in _select(
-                self.rows, "m3", "1900-01", "9998-12", None, "available"
+                self.rows, dataset, "1900-01", "9998-12", None, "available"
             ):
                 if (
                     row["value"] is not None
@@ -438,9 +450,11 @@ class InMemoryM3Store:
                     latest[row["series_id"]] = row["month"]
             return {
                 "latest_months": latest,
-                "observation_count": len(self.rows),
-                "revision_count": sum(r["revision"] > 1 for r in self.rows),
-                "batch_count": len(self.batches),
+                "observation_count": sum(r["dataset"] == dataset for r in self.rows),
+                "revision_count": sum(
+                    r["revision"] > 1 for r in self.rows if r["dataset"] == dataset
+                ),
+                "batch_count": sum(b.dataset == dataset for b in self.batches.values()),
             }
 
 
@@ -613,6 +627,19 @@ class PostgresM3Store:
                 (collection_id,),
             ).fetchall()
 
+    def collection_candidates(self, dataset, start, end):
+        with self.lock, self.connection.transaction():
+            self.connection.execute("SET TRANSACTION READ ONLY")
+            return [
+                r[0]
+                for r in self.connection.execute(
+                    f"SELECT DISTINCT request->>'collection_id' FROM {SCHEMA}.batches "
+                    "WHERE dataset=%s AND request->>'start'=%s AND request->>'end'=%s "
+                    "AND request ? 'collection_id'",
+                    (dataset, start, end),
+                ).fetchall()
+            ]
+
     def mark_collection_fragment(self, batch_id):
         with self.operation():
             row = self.connection.execute(
@@ -664,17 +691,20 @@ class PostgresM3Store:
             rows.append(d)
         return _select(rows, dataset, start, end, as_of, basis)
 
-    def status(self):
+    def status(self, dataset="m3"):
         with self.lock, self.connection.transaction():
             self.connection.execute("SET TRANSACTION READ ONLY")
             counts = self.connection.execute(
                 f"SELECT count(*), count(*) FILTER (WHERE revision>1), "
-                f"(SELECT count(*) FROM {SCHEMA}.batches) FROM {SCHEMA}.revisions"
+                f"(SELECT count(*) FROM {SCHEMA}.batches WHERE dataset=%s) "
+                f"FROM {SCHEMA}.revisions WHERE dataset=%s",
+                (dataset, dataset),
             ).fetchone()
             rows = self.connection.execute(
                 f"SELECT series_id,max(month) FROM {SCHEMA}.latest "
-                "WHERE dataset='m3' AND available_at IS NOT NULL AND value IS NOT NULL "
-                "GROUP BY series_id"
+                "WHERE dataset=%s AND available_at IS NOT NULL AND value IS NOT NULL "
+                "GROUP BY series_id",
+                (dataset,),
             ).fetchall()
         latest = {s: None for s in SERIES_IDS}
         for series, month in rows:

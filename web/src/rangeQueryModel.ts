@@ -1,3 +1,4 @@
+import type { M3Comparison } from "./M3ComparisonTable";
 import type { CpiPoint, CpiResult } from "./cpiTimeSeriesApi";
 export type RangePoint = Omit<CpiPoint, "month"> & {
   period: string;
@@ -26,6 +27,8 @@ export type RangeResult = Omit<
   | "provider_attempts"
 > & {
   provider_attempts: number | null;
+  m3_comparisons?: M3Comparison[];
+  m3_coverage?: { expected: number; available: number };
   start_period: string;
   end_period: string;
   points: RangePoint[];

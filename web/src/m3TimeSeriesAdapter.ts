@@ -1,3 +1,4 @@
+import type { M3Comparison } from "./M3ComparisonTable";
 import type { Transport } from "./api";
 import { M3_PROFILE } from "./macroTimeSeriesProfile";
 import {
@@ -11,7 +12,10 @@ import {
 import { isDecimalString } from "./decimalValue";
 import type { RangeResult } from "./rangeQueryModel";
 
-type Scope = CpiScope & { dataset: "m3" | "advm3"; local_only?: boolean };
+type Scope = CpiScope & {
+  dataset: "m3" | "advm3" | "both";
+  local_only?: boolean;
+};
 type Point = {
   series_id: string;
   month: string;
@@ -30,6 +34,9 @@ type Point = {
   };
 };
 type Response = {
+  reports?: Record<string, Response>;
+  comparisons?: M3Comparison[];
+  comparison_basis?: string;
   points: Point[];
   missing: { series_id: string; month: string; reason: string }[];
   dataset: string;
@@ -66,6 +73,80 @@ export function buildM3QueryRequest(scope: Scope) {
   };
 }
 export function normalizeM3Result(data: Response, scope: Scope): RangeResult {
+  if (scope.dataset === "both") {
+    if (
+      data?.dataset !== "both" ||
+      !data.reports?.m3 ||
+      !data.reports?.advm3 ||
+      !Array.isArray(data.comparisons) ||
+      data.comparison_basis !==
+        (scope.query_mode === "history"
+          ? "stored_source_snapshots_at_cutoff_not_official_event_revisions"
+          : "current_source_snapshots_not_official_event_revisions")
+    )
+      throw new CpiServiceFailure("m3_joint_contract_invalid");
+    const full = normalizeM3Result(data.reports.m3, {
+      ...scope,
+      dataset: "m3",
+    });
+    const advance = normalizeM3Result(data.reports.advm3, {
+      ...scope,
+      dataset: "advm3",
+    });
+    const selected = scope.series?.split(",") ?? ids;
+    const expected = monthCount(scope.start, scope.end) * selected.length;
+    if (
+      data.persisted !== false ||
+      !count(data.provider_requests) ||
+      data.provider_requests !==
+        full.provider_requests + advance.provider_requests
+    )
+      throw new CpiServiceFailure("m3_joint_contract_invalid");
+    const fullValues = new Map(
+      full.points.map((p) => [`${p.period}:${p.series_id}`, p.value]),
+    );
+    const advanceValues = new Map(
+      advance.points.map((p) => [`${p.period}:${p.series_id}`, p.value]),
+    );
+    const keys = new Set<string>();
+    for (const row of data.comparisons) {
+      const key = `${row.month}:${row.series_id}`;
+      if (
+        row.m3_value !== (fullValues.get(key) ?? null) ||
+        row.advm3_value !== (advanceValues.get(key) ?? null) ||
+        !monthValid(row.month) ||
+        row.month < scope.start ||
+        row.month > scope.end ||
+        !selected.includes(row.series_id) ||
+        keys.has(key) ||
+        row.comparison_basis !== data.comparison_basis ||
+        row.official_event_revision !== null ||
+        row.difference_direction !== "m3_minus_advm3" ||
+        ![row.m3_value, row.advm3_value, row.difference].every(
+          (v) => v === null || isDecimalString(v),
+        ) ||
+        ((row.m3_value === null || row.advm3_value === null) &&
+          row.difference !== null)
+      )
+        throw new CpiServiceFailure("m3_joint_contract_invalid");
+      keys.add(key);
+    }
+    if (
+      keys.size !== expected ||
+      data.coverage.expected !== expected * 2 ||
+      data.coverage.available !== full.points.length + advance.points.length
+    )
+      throw new CpiServiceFailure("m3_joint_contract_invalid");
+    return {
+      ...full,
+      m3_comparisons: data.comparisons,
+      m3_coverage: data.coverage,
+      complete: full.complete && advance.complete,
+      coverage_complete: full.complete && advance.complete,
+      provider_requests: data.provider_requests,
+      provider_attempts: data.provider_attempts,
+    };
+  }
   const selected = scope.series?.split(",") ?? ids;
   const history = scope.query_mode === "history";
   const expected = monthCount(scope.start, scope.end) * selected.length;
@@ -82,7 +163,7 @@ export function normalizeM3Result(data: Response, scope: Scope): RangeResult {
       ? Date.parse(data.as_of ?? "") !== Date.parse(scope.as_of ?? "")
       : data.as_of !== null) ||
     !count(data.provider_requests) ||
-    data.provider_requests > 6 ||
+    data.provider_requests > 30 ||
     !(data.provider_attempts === null || count(data.provider_attempts)) ||
     (history &&
       (data.provider_requests !== 0 || data.provider_attempts !== 0)) ||
@@ -181,7 +262,7 @@ export async function queryM3Range(
       transport,
       request.path,
       { signal },
-      20000,
+      45000,
       onExchange,
     ),
     scope,

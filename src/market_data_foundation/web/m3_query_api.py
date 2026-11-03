@@ -98,7 +98,12 @@ class M3QueryHost:
         )
         try:
             M3Request(
-                params.get("dataset", "m3"), "MDM", params["start"], params["start"]
+                "m3"
+                if params.get("dataset") == "both"
+                else params.get("dataset", "m3"),
+                "MDM",
+                params["start"],
+                params["start"],
             )
             _months(params["start"], params["end"])
             if (
@@ -121,10 +126,18 @@ class M3QueryHost:
         ):
             raise WebError("m3_source_not_bound", 403)
         with self.service(upstream) as service:
-            result = service.query_range(
+            from market_data_foundation.historical.m3_reports import query_reports
+
+            joint = params.get("dataset") == "both"
+            query = (
+                (lambda *args, **kwargs: query_reports(service, *args, **kwargs))
+                if joint
+                else service.query_range
+            )
+            result = query(
                 params["start"],
                 params["end"],
-                dataset=params.get("dataset", "m3"),
+                **({} if joint else {"dataset": params.get("dataset", "m3")}),
                 as_of=params.get("as_of"),
                 basis=basis,
                 allow_upstream=upstream,
@@ -184,7 +197,10 @@ def timeseries_router(host):
                 for name, description in (
                     ("start", "inclusive YYYY-MM"),
                     ("end", "inclusive YYYY-MM"),
-                    ("dataset", "m3 full or advm3 advance; defaults m3"),
+                    (
+                        "dataset",
+                        "both compare; m3/advm3 single; legacy default m3",
+                    ),
                     (
                         "series",
                         "comma-separated M3 series identities; defaults all three",
@@ -315,7 +331,7 @@ def timeseries_router(host):
                 "parameters": {
                     "start/end": "inclusive YYYY-MM",
                     "series": "three named identities",
-                    "dataset": "m3 full / advm3 advance",
+                    "dataset": "both compare; m3/advm3 single; default m3",
                     "local_only": "true default",
                     "query_mode": "current / history",
                     "as_of": "aware inclusive cutoff",
@@ -345,7 +361,15 @@ def timeseries_router(host):
                     "default_enabled": False,
                     "worker": "explicit CLI process only",
                 },
+                "comparison": {
+                    "direction": "m3 minus advm3",
+                    "basis": "source snapshots; not official event revision/surprise",
+                    "missing": "difference null if either side missing",
+                },
+                "query_budget_seconds": 25,
                 "collection": (
+                    "New manual jobs jointly collect both independent reports. "
+                    "Initialization may adopt proved confirmed source fragments. "
                     "Background historical windows up to 240 months per indicator; "
                     "progress is durable. Scheduled work is not failure. "
                     "Recovery retains the same collection ID. "

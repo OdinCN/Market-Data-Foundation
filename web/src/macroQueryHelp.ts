@@ -550,7 +550,11 @@ const m3: Help = {
   parameters: [
     ["start / end", "是", "YYYY-MM，含首尾，最多2400个月"],
     ["series", "否 / 全部三项", "三项 series_id，逗号分隔"],
-    ["dataset", "否 / m3", "m3 完整报告；advm3 预报；彼此独立"],
+    [
+      "dataset",
+      "否 / m3",
+      "both 两报告并排；m3 完整报告；advm3 先行报告；API省略仍m3",
+    ],
     [
       "local_only",
       "否 / true",
@@ -634,7 +638,7 @@ const m3: Help = {
   failureExample:
     'HTTP 400\n{"status":"ERROR","classification":"m3_request_invalid"}\nHTTP 403\n{"status":"ERROR","classification":"m3_source_not_bound"}',
   collectionHelp:
-    "POST jobs 四键 request_id/action/start/end，采集 m3 全部三项；后台按已验证的最多240个月窗口逐指标推进，并保存已确认分片与待请求进度。240个月三指标通常三次来源请求，这不是官方范围上限。来源缺值可完成并明确缺口，未请求不冒充来源缺值；来源失败或存储未知时 POST jobs/resume 使用同一编号和范围继续；限流等待保留 retry_at。新更新重新核验。GET releases 只读官方材料；未留存时返回证据空态。GET/PUT strategy 读取或保存暂停默认的周期策略，GET schedule 读取官方计划；只有显式运行 worker 才有进程和心跳。",
+    "POST jobs 四键 request_id/action/start/end，联合采集 m3/advm3 各三项；后台按已验证的最多240个月窗口逐指标推进，并保存已确认分片与待请求进度。240个月×两阶段×三指标通常六次来源请求，初始化可复用已确认阶段，这不是官方范围上限。来源缺值可完成并明确缺口，未请求不冒充来源缺值；来源失败或存储未知时 POST jobs/resume 使用同一编号和范围继续；限流等待保留 retry_at。新更新重新核验。GET releases 只读官方材料；未留存时返回证据空态。GET/PUT strategy 读取或保存暂停默认的周期策略，GET schedule 读取官方计划；只有显式运行 worker 才有进程和心跳。",
   historyRequest:
     "/query?start=2025-01&end=2025-02&dataset=m3&query_mode=history&local_only=true&as_of_basis=available&as_of=2026-11-03T12%3A00%3A00Z",
 };

@@ -53,7 +53,9 @@ class Wire:
 def service():
     wire = Wire()
     store = InMemoryM3Store(Raw(), clock=lambda: wire.at + timedelta(seconds=1))
-    return M3TimeSeriesService(store, wire, collection_window_months=2), wire
+    return M3TimeSeriesService(
+        store, wire, collection_window_months=2, query_request_limit=6
+    ), wire
 
 
 def test_cross_year_partial_collection_resumes_only_missing_without_refetch():

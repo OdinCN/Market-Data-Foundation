@@ -21,7 +21,7 @@ from market_data_foundation.historical.cpi_release_schedule import (
 CALENDAR_URL = "https://www.census.gov/manufacturing/m3/release_schedule.html"
 PROFILE = SimpleNamespace(key="m3", earliest_month=None)
 POLICY = {
-    "release_update": "latest due manufacturing full report; advance kept separate",
+    "release_update": "latest due advance/full report, each independently routed",
     "actual": "calendar is planned time only",
     "automatic_start": False,
     "tick_max_events": 1,
@@ -113,9 +113,12 @@ def parse_calendar(raw):
 class M3Scheduler:
     asset_key, profile, auto_mode = "m3", PROFILE, True
 
-    def __init__(self, state_path, *, history_start, clock, submit=None):
+    def __init__(
+        self, state_path, *, history_start, clock, submit=None, submit_report=None
+    ):
         self.state_path, self.history_start = Path(state_path), history_start
         self.clock, self.submit = clock, submit
+        self.submit_report = submit_report
 
     def _validate_asset(self, value, reason="m3_schedule_asset_mismatch"):
         if value.get("asset") != "m3":
@@ -188,9 +191,7 @@ class M3Scheduler:
         future = [
             e["release_at"]
             for e in targets
-            if e["dataset"] == "m3"
-            and e["release_at"]
-            and datetime.fromisoformat(e["release_at"]) > now
+            if e["release_at"] and datetime.fromisoformat(e["release_at"]) > now
         ]
         return {
             "calendar_status": "fresh" if fresh else "stale" if proof else "missing",
@@ -208,16 +209,30 @@ class M3Scheduler:
             due = [
                 e
                 for e in value["events"]
-                if e["dataset"] == "m3"
-                and e["release_at"]
+                if e["release_at"]
                 and datetime.fromisoformat(e["release_at"]) <= self.clock()
             ]
             if not due:
                 return {"action": "not_due"}
-            event = max(due, key=lambda e: e["release_at"])
-            work = value["work"].get(event["key"], {})
-            if work.get("state") == "complete" or work.get("attempts", 0) >= 3:
+            latest = {
+                d: max(
+                    (e for e in due if e["dataset"] == d),
+                    key=lambda e: e["release_at"],
+                    default=None,
+                )
+                for d in ("advm3", "m3")
+            }
+            pending = [
+                e
+                for e in latest.values()
+                if e
+                and value["work"].get(e["key"], {}).get("state") != "complete"
+                and value["work"].get(e["key"], {}).get("attempts", 0) < 3
+            ]
+            if not pending:
                 return {"action": "already_checked"}
+            event = min(pending, key=lambda e: e["release_at"])
+            work = value["work"].get(event["key"], {})
             request_id = work.get("request_id") or str(
                 uuid5(
                     NAMESPACE_URL, "mdf:m3:" + event["key"] + ":" + event["release_at"]
@@ -228,12 +243,21 @@ class M3Scheduler:
                 request_id=request_id,
                 attempts=work.get("attempts", 0) + 1,
                 state="running",
+                dataset=event["dataset"],
+                started_at=self.clock().isoformat(),
             )
             value["work"][event["key"]] = work
             self._save(value)
-        if self.submit is None:
+        if self.submit is None and self.submit_report is None:
             raise CpiScheduleError("m3_worker_submit_not_bound")
-        result = self.submit(
+        submit = (
+            self.submit
+            if self.submit_report is None
+            else lambda command, **kwargs: self.submit_report(
+                event["dataset"], command, **kwargs
+            )
+        )
+        result = submit(
             {
                 "request_id": request_id,
                 "action": "update",

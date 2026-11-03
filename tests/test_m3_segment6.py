@@ -66,7 +66,7 @@ def test_strategy_is_paused_without_fabricated_worker_and_persists(tmp_path):
     assert same.strategy()["worker"]["last_heartbeat_at"] is None
 
 
-def test_bounded_worker_tick_uses_full_event_and_same_request_once(tmp_path):
+def test_bounded_worker_tick_tracks_both_stage_events_once(tmp_path):
     calls = []
     at = datetime(2026, 11, 3, 16, tzinfo=UTC)
 
@@ -83,7 +83,9 @@ def test_bounded_worker_tick_uses_full_event_and_same_request_once(tmp_path):
     scheduler.import_calendar(CALENDAR, acquired_at=at)
     assert scheduler.due_check()["action"] == "release_update"
     assert calls[0][0]["start"] == calls[0][0]["end"] == "2026-09"
-    assert scheduler.due_check()["action"] == "already_checked" and len(calls) == 1
+    assert scheduler.due_check()["action"] == "release_update" and len(calls) == 2
+    assert calls[0][0]["request_id"] != calls[1][0]["request_id"]
+    assert scheduler.due_check()["action"] == "already_checked"
     again = M3Scheduler(
         scheduler.state_path, history_start="2006-11", clock=lambda: at, submit=submit
     )

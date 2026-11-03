@@ -40,6 +40,7 @@ class M3ProductHost(M3QueryHost):
         allow_source=False,
         allow_collect=False,
         clock=lambda: datetime.now(UTC),
+        joint_collections=True,
     ):
         super().__init__(
             read_factory=read_factory,
@@ -56,6 +57,7 @@ class M3ProductHost(M3QueryHost):
             write_factory,
         )
         self.allow_collect, self.clock = allow_collect, clock
+        self.joint_collections = joint_collections
         self.journal = JobJournal(Path(job_directory), profile=M3_PROFILE)
         end = month_at(self.clock().year * 12 + self.clock().month - 2)
         self.scheduler = M3Scheduler(
@@ -63,6 +65,7 @@ class M3ProductHost(M3QueryHost):
             history_start=month_at(month_number(end) - 239),
             clock=self.clock,
             submit=self.submit,
+            submit_report=self.submit_report,
         )
         self.auto_strategy = M3AutoStrategy(
             self.scheduler,
@@ -79,7 +82,14 @@ class M3ProductHost(M3QueryHost):
         if not self.allow_read:
             raise WebError("local_read_not_authorized", 403)
         with self.service() as service:
-            result = service.store.status()
+            reports = {d: service.store.status(d) for d in ("m3", "advm3")}
+            result = {
+                **reports["m3"],
+                "reports": reports,
+                "total_observation_count": sum(
+                    r["observation_count"] for r in reports.values()
+                ),
+            }
         source = self.source()
         end = month_at(self.clock().year * 12 + self.clock().month - 2)
         start = month_at(max(1901 * 12, month_number(end) - 239))
@@ -167,7 +177,15 @@ class M3ProductHost(M3QueryHost):
             ]
         }
 
-    def submit(self, command, *, on_started=None, resume=False):
+    def submit_report(self, dataset, command, **kwargs):
+        from market_data_foundation.historical.m3_capital_goods import M3Request
+
+        M3Request(dataset, "MDM", command["start"], command["start"])
+        if kwargs.get("resume") and self.journal.read(command["request_id"]) is None:
+            kwargs["resume"] = False
+        return self.submit(command, report_stage=dataset, **kwargs)
+
+    def submit(self, command, *, on_started=None, resume=False, report_stage=None):
         if not self.allow_read:
             raise WebError("local_read_not_authorized", 403)
         validate_command(command, 2400, profile=M3_PROFILE)
@@ -182,6 +200,13 @@ class M3ProductHost(M3QueryHost):
             None,
         )
         if old:
+            if report_stage is not None and old.get("dataset", "m3") != report_stage:
+                raise WebError("request_id_conflict", 409)
+            report_stage = (
+                old.get("dataset")
+                if old.get("dataset") in {"m3", "advm3"}
+                else report_stage
+            )
             if any(old.get(k) != v for k, v in command.items()):
                 raise WebError("request_id_conflict", 409)
             if not resume or old["state"] in {"running", "complete"}:
@@ -221,6 +246,20 @@ class M3ProductHost(M3QueryHost):
                 classification=None,
                 result=None,
             )
+            joint = (
+                report_stage is None
+                and self.joint_collections
+                and (old is None or bool(old.get("report_collections")))
+            )
+            job["dataset"] = "both" if joint else (report_stage or "m3")
+            if joint:
+                from market_data_foundation.historical.m3_reports import child_ids
+
+                job["report_collections"] = (
+                    old["report_collections"]
+                    if old
+                    else child_ids(job["collection_id"])
+                )
             self.journal.save(job)
             try:
                 if on_started:
@@ -229,23 +268,46 @@ class M3ProductHost(M3QueryHost):
                 try:
 
                     def progress(value):
+                        if "report_collections" in value:
+                            job["report_collections"] = value["report_collections"]
                         job["result"] = {
                             **value,
                             "completion": "collection_in_progress",
                         }
                         self.journal.save(job)
 
-                    written = service.collect_range(
-                        command["start"],
-                        command["end"],
-                        dataset="m3",
-                        confirm_write=True,
-                        resume_id=job["collection_id"],
-                        on_progress=progress,
-                    )
-                    readback = service.query_range(
-                        command["start"], command["end"], dataset="m3"
-                    )
+                    if joint:
+                        from market_data_foundation.historical.m3_reports import (
+                            collect_reports,
+                        )
+
+                        written = collect_reports(
+                            service,
+                            command["start"],
+                            command["end"],
+                            collection_ids=job["report_collections"],
+                            reuse_existing=old is None
+                            and command["action"] in {"init", "initialize"},
+                            on_progress=progress,
+                        )
+                        readback = {
+                            "coverage": written["coverage"],
+                            "provider_requests": 0,
+                        }
+                    else:
+                        written = service.collect_range(
+                            command["start"],
+                            command["end"],
+                            dataset=report_stage or "m3",
+                            confirm_write=True,
+                            resume_id=job["collection_id"],
+                            on_progress=progress,
+                        )
+                        readback = service.query_range(
+                            command["start"],
+                            command["end"],
+                            dataset=report_stage or "m3",
+                        )
                 finally:
                     connection = getattr(service.store, "connection", None)
                     if connection is not None:

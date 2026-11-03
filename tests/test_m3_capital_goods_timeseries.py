@@ -278,11 +278,14 @@ def test_postgres_existing_batch_path_confirms_after_transaction_and_skips_raw()
 
 
 def test_local_history_range_is_not_limited_to_live_probe_window():
+    from tests.test_m3_segment3 import Wire
+
     s, c = service()
+    s.source = Wire()
     result = s.query_range("2024-01", "2025-12", as_of=STAMP)
     assert result["coverage"]["expected"] == 72 and result["provider_requests"] == 0
     current = s.query_range("2024-01", "2025-12", allow_upstream=True)
-    assert current["budget_exhausted"] and current["provider_requests"] <= 6
+    assert not current["budget_exhausted"] and current["provider_requests"] == 3
     assert current["coverage"]["expected"] == 72
 
 

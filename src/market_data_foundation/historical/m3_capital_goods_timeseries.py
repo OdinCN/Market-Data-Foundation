@@ -22,10 +22,10 @@ from market_data_foundation.historical.m3_capital_goods_store import (
     _rows,
 )
 
-MAX_QUERY_SOURCE_REQUESTS = 6
+MAX_QUERY_SOURCE_REQUESTS = 30
 COLLECTION_WINDOW_MONTHS = 240
 MAX_COLLECTION_REQUESTS = 3600
-QUERY_SOURCE_BUDGET_SECONDS = 15.0
+QUERY_SOURCE_BUDGET_SECONDS = 25.0
 
 
 def _months(start, end):
@@ -102,9 +102,15 @@ def _bound(value, maximum=MAX_QUERY_SOURCE_REQUESTS):
 
 class M3TimeSeriesService:
     def __init__(
-        self, store, source=None, *, collection_window_months=COLLECTION_WINDOW_MONTHS
+        self,
+        store,
+        source=None,
+        *,
+        collection_window_months=COLLECTION_WINDOW_MONTHS,
+        query_request_limit=MAX_QUERY_SOURCE_REQUESTS,
     ):
         self.store, self.source = store, source
+        self.query_request_limit = _bound(query_request_limit)
         check(
             type(collection_window_months) is int
             and 1 <= collection_window_months <= COLLECTION_WINDOW_MONTHS,
@@ -415,6 +421,7 @@ class M3TimeSeriesService:
         basis="available",
         allow_upstream=False,
         series_ids=SERIES_IDS,
+        _deadline=None,
     ):
         req = M3Request(dataset, "MDM", start, start)
         months = _months(start, end)
@@ -448,10 +455,22 @@ class M3TimeSeriesService:
         failures = []
         budget_exhausted = False
         if allow_upstream:
-            plan = list(_planned_requests(dataset, months, indexed, series_ids))
-            budget_exhausted = len(plan) > MAX_QUERY_SOURCE_REQUESTS
-            deadline = time.monotonic() + QUERY_SOURCE_BUDGET_SECONDS
-            for request in plan[:MAX_QUERY_SOURCE_REQUESTS]:
+            plan = list(
+                _planned_requests(
+                    dataset,
+                    months,
+                    indexed,
+                    series_ids,
+                    window_months=self.collection_window_months,
+                )
+            )
+            budget_exhausted = len(plan) > self.query_request_limit
+            deadline = (
+                _deadline
+                if _deadline is not None
+                else time.monotonic() + QUERY_SOURCE_BUDGET_SECONDS
+            )
+            for request in plan[: self.query_request_limit]:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0.1:
                     budget_exhausted = True

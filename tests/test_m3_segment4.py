@@ -34,6 +34,7 @@ def host(tmp_path):
     return (
         M3ProductHost(
             packages=Packages(),
+            joint_collections=False,
             read_factory=lambda: s,
             query_factory=lambda: s,
             write_factory=lambda **kwargs: s,
@@ -178,6 +179,7 @@ def test_query_deadline_bounds_all_fragments_without_losing_partial(monkeypatch)
 
     s.source = Timed()
     monkeypatch.setattr(module.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(module, "QUERY_SOURCE_BUDGET_SECONDS", 15.0)
     result = s.query_range("2025-01", "2025-04", allow_upstream=True)
     assert timeouts == [15.0, 9.0, 3.0]
     assert result["provider_requests"] == 3 and result["budget_exhausted"]

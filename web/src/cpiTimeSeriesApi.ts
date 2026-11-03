@@ -42,6 +42,10 @@ export function shiftMonth(month: string, by: number) {
   return `${Math.floor(n / 12)}-${String((n % 12) + 1).padStart(2, "0")}`;
 }
 export type CpiStatus = {
+  reports?: Record<
+    string,
+    { observation_count: number; latest_months: Record<string, string | null> }
+  >;
   initialization?: {
     preset_id: string;
     months: number;

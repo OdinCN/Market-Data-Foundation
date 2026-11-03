@@ -362,6 +362,38 @@ export function CpiExecutionDetail({
   return (
     <>
       <h3>执行详情</h3>
+      {profile.id === "m3" &&
+        result?.reports &&
+        typeof result.reports === "object" && (
+          <section aria-label="分报告采集结果">
+            <h4>两阶段采集结果</h4>
+            {Object.entries(
+              result.reports as Record<
+                string,
+                {
+                  coverage?: { available: number; expected: number };
+                  remaining_requests?: number;
+                  source_failure?: unknown;
+                  storage_failure?: unknown;
+                }
+              >,
+            ).map(([d, r]) => (
+              <p key={d}>
+                {d === "m3" ? "制造业完整报告" : "耐用品先行报告（Advance）"}：
+                {r.coverage
+                  ? `${r.coverage.available} / ${r.coverage.expected} 有值`
+                  : "执行中"}
+                ，待请求 {r.remaining_requests ?? "未记录"}；
+                {r.storage_failure
+                  ? "存储结果未知"
+                  : r.source_failure
+                    ? "来源请求失败/等待"
+                    : "已返回结果"}
+              </p>
+            ))}
+          </section>
+        )}
+
       {profile.id === "m3" && result && (
         <dl>
           <Fact name="已确认来源分片">
@@ -850,7 +882,7 @@ function CpiStrategyWorkbenchContent({
       : quarterly
         ? target.reference_quarter
         : profile.id === "m3"
-          ? `${target.reference_month} · ${target.dataset === "advm3" ? "耐用品预报" : "制造业完整报告"}`
+          ? `${target.reference_month} · ${target.dataset === "advm3" ? "耐用品先行报告（Advance）" : "制造业完整报告"}`
           : target.reference_month;
   const shown = !!selection;
   const currentCalendarError =
