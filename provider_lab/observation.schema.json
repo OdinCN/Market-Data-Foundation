@@ -67,7 +67,8 @@
         "finance.snapshot",
         "finance.f10",
         "financial.statements",
-        "calendar.trading_days"
+        "calendar.trading_days",
+        "macro.timeseries"
       ]
     },
     "fixture_id": {

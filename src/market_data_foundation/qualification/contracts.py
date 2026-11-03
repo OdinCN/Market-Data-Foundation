@@ -24,6 +24,7 @@ class Capability(StrEnum):
     FINANCE_F10 = "finance.f10"
     FINANCIAL_STATEMENTS = "financial.statements"
     TRADING_CALENDAR = "calendar.trading_days"
+    MACRO_TIMESERIES = "macro.timeseries"
 
 
 @dataclass(frozen=True)
