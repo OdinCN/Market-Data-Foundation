@@ -191,7 +191,8 @@ def test_verification_competing_save_and_legacy_change_never_publish_old_success
         (
             "Census",
             200,
-            b'[["cell_value","time"],["1","2025-01"]]',
+            b'[["cell_value","time","category_code","data_type_code"],'
+            b'["1","2025-01","44X72","SM"]]',
             "request_succeeded",
             "unknown",
         ),
@@ -302,7 +303,7 @@ def test_verifier_reuses_transport_safety_and_discards_bea_request_echo(
     from contextlib import contextmanager
     from types import SimpleNamespace
 
-    from market_data_foundation.canonical.model import ContractError
+    from market_data_foundation.historical.census_retail_live import CensusProtocolError
     from market_data_foundation.web import source_verification as module
 
     @contextmanager
@@ -338,7 +339,7 @@ def test_verifier_reuses_transport_safety_and_discards_bea_request_echo(
             )
 
         def get(self, *args, **kwargs):
-            raise ContractError("census_retail_duplicate_http_header")
+            raise CensusProtocolError("census_retail_duplicate_http_header", 403)
 
     monkeypatch.setattr(module, "BeaHttpsTransport", Transport)
     monkeypatch.setattr(module, "ExactCensusTransport", Transport)
@@ -348,6 +349,7 @@ def test_verifier_reuses_transport_safety_and_discards_bea_request_echo(
         "request_succeeded" if source == "BEA" else "protocol_failure"
     )
     assert result.authentication == ("confirmed" if source == "BEA" else "unknown")
+    assert result.http_status == (200 if source == "BEA" else 403)
     assert FIRST not in result.model_dump_json()
 
 
@@ -454,3 +456,121 @@ def test_bea_verification_feedback_blocks_independent_shared_admission(
             next_request()
         next_request.assert_called_once()
         assert "cooldown_until" not in json.loads(path.read_text())
+
+
+@pytest.mark.parametrize(
+    "status,reason",
+    [
+        (204, "http_failure"),
+        (401, "http_unauthorized"),
+        (403, "http_forbidden"),
+        (429, "rate_limited"),
+    ],
+)
+def test_census_non_success_never_establishes_authentication(status, reason):
+    result = response_facts("Census", status, b"")
+    assert result.reason == reason and result.http_status == status
+    assert result.authentication == "unknown"
+
+
+@pytest.mark.parametrize(
+    "value,valid",
+    [("623148", True), ("NaN", False), ("suppressed", False), (None, False)],
+)
+def test_census_requires_actual_matching_numeric_cell(value, valid):
+    body = json.dumps(
+        [
+            ["cell_value", "time", "category_code", "data_type_code"],
+            [value, "2025-01", "44X72", "SM"],
+        ]
+    ).encode()
+    result = response_facts("Census", 200, body)
+    assert (result.request_status == "succeeded") is valid
+    assert result.authentication == "unknown"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'[["cell_value","time"],["1","2025-01"]]',
+        b'[["cell_value","time","category_code","data_type_code"],["1","2024-01","44X72","SM"]]',
+        b'[["cell_value","time","category_code","data_type_code"],["1","2025-01","441","SM"]]',
+        b'[["cell_value","time","category_code","data_type_code"],["1","2025-01","44X72","MPCSM"]]',
+        b'{"error":"synthetic business error"}',
+        b"<html>metadata page</html>",
+    ],
+)
+def test_census_partial_metadata_or_wrong_series_is_not_numeric_success(body):
+    result = response_facts("Census", 200, body)
+    assert result.request_status == "failed" and result.authentication == "unknown"
+
+
+@pytest.mark.parametrize(
+    "status,reason",
+    [
+        (200, "request_succeeded"),
+        (401, "http_unauthorized"),
+        (403, "http_forbidden"),
+        (429, "rate_limited"),
+        (204, "http_failure"),
+        (None, "timeout"),
+    ],
+)
+def test_census_verifier_one_shared_admission_exact_numeric_query(
+    tmp_path, monkeypatch, status, reason
+):
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from market_data_foundation.historical.census_retail_live import HttpResult
+    from market_data_foundation.historical.cpi_request_control import CpiRequestControl
+    from market_data_foundation.web import source_verification as module
+
+    control = CpiRequestControl(
+        tmp_path / "census-control.json",
+        clock=lambda: datetime(2026, 11, 3, tzinfo=UTC),
+    )
+    host = SimpleNamespace(
+        source_id="Census",
+        source=lambda record: {},
+        upstream_access=lambda state: {"allowed": True},
+    )
+    runtime = SimpleNamespace(
+        request_control=control,
+        retail_request_control=control,
+        packages=SimpleNamespace(timeseries_hosts={"retail": host}),
+    )
+    body = (
+        b'[["cell_value","time","category_code","data_type_code"],'
+        b'["623148","2025-01","44X72","SM"]]'
+    )
+    exchange = Mock(
+        side_effect=TimeoutError("synthetic private timeout")
+        if status is None
+        else None,
+        return_value=HttpResult(status or 200, body, {"retry-after": "60"}),
+    )
+    monkeypatch.setattr(module.ExactCensusTransport, "get", exchange)
+    module.bind_source_verifier(runtime, None)
+    result = runtime.packages.source_verifier("Census", FIRST, None)
+    assert result.reason == reason and result.authentication == "unknown"
+    assert exchange.call_count == 1
+    params = exchange.call_args.args[1]
+    assert params == {
+        "get": "data_type_code,seasonally_adj,category_code,cell_value,error_data",
+        "time": "2025-01",
+        "for": "us:*",
+        "category_code": "44X72",
+        "data_type_code": "SM",
+        "seasonally_adj": "yes",
+        "error_data": "no",
+        "key": FIRST,
+    }
+    assert exchange.call_args.kwargs == {
+        "timeout": 20,
+        "max_response_bytes": 1024 * 1024,
+    }
+    assert (
+        len(json.loads((tmp_path / "census-control.json").read_text())["requests"]) == 1
+    )
+    assert FIRST not in result.model_dump_json()

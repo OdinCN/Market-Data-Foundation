@@ -5,6 +5,7 @@ facts escape this module; provider messages, bodies, keys and URLs do not.
 """
 
 import json
+from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
 
 from market_data_foundation.canonical.model import ContractError
@@ -104,12 +105,23 @@ def response_facts(source, status, body):
                 )
             )
     elif source == "Census":
-        valid = (
-            isinstance(doc, list)
-            and len(doc) > 1
-            and isinstance(doc[0], list)
-            and "cell_value" in doc[0]
-        )
+        if isinstance(doc, list) and len(doc) > 1 and isinstance(doc[0], list):
+            header = doc[0]
+            fields = {"cell_value", "time", "category_code", "data_type_code"}
+            if all(header.count(field) == 1 for field in fields):
+                positions = {field: header.index(field) for field in fields}
+                try:
+                    valid = all(
+                        isinstance(row, list)
+                        and len(row) == len(header)
+                        and row[positions["time"]] == "2025-01"
+                        and row[positions["category_code"]] == "44X72"
+                        and row[positions["data_type_code"]] == "SM"
+                        and Decimal(row[positions["cell_value"]]).is_finite()
+                        for row in doc[1:]
+                    )
+                except InvalidOperation, TypeError, ValueError:
+                    valid = False
         business_error = isinstance(doc, dict) and ("error" in doc or "errors" in doc)
     if business_error or not valid:
         return VerificationFacts(
@@ -198,7 +210,19 @@ def bind_source_verifier(runtime, claims_options):
                 else:
                     response = ExactCensusTransport().get(
                         CENSUS_ENDPOINT,
-                        {"get": "cell_value", "time": "2025-01", "key": credential},
+                        {
+                            "get": (
+                                "data_type_code,seasonally_adj,category_code,"
+                                "cell_value,error_data"
+                            ),
+                            "time": "2025-01",
+                            "for": "us:*",
+                            "category_code": "44X72",
+                            "data_type_code": "SM",
+                            "seasonally_adj": "yes",
+                            "error_data": "no",
+                            "key": credential,
+                        },
                         timeout=20,
                         max_response_bytes=1024 * 1024,
                     )
@@ -280,6 +304,9 @@ def bind_source_verifier(runtime, claims_options):
             return VerificationFacts(
                 request_status="failed" if attempted else "not_run",
                 reason=classification,
+                http_status=getattr(error, "http_status", None)
+                if isinstance(error, ContractError)
+                else None,
             )
 
     runtime.packages.source_verifier = verify

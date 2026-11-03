@@ -15,3 +15,8 @@ FRED 与 BLS、BEA、Census 共用现有 write-only 替换、CAS 和私有不可
 上一段有界 DEV 核验中 FRED 认证确认，BLS 和 BEA 请求成功、当时认证投影未知；该历史观察保持原样。本段仅据官方合同修正 BEA 认证投影，未重新请求上游或回填认证状态。Census 触发既有 `census_retail_duplicate_http_header` 门禁，页面保留协议失败；没有放宽既有协议断言。这不表示 Census 当前请求成功，也不改变其已有数据的本地读取。
 
 认证依据为本事务提供的 [BEA 官方 API 用户指南](https://apps.bea.gov/api/_pdf/bea_web_service_api_user_guide.pdf)（2026-04-20版，第1、4、5页）及 [Census 当前官方示例页](https://api.census.gov/data/timeseries/eits/marts/examples.html)。本段未联网重取文档。验证时间统一通过 `formatBeijingTime` 标明北京时间，不随浏览器时区改变。
+
+
+Census 响应头兼容修正：本客户端不使用 Cookie，传输层丢弃全部 Set-Cookie；对 Vary、Cache-Control 等明确的列表元数据按顺序合并。重复长度、重复传输编码、长度与传输编码共存、无效长度和不支持的传输编码继续拒绝；危险协议错误保留安全 HTTP 状态。正文仍有读取上限、20 秒 socket 超时及无重定向约束。查询参考官方 MARTS 示例投影维度，限定 2025-01、美国、44X72/SM、季调且非误差数据；成功要求实际匹配维度的有限数值，不能以元数据页或裸 HTTP200 代替。
+
+本次有界观察先取得 HTTP400 与三条 Set-Cookie，修后显式页面验证取得 HTTP200，但仍为 response_invalid；尚未完成真实数值成功闭环。认证保持未知、来源资格不升级。三次额度已用完（含官方示例读取），没有追加重试或更换 Key；该结果不表示 Key 无效。先前 Census 协议失败为历史观察，不改写。本次页面与 API 的失败状态一致。

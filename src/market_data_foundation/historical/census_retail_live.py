@@ -15,7 +15,7 @@ from typing import Protocol
 from urllib.parse import urlencode
 from uuid import uuid4
 
-from market_data_foundation.canonical.model import instant, require
+from market_data_foundation.canonical.model import ContractError, instant, require
 from market_data_foundation.historical.census_retail import (
     ENDPOINT,
     MAX_RESPONSE_BYTES,
@@ -55,12 +55,54 @@ class RetailLiveError(RuntimeError):
         super().__init__(classification)
 
 
+class CensusProtocolError(ContractError):
+    """Safe transport classification with the observed HTTP status, never a URL."""
+
+    def __init__(self, classification, http_status):
+        self.http_status = http_status
+        super().__init__(classification)
+
+
+def _response_headers(pairs):
+    grouped = {}
+    for key, value in pairs:
+        grouped.setdefault(key.lower(), []).append(value)
+    headers = {}
+    # RFC 9110 §5.2: list fields combine in order; Set-Cookie is an exception.
+    # This stateless client neither consumes nor stores provider cookies.
+    list_fields = {"vary", "cache-control", "link", "warning", "server-timing"}
+    for key, values in grouped.items():
+        if key == "set-cookie":
+            continue
+        require(
+            len(values) == 1 or key in list_fields,
+            "census_retail_duplicate_http_header",
+        )
+        headers[key] = ", ".join(values)
+    # RFC 9112 §6.3: refuse ambiguous framing, including repeated identical CL.
+    require(
+        not ("content-length" in headers and "transfer-encoding" in headers),
+        "census_retail_ambiguous_http_framing",
+    )
+    require(
+        headers.get("transfer-encoding", "chunked").strip().lower() == "chunked",
+        "census_retail_transfer_encoding_invalid",
+    )
+    length = headers.get("content-length")
+    require(
+        length is None or re.fullmatch(r"[0-9]+", length) is not None,
+        "census_retail_content_length_invalid",
+    )
+    return headers
+
+
 class ExactCensusTransport:
     """One HTTPS GET; no redirects, fallback, key logging or local persistence."""
 
     def get(self, endpoint, parameters, *, timeout, max_response_bytes) -> HttpResult:
         require(endpoint == ENDPOINT, "census_retail_endpoint_mismatch")
         connection = http.client.HTTPSConnection("api.census.gov", timeout=timeout)
+        status = None
         try:
             connection.request(
                 "GET",
@@ -68,11 +110,8 @@ class ExactCensusTransport:
                 headers={"Accept": "application/json", "Accept-Encoding": "identity"},
             )
             response = connection.getresponse()
-            pairs = [(key.lower(), value) for key, value in response.getheaders()]
-            require(
-                len(dict(pairs)) == len(pairs), "census_retail_duplicate_http_header"
-            )
-            headers = dict(pairs)
+            status = response.status
+            headers = _response_headers(response.getheaders())
             if response.status != 200:
                 return HttpResult(response.status, b"", headers)
             length = headers.get("content-length")
@@ -89,6 +128,8 @@ class ExactCensusTransport:
             if length is not None and len(body) != int(length):
                 raise http.client.IncompleteRead(body)
             return HttpResult(response.status, body, headers)
+        except ContractError as error:
+            raise CensusProtocolError(str(error), status) from None
         finally:
             connection.close()
 
