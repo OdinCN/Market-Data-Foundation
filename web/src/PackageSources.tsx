@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Transport } from "./api";
+import { formatBeijingTime } from "./beijingTime";
 import {
   getPackage,
   putPackage,
@@ -567,7 +568,17 @@ function PackageEditor({
               {snapshot.capabilities.map((cap) => (
                 <details key={cap.capability_id}>
                   <summary>
-                    {cap.title} ·{" "}
+                    {cap.title} · 数值来源：
+                    {cap.source_relations?.length
+                      ? [
+                          ...new Set(
+                            cap.source_relations.map(
+                              (relation) => relation.source_id,
+                            ),
+                          ),
+                        ].join(" / ")
+                      : "未装配"}{" "}
+                    ·{" "}
                     {enabled.includes(cap.capability_id)
                       ? "本次选择启用"
                       : "本次未启用"}
@@ -580,7 +591,9 @@ function PackageEditor({
                     cap.source_relations.map((relation, index) => (
                       <dl key={index}>
                         <Fact name="数值通路">
-                          {relation.source_id} · {relation.numeric_path}
+                          {relation.source_id === relation.numeric_path
+                            ? relation.numeric_path
+                            : `${relation.source_id} · ${relation.numeric_path}`}
                         </Fact>
                         <Fact name="原始机构">
                           {relation.original_institution}
@@ -634,11 +647,13 @@ function PackageEditor({
                     <Fact name="认证">
                       {verification?.authentication === "confirmed"
                         ? "认证已确认"
-                        : "认证未确认（公共 API 成功不等于认证）"}
+                        : verification?.authentication === "rejected"
+                          ? "认证被拒绝（来源明确返回认证错误）"
+                          : "认证未知（本次检查未确认认证结论）"}
                     </Fact>
                     <Fact name="验证时间">
                       {verification?.checked_at
-                        ? new Date(verification.checked_at).toLocaleString()
+                        ? formatBeijingTime(verification.checked_at)
                         : "尚未验证"}
                     </Fact>
                     <Fact name="HTTP">

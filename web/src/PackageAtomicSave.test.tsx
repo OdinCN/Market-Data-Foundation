@@ -432,6 +432,11 @@ it("FRED replacement can be cancelled, and verification requires explicit saved 
   await act(async () => release?.());
   await screen.findByText(/HTTP 403：访问被拒绝/);
   expect(screen.getByText("请求失败")).toBeTruthy();
+  expect(screen.getByText("2026-11-03 19:00:00 北京时间")).toBeTruthy();
+  expect(
+    screen.getByText(/美国初请与续请失业金 · 数值来源：FRED/),
+  ).toBeTruthy();
+  expect(screen.queryByText("FRED · FRED")).toBeNull();
   expect(h.packages.requests.filter((r) => r.method === "PUT")).toHaveLength(1);
 });
 

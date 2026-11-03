@@ -347,4 +347,39 @@ def test_verifier_reuses_transport_safety_and_discards_bea_request_echo(
     assert result.reason == (
         "request_succeeded" if source == "BEA" else "protocol_failure"
     )
-    assert result.authentication == "unknown" and FIRST not in result.model_dump_json()
+    assert result.authentication == ("confirmed" if source == "BEA" else "unknown")
+    assert FIRST not in result.model_dump_json()
+
+
+@pytest.mark.parametrize(
+    "status,body,reason,authentication",
+    [
+        (
+            200,
+            b'{"BEAAPI":{"Results":{"Dataset":[{"DatasetName":"NIPA"}]}}}',
+            "request_succeeded",
+            "confirmed",
+        ),
+        (
+            200,
+            b'{"BEAAPI":{"Results":{"Error":{"APIErrorCode":"1"}}}}',
+            "business_error",
+            "rejected",
+        ),
+        (200, b'{"BEAAPI":{"Error":{"APIErrorCode":7}}}', "rate_limited", "unknown"),
+        (
+            200,
+            b'{"BEAAPI":{"Results":{"Dataset":[{}]}}}',
+            "response_invalid",
+            "unknown",
+        ),
+        (400, b'{"BEAAPI":{"Error":{"APIErrorCode":1}}}', "http_failure", "unknown"),
+        (403, b"", "http_forbidden", "unknown"),
+        (500, b"", "http_failure", "unknown"),
+    ],
+)
+def test_bea_official_authentication_evidence_is_bounded(
+    status, body, reason, authentication
+):
+    result = response_facts("BEA", status, body)
+    assert result.reason == reason and result.authentication == authentication

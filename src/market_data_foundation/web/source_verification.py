@@ -78,10 +78,30 @@ def response_facts(source, status, body):
             business_error = "Error" in api or (
                 isinstance(results, dict) and "Error" in results
             )
+            error = api.get("Error") or (
+                results.get("Error") if isinstance(results, dict) else None
+            )
+            if isinstance(error, dict):
+                # Official BEA API guide: error 1 is invalid UserID; 7 is quota.
+                # Other business/HTTP failures do not establish Key rejection.
+                code = error.get("APIErrorCode")
+                if type(code) in (str, int) and str(code) in {"1", "7"}:
+                    return VerificationFacts(
+                        request_status="failed",
+                        http_status=200,
+                        reason="business_error" if str(code) == "1" else "rate_limited",
+                        authentication="rejected" if str(code) == "1" else "unknown",
+                    )
             valid = (
                 isinstance(results, dict)
                 and isinstance(results.get("Dataset"), list)
                 and bool(results["Dataset"])
+                and all(
+                    isinstance(row, dict)
+                    and isinstance(row.get("DatasetName"), str)
+                    and bool(row["DatasetName"].strip())
+                    for row in results["Dataset"]
+                )
             )
     elif source == "Census":
         valid = (
@@ -97,13 +117,14 @@ def response_facts(source, status, body):
             http_status=200,
             reason="business_error" if business_error else "response_invalid",
         )
-    # BLS/Census are public APIs. A successful request cannot authenticate a key.
-    # BEA dataset metadata is also conservatively left unconfirmed.
+    # BEA GetDatasetList requires a valid UserID (official API guide).
+    # Census also requires a key; this probe conservatively leaves its
+    # authentication conclusion unknown. BLS success alone is insufficient.
     return VerificationFacts(
         request_status="succeeded",
         http_status=200,
         reason="request_succeeded",
-        authentication="confirmed" if source == "FRED" else "unknown",
+        authentication="confirmed" if source in {"FRED", "BEA"} else "unknown",
     )
 
 
