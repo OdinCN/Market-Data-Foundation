@@ -70,6 +70,13 @@ def _valid_census_cell(doc):
     return CENSUS_DECIMAL.fullmatch(value) is not None and Decimal(value) > 0
 
 
+def _unique_json_members(pairs):
+    document = dict(pairs)
+    if len(document) != len(pairs):
+        raise ValueError("duplicate_json_member")
+    return document
+
+
 def response_facts(source, status, body):
     if status != 200:
         return VerificationFacts(
@@ -82,7 +89,7 @@ def response_facts(source, status, body):
             }.get(status, "http_failure"),
         )
     try:
-        doc = json.loads(body)
+        doc = json.loads(body, object_pairs_hook=_unique_json_members)
     except ValueError, UnicodeError:
         return VerificationFacts(
             request_status="failed", http_status=200, reason="response_invalid"

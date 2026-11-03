@@ -676,3 +676,23 @@ def test_census_ambiguous_columns_and_rows_are_rejected(case):
         body[1] = []
     facts = response_facts("Census", 200, json.dumps(body).encode())
     assert facts.reason == "response_invalid" and facts.authentication == "unknown"
+
+
+@pytest.mark.parametrize(
+    "source,body",
+    [
+        (
+            "BLS",
+            b'{"status":"REQUEST_FAILED","status":"REQUEST_SUCCEEDED","Results":{"series":[{"seriesID":"CUUR0000SA0","data":[1]}]}}',
+        ),
+        ("FRED", b'{"seriess":[{"id":"OTHER","id":"ICSA"}]}'),
+        (
+            "BEA",
+            b'{"BEAAPI":{"Results":{"Dataset":[{"DatasetName":"OTHER","DatasetName":"NIPA"}]}}}',
+        ),
+    ],
+)
+def test_duplicate_provider_json_members_never_publish_success(source, body):
+    facts = response_facts(source, 200, body)
+    assert facts.request_status == "failed" and facts.reason == "response_invalid"
+    assert facts.authentication == "unknown" and facts.http_status == 200

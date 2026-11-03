@@ -606,3 +606,31 @@ it("each adjacent entry shares one atomic save, with cancellation and all pendin
   );
   expect(h.packages.requests.some((r) => r.method === "POST")).toBe(false);
 });
+
+it.each([
+  ["tdx", "daily_raw", "TDX"],
+  ["kd", "current_rank", "KD"],
+])(
+  "%s shows unassembled verification instead of an unsupported POST action",
+  async (packageId, capabilityId, source) => {
+    const h = host();
+    await putPackage(h.transport, packageId, {
+      expected_revision: null,
+      enabled_capability_ids: [capabilityId],
+      source_changes: [],
+    });
+    open(h.transport);
+    await act(async () => {
+      location.hash = `ui=r5&view=access&package=${packageId}`;
+      window.dispatchEvent(new Event("hashchange"));
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "管理此包" }));
+    await screen.findByRole("tab", { name: "来源配置" });
+    tab("来源配置");
+    expect(screen.getByText("当前环境未装配此来源的配置验证。")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: `验证已保存的 ${source} 配置` }),
+    ).toBeNull();
+    expect(h.packages.requests.some((r) => r.method === "POST")).toBe(false);
+  },
+);

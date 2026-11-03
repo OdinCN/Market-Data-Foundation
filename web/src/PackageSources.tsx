@@ -691,17 +691,23 @@ function PackageEditor({
                   <p>
                     来源资格与采集执行权限另行判定；验证不会启用能力、采集或影响已保存数据读取。30秒内重复验证复用当前结果。
                   </p>
-                  <button
-                    disabled={
-                      blocked ||
-                      dirty ||
-                      !snapshot.config_revision ||
-                      snapshot.write_eligible !== true
-                    }
-                    onClick={() => void verify(id)}
-                  >
-                    {verifying === id ? "正在验证…" : `验证已保存的 ${id} 配置`}
-                  </button>
+                  {["BLS", "BEA", "Census", "FRED"].includes(id) ? (
+                    <button
+                      disabled={
+                        blocked ||
+                        dirty ||
+                        !snapshot.config_revision ||
+                        snapshot.write_eligible !== true
+                      }
+                      onClick={() => void verify(id)}
+                    >
+                      {verifying === id
+                        ? "正在验证…"
+                        : `验证已保存的 ${id} 配置`}
+                    </button>
+                  ) : (
+                    <p>当前环境未装配此来源的配置验证。</p>
+                  )}
                   {dirty && <p>请先保存或取消修改，再验证当前已保存配置。</p>}
                   {state?.replace_supported === true ? (
                     id in credentialDrafts ? (
