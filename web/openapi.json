@@ -239,6 +239,104 @@
         }
       }
     },
+    "/api/r5/packages/{package_id}/sources/{source_id}/verify": {
+      "post": {
+        "summary": "Verify Source",
+        "operationId": "verify_package_source",
+        "parameters": [
+          {
+            "name": "package_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Package Id"
+            }
+          },
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageView"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageFailure"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/api/r5/cpi/query": {
       "get": {
         "summary": "Query",
@@ -1775,6 +1873,13 @@
             },
             "type": "array",
             "title": "Required Sources"
+          },
+          "source_relations": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRelation"
+            },
+            "type": "array",
+            "title": "Source Relations"
           }
         },
         "additionalProperties": false,
@@ -5026,6 +5131,13 @@
             "type": "array",
             "title": "Credential States"
           },
+          "source_verifications": {
+            "items": {
+              "$ref": "#/components/schemas/SourceVerification"
+            },
+            "type": "array",
+            "title": "Source Verifications"
+          },
           "history_completeness": {
             "type": "string",
             "enum": [
@@ -6148,6 +6260,128 @@
         ],
         "title": "SourceContractDTO"
       },
+      "SourceRelation": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "numeric_path": {
+            "type": "string",
+            "title": "Numeric Path"
+          },
+          "original_institution": {
+            "type": "string",
+            "title": "Original Institution"
+          },
+          "release_calendar": {
+            "type": "string",
+            "title": "Release Calendar"
+          },
+          "backup_status": {
+            "type": "string",
+            "title": "Backup Status",
+            "default": "未装配备用数值通路"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_id",
+          "numeric_path",
+          "original_institution",
+          "release_calendar"
+        ],
+        "title": "SourceRelation"
+      },
+      "SourceVerification": {
+        "properties": {
+          "request_status": {
+            "type": "string",
+            "enum": [
+              "not_run",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Request Status",
+            "default": "not_run"
+          },
+          "authentication": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "confirmed",
+              "rejected"
+            ],
+            "title": "Authentication",
+            "default": "unknown"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "not_checked",
+              "configuration_changed",
+              "credential_missing",
+              "verification_not_assembled",
+              "source_not_admitted",
+              "request_succeeded",
+              "http_forbidden",
+              "http_unauthorized",
+              "rate_limited",
+              "http_failure",
+              "timeout",
+              "transport_failure",
+              "protocol_failure",
+              "request_invalid",
+              "unexpected_exception",
+              "business_error",
+              "response_invalid",
+              "admission_denied",
+              "credential_storage_unavailable"
+            ],
+            "title": "Reason",
+            "default": "not_checked"
+          },
+          "http_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Status"
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "current": {
+            "type": "boolean",
+            "title": "Current",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_id"
+        ],
+        "title": "SourceVerification"
+      },
       "StorageDTO-Input": {
         "properties": {
           "identity": {
@@ -6286,6 +6520,22 @@
           "qualification"
         ],
         "title": "StorageDTO"
+      },
+      "VerifyCommand": {
+        "properties": {
+          "expected_revision": {
+            "type": "string",
+            "maxLength": 32,
+            "pattern": "^r[1-9][0-9]*$",
+            "title": "Expected Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_revision"
+        ],
+        "title": "VerifyCommand"
       },
       "VersionDTO": {
         "properties": {

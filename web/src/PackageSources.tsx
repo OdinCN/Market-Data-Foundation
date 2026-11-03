@@ -3,6 +3,7 @@ import type { Transport } from "./api";
 import {
   getPackage,
   putPackage,
+  verifyPackageSource,
   PackageRequestFailure,
   type Package,
   type Packages,
@@ -224,6 +225,7 @@ function PackageEditor({
   >("loading");
   const [notice, setNotice] = useState("");
   const [diagnostic, setDiagnostic] = useState("");
+  const [verifying, setVerifying] = useState<string | null>(null);
   const lock = useRef(false);
   const active = useRef(true);
   const readRequest = useRef<AbortController | null>(null);
@@ -395,6 +397,67 @@ function PackageEditor({
       finish();
     }
   }
+  async function verify(source: string) {
+    if (
+      !snapshot?.config_revision ||
+      lock.current ||
+      dirty ||
+      phase !== "ready"
+    )
+      return;
+    lock.current = true;
+    setVerifying(source);
+    setDiagnostic("");
+    try {
+      const result = await verifyPackageSource(
+        transport,
+        id,
+        source,
+        snapshot.config_revision,
+      );
+      if (!active.current) return;
+      setSnapshot(result);
+      changed();
+    } catch (error) {
+      if (active.current) {
+        const conflict =
+          error instanceof PackageRequestFailure &&
+          error.detail.status === "CONFLICT";
+        setSnapshot((previous) =>
+          previous
+            ? {
+                ...previous,
+                source_verifications: previous.source_verifications?.map(
+                  (item) =>
+                    conflict || item.source_id === source
+                      ? {
+                          source_id: item.source_id,
+                          current: false,
+                          checked_at: null,
+                          request_status: "not_run",
+                          authentication: "unknown",
+                          http_status: null,
+                          reason: conflict
+                            ? "configuration_changed"
+                            : "unexpected_exception",
+                        }
+                      : item,
+                ),
+              }
+            : previous,
+        );
+        if (conflict) setPhase("conflict");
+        setDiagnostic(
+          error instanceof PackageRequestFailure
+            ? error.detail.classification
+            : "verification_unavailable",
+        );
+      }
+    } finally {
+      lock.current = false;
+      if (active.current) setVerifying(null);
+    }
+  }
   if (!snapshot)
     return (
       <PackageDialog title={id} busy={false} onClose={onClose}>
@@ -411,7 +474,7 @@ function PackageEditor({
         </div>
       </PackageDialog>
     );
-  const blocked = phase !== "ready";
+  const blocked = phase !== "ready" || verifying !== null;
   const reason =
     snapshot.write_eligible !== true
       ? snapshot.write_reasons.includes("readonly_host")
@@ -429,7 +492,7 @@ function PackageEditor({
   return (
     <PackageDialog
       title={snapshot.name}
-      busy={phase === "saving"}
+      busy={phase === "saving" || verifying !== null}
       onClose={onClose}
     >
       <section aria-label="接入包配置">
@@ -492,9 +555,52 @@ function PackageEditor({
               本次选择所需来源：{required.join(" / ") || "无"}
               。切换能力不会访问来源。
             </p>
+            <p>
+              验证结果保留于本次服务运行期间；服务重启后需重新验证。来源资格不由此验证评定，采集是否可执行请查看本包资产的当前准入。
+            </p>
+            <section aria-label="能力与来源关系">
+              <h3>
+                {snapshot.package_id === "macro"
+                  ? "九族与来源关系"
+                  : "能力与来源关系"}
+              </h3>
+              {snapshot.capabilities.map((cap) => (
+                <details key={cap.capability_id}>
+                  <summary>
+                    {cap.title} ·{" "}
+                    {enabled.includes(cap.capability_id)
+                      ? "本次选择启用"
+                      : "本次未启用"}
+                  </summary>
+                  <p>
+                    资产：{cap.definition_ref.identity} /{" "}
+                    {cap.definition_ref.revision}
+                  </p>
+                  {cap.source_relations?.length ? (
+                    cap.source_relations.map((relation, index) => (
+                      <dl key={index}>
+                        <Fact name="数值通路">
+                          {relation.source_id} · {relation.numeric_path}
+                        </Fact>
+                        <Fact name="原始机构">
+                          {relation.original_institution}
+                        </Fact>
+                        <Fact name="发布日历">{relation.release_calendar}</Fact>
+                        <Fact name="备用通路">{relation.backup_status}</Fact>
+                      </dl>
+                    ))
+                  ) : (
+                    <p>来源关系未装配。</p>
+                  )}
+                </details>
+              ))}
+            </section>
             {required.map((id) => {
               const state = snapshot.credential_states.find(
                 (c) => c.source_id === id,
+              );
+              const verification = snapshot.source_verifications?.find(
+                (v) => v.source_id === id,
               );
               return (
                 <fieldset
@@ -505,12 +611,55 @@ function PackageEditor({
                   <dl>
                     <Fact name="凭据状态">
                       {state?.credential_state === "configured"
-                        ? "已配置（认证未核实）"
+                        ? "已配置（仅表示存在）"
                         : state?.credential_state === "missing"
                           ? "缺少配置"
                           : "配置状态未知"}
                     </Fact>
                   </dl>
+                  <dl aria-label={`${id} 验证结果`}>
+                    <Fact name="已保存配置验证">
+                      {verification?.reason
+                        ? (verificationReasons[verification.reason] ??
+                          verification.reason)
+                        : "尚未验证"}
+                    </Fact>
+                    <Fact name="请求结果">
+                      {verification?.request_status === "succeeded"
+                        ? "请求成功"
+                        : verification?.request_status === "failed"
+                          ? "请求失败"
+                          : "未发起请求"}
+                    </Fact>
+                    <Fact name="认证">
+                      {verification?.authentication === "confirmed"
+                        ? "认证已确认"
+                        : "认证未确认（公共 API 成功不等于认证）"}
+                    </Fact>
+                    <Fact name="验证时间">
+                      {verification?.checked_at
+                        ? new Date(verification.checked_at).toLocaleString()
+                        : "尚未验证"}
+                    </Fact>
+                    <Fact name="HTTP">
+                      {verification?.http_status ?? "未取得响应"}
+                    </Fact>
+                  </dl>
+                  <p>
+                    来源资格与采集执行权限另行判定；验证不会启用能力、采集或影响已保存数据读取。30秒内重复验证复用当前结果。
+                  </p>
+                  <button
+                    disabled={
+                      blocked ||
+                      dirty ||
+                      !snapshot.config_revision ||
+                      snapshot.write_eligible !== true
+                    }
+                    onClick={() => void verify(id)}
+                  >
+                    {verifying === id ? "正在验证…" : `验证已保存的 ${id} 配置`}
+                  </button>
+                  {dirty && <p>请先保存或取消修改，再验证当前已保存配置。</p>}
                   {state?.replace_supported === true ? (
                     id in credentialDrafts ? (
                       <>
@@ -591,17 +740,22 @@ function PackageEditor({
           >
             保存配置
           </button>
-          <button disabled={phase === "saving"} onClick={onClose}>
+          <button
+            disabled={phase === "saving" || verifying !== null}
+            onClick={onClose}
+          >
             取消
           </button>
           <button
-            disabled={phase === "saving" || phase === "loading"}
+            disabled={
+              phase === "saving" || phase === "loading" || verifying !== null
+            }
             onClick={() => void reread()}
           >
             重读核对配置
           </button>
           <button
-            disabled={phase === "saving"}
+            disabled={phase === "saving" || verifying !== null}
             onClick={() => navigate("assets", { package: snapshot.package_id })}
           >
             查看本包资产 →
@@ -615,3 +769,25 @@ function PackageEditor({
     </PackageDialog>
   );
 }
+
+const verificationReasons: Record<string, string> = {
+  not_checked: "尚未验证",
+  configuration_changed: "配置或凭据已变化，请重新验证",
+  credential_missing: "缺少凭据",
+  verification_not_assembled: "验证通路未装配",
+  source_not_admitted: "当前来源未获准请求",
+  request_succeeded: "验证请求成功",
+  http_forbidden: "HTTP 403：访问被拒绝，不能据此判定 Key 错误",
+  http_unauthorized: "HTTP 401：未获授权",
+  rate_limited: "来源限流或配额已用尽",
+  http_failure: "来源 HTTP 请求失败",
+  timeout: "来源请求超时",
+  transport_failure: "网络传输失败",
+  protocol_failure: "响应协议错误",
+  request_invalid: "请求无效",
+  unexpected_exception: "检查未完成，原因未确认",
+  business_error: "来源返回业务错误",
+  response_invalid: "响应未符合验证合同",
+  admission_denied: "共享来源请求准入暂未允许",
+  credential_storage_unavailable: "凭据存储不可用",
+};

@@ -380,3 +380,103 @@ it.each(["read_only", "write_unknown"])(
     ).toBe(true);
   },
 );
+
+it("FRED replacement can be cancelled, and verification requires explicit saved intent", async () => {
+  const h = host();
+  await putPackage(h.transport, "macro", {
+    expected_revision: null,
+    enabled_capability_ids: ["claims"],
+    source_changes: [],
+  });
+  let requests = 0;
+  let release: (() => void) | undefined;
+  const transport: Transport = async (input, init) => {
+    if (String(input).endsWith("/sources/FRED/verify")) {
+      requests++;
+      expect(JSON.parse(String(init?.body))).toEqual({
+        expected_revision: "r1",
+      });
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const body = await getPackage(h.transport, "macro", signal());
+      body.source_verifications = [
+        {
+          source_id: "FRED",
+          checked_at: "2026-11-03T11:00:00Z",
+          current: true,
+          request_status: "failed",
+          authentication: "unknown",
+          reason: "http_forbidden",
+          http_status: 403,
+        },
+      ];
+      return new Response(JSON.stringify(body), { status: 200 });
+    }
+    return h.transport(input, init);
+  };
+  open(transport);
+  await ready();
+  tab("来源配置");
+  expect(screen.getByRole("region", { name: "能力与来源关系" })).toBeTruthy();
+  expect(screen.getByText(/DOL 官方周报日历/)).toBeTruthy();
+  expect(screen.getByText(/CSV 备用数值通路未装配/)).toBeTruthy();
+  enterKey("FRED", "synthetic-ui-fred");
+  expect(button("验证已保存的 FRED 配置").disabled).toBe(true);
+  click("取消替换 FRED 凭据");
+  expect(requests).toBe(0);
+  click("验证已保存的 FRED 配置");
+  expect(button("正在验证…").disabled).toBe(true);
+  click("正在验证…");
+  expect(requests).toBe(1);
+  await act(async () => release?.());
+  await screen.findByText(/HTTP 403：访问被拒绝/);
+  expect(screen.getByText("请求失败")).toBeTruthy();
+  expect(h.packages.requests.filter((r) => r.method === "PUT")).toHaveLength(1);
+});
+
+it("a verification configuration conflict clears old authentication success and requires reread", async () => {
+  const h = host();
+  await putPackage(h.transport, "macro", {
+    expected_revision: null,
+    enabled_capability_ids: ["claims"],
+    source_changes: [],
+  });
+  const transport: Transport = async (input, init) => {
+    if (String(input).endsWith("/sources/FRED/verify"))
+      return new Response(
+        JSON.stringify({
+          status: "CONFLICT",
+          classification: "verification_configuration_changed",
+          effect: "NONE",
+        }),
+        { status: 409 },
+      );
+    const response = await h.transport(input, init);
+    if (String(input) === "/api/r5/packages/macro" && init?.method === "GET") {
+      const body = await response.json();
+      body.source_verifications = [
+        {
+          source_id: "FRED",
+          current: true,
+          checked_at: "2026-11-03T11:00:00Z",
+          request_status: "succeeded",
+          authentication: "confirmed",
+          reason: "request_succeeded",
+          http_status: 200,
+        },
+      ];
+      return new Response(JSON.stringify(body), { status: 200 });
+    }
+    return response;
+  };
+  open(transport);
+  await ready();
+  tab("来源配置");
+  expect(screen.getByText("认证已确认")).toBeTruthy();
+  click("验证已保存的 FRED 配置");
+  await screen.findByText("配置或凭据已变化，请重新验证");
+  expect(screen.queryByText("认证已确认")).toBeNull();
+  expect(button("验证已保存的 FRED 配置").disabled).toBe(true);
+  expect(button("重读核对配置").disabled).toBe(false);
+});

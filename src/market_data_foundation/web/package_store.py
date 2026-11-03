@@ -26,7 +26,7 @@ from market_data_foundation.web.package_catalog import (
     ReplaceChange,
 )
 
-KEY_SOURCES = frozenset({"BLS", "BEA", "Census"})
+KEY_SOURCES = frozenset({"BLS", "BEA", "Census", "FRED"})
 
 
 class ConfigRecord(DTO):

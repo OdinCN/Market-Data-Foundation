@@ -87,6 +87,21 @@ def admitted_package_save(request):
     )
 
 
+def admitted_package_verify(request):
+    parts = request.url.path.split("/")
+    if (
+        request.method != "POST"
+        or len(parts) != 8
+        or parts[:4] != ["", "api", "r5", "packages"]
+        or parts[5] != "sources"
+        or parts[7] != "verify"
+        or parts[6] not in {"BLS", "BEA", "Census", "FRED"}
+    ):
+        return False
+    scope = dict(request.scope, method="PUT", path="/".join(parts[:5]))
+    return admitted_package_save(Request(scope))
+
+
 class ReadonlyRuntime:
     def __init__(
         self,
@@ -219,7 +234,10 @@ class ReadonlyRuntime:
         allowed = (
             request.method in {"GET", "HEAD"}
             and admitted(request, origin=CANDIDATE_ORIGIN)
-        ) or (self.settings.package_config_save and admitted_package_save(request))
+        ) or (
+            self.settings.package_config_save
+            and (admitted_package_save(request) or admitted_package_verify(request))
+        )
         return PackageAccess(
             metadata_view_permission="allowed" if allowed else "denied",
             write_eligible=allowed and self.settings.package_config_save,
