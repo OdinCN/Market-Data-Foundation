@@ -1,6 +1,6 @@
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
-import { M3ComparisonTable } from "./M3ComparisonTable";
+import { M3ComparisonTable, m3MomText } from "./M3ComparisonTable";
 import { normalizeM3Result, buildM3QueryRequest } from "./m3TimeSeriesAdapter";
 const id = "durable_goods_new_orders";
 const scope = {
@@ -106,4 +106,35 @@ it("retains one report when the other is absent and rejects a fabricated zero di
   expect(() =>
     normalizeM3Result(joint(null, "100", "0") as never, scope),
   ).toThrow();
+});
+
+it("formats both report MoM as two-digit percent with Chinese gaps and obeys selected columns", () => {
+  const rows = [
+    {
+      ...joint("10", "12", "-2").comparisons[0],
+      m3_mom_percent: "1.234567",
+      advm3_mom_percent: null,
+      advm3_mom_reason: "zero_denominator",
+    },
+  ];
+  const { rerender } = render(
+    <M3ComparisonTable rows={rows} columns={["mom_percent"]} />,
+  );
+  expect(screen.getByText("1.23%")).toBeTruthy();
+  expect(screen.getByText("上月值为零，无法计算环比")).toBeTruthy();
+  expect(
+    screen.queryByRole("columnheader", { name: "来源快照差额" }),
+  ).toBeNull();
+  rerender(<M3ComparisonTable rows={rows} columns={["value"]} />);
+  expect(screen.queryByText("1.23%")).toBeNull();
+  expect(
+    screen.getByRole("columnheader", { name: "来源快照差额" }),
+  ).toBeTruthy();
+});
+
+it("rounds the shared single/joint MoM display using Decimal digits", () => {
+  expect(m3MomText("1.005000")).toBe("1.00%");
+  expect(m3MomText("1.015000")).toBe("1.02%");
+  expect(m3MomText("-0.000001")).toBe("0.00%");
+  expect(m3MomText(null, "missing_denominator")).toBe("缺少同报告上月值");
 });

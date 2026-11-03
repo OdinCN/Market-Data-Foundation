@@ -1,4 +1,4 @@
-import { M3ComparisonTable } from "./M3ComparisonTable";
+import { M3ComparisonTable, m3MomText, m3MomReason } from "./M3ComparisonTable";
 import {
   buildClaimsQueryRequest,
   queryClaimsRange,
@@ -915,7 +915,10 @@ function CpiTimeSeriesContent({
                             : "变化率以百分比显示；3月、6月为相隔对应月数的累计变化，未经年化。"}
               </p>
               {m3 && result.m3_comparisons ? (
-                <M3ComparisonTable rows={result.m3_comparisons} />
+                <M3ComparisonTable
+                  rows={result.m3_comparisons}
+                  columns={measure}
+                />
               ) : (
                 <div className="table-wrap">
                   <table
@@ -972,60 +975,73 @@ function CpiTimeSeriesContent({
                               </td>
                               {columns.map(({ value: field }) => (
                                 <td key={field}>
-                                  {valueText(
-                                    row.point?.[field as keyof RangePoint],
-                                    field.endsWith("ratio"),
-                                    jolts
-                                      ? field.endsWith("ratio") ||
-                                        (field === "value" &&
-                                          row.series_id.endsWith("R"))
-                                        ? "%"
-                                        : field.endsWith("percentage_points")
-                                          ? " 百分点"
-                                          : field === "value" ||
-                                              field === "change_1m_level"
-                                            ? row.series_id.endsWith("R")
-                                              ? ""
-                                              : row.series_id.endsWith("JOL")
-                                                ? " 千岗位"
-                                                : " 千人次"
-                                            : ""
-                                      : claims
-                                        ? field.endsWith("ratio")
-                                          ? "%"
-                                          : ""
-                                        : gdp
+                                  {m3 && field === "mom_percent"
+                                    ? m3MomText(
+                                        row.point?.mom_percent,
+                                        row.point?.mom_reason ??
+                                          (row.point
+                                            ? undefined
+                                            : "current_missing"),
+                                      )
+                                    : valueText(
+                                        row.point?.[field as keyof RangePoint],
+                                        field.endsWith("ratio"),
+                                        jolts
                                           ? field.endsWith("ratio") ||
-                                            row.point?.value_unit === "percent"
+                                            (field === "value" &&
+                                              row.series_id.endsWith("R"))
                                             ? "%"
-                                            : row.point?.value_unit ===
-                                                "percentage_points"
+                                            : field.endsWith(
+                                                  "percentage_points",
+                                                )
                                               ? " 百分点"
-                                              : ""
-                                          : employment
-                                            ? field.endsWith("ratio") ||
-                                              field === "mom_pct" ||
-                                              field === "yoy_pct"
-                                              ? "%"
-                                              : consumption &&
-                                                  field === "value" &&
-                                                  row.series_id === "A072RC"
-                                                ? "%"
+                                              : field === "value" ||
+                                                  field === "change_1m_level"
+                                                ? row.series_id.endsWith("R")
+                                                  ? ""
+                                                  : row.series_id.endsWith(
+                                                        "JOL",
+                                                      )
+                                                    ? " 千岗位"
+                                                    : " 千人次"
                                                 : ""
-                                            : field === "index_value"
-                                              ? ""
-                                              : "%",
-                                    m3 ||
-                                      claims ||
-                                      (gdp &&
-                                        field === "value" &&
-                                        row.point?.value_unit ===
-                                          "million_chained_2017_USD") ||
-                                      retail ||
-                                      (consumption &&
-                                        field === "value" &&
-                                        row.series_id !== "A072RC"),
-                                  )}
+                                          : claims
+                                            ? field.endsWith("ratio")
+                                              ? "%"
+                                              : ""
+                                            : gdp
+                                              ? field.endsWith("ratio") ||
+                                                row.point?.value_unit ===
+                                                  "percent"
+                                                ? "%"
+                                                : row.point?.value_unit ===
+                                                    "percentage_points"
+                                                  ? " 百分点"
+                                                  : ""
+                                              : employment
+                                                ? field.endsWith("ratio") ||
+                                                  field === "mom_pct" ||
+                                                  field === "yoy_pct"
+                                                  ? "%"
+                                                  : consumption &&
+                                                      field === "value" &&
+                                                      row.series_id === "A072RC"
+                                                    ? "%"
+                                                    : ""
+                                                : field === "index_value"
+                                                  ? ""
+                                                  : "%",
+                                        m3 ||
+                                          claims ||
+                                          (gdp &&
+                                            field === "value" &&
+                                            row.point?.value_unit ===
+                                              "million_chained_2017_USD") ||
+                                          retail ||
+                                          (consumption &&
+                                            field === "value" &&
+                                            row.series_id !== "A072RC"),
+                                      )}
                                 </td>
                               ))}
                               {profile.id === "ppi" && (
@@ -1105,7 +1121,7 @@ function CpiTimeSeriesContent({
                                   : !row.point
                                     ? missingText(row.reason)
                                     : gaps.length
-                                      ? `计算基期缺值：${[...new Set(gaps.map((g) => `${g.required_period}（${missingText(g.reason)}）`))].join("、")}`
+                                      ? `计算基期缺值：${[...new Set(gaps.map((g) => `${g.required_period}（${m3 ? m3MomReason(g.reason) : missingText(g.reason)}）`))].join("、")}`
                                       : "—"}
                               </td>
                             </tr>

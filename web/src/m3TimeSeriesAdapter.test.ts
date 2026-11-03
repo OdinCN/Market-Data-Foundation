@@ -90,3 +90,25 @@ describe("M3 page contract", () => {
     expect(path).toContain("as_of_basis=available");
   });
 });
+
+it("previews selected MoM inputs and preserves single-report gap reasons", () => {
+  expect(buildM3QueryRequest({ ...scope, columns: "value" }).path).toContain(
+    "include_mom=false",
+  );
+  expect(
+    buildM3QueryRequest({ ...scope, columns: "mom_percent" }).path,
+  ).toContain("include_mom=true");
+  const result = normalizeM3Result(
+    {
+      ...data,
+      points: data.points.map((p) => ({
+        ...p,
+        mom_percent: null,
+        mom_reason: "missing_denominator",
+      })),
+    },
+    scope,
+  );
+  expect(result.points[0].mom_reason).toBe("missing_denominator");
+  expect(result.calculation_missing[0].required_period).toBe("2024-12");
+});

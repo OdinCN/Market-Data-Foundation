@@ -548,6 +548,11 @@ const claims: Help = {
 
 const m3: Help = {
   parameters: [
+    [
+      "include_mom",
+      "否 / false",
+      "计算同阶段同截止1月环比；页面随指标选择发送",
+    ],
     ["start / end", "是", "YYYY-MM，含首尾，最多2400个月"],
     ["series", "否 / 全部三项", "三项 series_id，逗号分隔"],
     [
@@ -570,6 +575,11 @@ const m3: Help = {
   ],
   fields: [
     ["dataset / report_stage", "string", "独立的 m3/full 或 advm3/advance"],
+    [
+      "points[].mom_percent / mom_reason",
+      "decimal string|null / string|null",
+      "同阶段环比百分数；API六位，页面两位百分比；缺基期或零分母为null",
+    ],
     ["points[].series_id / month", "string", "指标及参考月"],
     [
       "points[].value",
@@ -601,7 +611,7 @@ const m3: Help = {
   source:
     "Census MDM/NO、NXA/NO、NXA/VS 分别请求；新订单扣除取消订单。m3 与 advm3 不拼接，快照不证明首发。",
   coverage:
-    "本地优先，两阶段共用150秒来源预算、单请求20秒、页面180秒；按已验证的大窗补源，失败保留已有值和全部缺口。页面含同阶段同截止1月环比，缺前值/零分母为空。",
+    "本地优先，两阶段共用150秒来源预算、单请求20秒、页面180秒；按已验证的大窗补源，失败保留已有值和全部缺口。页面按所选指标展示同阶段同截止1月环比，两位百分比；API保留六位，缺前值/零分母为空并显示中文理由。仅选择金额时include_mom=false。",
   missing:
     "null、未返回和真实零分开；同一截止只读本地，不用今天值重建官方历史。",
   periodNotice:

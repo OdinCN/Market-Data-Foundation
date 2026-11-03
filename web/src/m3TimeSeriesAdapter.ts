@@ -69,7 +69,9 @@ export function buildM3QueryRequest(scope: Scope) {
     query_mode: history ? "history" : "current",
     local_only: String(history),
     as_of_basis: "available",
-    include_mom: "true",
+    include_mom: String(
+      !scope.columns || scope.columns.split(",").includes("mom_percent"),
+    ),
     ...(history ? { as_of: scope.as_of ?? "" } : {}),
   });
   return {
@@ -241,6 +243,7 @@ export function normalizeM3Result(data: Response, scope: Scope): RangeResult {
       series_id: p.series_id,
       value: p.value,
       mom_percent: p.mom_percent,
+      mom_reason: p.mom_reason,
       value_unit: "million_current_usd",
       observed_at: p.observed_at ?? undefined,
       available_at: p.available_at,
@@ -252,7 +255,18 @@ export function normalizeM3Result(data: Response, scope: Scope): RangeResult {
       series_id: p.series_id,
       reason: p.reason ?? "source_unavailable",
     })),
-    calculation_missing: [],
+    calculation_missing: data.points
+      .filter((p) => p.mom_reason)
+      .map((p) => ({
+        series_id: p.series_id,
+        period: p.month,
+        metric: "mom_percent",
+        reason: p.mom_reason!,
+        required_period:
+          p.month.slice(5) === "01"
+            ? `${Number(p.month.slice(0, 4)) - 1}-12`
+            : `${p.month.slice(0, 4)}-${String(Number(p.month.slice(5)) - 1).padStart(2, "0")}`,
+      })),
     complete: data.status === "complete",
     coverage_complete: data.status === "complete",
     persisted: false,

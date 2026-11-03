@@ -116,7 +116,12 @@ it.each([320, 390, 960, 1440])(
     expect(screen.queryByRole("group", { name: "Macro 九族" })).toBeNull();
     expect(screen.getAllByRole("tab")).toHaveLength(3);
     expect(api.management?.instances).toEqual([]);
-    expect(api.management?.entries).toHaveLength(20);
+    expect(api.management?.entries).toHaveLength(21);
+    expect(
+      api.management?.entries.some(
+        (e) => e.asset?.identity === "mdf.macro.census.durable-capital-goods",
+      ),
+    ).toBe(true);
     expect(
       api.management?.entries.some(
         (e) => e.asset?.identity === "mdf.macro.dol.claims",

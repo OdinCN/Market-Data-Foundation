@@ -345,10 +345,15 @@ def timeseries_router(host):
                     "query_mode": "current / history",
                     "as_of": "aware inclusive cutoff",
                     "as_of_basis": "observed / available",
+                    "include_mom": "false default; same-stage prior month if true",
                 },
                 "fields": {
                     "points[].value": "decimal string or null, million current USD",
                     "points[].source": "dataset-specific capture evidence",
+                    "points[].mom_percent/mom_reason": (
+                        "decimal percent or null; current_missing, "
+                        "missing_denominator or zero_denominator"
+                    ),
                     "missing/source_failure": "explicit gaps and safe source failures",
                     "provider_requests/provider_attempts": (
                         "bounded logical and HTTP counts"

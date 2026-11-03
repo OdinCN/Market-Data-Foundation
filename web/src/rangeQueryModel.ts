@@ -3,6 +3,7 @@ import type { CpiPoint, CpiResult } from "./cpiTimeSeriesApi";
 export type RangePoint = Omit<CpiPoint, "month"> & {
   period: string;
   mom_percent?: string | null;
+  mom_reason?: string | null;
   weekly_change?: string | null;
   weekly_change_ratio?: string | null;
   local_four_week_average?: string | null;
