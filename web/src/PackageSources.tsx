@@ -225,6 +225,7 @@ function PackageEditor({
     "loading" | "ready" | "saving" | "failed" | "conflict" | "unknown"
   >("loading");
   const [notice, setNotice] = useState("");
+  const [saveSource, setSaveSource] = useState<string | null>(null);
   const [diagnostic, setDiagnostic] = useState("");
   const [verifying, setVerifying] = useState<string | null>(null);
   const lock = useRef(false);
@@ -309,7 +310,7 @@ function PackageEditor({
     (enabled.length !== snapshot.enabled_capability_ids.length ||
       enabled.some((c) => !snapshot.enabled_capability_ids.includes(c)) ||
       replacementSources.length > 0);
-  async function save() {
+  async function save(source: string | null = null) {
     if (
       !snapshot ||
       lock.current ||
@@ -322,6 +323,7 @@ function PackageEditor({
     )
       return;
     lock.current = true;
+    setSaveSource(source);
     readRequest.current?.abort();
     const command: SavePackage = {
       expected_revision: snapshot.config_revision,
@@ -408,6 +410,7 @@ function PackageEditor({
       return;
     lock.current = true;
     setVerifying(source);
+    setSaveSource(null);
     setDiagnostic("");
     try {
       const result = await verifyPackageSource(
@@ -490,6 +493,30 @@ function PackageEditor({
             : blocked
               ? "请等待保存完成，或先重读核对当前配置。"
               : "";
+  const capabilityChanges = snapshot.capabilities.filter(
+    (cap) =>
+      enabled.includes(cap.capability_id) !==
+      snapshot.enabled_capability_ids.includes(cap.capability_id),
+  ).length;
+  const localFeedback =
+    tab === "sources" && saveSource !== null && required.includes(saveSource);
+  const saveFeedback = (
+    <>
+      {notice && <p role="status">{notice}</p>}
+      {phase === "saving" && <p role="status">正在保存，请勿重复提交…</p>}
+      {phase === "loading" && <p role="status">正在重读核对…</p>}
+      {phase === "failed" && <p role="alert">配置读取失败，当前状态未知。</p>}
+      {phase === "conflict" && (
+        <p role="alert">配置已被其他操作更新，本次未生效。请重读后再编辑。</p>
+      )}
+      {phase === "unknown" && (
+        <p role="alert">
+          提交结果未知，配置可能已生效。请先重读核对，不能直接重复保存。
+        </p>
+      )}
+      {diagnostic && <p className="small">错误代码：{diagnostic}</p>}
+    </>
+  );
   return (
     <PackageDialog
       title={snapshot.name}
@@ -588,20 +615,24 @@ function PackageEditor({
                     {cap.definition_ref.revision}
                   </p>
                   {cap.source_relations?.length ? (
-                    cap.source_relations.map((relation, index) => (
-                      <dl key={index}>
-                        <Fact name="数值通路">
-                          {relation.source_id === relation.numeric_path
-                            ? relation.numeric_path
-                            : `${relation.source_id} · ${relation.numeric_path}`}
-                        </Fact>
-                        <Fact name="原始机构">
-                          {relation.original_institution}
-                        </Fact>
-                        <Fact name="发布日历">{relation.release_calendar}</Fact>
-                        <Fact name="备用通路">{relation.backup_status}</Fact>
-                      </dl>
-                    ))
+                    distinctRelations(cap.source_relations).map(
+                      (relation, index) => (
+                        <dl key={index}>
+                          <Fact name="数值通路">
+                            {relation.source_id === relation.numeric_path
+                              ? relation.numeric_path
+                              : `${relation.source_id} · ${relation.numeric_path}`}
+                          </Fact>
+                          <Fact name="原始机构">
+                            {relation.original_institution}
+                          </Fact>
+                          <Fact name="发布日历">
+                            {relation.release_calendar}
+                          </Fact>
+                          <Fact name="备用通路">{relation.backup_status}</Fact>
+                        </dl>
+                      ),
+                    )
                   ) : (
                     <p>来源关系未装配。</p>
                   )}
@@ -616,10 +647,7 @@ function PackageEditor({
                 (v) => v.source_id === id,
               );
               return (
-                <fieldset
-                  key={id}
-                  disabled={blocked || snapshot.write_eligible !== true}
-                >
+                <fieldset key={id}>
                   <legend>{id}</legend>
                   <dl>
                     <Fact name="凭据状态">
@@ -677,7 +705,10 @@ function PackageEditor({
                   {dirty && <p>请先保存或取消修改，再验证当前已保存配置。</p>}
                   {state?.replace_supported === true ? (
                     id in credentialDrafts ? (
-                      <>
+                      <div
+                        className="credential-replacement"
+                        aria-label={`${id} 待提交凭据`}
+                      >
                         <label>
                           {id} 新凭据
                           <input
@@ -689,27 +720,53 @@ function PackageEditor({
                             spellCheck={false}
                             maxLength={4096}
                             value={credentialDrafts[id]}
-                            onChange={(event) =>
+                            onChange={(event) => {
+                              setNotice("");
+                              setDiagnostic("");
                               setCredentialDrafts((old) => ({
                                 ...old,
                                 [id]: event.target.value,
-                              }))
-                            }
+                              }));
+                            }}
                           />
                         </label>
-                        <button
-                          disabled={blocked || snapshot.write_eligible !== true}
-                          onClick={() =>
-                            setCredentialDrafts((old) => {
-                              const next = { ...old };
-                              delete next[id];
-                              return next;
-                            })
-                          }
-                        >
-                          取消替换 {id} 凭据
-                        </button>
-                      </>
+                        <p className="small">
+                          此入口会一并保存整个接入包的所有待提交修改：能力启停{" "}
+                          {capabilityChanges} 项变更；凭据替换{" "}
+                          {replacementSources.join(" / ") || "无"}
+                          。保存不会发起上游验证。
+                        </p>
+                        <div className="actions">
+                          <button
+                            className="primary"
+                            disabled={!!reason}
+                            title={reason}
+                            onClick={() => void save(id)}
+                          >
+                            保存整包配置（{id}入口）
+                          </button>
+                          <button
+                            disabled={
+                              blocked || snapshot.write_eligible !== true
+                            }
+                            onClick={() => {
+                              setCredentialDrafts((old) => {
+                                const next = { ...old };
+                                delete next[id];
+                                return next;
+                              });
+                              setSaveSource(id);
+                              setNotice(
+                                `已取消 ${id} 本次替换，未保存；其他待提交修改仍需整包保存。`,
+                              );
+                              setDiagnostic("");
+                            }}
+                          >
+                            取消替换 {id} 凭据
+                          </button>
+                        </div>
+                        {reason && <p className="small">不能保存：{reason}</p>}
+                      </div>
                     ) : (
                       <button
                         disabled={blocked || snapshot.write_eligible !== true}
@@ -726,6 +783,16 @@ function PackageEditor({
                   ) : (
                     <p>当前环境未装配此来源的凭据替换。</p>
                   )}
+                  {localFeedback && saveSource === id && (
+                    <div aria-label={`${id} 保存反馈`}>
+                      {saveFeedback}
+                      {(phase === "conflict" || phase === "unknown") && (
+                        <button onClick={() => void reread()}>
+                          重读核对整包配置
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </fieldset>
               );
             })}
@@ -734,18 +801,7 @@ function PackageEditor({
         <p className="small">
           两个页签共用一次保存；停用能力保留已有凭据与历史。配置不代表来源可执行。
         </p>
-        {notice && <p role="status">{notice}</p>}
-        {phase === "saving" && <p role="status">正在保存，请勿重复提交…</p>}
-        {phase === "loading" && <p role="status">正在重读核对…</p>}
-        {phase === "failed" && <p role="alert">配置读取失败，当前状态未知。</p>}
-        {phase === "conflict" && (
-          <p role="alert">配置已被其他操作更新，本次未生效。请重读后再编辑。</p>
-        )}
-        {phase === "unknown" && (
-          <p role="alert">
-            提交结果未知，配置可能已生效。请先重读核对，不能直接重复保存。
-          </p>
-        )}
+        {!localFeedback && saveFeedback}
         <div className="actions">
           <button
             className="primary"
@@ -779,7 +835,6 @@ function PackageEditor({
         {reason && snapshot.write_eligible === true && (
           <p className="small">{reason}</p>
         )}
-        {diagnostic && <p className="small">错误代码：{diagnostic}</p>}
       </section>
     </PackageDialog>
   );
@@ -806,3 +861,22 @@ const verificationReasons: Record<string, string> = {
   admission_denied: "共享来源请求准入暂未允许",
   credential_storage_unavailable: "凭据存储不可用",
 };
+
+// Presentation only: canonical entries and distinct relationship fields stay intact.
+function distinctRelations(
+  relations: NonNullable<Package["capabilities"][number]["source_relations"]>,
+) {
+  const seen = new Set<string>();
+  return relations.filter((relation) => {
+    const key = JSON.stringify([
+      relation.source_id,
+      relation.numeric_path,
+      relation.original_institution,
+      relation.release_calendar,
+      relation.backup_status,
+    ]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}

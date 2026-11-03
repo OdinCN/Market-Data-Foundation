@@ -1545,3 +1545,12 @@ footer {
   max-width: 100%;
   overflow-wrap: anywhere;
 }
+
+.credential-replacement {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+.credential-replacement p {
+  margin: 0;
+}
