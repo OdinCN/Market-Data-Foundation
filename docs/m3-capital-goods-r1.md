@@ -65,8 +65,10 @@ GET /api/r5/m3/timeseries/query?start=2025-10&end=2026-09&dataset=both&include_m
 
 ## DEV验收与边界
 
-正常18761保持配置保存、四来源凭据操作、原九族查询/采集/策略装配；凭据不在Git或响应中。Web与M3 worker均由独立systemd生命周期保证最晚2026-11-04T04:00:00Z（北京时间12:00）停止。
+正常18761保持配置保存、四来源凭据操作、原九族查询/采集/策略装配；凭据不在Git或响应中。M3通过具名`m3_contract`加入共同管理族映射，保留其他族；管理代码目录的资格仍为UNKNOWN，不冒充运行验收。管理OpenAPI准确反映14个具名族和21个接口。
+
+临时正常服务可复用既有`MDF_DEV_READONLY_ORIGIN=http://odin.pub:18761`配置：域名Host仅允许GET/HEAD读准入，公共配置/策略/采集写入仍403，内网写入规则不变；默认关闭，不新增放行机制。该开关不配置DNS、网关或TLS，实际外部网络路径需独立核验。Web与M3 worker均由独立systemd生命周期保证最晚2026-11-04T04:00:00Z（北京时间12:00）停止。
 
 真实两阶段各720条、各717有效，2026-10各三项缺行；原m3工作和时间保留。实际未初始化窗口的六请求临时补源、PG零新增、同截止与MoM、官方日历刷新、心跳和启停分别保留证据。确定性失败/缓存过期/冷却测试与真实DEV浏览器分开；不声称未来自然发布或整包独立验收已完成。
 
-证据目录：`artifacts/m3-segment9-completion/`与`artifacts/m3-segment10-final-review/`；真实来源、DEV联调、浏览器和确定性测试分别记录，先前原始观察仍保留在ignored目录。PR、CI、Owner人工验收与合并由主控分别推进。
+证据目录：`artifacts/m3-segment9-completion/`与`artifacts/m3-segment10-final-review/`及`artifacts/m3-segment11-gates/`；真实来源、DEV联调、浏览器和确定性测试分别记录，先前原始观察仍保留在ignored目录。PR、CI、Owner人工验收与合并由主控分别推进。

@@ -69,7 +69,10 @@ def test_native_r5_reader_failed_job_and_seven_page_apis_are_preserved(tmp_path)
         for path in ("/api/r5/sources", "/api/r5/observability", "/api/r3/management"):
             assert c.get(path).status_code == 200
         entries = c.get("/api/r5/sources").json()["entries"]
-        assert len(entries) == 20
+        assert len(entries) == 21
+        assert "mdf.source.census.m3.capital-goods@r1" in {
+            e["identity"] for e in entries
+        }
         assert "mdf.source.fred.dol.claims@r1" in {e["identity"] for e in entries}
         jolts = next(e for e in entries if e["identity"] == "mdf.source.bls.jolts@r1")
         assert jolts["asset"]["identity"] == "mdf.macro.bls.jolts"
@@ -290,7 +293,10 @@ def test_native_backfill_boundary_keeps_cpi_and_bea_composite_identities():
             pce_initial(),
         )
         assert c.get("/api/r5/sources").json() == before
-        assert len(before["entries"]) == 20
+        assert len(before["entries"]) == 21
+        assert "mdf.source.census.m3.capital-goods@r1" in {
+            e["identity"] for e in before["entries"]
+        }
         assert "mdf.source.fred.dol.claims@r1" in {
             e["identity"] for e in before["entries"]
         }
