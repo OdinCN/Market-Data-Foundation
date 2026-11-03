@@ -4,6 +4,7 @@ from market_data_foundation.historical.bls_timeseries_profile import (
     CONSUMPTION_PROFILE,
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
+    JOLTS_PROFILE,
     PCE_PROFILE,
     PPI_PROFILE,
 )
@@ -188,6 +189,7 @@ def contract_app():
         PPI_PROFILE,
         PCE_PROFILE,
         EMPLOYMENT_PROFILE,
+        JOLTS_PROFILE,
         CONSUMPTION_PROFILE,
     ):
         app.include_router(timeseries_router(None, profile=profile))

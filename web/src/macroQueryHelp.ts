@@ -547,6 +547,7 @@ const claims: Help = {
 };
 
 export function nativeQueryHelp(profile: MacroProfile): Help | undefined {
+  if (profile.id === "jolts") return jolts;
   if (profile.id === "gdp") return gdp;
   if (profile.id === "claims") return claims;
   return profile.id === "retail"
@@ -555,3 +556,103 @@ export function nativeQueryHelp(profile: MacroProfile): Help | undefined {
       ? consumption
       : undefined;
 }
+
+const jolts: Help = {
+  parameters: [
+    ["start / end", "是", "YYYY-MM，包含首尾，最多2400月；比较需要前12月缓冲"],
+    [
+      "series",
+      "否 / 八项全国非农SA",
+      "BLS原生ID逗号多选；数量JOL/HIL/QUL/LDL与官方Rate JOR/HIR/QUR/LDR独立；不接受basket/adjustment",
+    ],
+    [
+      "measure",
+      "否 / index",
+      "仅index；兼容接口名称，实际为数量或官方比率，非价格指数",
+    ],
+    [
+      "columns",
+      "否 / 全部数值字段",
+      "CSV：value、change_1m_level、change_1m_ratio、change_12m_ratio、change_1m_percentage_points、change_12m_percentage_points；修改列后发送",
+    ],
+    ...historyParameters.map((p) =>
+      p[0] === "local_only" ? [p[0], "否 / true（API默认）", p[2]] : p,
+    ),
+  ],
+  fields: [
+    ...commonFields,
+    [
+      "points[].series_id / month",
+      "string / YYYY-MM",
+      "全国非农、SA原生身份；月份倒序展示",
+    ],
+    [
+      "points[].value / value_unit",
+      "decimal string|null / string",
+      "thousand_jobs为千岗位；thousand_persons为千人次流量，非去重人数；官方Rate为percent，4.3即4.3%，不再乘100",
+    ],
+    [
+      "points[].change_1m_level",
+      "decimal string|null",
+      "数量月差，原生单位；不适用于Rate",
+    ],
+    [
+      "points[].change_1m_ratio / change_12m_ratio",
+      "decimal string|null",
+      "数量未年化累计ratio；0.01=1%，表格按百分比显示",
+    ],
+    [
+      "points[].change_1m_percentage_points / change_12m_percentage_points",
+      "decimal string|null",
+      "仅官方Rate的月/年端点差，单位百分点",
+    ],
+    [
+      "points[].observed_at / available_at / revision",
+      "ISO string / ISO string|null / integer|null",
+      "取得/提交确认时间；首次本地捕获不是官方首发；临时值无持久批次或available时间",
+    ],
+    [
+      "points[].provider_calculations / provider_status",
+      "object / object",
+      "BLS原计算和P/R脚注独立于官方Rate及本地派生",
+    ],
+    [
+      "points[].source_version / surprise",
+      "object|null / object|null",
+      "没有独立证据不绑定事件或版本；没有具名事前共识不算预期差",
+    ],
+  ],
+  source:
+    "BLS JOLTS八项原生序列，无其他provider补源。source_qualified=false；定义/方法与具名官方发布正文仍缺，403缺口保留，不阻断连续序列。",
+  coverage:
+    "初始化默认240个月可编辑；锚点仅为预置月份依据，实际覆盖单独展示。月末职位空缺存量不可跨月求和。",
+  missing:
+    "0是有效数值；官方null、本地缺行和零分母分别保留。零分母ratio返回null/zero_denominator；不补零。",
+  periodNotice:
+    "数量和官方Rate独立；所有比较操作数使用同一历史截止，history始终local_only=true。",
+  releaseHelp:
+    "发布计划不代表实际发布，首次捕获不代表首发。发布记录仅本地留存；未绑定版本与未取得材料如实提示。",
+  collectionHelp:
+    "POST jobs 使用request_id/action/start/end及可选series，UUID重放不重复执行。initialize/update显式刷新及12月缓冲；GET jobs/executions读取真实结果。策略启用、进程、心跳、完成和目标可用分别报告。五年维护为MDF保守策略，不冒称官方基准修订日。GET不刷新日历或启动worker。",
+  example: {
+    start_month: "2026-08",
+    end_month: "2026-08",
+    points: [
+      {
+        series_id: "JTS000000000000000JOR",
+        month: "2026-08",
+        value: "4.3",
+        value_unit: "percent",
+        change_1m_percentage_points: "0.1",
+      },
+    ],
+    local_only: true,
+    provider_requests: 0,
+    persisted: false,
+  },
+  failureExample:
+    'HTTP 503\n{"status":"ERROR","classification":"jolts_timeseries_not_enabled"}',
+  historyRequest:
+    "/query?start=2026-07&end=2026-08&query_mode=history&local_only=true&as_of_basis=available&as_of=2026-11-03T00%3A00%3A00Z",
+  releaseRequest: "/releases?read_mode=event",
+};

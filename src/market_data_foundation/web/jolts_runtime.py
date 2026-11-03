@@ -1,5 +1,6 @@
 """Explicit standalone JOLTS composition; never touches the shared preview."""
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -82,3 +83,59 @@ def create_jolts_app(
     app.include_router(timeseries_router(host))
     app.state.jolts_host = host
     return app
+
+
+# Shared preview integration is optional; construction never starts a worker.
+
+
+@dataclass(frozen=True)
+class JoltsOptions:
+    state_directory: Path
+    allow_read: bool = False
+    allow_collect: bool = False
+    allow_source: bool = False
+    read_factory: object = None
+    write_factory: object = None
+    query_factory: object = None
+
+
+def bind_jolts(runtime, options, *, occupied_paths):
+    from market_data_foundation.web.cpi_query import CpiQueryAccess
+
+    runtime.jolts_timeseries = None
+    runtime.accesses["jolts"] = CpiQueryAccess()
+    if options is None:
+        return
+    if not isinstance(options, JoltsOptions):
+        raise ValueError("jolts_explicit_options_required")
+    state = Path(options.state_directory)
+    if not state.is_absolute() or ".." in state.parts:
+        raise ValueError("jolts_independent_absolute_paths_required")
+    root = state.resolve()
+    if any(
+        root == p or root in p.parents or p in root.parents
+        for value in occupied_paths
+        if value is not None
+        for p in [Path(value).resolve()]
+    ):
+        raise ValueError("jolts_independent_paths_required")
+    config = runtime.settings.config_directory
+    app = create_jolts_app(
+        packages=runtime.packages,
+        runtime_path=config / "runtime.toml",
+        secret_path=config / "secret.toml",
+        state_directory=state,
+        allow_read=options.allow_read,
+        allow_collect=options.allow_collect,
+        allow_source=options.allow_source,
+        read_factory=options.read_factory,
+        write_factory=options.write_factory,
+        query_factory=options.query_factory,
+        clock=runtime.clock,
+    )
+    runtime.jolts_timeseries = app.state.jolts_host
+    runtime.packages.timeseries_hosts["jolts"] = runtime.jolts_timeseries
+    runtime.accesses["jolts"] = CpiQueryAccess(
+        metadata_permission="allowed" if options.allow_read else "denied",
+        read_permission="allowed" if options.allow_read else "denied",
+    )

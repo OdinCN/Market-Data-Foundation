@@ -517,10 +517,13 @@ def test_query_openapi_parameters_match_actual_admitted_filters():
                     continue
                 assert {"start", "end", "columns", "local_only", "as_of"} <= fields
                 assert ("series" in fields) == any(
-                    family in path for family in ("employment", "consumption")
+                    family in path for family in ("employment", "consumption", "jolts")
                 )
                 assert ("basket" in fields) == (
-                    not any(family in path for family in ("employment", "consumption"))
+                    not any(
+                        family in path
+                        for family in ("employment", "consumption", "jolts")
+                    )
                 )
     assert (
         json.loads(Path("web/src/macro-timeseries.openapi.json").read_text())
