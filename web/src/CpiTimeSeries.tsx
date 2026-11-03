@@ -193,7 +193,10 @@ function CpiTimeSeriesContent({
     profile.id === "employment" || jolts || consumption || gdp || claims || m3;
   const retail = profile.id === "retail";
   const measures = m3
-    ? [{ value: "value", label: "金额（百万当期美元）" }]
+    ? [
+        { value: "value", label: "金额（百万当期美元）" },
+        { value: "mom_percent", label: "1月环比（%）" },
+      ]
     : jolts
       ? [
           { value: "value", label: "原生值（千岗位 / 千人次 / %）" },
@@ -832,6 +835,21 @@ function CpiTimeSeriesContent({
             发布材料状态：{releaseReasonText(reason)}；连续数值结果保留。
           </p>
         ))}
+        {m3 && result?.m3_budget_exhausted && (
+          <p role="alert">
+            补源总截止预算已耗尽；两阶段已有值与全部缺口保留，未写库。
+          </p>
+        )}
+        {m3 &&
+          result?.m3_failures?.map((failure, index) => (
+            <p role="alert" key={index}>
+              {failure.dataset === "m3"
+                ? "制造业完整报告"
+                : "耐用品先行报告（Advance）"}
+              补源部分失败：{failure.classification}
+              。两侧已有值和缺口保留，未写库。
+            </p>
+          ))}
         <div hidden={resultTab !== "table"}>
           {result && columns.length > 0 && (
             <section aria-label={`${profile.label} 范围结果`}>
@@ -839,33 +857,47 @@ function CpiTimeSeriesContent({
                 {result.start_period} 至 {result.end_period}
               </h4>
               <p role="status">
-                共 {rows.length} 条（{claims ? "截止周" : gdp ? "季度" : "月"} ×
-                口径），有效观测{" "}
-                {m3 && result.m3_coverage
-                  ? result.m3_coverage.available
-                  : gdp || claims
-                    ? result.points.filter(
-                        (point) => point.availability === "available",
-                      ).length
-                    : result.points.length}{" "}
-                条，缺值{" "}
-                {m3 && result.m3_coverage
-                  ? result.m3_coverage.expected - result.m3_coverage.available
-                  : gdp || claims
-                    ? result.points.filter(
-                        (point) => point.availability === "missing",
-                      ).length
-                    : result.missing.length}{" "}
-                条。
-                {profile.id === "retail" &&
-                (result.source_failure || result.source_no_content?.length)
-                  ? "来源补取未完成，当前为部分返回。"
-                  : (gdp || claims
-                        ? result.complete
-                        : !result.missing.length) &&
-                      !selectedCalculationMissing.length
-                    ? "所选指标数据完整。"
-                    : "所选指标存在缺值。"}
+                {m3 && result.m3_coverage ? (
+                  <>
+                    共 {result.m3_comparisons?.length ?? rows.length}{" "}
+                    组比较（月×口径），两阶段有效观测{" "}
+                    {result.m3_coverage.available} /{" "}
+                    {result.m3_coverage.expected} 个，缺值{" "}
+                    {result.m3_coverage.expected - result.m3_coverage.available}{" "}
+                    个。
+                  </>
+                ) : (
+                  <>
+                    共 {rows.length} 条（
+                    {claims ? "截止周" : gdp ? "季度" : "月"} × 口径），有效观测{" "}
+                    {m3 && result.m3_coverage
+                      ? result.m3_coverage.available
+                      : gdp || claims
+                        ? result.points.filter(
+                            (point) => point.availability === "available",
+                          ).length
+                        : result.points.length}{" "}
+                    条，缺值{" "}
+                    {m3 && result.m3_coverage
+                      ? result.m3_coverage.expected -
+                        result.m3_coverage.available
+                      : gdp || claims
+                        ? result.points.filter(
+                            (point) => point.availability === "missing",
+                          ).length
+                        : result.missing.length}{" "}
+                    条。
+                    {profile.id === "retail" &&
+                    (result.source_failure || result.source_no_content?.length)
+                      ? "来源补取未完成，当前为部分返回。"
+                      : (gdp || claims
+                            ? result.complete
+                            : !result.missing.length) &&
+                          !selectedCalculationMissing.length
+                        ? "所选指标数据完整。"
+                        : "所选指标存在缺值。"}
+                  </>
+                )}
               </p>
               <p className="small">
                 {m3

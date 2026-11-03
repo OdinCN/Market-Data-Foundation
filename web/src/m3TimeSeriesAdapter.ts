@@ -19,6 +19,8 @@ type Scope = CpiScope & {
 type Point = {
   series_id: string;
   month: string;
+  mom_percent?: string | null;
+  mom_reason?: string | null;
   dataset: string;
   value: string | null;
   status: "available" | "missing";
@@ -35,6 +37,8 @@ type Point = {
 };
 type Response = {
   reports?: Record<string, Response>;
+  budget_exhausted?: boolean;
+  source_failures?: { classification: string; http_status: number | null }[];
   comparisons?: M3Comparison[];
   comparison_basis?: string;
   points: Point[];
@@ -65,6 +69,7 @@ export function buildM3QueryRequest(scope: Scope) {
     query_mode: history ? "history" : "current",
     local_only: String(history),
     as_of_basis: "available",
+    include_mom: "true",
     ...(history ? { as_of: scope.as_of ?? "" } : {}),
   });
   return {
@@ -145,6 +150,18 @@ export function normalizeM3Result(data: Response, scope: Scope): RangeResult {
       coverage_complete: full.complete && advance.complete,
       provider_requests: data.provider_requests,
       provider_attempts: data.provider_attempts,
+      m3_budget_exhausted: data.budget_exhausted === true,
+      m3_failures: Object.entries(data.reports!).flatMap(([dataset, r]) => {
+        const failures =
+          r.source_failures ?? (r.source_failure ? [r.source_failure] : []);
+        const failure =
+          failures.find(
+            (f) => f.classification === "census_m3_query_deadline",
+          ) ?? failures[0];
+        return failure
+          ? [{ dataset, classification: failure.classification }]
+          : [];
+      }),
     };
   }
   const selected = scope.series?.split(",") ?? ids;
@@ -223,6 +240,7 @@ export function normalizeM3Result(data: Response, scope: Scope): RangeResult {
       period: p.month,
       series_id: p.series_id,
       value: p.value,
+      mom_percent: p.mom_percent,
       value_unit: "million_current_usd",
       observed_at: p.observed_at ?? undefined,
       available_at: p.available_at,
@@ -262,7 +280,7 @@ export async function queryM3Range(
       transport,
       request.path,
       { signal },
-      45000,
+      180000,
       onExchange,
     ),
     scope,

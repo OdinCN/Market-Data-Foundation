@@ -102,8 +102,13 @@ def bind_m3(runtime, options, *, occupied_paths):
     def write_bound(*, credential_loader):
         return (options.write_factory or write)(credential_loader=credential_loader)
 
+    from market_data_foundation.historical.m3_calendar import fetch_calendar
+
     host = M3ProductHost(
         packages=runtime.packages,
+        calendar_fetch=(lambda: fetch_calendar(request_control))
+        if options.allow_source
+        else None,
         read_factory=options.read_factory or read,
         query_factory=query_bound if options.allow_source else None,
         write_factory=write_bound if options.allow_collect else None,

@@ -78,6 +78,7 @@ class M3QueryHost:
             "query_mode",
             "as_of",
             "as_of_basis",
+            "include_mom",
         }:
             raise WebError("unsupported_parameters")
         if not params.get("start") or not params.get("end"):
@@ -118,6 +119,9 @@ class M3QueryHost:
                     raise ValueError
         except ValueError, TypeError, CpiTimeSeriesError:
             raise WebError("m3_request_invalid") from None
+        mom = params.get("include_mom", "false")
+        if mom not in {"true", "false"}:
+            raise WebError("m3_invalid_mom_flag")
         upstream = local == "false" and mode == "current"
         if upstream and not (
             self.allow_source
@@ -142,6 +146,7 @@ class M3QueryHost:
                 basis=basis,
                 allow_upstream=upstream,
                 series_ids=series,
+                include_mom=mom == "true",
             )
         return result | {"local_only": not upstream}
 
@@ -212,6 +217,10 @@ def timeseries_router(host):
                     ("query_mode", "current or history"),
                     ("as_of", "aware history cutoff"),
                     ("as_of_basis", "observed or available"),
+                    (
+                        "include_mom",
+                        "false default; true adds same-stage MoM and previous month",
+                    ),
                 )
             ]
         },
@@ -366,7 +375,11 @@ def timeseries_router(host):
                     "basis": "source snapshots; not official event revision/surprise",
                     "missing": "difference null if either side missing",
                 },
-                "query_budget_seconds": 25,
+                "query_budget_seconds": 150,
+                "web_timeout_seconds": 180,
+                "source_request_timeout_seconds": 20,
+                "mom": "percent; same dataset/cutoff; missing/zero denominator null; "
+                "half-even 6 decimals; previous month included",
                 "collection": (
                     "New manual jobs jointly collect both independent reports. "
                     "Initialization may adopt proved confirmed source fragments. "

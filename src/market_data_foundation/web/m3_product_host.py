@@ -41,6 +41,7 @@ class M3ProductHost(M3QueryHost):
         allow_collect=False,
         clock=lambda: datetime.now(UTC),
         joint_collections=True,
+        calendar_fetch=None,
     ):
         super().__init__(
             read_factory=read_factory,
@@ -66,6 +67,8 @@ class M3ProductHost(M3QueryHost):
             clock=self.clock,
             submit=self.submit,
             submit_report=self.submit_report,
+            calendar_fetch=calendar_fetch,
+            maintain_history=self.maintain_history,
         )
         self.auto_strategy = M3AutoStrategy(
             self.scheduler,
@@ -173,19 +176,125 @@ class M3ProductHost(M3QueryHost):
     def executions(self):
         return {
             "executions": [
-                dict(j, id=j["job_id"], origin="manual") for j in self.jobs()["jobs"]
+                dict(
+                    j,
+                    id=j["job_id"],
+                    origin=j.get(
+                        "origin",
+                        "automatic"
+                        if j["job_id"]
+                        in {
+                            v.get("request_id")
+                            for v in self.scheduler._load()["work"].values()
+                        }
+                        else "manual",
+                    ),
+                )
+                for j in self.jobs()["jobs"]
             ]
         }
 
-    def submit_report(self, dataset, command, **kwargs):
+    def maintain_history(self, event, identity, start):
+        from market_data_foundation.historical.m3_capital_goods_store import SERIES_IDS
+        from market_data_foundation.historical.m3_capital_goods_timeseries import (
+            _months,
+        )
+
+        dataset, end = event["dataset"], event["reference_month"]
+        old = self.journal.read(identity)
+        if old and old["state"] == "complete":
+            return old
+        expected = {(s, m) for s in SERIES_IDS for m in _months(start, end)}
+        release = datetime.fromisoformat(event["release_at"])
+        with self.service() as service:
+            rows = service.store.read_range(dataset, start, end)
+        proof = {
+            (r["series_id"], r["month"])
+            for r in rows
+            if r.get("available_at")
+            and datetime.fromisoformat(r["observed_at"]) >= release
+        }
+        command = {
+            "request_id": identity,
+            "action": "update",
+            "start": start,
+            "end": end,
+        }
+        if proof != expected:
+            return self.submit_report(
+                dataset, command, resume=old is not None, work_stage="history"
+            )
+        with self.journal.execution():
+            existing = self.journal.read(identity)
+            if existing and existing["state"] == "complete":
+                return existing
+            now = self.clock().isoformat()
+            available = sum(r["value"] is not None for r in rows)
+            job = dict(
+                command,
+                job_id=identity,
+                collection_id=identity,
+                asset="m3",
+                dataset=dataset,
+                origin="automatic",
+                stage="history",
+                state="complete",
+                created_at=now,
+                started_at=now,
+                finished_at=now,
+                classification=None,
+                result={
+                    "operation": "local_post_release_history_verification",
+                    "source_basis": "confirmed_source_snapshots_"
+                    "observed_after_planned_release",
+                    "release_at": event["release_at"],
+                    "source_batches": sorted({r["batch_id"] for r in rows}),
+                    "provider_requests": 0,
+                    "provider_attempts": 0,
+                    "saved_points": 0,
+                    "saved_revisions": 0,
+                    "persisted": False,
+                    "coverage_complete": available == len(expected),
+                    "coverage": {
+                        "expected": len(expected),
+                        "available": available,
+                        "official_null": 0,
+                        "missing": len(expected) - available,
+                    },
+                    "completion": "local_readback_verified",
+                    "readback": {
+                        "verified": True,
+                        "point_count": len(rows),
+                        "expected_points": len(expected),
+                        "missing": [],
+                        "source_missing": [],
+                        "source_unavailable": [],
+                        "source_unavailable_count": 0,
+                    },
+                },
+            )
+            self.journal.save(job)
+            return job
+
+    def submit_report(self, dataset, command, *, work_stage="target", **kwargs):
         from market_data_foundation.historical.m3_capital_goods import M3Request
 
         M3Request(dataset, "MDM", command["start"], command["start"])
         if kwargs.get("resume") and self.journal.read(command["request_id"]) is None:
             kwargs["resume"] = False
-        return self.submit(command, report_stage=dataset, **kwargs)
+        return self.submit(
+            command, report_stage=dataset, execution_stage=work_stage, **kwargs
+        )
 
-    def submit(self, command, *, on_started=None, resume=False, report_stage=None):
+    def submit(
+        self,
+        command,
+        *,
+        on_started=None,
+        resume=False,
+        report_stage=None,
+        execution_stage=None,
+    ):
         if not self.allow_read:
             raise WebError("local_read_not_authorized", 403)
         validate_command(command, 2400, profile=M3_PROFILE)
@@ -239,6 +348,8 @@ class M3ProductHost(M3QueryHost):
                 job_id=command["request_id"],
                 collection_id=command["request_id"],
                 asset="m3",
+                origin="automatic" if report_stage else "manual",
+                stage=execution_stage or ("target" if report_stage else "manual"),
                 state="running",
                 created_at=old["created_at"] if old else now,
                 started_at=now,

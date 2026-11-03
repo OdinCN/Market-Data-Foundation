@@ -50,6 +50,10 @@ def query_reports(service, start, end, **kwargs):
                     "series_id": series,
                     "m3_value": full,
                     "advm3_value": advance,
+                    "m3_mom_percent": points["m3"].get("mom_percent"),
+                    "advm3_mom_percent": points["advm3"].get("mom_percent"),
+                    "m3_mom_reason": points["m3"].get("mom_reason"),
+                    "advm3_mom_reason": points["advm3"].get("mom_reason"),
                     "difference": str(Decimal(full) - Decimal(advance))
                     if full is not None and advance is not None
                     else None,
@@ -79,6 +83,8 @@ def query_reports(service, start, end, **kwargs):
         if any(r["provider_attempts"] is None for r in reports.values())
         else sum(r["provider_attempts"] for r in reports.values()),
         "persisted": False,
+        "budget_exhausted": any(r["budget_exhausted"] for r in reports.values()),
+        "query_budget_seconds": QUERY_SOURCE_BUDGET_SECONDS,
     }
 
 

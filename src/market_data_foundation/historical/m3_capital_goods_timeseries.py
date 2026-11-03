@@ -25,7 +25,7 @@ from market_data_foundation.historical.m3_capital_goods_store import (
 MAX_QUERY_SOURCE_REQUESTS = 30
 COLLECTION_WINDOW_MONTHS = 240
 MAX_COLLECTION_REQUESTS = 3600
-QUERY_SOURCE_BUDGET_SECONDS = 25.0
+QUERY_SOURCE_BUDGET_SECONDS = 150.0
 
 
 def _months(start, end):
@@ -422,9 +422,13 @@ class M3TimeSeriesService:
         allow_upstream=False,
         series_ids=SERIES_IDS,
         _deadline=None,
+        include_mom=False,
     ):
         req = M3Request(dataset, "MDM", start, start)
-        months = _months(start, end)
+        output_months = _months(start, end)
+        check(type(include_mom) is bool, "mom_flag_invalid")
+        read_start = month_at(month_number(start) - 1) if include_mom else start
+        months = (read_start, *output_months) if include_mom else output_months
         check(type(allow_upstream) is bool, "upstream_flag_invalid")
         check(basis in {"observed", "available"}, "cutoff_basis_invalid")
         check(
@@ -448,9 +452,9 @@ class M3TimeSeriesService:
                 )
             except TypeError, ValueError:
                 check(False, "cutoff_invalid")
-        rows = self.store.read_range(dataset, start, end, as_of, basis)
+        rows = self.store.read_range(dataset, read_start, end, as_of, basis)
         indexed = {(r["series_id"], r["month"]): dict(r, origin="local") for r in rows}
-        expected = {(s, m) for s in series_ids for m in months}
+        expected = {(s, m) for s in series_ids for m in output_months}
         requests = attempts = 0
         failures = []
         budget_exhausted = False
@@ -500,6 +504,19 @@ class M3TimeSeriesService:
                     batch = M3Batch((snapshot,))
                 except Exception as error:
                     failure = _failure(error, request)
+                    if (
+                        failure["classification"] == "census_m3_timeout"
+                        and remaining < 20
+                    ):
+                        failure = dict(
+                            failure,
+                            classification="census_m3_query_deadline",
+                            timeout_cause="shared_query_deadline",
+                            upstream_classification="census_m3_timeout",
+                        )
+                        budget_exhausted = True
+                    elif failure["classification"] == "census_m3_timeout":
+                        failure["timeout_cause"] = "upstream_request_timeout"
                     failures.append(failure)
                     if attempts is not None:
                         attempts = (
@@ -514,7 +531,11 @@ class M3TimeSeriesService:
                             and failure["http_status"] >= 500
                         )
                         or failure["classification"]
-                        in {"census_m3_timeout", "census_m3_transport_failure"}
+                        in {
+                            "census_m3_timeout",
+                            "census_m3_transport_failure",
+                            "census_m3_query_deadline",
+                        }
                         or failure["attempts"] in (None, 0)
                     ):
                         break
@@ -558,8 +579,37 @@ class M3TimeSeriesService:
                     },
                 }
             )
+        if include_mom:
+            from decimal import ROUND_HALF_EVEN, Decimal
+
+            for point in points:
+                previous_month = month_at(month_number(point["month"]) - 1)
+                previous = indexed.get((point["series_id"], previous_month))
+                denominator = previous.get("value") if previous else None
+                reason = (
+                    "current_missing"
+                    if point["value"] is None
+                    else "missing_denominator"
+                    if denominator is None
+                    else "zero_denominator"
+                    if Decimal(denominator) == 0
+                    else None
+                )
+                point["mom_percent"] = (
+                    None
+                    if reason
+                    else str(
+                        (
+                            (Decimal(point["value"]) / Decimal(denominator) - 1) * 100
+                        ).quantize(Decimal("0.000001"), rounding=ROUND_HALF_EVEN)
+                    )
+                )
+                point["mom_reason"] = reason
+                point["previous_month"] = previous_month
         return {
             "points": points,
+            "include_mom": include_mom,
+            "query_budget_seconds": QUERY_SOURCE_BUDGET_SECONDS,
             "dataset": dataset,
             "report_stage": req.report_stage,
             "query_mode": "history" if as_of is not None else "current",

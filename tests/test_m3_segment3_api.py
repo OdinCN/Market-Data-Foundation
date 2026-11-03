@@ -122,6 +122,7 @@ def test_api_204_keeps_local_rows_and_reports_gap():
             "query_mode",
             "as_of",
             "as_of_basis",
+            "include_mom",
         }
 
 

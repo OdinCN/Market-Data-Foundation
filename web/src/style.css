@@ -1557,7 +1557,7 @@ footer {
 
 /* Keep both report amounts visible together in the shared asset panel. */
 .cpi-timeseries .m3-comparison-table {
-  min-width: 34rem;
+  min-width: 44rem;
   width: 100%;
   table-layout: fixed;
 }
