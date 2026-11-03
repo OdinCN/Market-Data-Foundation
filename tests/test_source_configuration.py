@@ -383,3 +383,74 @@ def test_bea_official_authentication_evidence_is_bounded(
 ):
     result = response_facts("BEA", status, body)
     assert result.reason == reason and result.authentication == authentication
+
+
+@pytest.mark.parametrize(
+    "status,code,limited,authentication",
+    [
+        (200, "7", True, "unknown"),
+        (429, None, True, "unknown"),
+        (200, "4", False, "unknown"),
+        (200, "1", False, "rejected"),
+    ],
+)
+def test_bea_verification_feedback_blocks_independent_shared_admission(
+    tmp_path, monkeypatch, status, code, limited, authentication
+):
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    from market_data_foundation.historical.pce_timeseries_source import (
+        BeaRequestControl,
+        PceSourceError,
+    )
+    from market_data_foundation.web import source_verification as module
+    from tests.test_claims_web import AT
+
+    now = [AT]
+
+    def no_wait(delay):
+        pytest.fail("shared_admission_must_not_wait")
+
+    path = tmp_path / "shared-bea-control.json"
+    control = BeaRequestControl(path, clock=lambda: now[0], sleep=no_wait)
+    host = SimpleNamespace(
+        source_id="BEA",
+        source=lambda record: {},
+        upstream_access=lambda state: {"allowed": True},
+    )
+    runtime = SimpleNamespace(
+        request_control=None,
+        bea_request_control=control,
+        clock=lambda: now[0],
+        packages=SimpleNamespace(timeseries_hosts={"bea": host}),
+    )
+    body = json.dumps(
+        {"BEAAPI": {"Results": {"Error": {"APIErrorCode": code}}}}
+    ).encode()
+    transport = Mock()
+    transport.post.return_value = ClaimsResponse(status, body, {"Retry-After": "600"})
+    monkeypatch.setattr(module, "BeaHttpsTransport", lambda: transport)
+    module.bind_source_verifier(runtime, None)
+    result = runtime.packages.source_verifier("BEA", FIRST, None)
+    assert result.authentication == authentication
+    assert result.reason == ("rate_limited" if limited else "business_error")
+    transport.post.assert_called_once()  # One exchange, including business throttles.
+
+    # A distinct caller reopens the actual shared file after normal pacing expires.
+    # Its attempted transport must remain unreachable throughout the cooldown.
+    now[0] += timedelta(seconds=4)
+    follower = BeaRequestControl(path, clock=lambda: now[0], sleep=no_wait)
+    next_request = Mock()
+    if limited:
+        with pytest.raises(PceSourceError) as caught:
+            with follower.attempt():
+                next_request()
+        assert caught.value.classification == "pce_timeseries_request_cooldown"
+        assert caught.value.retry_at == AT + timedelta(seconds=600)
+        next_request.assert_not_called()
+    else:
+        with follower.attempt():
+            next_request()
+        next_request.assert_called_once()
+        assert "cooldown_until" not in json.loads(path.read_text())

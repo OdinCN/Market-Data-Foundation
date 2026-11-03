@@ -247,7 +247,19 @@ def bind_source_verifier(runtime, claims_options):
                         http_status=response.status,
                         reason="response_invalid",
                     )
-                return response_facts(source, response.status, body)
+                facts = response_facts(source, response.status, body)
+                if (
+                    source == "BEA"
+                    and response.status == 200
+                    and facts.reason == "rate_limited"
+                ):
+                    # Explicit BEA business error 7 shares the HTTP429 cooldown.
+                    admission(
+                        retry_after_at(
+                            response.headers, runtime.clock(), minimum_seconds=300
+                        )
+                    )
+                return facts
         except Exception as error:
             classification, _ = classify_source_exception(error)
             if isinstance(error, ContractError):
