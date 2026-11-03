@@ -176,8 +176,10 @@ type Schedule = {
 };
 function ResultFacts({
   result,
+  profile,
 }: {
   result: Record<string, unknown> | null | undefined;
+  profile?: MacroProfile;
 }) {
   if (!result) return <p>执行结果未记录</p>;
   // Some automatic receipts wrap the job result. Preserve statistics recorded
@@ -189,10 +191,10 @@ function ResultFacts({
     nested = (nested as Record<string, unknown>).result;
   }
   const labels: Record<string, string> = {
-    saved_points: "新增观测",
-    saved_revisions: "新增修订",
-    provider_requests: "来源请求",
-    provider_attempts: "来源尝试",
+    saved_points: profile?.id === "m3" ? "本次执行新增观测" : "新增观测",
+    saved_revisions: profile?.id === "m3" ? "本次执行新增修订" : "新增修订",
+    provider_requests: profile?.id === "m3" ? "本次执行来源请求" : "来源请求",
+    provider_attempts: profile?.id === "m3" ? "本次执行来源尝试" : "来源尝试",
     scheduler_attempts_total: "累计调度尝试",
     actual_http_total: "累计实际请求",
   };
@@ -410,7 +412,12 @@ export function CpiExecutionDetail({
         </Fact>
         {e.classification && <Fact name="结果分类">{e.classification}</Fact>}
       </dl>
-      <ResultFacts result={e.result} />
+      {profile.id === "m3" && (
+        <p className="small">
+          以下新增和请求数仅属于本次执行；恢复时已确认的分片不会重复请求，范围覆盖包括之前确认的分片。
+        </p>
+      )}
+      <ResultFacts result={e.result} profile={profile} />
       {profile.id === "claims" ? (
         <ClaimsCollectionDetails result={e.result} />
       ) : profile.id === "gdp" ? (

@@ -229,3 +229,43 @@ def test_integrated_preview_admits_manual_job_and_refuses_origin(tmp_path, monke
         assert http.post(
             PREFIX + "/jobs", json=command, headers=headers
         ).status_code in (200, 202)
+
+
+def test_failed_source_does_not_claim_missing_rows_were_read_back(tmp_path):
+    h, store, wire = host(tmp_path)
+    wire.fail_at = 1
+    command = {
+        "request_id": str(uuid4()),
+        "action": "update",
+        "start": "2025-01",
+        "end": "2025-02",
+    }
+    job = h.submit(command)
+    assert job["state"] == "failed" and not store.store.rows
+    assert job["result"]["persisted"] is False
+    assert job["result"]["readback"]["verified"] is False
+    assert job["result"]["readback"]["point_count"] == 0
+    assert job["result"]["readback"]["expected_points"] == 6
+    assert job["result"]["coverage"] == {
+        "expected": 6,
+        "available": 0,
+        "official_null": 0,
+        "missing": 6,
+    }
+
+
+def test_partial_source_counts_only_persisted_rows_in_readback(tmp_path):
+    h, store, wire = host(tmp_path)
+    wire.fail_at = 2
+    command = {
+        "request_id": str(uuid4()),
+        "action": "update",
+        "start": "2025-01",
+        "end": "2025-02",
+    }
+    job = h.submit(command)
+    assert job["state"] == "failed" and len(store.store.rows) == 2
+    assert job["result"]["readback"]["verified"] is True
+    assert job["result"]["readback"]["point_count"] == 2
+    assert job["result"]["readback"]["expected_points"] == 6
+    assert job["result"]["coverage"]["available"] == 2

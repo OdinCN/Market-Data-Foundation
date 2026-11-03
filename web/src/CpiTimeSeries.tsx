@@ -692,13 +692,15 @@ function CpiTimeSeriesContent({
           {employment && !series.length && (
             <p role="alert">
               请至少选择一项
-              {gdp
-                ? "GDP"
-                : jolts
-                  ? "JOLTS"
-                  : consumption
-                    ? "消费与收入"
-                    : "就业"}
+              {m3
+                ? "耐用品与资本品"
+                : gdp
+                  ? "GDP"
+                  : jolts
+                    ? "JOLTS"
+                    : consumption
+                      ? "消费与收入"
+                      : "就业"}
               指标。
             </p>
           )}

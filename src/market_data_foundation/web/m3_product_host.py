@@ -177,7 +177,8 @@ class M3ProductHost(M3QueryHost):
                     and not written["source_failure"]
                 )
                 verified = (
-                    written["readback_status"] == "confirmed"
+                    written["persisted"] is True
+                    and written["readback_status"] == "confirmed"
                     and readback["provider_requests"] == 0
                 )
                 missing = written["missing"]
@@ -203,7 +204,7 @@ class M3ProductHost(M3QueryHost):
                         "event_binding_status": "unconfirmed",
                         "readback": {
                             "verified": verified,
-                            "point_count": len(readback["points"]),
+                            "point_count": written["readback_points"],
                             "expected_points": readback["coverage"]["expected"],
                             "missing": missing,
                             "source_missing": missing,
