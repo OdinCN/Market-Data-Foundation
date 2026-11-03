@@ -30,7 +30,13 @@ from market_data_foundation.historical.macro_release_records import (
 
 def fetch_official_material(url, family):
     official_url(family, url)
-    if family in {"cpi", "ppi", "employment"}:
+    if family == "jolts":
+        from market_data_foundation.historical.jolts_release_schedule import (
+            fetch_official_page,
+        )
+
+        return fetch_official_page(url)
+    if family in {"cpi", "ppi", "employment", "jolts"}:
         return fetch_bls_page(url, allowed_path=urlsplit(url).path, timeout=5)
     deadline = time.monotonic() + 20
     original = urlsplit(url)
@@ -171,7 +177,7 @@ def select_material(family, snapshot, start, end, now):
         elif not target.get("uid"):
             continue
         day = instant(at).astimezone(ZoneInfo("America/New_York")).date()
-        if family in {"cpi", "ppi", "employment"}:
+        if family in {"cpi", "ppi", "employment", "jolts"}:
             stem = {"employment": "empsit"}.get(family, family)
             url = f"https://www.bls.gov/news.release/archives/{stem}_{day:%m%d%Y}.htm"
         elif family in {"pce", "consumption"}:
@@ -291,6 +297,7 @@ class MaterialAcquirer:
             "employment": "bls:employment-situation",
             "cpi": "bls:cpi",
             "ppi": "bls:ppi",
+            "jolts": "bls:jolts",
             "pce": "bea:personal-income-and-outlays",
             "consumption": "bea:personal-income-and-outlays",
             "retail": "census:advance-retail",

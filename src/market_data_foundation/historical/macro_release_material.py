@@ -148,6 +148,7 @@ def official_url(family, url):
             r"/news.release/archives/empsit_\d{8}\.(?:htm|txt)",
         ),
         "cpi": ("www.bls.gov", r"/news.release/archives/cpi_\d{8}\.(?:htm|txt)"),
+        "jolts": ("www.bls.gov", r"/news.release/archives/jolts_\d{8}\.(?:htm|txt)"),
         "ppi": ("www.bls.gov", r"/news.release/archives/ppi_\d{8}\.(?:htm|txt)"),
         "pce": (
             "www.bea.gov",
@@ -169,6 +170,12 @@ def official_url(family, url):
 
 def parse_material(raw, url, family):
     p = official_url(family, url)
+    if family == "jolts":
+        from market_data_foundation.historical.jolts_release_material import (
+            parse_jolts_material,
+        )
+
+        return parse_jolts_material(raw, url)
     m = Material(raw)
     if family == "employment":
         from market_data_foundation.historical.macro_release_records import (
@@ -756,6 +763,7 @@ def _scope_absence(doc, family):
         CONSUMPTION_PROFILE,
         CPI_PROFILE,
         EMPLOYMENT_PROFILE,
+        JOLTS_PROFILE,
         PCE_PROFILE,
         PPI_PROFILE,
     )
@@ -766,6 +774,7 @@ def _scope_absence(doc, family):
         "pce": PCE_PROFILE,
         "consumption": CONSUMPTION_PROFILE,
         "employment": EMPLOYMENT_PROFILE,
+        "jolts": JOLTS_PROFILE,
     }
     expected = []
     for ref in doc["reference_months"]:
@@ -794,7 +803,7 @@ def _scope_absence(doc, family):
                 adjustment = meta["seasonal_adjustment"].lower()
                 stats = (
                     ["level"]
-                    if family in {"employment", "consumption"}
+                    if family in {"employment", "consumption", "jolts"}
                     else ["index", "mom_pct" if adjustment == "sa" else "yoy_pct"]
                 )
                 if family == "pce":
@@ -806,7 +815,7 @@ def _scope_absence(doc, family):
                 for stat in stats:
                     unit = (
                         meta.get("value_unit")
-                        if family == "employment"
+                        if family in {"employment", "jolts"}
                         or (family == "consumption" and stat == "level")
                         else "index"
                         if stat == "index"

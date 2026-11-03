@@ -233,6 +233,8 @@ def parse_official_history(raw, *, profile=CPI_PROFILE):
     title = (
         "Employment Situation"
         if profile is EMPLOYMENT_PROFILE
+        else "Job Openings and Labor Turnover Survey"
+        if profile.key == "jolts"
         else "Consumer Price Index"
         if profile.key == "cpi"
         else "Producer Price Index"
@@ -310,6 +312,11 @@ def parse_official_ics(raw, *, profile=CPI_PROFILE, known_uids=()):
         if profile.key == "cpi"
         else {"employment situation"}
         if profile is EMPLOYMENT_PROFILE
+        else {
+            "job openings and labor turnover survey",
+            "job openings and labor turnover",
+        }
+        if profile.key == "jolts"
         else {"producer price index", "producer price indexes"}
     )
     if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_CALENDAR_BYTES:
@@ -593,6 +600,8 @@ class CpiReleaseScheduler:
         self.calendar_title = (
             "Employment Situation"
             if profile is EMPLOYMENT_PROFILE
+            else "Job Openings and Labor Turnover Survey"
+            if profile.key == "jolts"
             else "Consumer Price Index"
             if profile.key == "cpi"
             else "Producer Price Index"

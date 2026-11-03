@@ -7,10 +7,12 @@ This helper does not apply to the BLS data API or any other provider.
 """
 
 import ssl
+from contextlib import nullcontext
 from http.client import HTTPException, HTTPSConnection
 from urllib.parse import urljoin, urlsplit
 
 from market_data_foundation.historical.calendar_resilience import retry_after
+from market_data_foundation.historical.cpi_request_control import CpiRequestControlError
 
 MAX_BYTES = 2_000_000
 MAX_REDIRECTS = 3
@@ -47,7 +49,14 @@ def _url(url, allowed_path):
 
 
 def fetch_bls_page(
-    url, *, headers=None, max_bytes=MAX_BYTES, timeout=20, allowed_path=None
+    url,
+    *,
+    headers=None,
+    max_bytes=MAX_BYTES,
+    timeout=20,
+    allowed_path=None,
+    request_control=None,
+    observer=None,
 ):
     """Read official HTML or ICS bytes; validate every hop before opening it."""
     _url(url, allowed_path)
@@ -68,43 +77,60 @@ def fetch_bls_page(
                 parts.hostname, 443, timeout=timeout, context=context
             )
             try:
-                connection.connect()
-                if connection.sock is None or connection.sock.version() != "TLSv1.3":
-                    raise BlsWebError("tls_version_rejected")
-                connection.request(
-                    "GET",
-                    parts.path or "/",
-                    headers={
-                        **(headers or {}),
-                        "Accept-Encoding": "identity",
-                        "Connection": "close",
-                    },
-                )
-                with connection.getresponse() as response:
-                    if response.status in {301, 302, 303, 307, 308}:
-                        location = response.getheader("Location")
-                        if not location or hop == MAX_REDIRECTS:
-                            raise BlsWebError("redirect_rejected")
-                        try:
-                            redirected = urljoin(url, location)
-                            _url(redirected, allowed_path)
-                        except BlsWebError, ValueError:
-                            raise BlsWebError("redirect_rejected") from None
-                        url = redirected
-                        continue
-                    if response.status != 200:
-                        raise BlsWebError(
-                            f"http_{response.status}",
-                            http_status=response.status,
-                            retry_at=retry_after(response.getheader("Retry-After")),
-                        )
-                    raw = response.read(max_bytes + 1)
-                    if len(raw) > max_bytes:
-                        raise BlsWebError("payload_too_large")
-                    return raw
+                with (
+                    request_control.attempt()
+                    if request_control is not None
+                    else nullcontext()
+                ) as attempt:
+                    connection.connect()
+                    if (
+                        connection.sock is None
+                        or connection.sock.version() != "TLSv1.3"
+                    ):
+                        raise BlsWebError("tls_version_rejected")
+                    connection.request(
+                        "GET",
+                        parts.path or "/",
+                        headers={
+                            **(headers or {}),
+                            "Accept-Encoding": "identity",
+                            "Connection": "close",
+                        },
+                    )
+                    with connection.getresponse() as response:
+                        if attempt is not None:
+                            attempt.record_response(
+                                response.status, dict(response.headers)
+                            )
+                        if observer is not None:
+                            body = response.read(max_bytes + 1)
+                            observer(url, response.status, body)
+                        else:
+                            body = None
+                        if response.status in {301, 302, 303, 307, 308}:
+                            location = response.getheader("Location")
+                            if not location or hop == MAX_REDIRECTS:
+                                raise BlsWebError("redirect_rejected")
+                            try:
+                                redirected = urljoin(url, location)
+                                _url(redirected, allowed_path)
+                            except BlsWebError, ValueError:
+                                raise BlsWebError("redirect_rejected") from None
+                            url = redirected
+                            continue
+                        if response.status != 200:
+                            raise BlsWebError(
+                                f"http_{response.status}",
+                                http_status=response.status,
+                                retry_at=retry_after(response.getheader("Retry-After")),
+                            )
+                        raw = body if body is not None else response.read(max_bytes + 1)
+                        if len(raw) > max_bytes:
+                            raise BlsWebError("payload_too_large")
+                        return raw
             finally:
                 connection.close()
-    except BlsWebError:
+    except BlsWebError, CpiRequestControlError:
         raise
     except TimeoutError:
         raise BlsWebError("timeout") from None

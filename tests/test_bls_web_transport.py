@@ -289,3 +289,49 @@ def test_employment_host_default_calendar_binding_uses_verified_transport(
                 fetcher()
             assert wire[1][-1].events == ["connect", "version", "close"]
     assert not source.calls
+
+
+def test_jolts_page_shared_admission_counts_redirect_and_retains_failure(
+    wire, tmp_path
+):
+    from datetime import UTC, datetime
+
+    from market_data_foundation.historical.cpi_request_control import (
+        CpiRequestControl,
+        CpiRequestControlError,
+    )
+
+    # Give this fixture the standard response headers used by admission.
+    wire[0].extend(
+        [
+            {"status": 302, "location": ICS, "raw": b"redirect"},
+            {"status": 429, "raw": b"rate limited"},
+        ]
+    )
+    original = web.HTTPSConnection
+
+    def connection(*args, **kwargs):
+        result = original(*args, **kwargs)
+        result.headers = {"Retry-After": "300"}
+        return result
+
+    web.HTTPSConnection = connection
+    try:
+        control = CpiRequestControl(
+            tmp_path / "shared.json",
+            clock=lambda: datetime(2026, 11, 3, tzinfo=UTC),
+            min_interval_seconds=0,
+        )
+        observed = []
+        with pytest.raises(web.BlsWebError, match="http_429"):
+            web.fetch_bls_page(
+                ICS, request_control=control, observer=lambda *row: observed.append(row)
+            )
+        assert [row[1] for row in observed] == [302, 429]
+        assert observed[-1][2] == b"rate limited"
+        assert len(wire[1]) == 2
+        with pytest.raises(CpiRequestControlError, match="request_cooldown"):
+            web.fetch_bls_page(ICS, request_control=control)
+        assert "request" not in wire[1][-1].events
+    finally:
+        web.HTTPSConnection = original

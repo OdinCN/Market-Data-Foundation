@@ -254,6 +254,15 @@ def verify_ppi_readback(written, readback, command, *, profile):
     )
     if verified and partial:
         result["completion"] = "source_coverage_partial"
+    if profile.key == "jolts":
+        # A successful partial write is not proof that the release target arrived.
+        # Keep this attempt's returned keys separate from local numeric coverage;
+        # explicit source nulls and absent rows must remain distinguishable.
+        result["target_evidence"] = {
+            "source_returned_series_months": rows(returned & expected),
+            "available_series_months": rows((available - nulls) & expected),
+            "source_unavailable": rows(nulls & returned & expected),
+        }
     return verified, result
 
 

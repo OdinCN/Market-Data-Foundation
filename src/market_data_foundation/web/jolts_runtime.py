@@ -78,7 +78,7 @@ def create_jolts_app(
         query_service_factory=(query_factory or query) if allow_source else None,
         **host_options,
     )
-    app = FastAPI(title="MDF JOLTS manual DEV API")
+    app = FastAPI(title="MDF JOLTS DEV API")
     app.include_router(timeseries_router(host))
     app.state.jolts_host = host
     return app

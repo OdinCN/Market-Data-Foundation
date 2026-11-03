@@ -87,7 +87,7 @@ def bls_calendar_publications(state):
     return result
 
 
-def publication_events(snapshot, official_origin, *, as_of=None):
+def publication_events(snapshot, official_origin, *, as_of=None, as_of_basis=None):
     """Calendar cache supersedes execution snapshots; ambiguity withholds time."""
     cutoff = (
         as_of
@@ -123,6 +123,16 @@ def publication_events(snapshot, official_origin, *, as_of=None):
             ]
             if not acquired:
                 acquired = [cache.get("acquired_at", cache.get("fetched_at"))]
+            if as_of_basis == "available":
+                acquired.extend(
+                    value
+                    for value in (
+                        cache.get("available_at"),
+                        row.get("available_at"),
+                        evidence.get("available_at"),
+                    )
+                    if value is not None
+                )
             try:
                 stamps = [datetime.fromisoformat(value) for value in acquired]
                 if any(stamp.utcoffset() is None or stamp > cutoff for stamp in stamps):

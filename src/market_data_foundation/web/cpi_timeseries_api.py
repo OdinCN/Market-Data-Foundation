@@ -451,7 +451,7 @@ class TimeSeriesHost:
             upstream=upstream, credential_loader=self.effective_credential
         ) as service:
             result = execute_profile(service, "query", params, profile=self.profile)
-            if hasattr(service, "store") and self.profile.key != "jolts":
+            if hasattr(service, "store"):
                 ReleaseRecords(service.store).link_result(result)
         return self.publication_metadata(result)
 
@@ -470,6 +470,7 @@ class TimeSeriesHost:
             self.scheduler.status() if snapshot is None else snapshot,
             self.official_origin,
             as_of=result.get("as_of"),
+            as_of_basis=result.get("as_of_basis"),
         )
         events = {
             month: event

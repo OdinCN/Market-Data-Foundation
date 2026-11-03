@@ -187,7 +187,7 @@ def test_manual_jobs_real_readback_replay_and_changed_only(setup, monkeypatch):
                 json={"enabled": True},
                 headers={"Origin": CANDIDATE_ORIGIN},
             ).status_code
-            == 409
+            == 200
         )
     assert data.status()["observation_count"] == 28
 

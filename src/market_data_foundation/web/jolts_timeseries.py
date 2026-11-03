@@ -1,32 +1,60 @@
 """JOLTS manual Host over shared permissions, journal, query and HTTP routes."""
 
 from pathlib import Path
-from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 from market_data_foundation.historical.bls_timeseries_profile import JOLTS_PROFILE
 from market_data_foundation.historical.cpi_timeseries import month_at, month_number
+from market_data_foundation.historical.jolts_auto_strategy import JoltsAutoStrategy
 from market_data_foundation.historical.jolts_contract import JOLTS_DEFINITION
+from market_data_foundation.historical.jolts_release_schedule import (
+    POLICY,
+    JoltsReleaseScheduler,
+)
 from market_data_foundation.web.cpi_timeseries_api import TimeSeriesHost
-from market_data_foundation.web.cpi_timeseries_jobs import WebError
 
 
 class JoltsTimeSeriesHost(TimeSeriesHost):
-    def __init__(self, *, job_directory, state_path, **options):
+    def __init__(
+        self,
+        *,
+        job_directory,
+        state_path,
+        calendar_fetcher=None,
+        reference_fetcher=None,
+        fallback_fetcher=None,
+        **options,
+    ):
         paths = [Path(job_directory), Path(state_path)]
         if any(not p.is_absolute() or ".." in p.parts for p in paths):
             raise ValueError("jolts_independent_absolute_paths_required")
         a, b = (p.resolve() for p in paths)
         if a == b or a in b.parents or b in a.parents:
             raise ValueError("jolts_independent_paths_required")
-        # No calendar, policy or worker is constructed in the manual segment.
+        scheduler_options = {
+            k: v
+            for k, v in dict(
+                calendar_fetcher=calendar_fetcher,
+                reference_fetcher=reference_fetcher,
+                fallback_fetcher=fallback_fetcher,
+            ).items()
+            if v is not None
+        }
+        if "clock" in options:
+            scheduler_options["clock"] = options["clock"]
+        scheduler = JoltsReleaseScheduler(paths[1], **scheduler_options)
         super().__init__(
             profile=JOLTS_PROFILE,
-            scheduler=SimpleNamespace(profile=JOLTS_PROFILE, state_path=paths[1]),
-            strategy=object(),
+            scheduler=scheduler,
             job_directory=paths[0],
             **options,
         )
+        self.auto_strategy = JoltsAutoStrategy(
+            scheduler,
+            scheduler.state_path.with_name("jolts-strategy.json"),
+            clock=self.clock,
+        )
+        scheduler.submit = self.submit
 
     def asset_metadata(self):
         return {
@@ -43,8 +71,22 @@ class JoltsTimeSeriesHost(TimeSeriesHost):
     def api_help(self):
         return {
             **super().api_help(),
-            "operations": ["status", "query", "jobs", "executions", "api-help"],
-            "release_records": {"supported": False},
+            "operations": [
+                "status",
+                "query",
+                "jobs",
+                "executions",
+                "api-help",
+                "releases",
+                "strategy",
+                "schedule",
+            ],
+            "release_records": {
+                "supported": True,
+                "local_only": True,
+                "material_scope": "national JOLTS archive; partial narrative claims",
+            },
+            "periodic_policy": POLICY,
             "baskets": [],
             "parameters": {
                 "start/end": "required inclusive YYYY-MM; at most 2400 months",
@@ -73,7 +115,12 @@ class JoltsTimeSeriesHost(TimeSeriesHost):
                 "available_at": "post-commit MDF confirmation, never official release",
                 "observed_at": "actual source response time; never backfilled",
                 "revision": "changed-only local sequence, not official vintage",
-                "publication_event/source_version/surprise": "null; evidence pending",
+                "publication_event": (
+                    "official calendar plan; never binds current revision"
+                ),
+                "source_version/surprise": (
+                    "null unless separately proven; no consensus means no surprise"
+                ),
                 "null": "missing endpoint or zero ratio denominator; never zero fill",
             },
             "provider_status": "P/R only from BLS footnotes; absence means unknown",
@@ -84,7 +131,10 @@ class JoltsTimeSeriesHost(TimeSeriesHost):
                 "request_id": "canonical UUID; exact replay never re-executes",
                 "action": "init/initialize/update; explicit start/end required",
                 "series": "optional native CSV subset; omitted collects all eight",
-                "completion": "running/complete/failed/unknown; inspect readback",
+                "completion": (
+                    "running/complete/failed/unknown; complete may have source gaps; "
+                    "release scheduler requires this attempt's eight numeric targets"
+                ),
             },
             "examples": [
                 self.prefix + "/query?start=2026-01&end=2026-08",
@@ -98,13 +148,8 @@ class JoltsTimeSeriesHost(TimeSeriesHost):
     def query(self, params):
         return super().query(dict(params, local_only=params.get("local_only", "true")))
 
-    def publication_metadata(self, result, **_options):
-        # The numeric service already reports the independent evidence gaps.
-        result["publication_events"] = []
-        return result
-
-    def capture_material(self, *_args):
-        return {"state": "not_attempted", "reason": "jolts_release_material_pending"}
+    def publication_metadata(self, result, **options):
+        return super().publication_metadata(result, **options)
 
     def status(self):
         with self.service() as service:
@@ -121,24 +166,36 @@ class JoltsTimeSeriesHost(TimeSeriesHost):
                 "months": 240,
                 "anchor_basis": "request_calendar_month_no_release_claim",
             },
-            "periodic_enabled": False,
+            "periodic_enabled": self.auto_strategy.get()["enabled"],
+            "calendar_status": self.scheduler.status()["calendar_status"],
         }
 
     def executions(self):
+        work = self.scheduler.status().get("work", {})
+        automatic = {
+            request_id: record
+            for record in work.values()
+            for request_id in record.get("request_ids", [record.get("request_id")])
+            if request_id
+        }
         return {
             "executions": [
-                dict(j, id=j["job_id"], origin="manual") for j in self.journal.list()
+                dict(
+                    j,
+                    id=j["job_id"],
+                    origin="automatic" if j["job_id"] in automatic else "manual",
+                    execution_kind=automatic.get(j["job_id"], {}).get("kind"),
+                )
+                for j in self.journal.list()
             ]
         }
 
     def strategy(self):
-        return {"enabled": False, "reason": "jolts_periodic_not_implemented"}
+        return {**self.auto_strategy.get(), "policy": POLICY}
 
     def schedule(self):
-        return {"events": [], "worker": {"enabled": False, "state": "not_started"}}
-
-    def update_strategy(self, _command):
-        raise WebError("jolts_periodic_not_implemented", 409)
-
-    def releases(self, _params):
-        raise WebError("jolts_release_records_not_implemented", 409)
+        value = self.auto_strategy.get()
+        return {
+            **self.scheduler.status(),
+            "worker": {**value["worker"], "enabled": value["enabled"]},
+        }
