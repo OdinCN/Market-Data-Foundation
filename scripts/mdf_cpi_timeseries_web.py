@@ -14,6 +14,7 @@ from mdf_b3_pce_r5_preview import CandidateHandler
 from starlette.requests import Request
 
 from market_data_foundation.canonical.model import require
+from market_data_foundation.web.claims_runtime import ClaimsOptions
 from market_data_foundation.web.cpi_pg_readonly_scope import DevReadIdentity
 from market_data_foundation.web.cpi_query import CpiQueryAccess
 from market_data_foundation.web.cpi_timeseries_api import (
@@ -71,6 +72,7 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_job(request, prefix="/api/r5/employment/timeseries")
                 or admitted_job(request, prefix="/api/r5/retail/timeseries")
                 or admitted_job(request, prefix="/api/r5/gdp/timeseries")
+                or admitted_job(request, prefix="/api/r5/claims/timeseries")
                 or (
                     request.url.path == "/api/r5/retail/timeseries/strategy"
                     and admitted_strategy(
@@ -93,6 +95,7 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_strategy(request, prefix="/api/r5/employment/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/retail/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/gdp/timeseries")
+                or admitted_strategy(request, prefix="/api/r5/claims/timeseries")
             )
         return super().request_admitted(request)
 
@@ -162,6 +165,15 @@ def main():
     parser.add_argument("--retail-artifacts-path", type=Path)
     parser.add_argument("--retail-schedule-path", type=Path)
     parser.add_argument("--retail-request-control-path", type=Path)
+    parser.add_argument("--enable-claims-timeseries", action="store_true")
+    parser.add_argument("--allow-claims-local-read", action="store_true")
+    parser.add_argument("--allow-claims-collect", action="store_true")
+    parser.add_argument("--allow-claims-source-query", action="store_true")
+    parser.add_argument("--claims-schedule-path", type=Path)
+    parser.add_argument("--claims-job-directory", type=Path)
+    parser.add_argument("--claims-history-start")
+    parser.add_argument("--claims-artifacts-path", type=Path)
+    parser.add_argument("--claims-request-control-path", type=Path)
     parser.add_argument("--enable-gdp-timeseries", action="store_true")
     parser.add_argument("--allow-gdp-local-read", action="store_true")
     parser.add_argument("--allow-gdp-collect", action="store_true")
@@ -170,6 +182,10 @@ def main():
     parser.add_argument("--gdp-job-directory", type=Path)
     parser.add_argument("--gdp-history-start")
     args = parser.parse_args()
+    if args.enable_claims_timeseries and (
+        args.claims_schedule_path is None or args.claims_job_directory is None
+    ):
+        parser.error("Claims requires independent schedule/job paths")
     if args.enable_gdp_timeseries and (
         args.gdp_schedule_path is None or args.gdp_job_directory is None
     ):
@@ -213,6 +229,18 @@ def main():
     app = create_timeseries_preview(
         settings,
         enabled=True,
+        claims_options=ClaimsOptions(
+            args.claims_schedule_path,
+            args.claims_job_directory,
+            allow_read=args.allow_claims_local_read,
+            allow_collect=args.allow_claims_collect,
+            allow_source=args.allow_claims_source_query,
+            history_start=args.claims_history_start,
+            artifacts_path=args.claims_artifacts_path,
+            request_control_path=args.claims_request_control_path,
+        )
+        if args.enable_claims_timeseries
+        else None,
         gdp_options=GdpOptions(
             args.gdp_schedule_path,
             args.gdp_job_directory,

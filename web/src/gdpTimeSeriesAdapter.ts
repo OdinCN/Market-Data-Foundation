@@ -340,7 +340,9 @@ export function validGdpJob(job: CpiJob): boolean {
     job.job_id === job.request_id &&
     ["init", "update"].includes(job.action) &&
     quarterRangeValid(job.start, job.end) &&
-    ["running", "complete", "failed", "unknown"].includes(job.state) &&
+    ["running", "complete", "failed", "unknown", "cancelled"].includes(
+      job.state,
+    ) &&
     instant(job.created_at) &&
     [job.started_at, job.finished_at].every((v) => v === null || instant(v)) &&
     (job.classification === null ||

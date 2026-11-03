@@ -48,6 +48,11 @@ from market_data_foundation.historical.census_retail import (
     RETAIL_BINDING_CANDIDATE,
     RETAIL_SOURCE,
 )
+from market_data_foundation.historical.claims_contract import (
+    CLAIMS_BINDING,
+    CLAIMS_DEFINITION,
+    CLAIMS_SOURCE,
+)
 from market_data_foundation.historical.consumption_contract import (
     CONSUMPTION_BINDING,
     CONSUMPTION_DEFINITION,
@@ -290,6 +295,15 @@ def directory(query: DirectoryQuery) -> DirectoryDTO:
             CONSUMPTION_SOURCE,
             CONSUMPTION_BINDING,
             CONSUMPTION_DEFINITION,
+        ),
+        (
+            "Macro",
+            "FRED",
+            "claims_contract",
+            "CLAIMS_SOURCE",
+            CLAIMS_SOURCE,
+            CLAIMS_BINDING,
+            CLAIMS_DEFINITION,
         ),
         (
             "Macro",

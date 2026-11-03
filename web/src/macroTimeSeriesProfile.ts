@@ -1,4 +1,5 @@
 import {
+  CLAIMS,
   GDP,
   assetTitle,
   CPI,
@@ -11,9 +12,17 @@ import {
 } from "./workflowModel";
 
 export type MacroProfile = Readonly<{
-  id: "cpi" | "ppi" | "pce" | "employment" | "retail" | "consumption" | "gdp";
+  id:
+    | "cpi"
+    | "ppi"
+    | "pce"
+    | "employment"
+    | "retail"
+    | "consumption"
+    | "gdp"
+    | "claims";
   label: string;
-  provider: "BLS" | "BEA" | "Census";
+  provider: "BLS" | "BEA" | "Census" | "FRED";
   asset: Key;
   basePath: string;
   series: readonly (readonly [string, string, string, string])[];
@@ -259,3 +268,21 @@ export const gdpEstimateText = (kind: string) =>
       updated: "更新估计",
     }) as Record<string, string>
   )[kind] ?? kind;
+
+export const CLAIMS_PROFILE: MacroProfile = Object.freeze({
+  id: "claims",
+  label: "美国初请与续请失业金",
+  provider: "FRED",
+  asset: CLAIMS,
+  basePath: "/api/r5/claims/timeseries",
+  series: [
+    ["ICSA", "初请 · 季调 · Number", "initial", "sa"],
+    ["ICNSA", "初请 · 未季调 · Number", "initial", "nsa"],
+    ["CCSA", "续请 · 季调 · Number", "continued", "sa"],
+    ["CCNSA", "续请 · 未季调 · Number", "continued", "nsa"],
+    ["IC4WSA", "初请官方四周均值 · 季调 · Number", "initial_average", "sa"],
+    ["CC4WSA", "续请官方四周均值 · 季调 · Number", "continued_average", "sa"],
+  ] as const,
+  historyNotice:
+    "原机构 DOL-ETA，提供者 FRED。原生截止周为周六，初请与续请各有独立参考周。默认最近约52周可编辑；初始化20日历年可编辑，来源额外读取28天计算缓冲。Number计数不代表新增失业人数或跨周去重个人。官方四周均值独立于MDF本地四周均值；缺周不补零，首次捕获不代表官方首发。",
+});

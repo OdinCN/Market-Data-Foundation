@@ -224,7 +224,7 @@ it.each(["all", keyOf(CPI)])(
     const detail = within(
       screen.getByRole("complementary", { name: "执行记录详情" }),
     );
-    expect(detail.getByText("自动策略 · 最近真实执行摘要")).toBeTruthy();
+    expect(detail.getByText("自动策略")).toBeTruthy();
     expect(detail.getByText("历史核实")).toBeTruthy();
     expect(detail.getAllByText("未记录")).toHaveLength(3);
     expect(detail.getByText("未记录 至 未记录")).toBeTruthy();

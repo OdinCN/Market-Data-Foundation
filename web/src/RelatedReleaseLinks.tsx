@@ -5,6 +5,8 @@ import { formatBeijingTime } from "./beijingTime";
 
 const roles: Record<string, string> = {
   actual: "当期公布",
+  official_previously_reported_prior: "官方原前值",
+  prior_as_reported_in_this_event: "报告前值修订",
   previous_estimate: "同季度前一次估计",
   prior_original: "上季度修订前值",
   prior_revised: "后续修订",

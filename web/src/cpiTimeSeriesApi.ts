@@ -1,3 +1,8 @@
+import {
+  readClaimsStatus,
+  validClaimsJob,
+  dayValid,
+} from "./claimsTimeSeriesAdapter";
 import type { paths as MacroPaths } from "./macro-timeseries.generated";
 type MacroQuery =
   MacroPaths["/api/r5/cpi/timeseries/query"]["get"]["parameters"]["query"];
@@ -44,6 +49,15 @@ export type CpiStatus = {
     end: string | null;
     available: boolean;
     reason: string | null;
+    anchor_basis: string;
+  };
+  latest_weeks?: Record<string, string | null>;
+  week_initialization?: {
+    preset_id: string;
+    start: string;
+    end: string;
+    years: number;
+    available: boolean;
     anchor_basis: string;
   };
   latest_months: Record<string, string | null>;
@@ -225,6 +239,7 @@ export function useCpiAvailability(
 ): CpiAvailability {
   const resource = useVisiblePolling<CpiStatus | "legacy">(
     async (signal) => {
+      if (profile.id === "claims") return readClaimsStatus(transport, signal);
       if (profile.id === "gdp") return readGdpStatus(transport, signal);
       let value: CpiStatus;
       try {
@@ -563,7 +578,7 @@ export type CpiJobIntent =
   MacroPaths["/api/r5/cpi/timeseries/jobs"]["post"]["requestBody"]["content"]["application/json"];
 export type CpiJob = CpiJobIntent & {
   job_id: string;
-  state: "running" | "complete" | "failed" | "unknown";
+  state: "running" | "complete" | "failed" | "unknown" | "cancelled";
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -600,6 +615,7 @@ export function validJob(
   job: CpiJob,
   profile: MacroProfile = CPI_PROFILE,
 ): boolean {
+  if (profile.id === "claims") return validClaimsJob(job);
   if (profile.id === "gdp") return validGdpJob(job);
   return (
     !!job &&
@@ -676,7 +692,7 @@ export async function readCpiJobs(
   if (
     !Array.isArray(result?.jobs) ||
     !result.jobs.every((job) => validJob(job, profile)) ||
-    (profile.id === "gdp" &&
+    (["gdp", "claims"].includes(profile.id) &&
       new Set(result.jobs.map((j) => j.request_id)).size !== result.jobs.length)
   )
     throw new CpiServiceFailure("cpi_jobs_unknown");
@@ -709,9 +725,11 @@ export function validStrategy(
     (value.history_start_locked === undefined ||
       typeof value.history_start_locked === "boolean") &&
     (!value.enabled || value.exists) &&
-    (profile.id === "gdp"
-      ? quarterValid(value.history_start)
-      : monthValid(value.history_start)) &&
+    (profile.id === "claims"
+      ? dayValid(value.history_start)
+      : profile.id === "gdp"
+        ? quarterValid(value.history_start)
+        : monthValid(value.history_start)) &&
     value.history_start >= (profile.id === "gdp" ? "1901-Q1" : "1901-01") &&
     !!value.worker &&
     typeof value.worker.state === "string" &&
@@ -805,7 +823,8 @@ export async function readCpiExecutions(
         !!e &&
         typeof e.id === "string" &&
         !!e.id &&
-        (profile.id === "gdp"
+        (!("asset" in e) || e.asset === profile.id) &&
+        (["claims", "gdp"].includes(profile.id)
           ? ["manual", "schedule"]
           : ["manual", "automatic"]
         ).includes(e.origin) &&
@@ -814,7 +833,11 @@ export async function readCpiExecutions(
         [e.start, e.end].every(
           (v) =>
             v === null ||
-            (profile.id === "gdp" ? quarterValid(v) : monthValid(v)),
+            (profile.id === "claims"
+              ? dayValid(v)
+              : profile.id === "gdp"
+                ? quarterValid(v)
+                : monthValid(v)),
         ) &&
         [e.created_at, e.started_at, e.finished_at].every(instant) &&
         (e.classification === null ||
@@ -823,6 +846,12 @@ export async function readCpiExecutions(
         (e.result === null ||
           (typeof e.result === "object" && !Array.isArray(e.result))),
     ) ||
+    (profile.id === "claims" &&
+      !value.executions.every(
+        (e) =>
+          validClaimsJob(e as unknown as CpiJob) &&
+          e.id === (e as unknown as CpiJob).job_id,
+      )) ||
     (profile.id === "gdp" &&
       !value.executions.every(
         (e) =>

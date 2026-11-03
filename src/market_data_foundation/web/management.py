@@ -33,6 +33,7 @@ FAMILIES = (
     ("CONSUMPTION", "美国消费与收入", "bea_consumption"),
     ("GDP", "美国 GDP 与增长", "gdp_contract"),
     ("RETAIL", "美国零售", "census_retail"),
+    ("CLAIMS", "美国初请与续请失业金", "claims_contract"),
     ("FRED_ALFRED", "FRED / ALFRED vintage", "fred_alfred_vintage"),
     ("FOMC", "FOMC 声明", "fomc_statement"),
     ("ECB", "ECB SDMX", "ECB"),

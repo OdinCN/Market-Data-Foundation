@@ -1,3 +1,4 @@
+import { ClaimsCollectionDetails } from "./ClaimsCollectionDetails";
 import { CodeBlock } from "./CpiQueryDetails";
 import { quarterValid } from "./QuarterField";
 import {
@@ -16,11 +17,13 @@ import type { Transport } from "./api";
 import { formatBeijingTime } from "./beijingTime";
 import { releaseLink, releaseReasonTexts } from "./macroReleaseLinks";
 import { Fact, WorkflowTable } from "./WorkflowTable";
+import { keyOf } from "./workflowModel";
 import { useVisiblePolling } from "./useVisiblePolling";
 import {
   monthValid,
   cpiRequest,
   readCpiStrategy,
+  readCpiExecutions,
   saveCpiStrategy,
   type CpiAvailability,
   type CpiExecution,
@@ -66,6 +69,15 @@ export function cpiExecutionStateText(
   _profile: MacroProfile = CPI_PROFILE,
   scope: { start?: string | null; end?: string | null } = {},
 ) {
+  if (_profile.id === "claims") {
+    const data = (result?.result ?? result) as Record<string, unknown> | null;
+    const c = data?.coverage as Record<string, number> | undefined;
+    return ["complete", "succeeded"].includes(state ?? "") &&
+      c &&
+      c.available < c.expected
+      ? "已完成（各系列存在缺周或提供方缺值）"
+      : cpiStateText(state);
+  }
   if (_profile.id === "gdp")
     return gdpExecutionState(state, result) ?? cpiStateText(state);
   const { data, missing, absent, nulls } = coverageEvidence(result);
@@ -148,6 +160,7 @@ type Schedule = {
   calendar_error?: string | null;
   calendar_refresh_error?: string | null;
   targets: (Stage & {
+    reference_week?: string | null;
     reference_month?: string;
     reference_quarter?: string;
     estimate_kind?: string;
@@ -167,12 +180,14 @@ function ResultFacts({
   result: Record<string, unknown> | null | undefined;
 }) {
   if (!result) return <p>执行结果未记录</p>;
-  if (
-    result.result &&
-    typeof result.result === "object" &&
-    !Array.isArray(result.result)
-  )
-    return <ResultFacts result={result.result as Record<string, unknown>} />;
+  // Some automatic receipts wrap the job result. Preserve statistics recorded
+  // on either level; a missing statistic must never become a synthetic zero.
+  const facts: Record<string, unknown> = { ...result };
+  let nested = result.result;
+  while (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    Object.assign(facts, nested);
+    nested = (nested as Record<string, unknown>).result;
+  }
   const labels: Record<string, string> = {
     saved_points: "新增观测",
     saved_revisions: "新增修订",
@@ -182,23 +197,144 @@ function ResultFacts({
     actual_http_total: "累计实际请求",
   };
   const entries = Object.entries(labels).filter(
-    ([key]) => result[key] !== undefined,
+    ([key]) => facts[key] !== undefined,
   );
   return entries.length ? (
     <dl>
       {entries.map(([key, label]) => (
         <Fact key={key} name={label}>
-          {typeof result[key] === "boolean"
-            ? result[key]
+          {typeof facts[key] === "boolean"
+            ? facts[key]
               ? "完整"
               : "存在缺口"
-            : typeof result[key] === "number"
-              ? String(result[key])
+            : typeof facts[key] === "number"
+              ? String(facts[key])
               : "未记录"}
         </Fact>
       ))}
     </dl>
   ) : null;
+}
+export function latestRealExecution(executions: readonly CpiExecution[]) {
+  const time = (e: CpiExecution) =>
+    e.started_at ?? (e.state !== "running" ? e.finished_at : null);
+  return executions
+    .filter(
+      (e) =>
+        [
+          "running",
+          "complete",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "outcome_unknown",
+          "unknown",
+        ].includes(e.state) &&
+        !!time(e) &&
+        Number.isFinite(Date.parse(time(e)!)),
+    )
+    .slice()
+    .sort(
+      (a, b) =>
+        Date.parse(time(b)!) - Date.parse(time(a)!) || a.id.localeCompare(b.id),
+    )[0];
+}
+
+function RecentExecution({
+  transport,
+  profile,
+  generation,
+  visible,
+}: {
+  transport: Transport;
+  profile: MacroProfile;
+  generation: number;
+  visible: boolean;
+}) {
+  const records = useVisiblePolling(
+    (signal) => readCpiExecutions(transport, signal, profile),
+    [transport, profile.id, generation],
+    visible,
+  );
+  const execution = latestRealExecution(records.data?.executions ?? []);
+  const automatic = latestRealExecution(
+    (records.data?.executions ?? []).filter((e) => e.origin !== "manual"),
+  );
+  const href = execution
+    ? `#${new URLSearchParams({
+        ui: "r5",
+        view: "collection",
+        tab: "executions",
+        asset: profile.asset.identity,
+        asset_revision: profile.asset.revision,
+        execution_asset: keyOf(profile.asset),
+        execution_schedule: "all",
+        job: execution.id,
+      })}`
+    : "";
+  return (
+    <section aria-label="最近真实执行摘要">
+      <h4>最近真实执行摘要</h4>
+      {records.stale || records.failure ? (
+        <p role="alert">
+          执行记录读取失败，最近结果暂未核实；保留的记录可能已陈旧。
+        </p>
+      ) : null}
+      {!records.data ? (
+        <p>
+          {records.failure
+            ? "执行记录暂不可读，无法确认最近真实执行。"
+            : "正在读取真实执行记录…"}
+        </p>
+      ) : !execution ? (
+        <p>无真实执行记录；心跳、计划与任务受理不代表已执行。</p>
+      ) : (
+        <>
+          <p>
+            本资产最近执行来源：
+            {execution.origin === "manual" ? "手动采集" : "自动策略"}。
+          </p>
+          {execution.state === "running" && (
+            <p>任务执行中，尚未确认完成；受理回执不代表采集成功。</p>
+          )}
+          {execution.origin === "manual" && !automatic && (
+            <p>自动策略尚无真实执行记录；以下为手动采集结果。</p>
+          )}
+          <dl>
+            <Fact name="采集方式">
+              {cpiActionText(
+                execution.origin === "manual"
+                  ? execution.action
+                  : (execution.stage ?? execution.action),
+              )}
+            </Fact>
+            <Fact name="范围">
+              {execution.start ?? "未记录"} 至 {execution.end ?? "未记录"}
+            </Fact>
+            <Fact name="开始时间（北京时间）">
+              {formatBeijingTime(execution.started_at, "未记录")}
+            </Fact>
+            <Fact name="结束时间（北京时间）">
+              {formatBeijingTime(execution.finished_at, "未记录")}
+            </Fact>
+            <Fact name="执行结果">
+              {cpiExecutionStateText(
+                execution.state,
+                execution.result,
+                profile,
+                execution,
+              )}
+            </Fact>
+            {execution.classification && (
+              <Fact name="结果分类">{execution.classification}</Fact>
+            )}
+          </dl>
+          <ResultFacts result={execution.result} />
+          <a href={href}>打开对应执行详情</a>
+        </>
+      )}
+    </section>
+  );
 }
 export function CpiExecutionDetail({
   execution: e,
@@ -246,7 +382,7 @@ export function CpiExecutionDetail({
         <Fact name="记录编号">{e.id}</Fact>
         <Fact name="关联资产">{macroAssetLabel(profile)}</Fact>
         <Fact name="来源">
-          {e.origin !== "manual" ? "自动策略 · 最近真实执行摘要" : "手动采集"}
+          {e.origin !== "manual" ? "自动策略" : "手动采集"}
         </Fact>
         <Fact name="采集方式">
           {cpiActionText(
@@ -275,7 +411,9 @@ export function CpiExecutionDetail({
         {e.classification && <Fact name="结果分类">{e.classification}</Fact>}
       </dl>
       <ResultFacts result={e.result} />
-      {profile.id === "gdp" ? (
+      {profile.id === "claims" ? (
+        <ClaimsCollectionDetails result={e.result} />
+      ) : profile.id === "gdp" ? (
         <GdpCollectionDetails result={e.result} />
       ) : (
         <MacroSourceCoverage
@@ -390,6 +528,9 @@ function CpiStrategyWorkbenchContent({
   sixthProfile,
   sixthAvailability,
   sixthVisible = true,
+  eighthProfile,
+  eighthAvailability,
+  eighthVisible = true,
   seventhProfile,
   seventhAvailability,
   seventhVisible = true,
@@ -407,6 +548,9 @@ function CpiStrategyWorkbenchContent({
   additionalProfile?: MacroProfile;
   additionalAvailability?: CpiAvailability;
   additionalVisible?: boolean;
+  eighthProfile?: MacroProfile;
+  eighthAvailability?: CpiAvailability;
+  eighthVisible?: boolean;
   seventhProfile?: MacroProfile;
   seventhAvailability?: CpiAvailability;
   seventhVisible?: boolean;
@@ -480,7 +624,24 @@ function CpiStrategyWorkbenchContent({
     seventhAvailability ?? emptyAvailability,
     !!seventhProfile && seventhVisible,
   );
+  const eighth = useStrategyControl(
+    transport,
+    generation,
+    eighthProfile ?? primaryProfile,
+    eighthAvailability ?? emptyAvailability,
+    !!eighthProfile && eighthVisible,
+  );
   const entries = [
+    ...(eighthProfile
+      ? [
+          {
+            profile: eighthProfile,
+            availability: eighthAvailability ?? emptyAvailability,
+            visible: eighthVisible,
+            ...eighth,
+          },
+        ]
+      : []),
     ...(seventhProfile
       ? [
           {
@@ -586,10 +747,15 @@ function CpiStrategyWorkbenchContent({
     [transport, generation, profile.id],
     !!entry.availability.data && detailVisible,
   );
+  const weekly = profile.id === "claims";
   const quarterly = profile.id === "gdp";
-  const periodLabel = quarterly ? "季度" : "月份";
+  const periodLabel = weekly ? "周频" : quarterly ? "季度" : "月份";
   const planPeriod = (target: Schedule["targets"][number]) =>
-    quarterly ? target.reference_quarter : target.reference_month;
+    weekly
+      ? `${target.release_at?.slice(0, 10) ?? "计划日期未知"} · ${target.reference_week ?? "参考周待发布材料确认"}`
+      : quarterly
+        ? target.reference_quarter
+        : target.reference_month;
   const shown = !!selection;
   const currentCalendarError =
     calendar.data?.calendar?.error ?? calendar.data?.calendar_error;
@@ -792,54 +958,64 @@ function CpiStrategyWorkbenchContent({
                 <p>{currentCalendarError}</p>
               </details>
             )}
-            <h4>最近真实执行摘要</h4>
-            {data.last_result && (
-              <dl>
-                <Fact name="最近执行状态">
-                  {quarterly
-                    ? cpiExecutionStateText(
-                        typeof data.last_result.state === "string"
-                          ? data.last_result.state
-                          : undefined,
-                        data.last_result,
-                        profile,
-                      )
-                    : cpiStateText(
-                        typeof data.last_result.state === "string"
-                          ? data.last_result.state
-                          : null,
-                      )}
-                </Fact>
-                <Fact name="最近执行阶段">
-                  {cpiActionText(
-                    typeof data.last_result.stage === "string"
-                      ? data.last_result.stage
-                      : typeof data.last_result.action === "string"
-                        ? data.last_result.action
-                        : "",
-                  )}
-                </Fact>
-                <Fact name="最近开始时间（北京时间）">
-                  {formatBeijingTime(
-                    typeof data.last_result.started_at === "string"
-                      ? data.last_result.started_at
-                      : null,
-                    "未记录",
-                  )}
-                </Fact>
-                {typeof data.last_result.classification === "string" && (
-                  <Fact name="最近结果分类">
-                    {data.last_result.classification}
+            <RecentExecution
+              transport={transport}
+              profile={profile}
+              generation={generation}
+              visible={detailVisible && !!entry.availability.data}
+            />
+            <details>
+              <summary>策略上次执行回执与审计</summary>
+              {data.last_result && (
+                <dl>
+                  <Fact name="最近执行状态">
+                    {quarterly
+                      ? cpiExecutionStateText(
+                          typeof data.last_result.state === "string"
+                            ? data.last_result.state
+                            : undefined,
+                          data.last_result,
+                          profile,
+                        )
+                      : cpiStateText(
+                          typeof data.last_result.state === "string"
+                            ? data.last_result.state
+                            : null,
+                        )}
                   </Fact>
-                )}
-              </dl>
-            )}
-            <ResultFacts result={data.last_result} />
-            {quarterly ? (
-              <GdpCollectionDetails result={data.last_result} />
-            ) : (
-              <MacroSourceCoverage result={data.last_result} />
-            )}
+                  <Fact name="最近执行阶段">
+                    {cpiActionText(
+                      typeof data.last_result.stage === "string"
+                        ? data.last_result.stage
+                        : typeof data.last_result.action === "string"
+                          ? data.last_result.action
+                          : "",
+                    )}
+                  </Fact>
+                  <Fact name="最近开始时间（北京时间）">
+                    {formatBeijingTime(
+                      typeof data.last_result.started_at === "string"
+                        ? data.last_result.started_at
+                        : null,
+                      "未记录",
+                    )}
+                  </Fact>
+                  {typeof data.last_result.classification === "string" && (
+                    <Fact name="最近结果分类">
+                      {data.last_result.classification}
+                    </Fact>
+                  )}
+                </dl>
+              )}
+              <ResultFacts result={data.last_result} />
+              {weekly ? (
+                <ClaimsCollectionDetails result={data.last_result} />
+              ) : quarterly ? (
+                <GdpCollectionDetails result={data.last_result} />
+              ) : (
+                <MacroSourceCoverage result={data.last_result} />
+              )}
+            </details>
             <h4>{periodLabel}计划与执行结果</h4>
             <p className="small">
               时间基准：北京时间（UTC+08:00）。计划时间不代表已经执行。
@@ -862,7 +1038,9 @@ function CpiStrategyWorkbenchContent({
                   <article
                     className="month-plan-card"
                     role="listitem"
-                    key={quarterly ? target.key : target.reference_month}
+                    key={
+                      quarterly || weekly ? target.key : target.reference_month
+                    }
                   >
                     <header>
                       <strong>
@@ -885,7 +1063,7 @@ function CpiStrategyWorkbenchContent({
                         ，暂停新的自动采集。以下保留原计划与执行记录。
                       </p>
                     )}
-                    {quarterly && (
+                    {(quarterly || weekly) && (
                       <p>
                         {target.publication_status === "cancelled"
                           ? "计划已取消"
@@ -932,7 +1110,11 @@ function CpiStrategyWorkbenchContent({
                         <ResultFacts
                           result={target.target?.result ?? target.result}
                         />
-                        {quarterly ? (
+                        {weekly ? (
+                          <ClaimsCollectionDetails
+                            result={target.target?.result ?? target.result}
+                          />
+                        ) : quarterly ? (
                           <GdpCollectionDetails
                             result={target.target?.result ?? target.result}
                           />
@@ -994,7 +1176,11 @@ function CpiStrategyWorkbenchContent({
                               : (target.history?.result ?? target.history)
                           }
                         />
-                        {quarterly ? (
+                        {weekly ? (
+                          <ClaimsCollectionDetails
+                            result={target.history?.result}
+                          />
+                        ) : quarterly ? (
                           <GdpCollectionDetails
                             result={target.history?.result}
                           />

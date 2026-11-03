@@ -189,7 +189,7 @@ class ReadonlyRuntime:
     def load_legacy_key(self, environment_id, package_id, source_id):
         if environment_id != self.settings.environment_id or package_id != "macro":
             return None
-        section = {"BLS": "bls", "BEA": "bea"}.get(source_id)
+        section = {"BLS": "bls", "BEA": "bea", "FRED": "fred"}.get(source_id)
         return self._secret(section, "api_key") if section is not None else None
 
     def credential_states(self, environment_id, package_id, record):
@@ -200,7 +200,7 @@ class ReadonlyRuntime:
         }
         states = []
         for source in sorted(sources):
-            if source not in {"BLS", "BEA"}:
+            if source not in {"BLS", "BEA", "FRED"}:
                 value = "unknown"
             else:
                 try:

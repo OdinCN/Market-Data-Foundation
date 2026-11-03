@@ -1,3 +1,5 @@
+import { normalizeClaimsReleases } from "./claimsReleaseAdapter";
+import { retailDecimalText } from "./decimalValue";
 import { QuarterField } from "./QuarterField";
 import { normalizeGdpReleases } from "./gdpReleaseAdapter";
 import { useEffect, useRef, useState } from "react";
@@ -15,6 +17,12 @@ import { Tabs } from "./WorkflowTable";
 
 type Locator =
   | {
+      kind: "official_report_fragment";
+      page: number | null;
+      reference_header: string;
+      excerpt: string;
+    }
+  | {
       kind: "official_table_cell";
       table: string;
       row: string;
@@ -31,6 +39,7 @@ type Locator =
 export type Claim = {
   series_id: string;
   statistic: string;
+  reference_week?: string;
   reference_month?: string;
   reference_quarter?: string;
   unit: string;
@@ -44,6 +53,8 @@ export type Claim = {
   normalization?: { display_decimal_places: number };
   continuous_version: { revision: number; batch_id: string } | null;
   evidence_id?: string;
+  evidence_ids?: string[];
+  confirmation_state?: string;
   association_missing?: string | null;
   mdf_first_captured?: { value: string; versions: unknown[] } | null;
   mdf_pre_event_last_consumable_previous?: {
@@ -79,8 +90,10 @@ export type Evidence = {
 };
 export type Release = Evidence & {
   event_id: string;
+  reference_week?: string;
   reference_month?: string;
   reference_quarter?: string;
+  reference_weeks?: string[];
   reference_months?: string[];
   reference_quarters?: string[];
   estimate_kind?: string;
@@ -102,6 +115,7 @@ export type Release = Evidence & {
   missing: string[];
   missing_scopes?: {
     series_id: string;
+    reference_week?: string;
     reference_month?: string;
     reference_quarter?: string;
     statistic?: string;
@@ -122,6 +136,8 @@ export type Records = {
 };
 const roles: Record<string, string> = {
   actual: "本次官方公布值",
+  official_previously_reported_prior: "官方原前值（本次报告明确引述）",
+  prior_as_reported_in_this_event: "本次报告前值（含修订）",
   official_previous: "官方此前公布的前值",
   prior_revised: "上期值（本次修订后）",
   previous_estimate: "同季度前一次估计",
@@ -139,16 +155,26 @@ export function MacroReleaseRecords({
   initialEventId?: string | null;
   initialEvidenceId?: string | null;
 }) {
+  const claims = profile.id === "claims";
   const gdp = profile.id === "gdp";
   const referenceText = (value: {
     reference_quarter?: string;
+    reference_week?: string;
     reference_month?: string;
-  }) => value.reference_quarter ?? value.reference_month ?? "未知";
+  }) =>
+    value.reference_week ??
+    value.reference_quarter ??
+    value.reference_month ??
+    "未知";
   const [cutoff, setCutoff] = useState("");
   const [eventFilter, setEventFilter] = useState(initialEventId ?? "");
   const [sourceDate, setSourceDate] = useState("");
   const [reference, setReference] = useState("");
   const [mode, setMode] = useState("event");
+  const recordId = (record: Release, readMode: string) =>
+    claims && readMode === "source_history"
+      ? `${record.event_id}:${record.evidence_id}`
+      : record.event_id;
   const [result, setResult] = useState<Records | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [exchange, setExchange] = useState<CpiHttpExchange | null>(null);
@@ -183,7 +209,14 @@ export function MacroReleaseRecords({
     if (eventFilter.trim()) params.set("event_id", eventFilter.trim());
     if (sourceDate) params.set("source_version", sourceDate);
     if (reference)
-      params.set(gdp ? "reference_quarter" : "reference_month", reference);
+      params.set(
+        claims
+          ? "reference_week"
+          : gdp
+            ? "reference_quarter"
+            : "reference_month",
+        reference,
+      );
     const path = `${profile.basePath}/releases?${params}`;
     setRequest(path);
     const startedAt = performance.now();
@@ -206,16 +239,25 @@ export function MacroReleaseRecords({
       });
       const raw = JSON.parse(text);
       const data: Records =
-        response.ok && gdp ? normalizeGdpReleases(raw) : raw;
+        response.ok && claims
+          ? normalizeClaimsReleases(raw)
+          : response.ok && gdp
+            ? normalizeGdpReleases(raw)
+            : raw;
       if (!response.ok)
         throw new Error(raw.classification ?? "release_read_failed");
       if (!Array.isArray(data.events) || data.as_of_basis !== "available")
         throw new Error("release_contract_invalid");
       setResult(data);
       setSelected((previous) =>
-        data.events.some((event: Release) => event.event_id === previous)
+        data.events.some(
+          (event: Release) => recordId(event, data.read_mode) === previous,
+        )
           ? previous
-          : eventFilter || null,
+          : (() => {
+              const match = data.events.find((e) => e.event_id === eventFilter);
+              return match ? recordId(match, data.read_mode) : null;
+            })(),
       );
     } catch (error) {
       if (!controller.signal.aborted)
@@ -232,7 +274,9 @@ export function MacroReleaseRecords({
     // Fetch on mount, then only on explicit reads. Filter edits do not run IO.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.id]);
-  const event = result?.events.find((item) => item.event_id === selected);
+  const event = result?.events.find(
+    (item) => recordId(item, result.read_mode) === selected,
+  );
   const seriesLabel = (id: string) =>
     profile.series.find(
       ([native]) =>
@@ -240,6 +284,8 @@ export function MacroReleaseRecords({
         (profile.id === "retail" && id.startsWith("44X72:") ? "headline" : id),
     )?.[1] ?? "材料所列指标";
   const statistics: Record<string, string> = {
+    weekly_level: "周水平",
+    official_four_week_average: "官方四周均值",
     index: "指数水平",
     level: "水平",
     mom_pct: "环比",
@@ -248,6 +294,7 @@ export function MacroReleaseRecords({
     official_annualized_qoq: "官方年化季环比",
   };
   const units: Record<string, string> = {
+    Number: "原始计数",
     index: "指数点",
     percent: "%",
     thousand_jobs: "千岗位",
@@ -257,6 +304,7 @@ export function MacroReleaseRecords({
   };
   const basisLabel = (basis: string) =>
     ({
+      official_report_header: "DOL官方报告表头日期",
       BLS_official_archive_filename: "官方档案文件日期",
       official_material_release_date: "材料声明发布日期",
     })[basis] ?? "未知（来源依据未确认）";
@@ -314,8 +362,8 @@ export function MacroReleaseRecords({
         />
       ) : (
         <DateField
-          label="发布参考月"
-          type="month"
+          label={claims ? "发布参考周（周六）" : "发布参考月"}
+          type={claims ? "date" : "month"}
           value={reference}
           onChange={setReference}
         />
@@ -324,6 +372,11 @@ export function MacroReleaseRecords({
         读取发布记录
       </button>
       <p>只读本地发布证据；不联网、不写入。</p>
+      {claims && (
+        <p>
+          本次材料公布值、官方原前值与本次报告前值分别列示。MDF事前值缺少实际发布截止及版本证据时保持未知。材料仅覆盖已留存报告；事件值尚未绑定连续版本，不能替代当前序列值。
+        </p>
+      )}
       {gdp && (
         <p>
           按季度与 advance / second / third 等估计区分。摘要材料目前仅覆盖
@@ -367,7 +420,9 @@ export function MacroReleaseRecords({
               <thead>
                 <tr>
                   <th>事件</th>
-                  <th>{gdp ? "参考季度 / 估计" : "参考月"}</th>
+                  <th>
+                    {claims ? "截止周" : gdp ? "参考季度 / 估计" : "参考月"}
+                  </th>
                   <th>来源版本 / 精度</th>
                   <th>事件值</th>
                   <th>证据可用时间</th>
@@ -375,14 +430,19 @@ export function MacroReleaseRecords({
               </thead>
               <tbody>
                 {result.events.map((item) => (
-                  <tr key={item.event_id}>
+                  <tr key={recordId(item, result.read_mode)}>
                     <td>
-                      <button onClick={() => setSelected(item.event_id)}>
+                      <button
+                        onClick={() =>
+                          setSelected(recordId(item, result.read_mode))
+                        }
+                      >
                         {item.event_id}
                       </button>
                     </td>
                     <td>
                       {(
+                        item.reference_weeks ??
                         item.reference_quarters ??
                         item.reference_months ?? [referenceText(item)]
                       ).join("、")}
@@ -395,9 +455,11 @@ export function MacroReleaseRecords({
                         : "时刻"}
                     </td>
                     <td>
-                      {item.state === "confirmed"
-                        ? "材料已确认"
-                        : "当期值缺证据"}
+                      {claims && item.conflicts?.length
+                        ? "材料存在冲突"
+                        : item.state === "confirmed"
+                          ? "材料已确认"
+                          : "当期值缺证据"}
                     </td>
                     <td>{beijingTime(item.available_at)}</td>
                   </tr>
@@ -456,7 +518,9 @@ export function MacroReleaseRecords({
               )}
               {!!event.conflicts?.length && (
                 <p>
-                  存在材料冲突或解析修正；按明确修正选择，否则保留先前证明值。完整选择轨迹见实际响应。
+                  {claims
+                    ? "存在材料冲突；冲突项不选定值，各份材料原始值与原文分别保留。"
+                    : "存在材料冲突或解析修正；按明确修正选择，否则保留先前证明值。完整选择轨迹见实际响应。"}
                 </p>
               )}
               {!!event.prior_event_values?.length && (
@@ -489,7 +553,9 @@ export function MacroReleaseRecords({
                   <thead>
                     <tr>
                       <th>指标 / 统计量</th>
-                      <th>{gdp ? "参考季度 / 估计" : "参考月"}</th>
+                      <th>
+                        {claims ? "截止周" : gdp ? "参考季度 / 估计" : "参考月"}
+                      </th>
                       <th>角色</th>
                       <th>值 / 单位</th>
                       <th>原文定位</th>
@@ -515,7 +581,14 @@ export function MacroReleaseRecords({
                           {claim.estimate_kind && ` · ${claim.estimate_kind}`}
                         </td>
                         <td>
-                          {claim.value ?? "—"} {units[claim.unit] ?? claim.unit}
+                          {claims
+                            ? claim.value === null
+                              ? claim.confirmation_state === "conflict"
+                                ? "材料冲突（未选定值）"
+                                : "未知（材料未说明）"
+                              : retailDecimalText(claim.value)
+                            : (claim.value ?? "—")}{" "}
+                          {units[claim.unit] ?? claim.unit}
                           {claim.reported_unit === "billion_USD" && (
                             <p className="small">
                               原文：{claim.reported_value} 十亿美元 （显示
@@ -571,11 +644,59 @@ export function MacroReleaseRecords({
                         <td>
                           <details>
                             <summary>
-                              {claim.locator.kind === "official_table_cell"
-                                ? `${tableLabel(claim.locator.table)} · ${claim.locator.row} · ${claim.locator.column}`
-                                : `材料段落 ${claim.locator.start}–${claim.locator.end}`}
+                              {claims && claim.confirmation_state === "conflict"
+                                ? "多材料冲突，分别查看原始材料"
+                                : claim.locator.kind ===
+                                    "official_report_fragment"
+                                  ? `报告第${claim.locator.page ?? "未知"}页 · ${claim.locator.reference_header}`
+                                  : claim.locator.kind === "official_table_cell"
+                                    ? `${tableLabel(claim.locator.table)} · ${claim.locator.row} · ${claim.locator.column}`
+                                    : `材料段落 ${claim.locator.start}–${claim.locator.end}`}
                             </summary>
                             {claim.locator.excerpt}
+                            {claims &&
+                              (claim.evidence_ids ?? [claim.evidence_id]).map(
+                                (id) => {
+                                  const proof = event.evidence.find(
+                                    (p) => p.evidence_id === id,
+                                  );
+                                  const original = proof?.claims.find(
+                                    (c) =>
+                                      c.series_id === claim.series_id &&
+                                      c.reference_week ===
+                                        claim.reference_week &&
+                                      c.role === claim.role,
+                                  );
+                                  return proof && original ? (
+                                    <p key={id}>
+                                      支撑材料：
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const target =
+                                            document.getElementById(
+                                              `claims-proof-${proof.evidence_id}`,
+                                            ) as HTMLDetailsElement | null;
+                                          if (target) {
+                                            target.open = true;
+                                            target.scrollIntoView?.({
+                                              block: "nearest",
+                                            });
+                                          }
+                                        }}
+                                      >
+                                        {proof.evidence_id}
+                                      </button>
+                                      ；原文值：
+                                      {original.value === null
+                                        ? "未知"
+                                        : retailDecimalText(original.value)}
+                                      ；{original.locator.excerpt}
+                                      ；材料摘要：{proof.raw_sha256}
+                                    </p>
+                                  ) : null;
+                                },
+                              )}
                             <p>
                               内容身份：{claim.value_identity}
                               ；选定证据：{claim.evidence_id ?? "未记录"}
@@ -591,6 +712,7 @@ export function MacroReleaseRecords({
               {event.evidence.map((proof) => (
                 <details
                   key={proof.evidence_id}
+                  id={claims ? `claims-proof-${proof.evidence_id}` : undefined}
                   open={
                     initialEvidenceId === proof.evidence_id ? true : undefined
                   }
@@ -604,9 +726,17 @@ export function MacroReleaseRecords({
                       正式来源材料
                     </a>{" "}
                     · 取得 {beijingTime(proof.obtained_at)}
+                    {claims && ` · 来源版本 ${proof.source_version.value}`}
                   </p>
                   <p>
-                    材料留存：{proof.retention.kind} ·{" "}
+                    材料留存：
+                    {claims
+                      ? ({
+                          official_archive: "官方档案",
+                          official_current_report_snapshot: "官方当前报告快照",
+                        }[proof.retention.kind] ?? "已保存材料")
+                      : proof.retention.kind}{" "}
+                    ·{" "}
                     {proof.retention.exact_original_retained
                       ? "原始HTTP字节（导入方声明）"
                       : "非完整原始HTTP字节"}{" "}
@@ -619,14 +749,34 @@ export function MacroReleaseRecords({
                     <br />
                     证据：{proof.evidence_id}
                   </p>
-                  <pre
-                    style={{
-                      whiteSpace: "pre-wrap",
-                      overflowWrap: "anywhere",
-                    }}
-                  >
-                    {JSON.stringify(proof.claims, null, 2)}
-                  </pre>
+                  {claims && (
+                    <details>
+                      <summary>
+                        本材料原始公布与修订值（{proof.claims.length}项）
+                      </summary>
+                      {proof.claims.map((c, i) => (
+                        <p key={i}>
+                          {seriesLabel(c.series_id)} · {referenceText(c)} ·{" "}
+                          {roles[c.role] ?? c.role}：
+                          {c.value === null
+                            ? "未知（材料未说明）"
+                            : retailDecimalText(c.value)}
+                          ；{c.locator.excerpt}
+                        </p>
+                      ))}
+                    </details>
+                  )}
+                  <details>
+                    <summary>材料与解析技术字段</summary>
+                    <pre
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {JSON.stringify(proof.claims, null, 2)}
+                    </pre>
+                  </details>
                 </details>
               ))}
             </section>

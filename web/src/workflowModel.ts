@@ -13,6 +13,26 @@ export type Key = { identity: string; revision: string };
 export const keyOf = (key: Key) => `${key.identity}@${key.revision}`;
 export const sameKey = (a?: Key | null, b?: Key | null) =>
   !!a && !!b && a.identity === b.identity && a.revision === b.revision;
+export const CLAIMS: Key = { identity: "mdf.macro.dol.claims", revision: "r1" };
+export const CLAIMS_OPERATION = "mdf.source.fred.dol.claims@r1";
+export function claimsOperationMatches(entry?: DirectoryEntry): boolean {
+  const source = { identity: "mdf.source.fred.dol.claims", revision: "r1" };
+  const binding = entry?.binding_contract;
+  return (
+    !!entry &&
+    entry.identity === CLAIMS_OPERATION &&
+    entry.source_name === "FRED" &&
+    sameKey(entry.asset, CLAIMS) &&
+    sameKey(entry.source_contract, source) &&
+    sameKey(binding, {
+      identity: "mdf.binding.fred.dol.claims",
+      revision: "r1",
+    }) &&
+    sameKey(binding?.source, source) &&
+    binding?.silent_fallback === false &&
+    binding.mappings.some((m) => sameKey(m.definition, CLAIMS))
+  );
+}
 export const GDP: Key = {
   identity: "mdf.macro.bea.gdp-growth",
   revision: "r1",
@@ -180,6 +200,7 @@ export type StorageObservation = {
   dto: Observability["storage"][number] | null;
 };
 const titles: Record<string, string> = {
+  "mdf.macro.dol.claims": "美国初请与续请失业金",
   "mdf.macro.bls.cpi.headlines": "美国 CPI",
   "mdf.macro.bls.ppi.final-demand": "美国 PPI",
   "mdf.macro.bls.employment.ces-cps": "美国就业",
@@ -249,6 +270,7 @@ function variantLabel(dto: DirectoryEntry): string {
   return "具名参考期快照";
 }
 export function sourceVariantLabel(dto: DirectoryEntry): string {
+  if (claimsOperationMatches(dto)) return "FRED 周频原生六系列（DOL-ETA）";
   return dto.source_contract
     ? dto.identity === MANUAL_OPERATION
       ? "2026-09 公布窗口"

@@ -449,7 +449,7 @@ it("adds GDP beside an existing family in the common strategy table", async () =
   expect(table.textContent).toContain("美国 GDP 与增长");
 });
 
-it("keeps current upstream opt-in, URL preview, raw result and historical local mode consistent", async () => {
+it("automatically supplements current gaps and keeps URL preview, raw result and historical local mode consistent", async () => {
   const paths: string[] = [];
   const upstream = {
     ...fixture.query,
@@ -476,11 +476,11 @@ it("keeps current upstream opt-in, URL preview, raw result and historical local 
   fireEvent.change(screen.getByLabelText("结束季度"), {
     target: { value: scope.end },
   });
-  const toggle = screen.getByRole("checkbox", {
-    name: "允许本次当前查询临时补源（不写库）",
-  }) as HTMLInputElement;
-  expect(toggle.checked).toBe(false);
-  fireEvent.click(toggle);
+  expect(
+    screen.queryByRole("checkbox", {
+      name: "允许本次当前查询临时补源（不写库）",
+    }),
+  ).toBeNull();
   expect(screen.getAllByText(/local_only=false/)[0]).toBeTruthy();
   fireEvent.click(button("查询数据"));
   await screen.findByRole("table", { name: "GDP与增长 范围数据" });
@@ -490,12 +490,10 @@ it("keeps current upstream opt-in, URL preview, raw result and historical local 
   );
   expect(paths[0]).toContain("local_only=false");
   fireEvent.click(screen.getByRole("checkbox", { name: "历史截止查询" }));
-  expect(toggle.disabled).toBe(true);
-  expect(toggle.checked).toBe(false);
   expect(screen.getAllByText(/local_only=true/)[0]).toBeTruthy();
 });
 
-it("disallows upstream without service permission and accepts partial local values only after explicit opt-in", () => {
+it("keeps current requests explicit while the backend enforces source permission and retains partial local values", () => {
   render(
     <CpiTimeSeries
       profile={profile}
@@ -507,11 +505,14 @@ it("disallows upstream without service permission and accepts partial local valu
     />,
   );
   expect(
-    (
-      screen.getByRole("checkbox", {
-        name: "允许本次当前查询临时补源（不写库）",
-      }) as HTMLInputElement
-    ).disabled,
+    screen.queryByRole("checkbox", {
+      name: "允许本次当前查询临时补源（不写库）",
+    }),
+  ).toBeNull();
+  expect(
+    screen
+      .getAllByLabelText("请求 URL")
+      .every((e) => e.textContent?.includes("local_only=false")),
   ).toBe(true);
   const partial: GdpResult = {
     ...fixture.query,
@@ -653,6 +654,7 @@ it("includes GDP in the shared workbench periodic list when the host is availabl
 it("keeps GDP and monthly executions with identical IDs distinct in the all-assets list", async () => {
   const monthly = {
     ...execution,
+    asset: "cpi",
     start: "2026-08",
     end: "2026-09",
     origin: "manual",
@@ -698,7 +700,7 @@ it("keeps GDP and monthly executions with identical IDs distinct in the all-asse
   expect(screen.getByLabelText("GDP季度回读覆盖")).toBeTruthy();
 });
 
-it("clears upstream consent when source permission is revoked and requires a fresh choice after restoration", () => {
+it("preserves the explicit current request contract across source permission changes", () => {
   const transport: Transport = async () => response(fixture.query);
   const view = render(
     <CpiTimeSeries
@@ -707,12 +709,6 @@ it("clears upstream consent when source permission is revoked and requires a fre
       availability={availability}
     />,
   );
-  const toggle = () =>
-    screen.getByRole("checkbox", {
-      name: "允许本次当前查询临时补源（不写库）",
-    }) as HTMLInputElement;
-  fireEvent.click(toggle());
-  expect(toggle().checked).toBe(true);
   view.rerender(
     <CpiTimeSeries
       profile={profile}
@@ -723,8 +719,11 @@ it("clears upstream consent when source permission is revoked and requires a fre
       }}
     />,
   );
-  expect(toggle().checked).toBe(false);
-  expect(toggle().disabled).toBe(true);
+  expect(
+    screen
+      .getAllByLabelText("请求 URL")
+      .every((e) => e.textContent?.includes("local_only=false")),
+  ).toBe(true);
   view.rerender(
     <CpiTimeSeries
       profile={profile}
@@ -732,7 +731,11 @@ it("clears upstream consent when source permission is revoked and requires a fre
       availability={availability}
     />,
   );
-  expect(toggle().checked).toBe(false);
+  expect(
+    screen.queryByRole("checkbox", {
+      name: "允许本次当前查询临时补源（不写库）",
+    }),
+  ).toBeNull();
 });
 
 it.each(["denied", "unverified"])(

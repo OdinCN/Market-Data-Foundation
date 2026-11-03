@@ -1,3 +1,8 @@
+import {
+  dayRangeValid,
+  claimsLatest,
+  weekCount,
+} from "./claimsTimeSeriesAdapter";
 import { macroAssetLabel } from "./macroTimeSeriesProfile";
 import {
   CPI_PROFILE,
@@ -36,6 +41,9 @@ import {
 } from "./CpiStrategyWorkbench";
 import { formatBeijingTime } from "./beijingTime";
 
+function WeekField(props: Parameters<typeof QuarterField>[0]) {
+  return <DateField {...props} type="date" />;
+}
 function MonthField(props: Parameters<typeof QuarterField>[0]) {
   return <DateField {...props} type="month" />;
 }
@@ -61,6 +69,7 @@ function requestId() {
 function storedIntent(
   intentKey: string,
   quarterly = false,
+  weekly = false,
 ): CpiJobIntent | null {
   const raw = localStorage.getItem(intentKey);
   if (raw === null) return null;
@@ -71,7 +80,10 @@ function storedIntent(
     !(
       quarterly ? ["init", "update"] : ["init", "initialize", "update"]
     ).includes(value.action) ||
-    !(quarterly ? quarterRangeValid : rangeValid)(value.start, value.end)
+    !(weekly ? dayRangeValid : quarterly ? quarterRangeValid : rangeValid)(
+      value.start,
+      value.end,
+    )
   )
     throw new Error("intent_unreadable");
   return value;
@@ -107,22 +119,40 @@ function CpiTimeSeriesCollectionContent({
   generation?: number;
   onExecution?: (id: string) => void;
 }) {
-  const PeriodField = profile.id === "gdp" ? QuarterField : MonthField;
+  const weekly = profile.id === "claims";
+  const PeriodField = weekly
+    ? WeekField
+    : profile.id === "gdp"
+      ? QuarterField
+      : MonthField;
   const intentKey = profileIntentKey(profile);
   const quarterly = profile.id === "gdp";
-  const validPeriodRange = quarterly ? quarterRangeValid : rangeValid;
-  const periodLabel = quarterly ? "季度" : "月份";
-  const latest = quarterly
-    ? (availability.data?.quarter_initialization?.end ??
-      previousCompleteQuarter())
-    : latestMonth(availability.data);
+  const validPeriodRange = weekly
+    ? dayRangeValid
+    : quarterly
+      ? quarterRangeValid
+      : rangeValid;
+  const periodLabel = weekly
+    ? "日期（截止周范围）"
+    : quarterly
+      ? "季度"
+      : "月份";
+  const latest = weekly
+    ? claimsLatest(availability.data)
+    : quarterly
+      ? (availability.data?.quarter_initialization?.end ??
+        previousCompleteQuarter())
+      : latestMonth(availability.data);
   const [start, setStart] = useState(latest);
   const [end, setEnd] = useState(latest);
   const [action, setAction] = useState<"initialize" | "update">("update");
   const [confirmed, setConfirmed] = useState(false);
   const [initial] = useState(() => {
     try {
-      return { intent: storedIntent(intentKey, quarterly), failed: false };
+      return {
+        intent: storedIntent(intentKey, quarterly, weekly),
+        failed: false,
+      };
     } catch {
       return { intent: null, failed: true };
     }
@@ -156,7 +186,7 @@ function CpiTimeSeriesCollectionContent({
   useEffect(() => {
     const update = () => {
       try {
-        setIntent(storedIntent(intentKey, quarterly));
+        setIntent(storedIntent(intentKey, quarterly, weekly));
       } catch {
         setStorageFailed(true);
       }
@@ -181,14 +211,17 @@ function CpiTimeSeriesCollectionContent({
   const maxPeriods = quarterly
     ? availability.data?.collection_scope?.max_quarters
     : availability.data?.collection_scope?.max_months;
-  const preset = quarterly
-    ? availability.data?.quarter_initialization
-    : availability.data?.initialization;
+  const preset = weekly
+    ? availability.data?.week_initialization
+    : quarterly
+      ? availability.data?.quarter_initialization
+      : availability.data?.initialization;
   const initializing = action === "initialize";
   const requestedStart = start;
   const requestedEnd = end;
   const validRange =
     validPeriodRange(start, end) &&
+    (!weekly || weekCount(start, end) > 0) &&
     (!quarterly || end <= previousCompleteQuarter()) &&
     (maxPeriods == null ||
       (quarterly ? quarterCount : monthCount)(start, end) <= maxPeriods);
@@ -239,7 +272,7 @@ function CpiTimeSeriesCollectionContent({
     setNotice("");
     let reserved: CpiJobIntent | null = null;
     try {
-      const existing = storedIntent(intentKey, quarterly);
+      const existing = storedIntent(intentKey, quarterly, weekly);
       if (existing) {
         setIntent(existing);
         setNotice("已有请求待回查，请先核实原任务。");
@@ -249,7 +282,8 @@ function CpiTimeSeriesCollectionContent({
       }
       reserved = {
         request_id: requestId(),
-        action: quarterly && action === "initialize" ? "init" : action,
+        action:
+          (quarterly || weekly) && action === "initialize" ? "init" : action,
         start: requestedStart,
         end: requestedEnd,
       };
@@ -299,7 +333,7 @@ function CpiTimeSeriesCollectionContent({
               error.classification === "initialization_preset_range_required"));
         const refused =
           jobsBusy ||
-          (quarterly &&
+          ((quarterly || weekly) &&
             error instanceof CpiServiceFailure &&
             [400, 403, 422].includes(error.status ?? 0)) ||
           initializationRefused ||
@@ -317,7 +351,7 @@ function CpiTimeSeriesCollectionContent({
             ].includes(error.classification));
         if (refused && reserved) {
           try {
-            const stored = storedIntent(intentKey, quarterly);
+            const stored = storedIntent(intentKey, quarterly, weekly);
             if (!stored || !sameIntent(stored, reserved))
               throw new Error("intent_changed");
             localStorage.removeItem(intentKey);
@@ -348,7 +382,7 @@ function CpiTimeSeriesCollectionContent({
   function newIntent() {
     if (!intent || unresolved || busy || !matched) return;
     try {
-      const stored = storedIntent(intentKey, quarterly);
+      const stored = storedIntent(intentKey, quarterly, weekly);
       if (!stored || !sameIntent(stored, intent))
         throw new Error("intent_changed");
       localStorage.removeItem(intentKey);
@@ -493,9 +527,18 @@ function CpiTimeSeriesCollectionContent({
               <p>
                 初始化服务预置范围：
                 {(preset &&
-                  ("quarters" in preset ? preset.quarters : preset.months)) ||
+                  ("years" in preset
+                    ? preset.years
+                    : "quarters" in preset
+                      ? preset.quarters
+                      : preset.months)) ||
                   "待核实"}
-                {quarterly ? "个季度" : "个月"}，可自行修改
+                {weekly
+                  ? "日历年（来源含28天缓冲）"
+                  : quarterly
+                    ? "个季度"
+                    : "个月"}
+                ，可自行修改
               </p>
             )}
             {initializing && preset?.available && (
@@ -505,9 +548,11 @@ function CpiTimeSeriesCollectionContent({
                 </p>
                 <p className="small">
                   范围依据：
-                  {quarterly
-                    ? "上一完整 UTC 季度；不代表已发布或来源已就绪"
-                    : initializationAnchorText(preset.anchor_basis)}
+                  {weekly
+                    ? "20日历年，按后端自然日预置；来源额外读取28天计算缓冲"
+                    : quarterly
+                      ? "上一完整 UTC 季度；不代表已发布或来源已就绪"
+                      : initializationAnchorText(preset.anchor_basis)}
                   。实际覆盖以采集回读为准。
                 </p>
               </>
@@ -523,7 +568,9 @@ function CpiTimeSeriesCollectionContent({
                 起止{periodLabel}
                 {quarterly
                   ? "无效、尚未完整结束或超过服务允许的采集范围。"
-                  : "无效或超过服务允许的采集范围。"}
+                  : weekly
+                    ? "无效、不含周六或超过服务允许的100年范围。"
+                    : "无效或超过服务允许的采集范围。"}
               </p>
             )}
             <label className="cpi-collection-confirm">

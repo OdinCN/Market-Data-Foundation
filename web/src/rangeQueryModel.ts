@@ -1,6 +1,11 @@
 import type { CpiPoint, CpiResult } from "./cpiTimeSeriesApi";
 export type RangePoint = Omit<CpiPoint, "month"> & {
   period: string;
+  weekly_change?: string | null;
+  weekly_change_ratio?: string | null;
+  local_four_week_average?: string | null;
+  claims_plans?: string[];
+
   missing_reason?: string | null;
   change_1q_ratio?: string | null;
   change_4q_ratio?: string | null;

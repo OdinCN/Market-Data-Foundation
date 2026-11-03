@@ -15,6 +15,7 @@ from market_data_foundation.domain_contracts.macro import (
     BLS_PPI_FINAL_DEMAND,
 )
 from market_data_foundation.historical.bea_pce import PCE_DEFINITION
+from market_data_foundation.historical.claims_contract import CLAIMS_DEFINITION
 from market_data_foundation.historical.consumption_contract import (
     CONSUMPTION_DEFINITION,
 )
@@ -116,6 +117,12 @@ PACKAGES = (
                 title="美国消费与收入",
                 definition_ref=ref(CONSUMPTION_DEFINITION),
                 required_sources=["BEA"],
+            ),
+            CapabilityView(
+                capability_id="claims",
+                title="美国初请与续请失业金",
+                definition_ref=ref(CLAIMS_DEFINITION),
+                required_sources=["FRED"],
             ),
             CapabilityView(
                 capability_id="gdp",
