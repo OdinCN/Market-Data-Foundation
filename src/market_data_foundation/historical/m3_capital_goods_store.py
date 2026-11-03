@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from threading import RLock
+from uuid import UUID
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -34,6 +35,8 @@ SERIES_IDS = tuple(SERIES.values())
 @dataclass(frozen=True)
 class M3Batch:
     snapshots: tuple[M3Snapshot, ...]
+    collection_id: str | None = None
+    collection_scope: tuple[str, str] | None = None
 
     @classmethod
     def from_raw(cls, raw):
@@ -45,7 +48,8 @@ class M3Batch:
             )
             document = json.loads(raw)
             check(
-                set(document) == {"schema", "snapshots"}
+                set(document)
+                in ({"schema", "snapshots"}, {"schema", "snapshots", "collection"})
                 and document["schema"] == "mdf.m3.capture-batch.r1",
                 "batch_material_invalid",
             )
@@ -62,7 +66,18 @@ class M3Batch:
                         obtained_at=datetime.fromisoformat(item["observed_at"]),
                     )
                 )
-            batch = cls(tuple(snapshots))
+            collection = document.get("collection")
+            check(
+                collection is None or set(collection) == {"id", "start", "end"},
+                "batch_material_invalid",
+            )
+            batch = cls(
+                tuple(snapshots),
+                None if collection is None else collection["id"],
+                None
+                if collection is None
+                else (collection["start"], collection["end"]),
+            )
             check(batch.raw == raw, "batch_material_noncanonical")
             return batch
         except Exception:
@@ -70,16 +85,38 @@ class M3Batch:
 
     def __post_init__(self):
         check(
-            type(self.snapshots) is tuple and len(self.snapshots) == 3, "batch_invalid"
+            type(self.snapshots) is tuple and 1 <= len(self.snapshots) <= 3,
+            "batch_invalid",
         )
         check(all(type(s) is M3Snapshot for s in self.snapshots), "batch_invalid")
         first = self.snapshots[0].request
         check(
-            {
-                (s.request.category_code, s.request.data_type_code)
-                for s in self.snapshots
-            }
-            == set(SERIES),
+            (self.collection_id is None) == (self.collection_scope is None),
+            "collection_scope_invalid",
+        )
+        if self.collection_id is not None:
+            try:
+                valid = str(UUID(self.collection_id)) == self.collection_id
+            except TypeError, ValueError, AttributeError:
+                valid = False
+            check(
+                valid
+                and type(self.collection_scope) is tuple
+                and len(self.collection_scope) == 2,
+                "collection_id_invalid",
+            )
+            start, end = self.collection_scope
+            month_date(start)
+            month_date(end)
+            check(
+                start <= first.start_month <= first.end_month <= end,
+                "collection_scope_invalid",
+            )
+        targets = [
+            (s.request.category_code, s.request.data_type_code) for s in self.snapshots
+        ]
+        check(
+            len(set(targets)) == len(targets) and set(targets) <= set(SERIES),
             "batch_matrix_invalid",
         )
         for s in self.snapshots:
@@ -103,18 +140,25 @@ class M3Batch:
 
     @property
     def raw(self):
+        document = {
+            "schema": "mdf.m3.capture-batch.r1",
+            "snapshots": [
+                {
+                    "request": s.request.__dict__,
+                    "observed_at": s.obtained_at.isoformat(),
+                    "raw_base64": base64.b64encode(s.raw).decode(),
+                }
+                for s in self.snapshots
+            ],
+        }
+        if self.collection_id is not None:
+            document["collection"] = {
+                "id": self.collection_id,
+                "start": self.collection_scope[0],
+                "end": self.collection_scope[1],
+            }
         return json.dumps(
-            {
-                "schema": "mdf.m3.capture-batch.r1",
-                "snapshots": [
-                    {
-                        "request": s.request.__dict__,
-                        "observed_at": s.obtained_at.isoformat(),
-                        "raw_base64": base64.b64encode(s.raw).decode(),
-                    }
-                    for s in self.snapshots
-                ],
-            },
+            document,
             sort_keys=True,
             separators=(",", ":"),
         ).encode()
@@ -210,14 +254,35 @@ def _rows(batch):
             }
 
 
+def collection_metadata(batch, *, confirmed=False):
+    if batch.collection_id is None:
+        return [s.request.persisted() for s in batch.snapshots]
+    check(len(batch.snapshots) == 1, "collection_fragment_invalid")
+    request = batch.request
+    return {
+        "collection_id": batch.collection_id,
+        "dataset": batch.dataset,
+        "start": batch.collection_scope[0],
+        "end": batch.collection_scope[1],
+        "category_code": request.category_code,
+        "data_type_code": request.data_type_code,
+        "fragment_start": request.start_month,
+        "fragment_end": request.end_month,
+        "confirmed": confirmed,
+        "expected": [
+            {k: row[k] for k in ("series_id", "month", "value", "status", "reason")}
+            for row in _rows(batch)
+        ],
+    }
+
+
 def _same(a, b):
     from decimal import Decimal
 
     return (
         None if a["value"] is None else Decimal(a["value"]),
         a["status"],
-        a["reason"],
-    ) == (None if b["value"] is None else Decimal(b["value"]), b["status"], b["reason"])
+    ) == (None if b["value"] is None else Decimal(b["value"]), b["status"])
 
 
 def _select(rows, dataset, start, end, as_of, basis):
@@ -262,6 +327,7 @@ class InMemoryM3Store:
     def __init__(self, raw_store, *, clock=lambda: datetime.now(UTC)):
         self.raw_store, self.clock = raw_store, clock
         self.rows, self.batches = [], {}
+        self.confirmed_fragments = set()
         self.lock = RLock()
 
     def save_batch(self, batch):
@@ -317,6 +383,43 @@ class InMemoryM3Store:
             for row in pending:
                 row["available_at"] = at.isoformat()
             return len(pending)
+
+    def confirm_pending(self, dataset, start, end, *, max_batches=6):
+        with self.lock:
+            batches = sorted(
+                {
+                    r["batch_id"]
+                    for r in self.rows
+                    if r["dataset"] == dataset
+                    and start <= r["month"] <= end
+                    and r["available_at"] is None
+                }
+            )[:max_batches]
+            return sum(
+                self.confirm_batch_availability(batch_id) for batch_id in batches
+            )
+
+    def collection_progress(self, collection_id):
+        with self.lock:
+            return [
+                (
+                    identity,
+                    collection_metadata(
+                        batch, confirmed=identity in self.confirmed_fragments
+                    ),
+                )
+                for identity, batch in self.batches.items()
+                if batch.collection_id == collection_id
+            ]
+
+    def mark_collection_fragment(self, batch_id):
+        with self.lock:
+            check(
+                batch_id in self.batches
+                and self.batches[batch_id].collection_id is not None,
+                "collection_fragment_not_found",
+            )
+            self.confirmed_fragments.add(batch_id)
 
     def read_range(self, dataset, start, end, as_of=None, basis="available"):
         with self.lock:
@@ -382,16 +485,22 @@ class PostgresM3Store:
     def save_batch(self, batch):
         check(type(batch) is M3Batch, "batch_invalid")
         inserted = []
+        # Check under the family lock, but never hold a database transaction
+        # across Garage I/O. Recheck after verification to close the race.
+        with self.operation():
+            exists = self.connection.execute(
+                f"SELECT 1 FROM {SCHEMA}.batches WHERE batch_id=%s", (batch.identity,)
+            ).fetchone()
+        if not exists:
+            check(
+                self.raw_store.put_verified(batch.raw) == raw_locator(batch.identity),
+                "raw_locator_mismatch",
+            )
         with self.operation():
             exists = self.connection.execute(
                 f"SELECT 1 FROM {SCHEMA}.batches WHERE batch_id=%s", (batch.identity,)
             ).fetchone()
             if not exists:
-                check(
-                    self.raw_store.put_verified(batch.raw)
-                    == raw_locator(batch.identity),
-                    "raw_locator_mismatch",
-                )
                 self.connection.execute(
                     f"INSERT INTO {SCHEMA}.batches VALUES(%s,%s,%s,%s,%s,%s,%s)",
                     (
@@ -401,7 +510,7 @@ class PostgresM3Store:
                         batch.dataset,
                         min(s.obtained_at for s in batch.snapshots),
                         max(s.obtained_at for s in batch.snapshots),
-                        Jsonb([s.request.persisted() for s in batch.snapshots]),
+                        Jsonb(collection_metadata(batch)),
                     ),
                 )
                 for row in _rows(batch):
@@ -462,6 +571,40 @@ class PostgresM3Store:
                 (at, batch_id),
             )
             return len(rows)
+
+    def confirm_pending(self, dataset, start, end, *, max_batches=6):
+        # No source or Garage access: these rows have already committed after
+        # successful raw verification. Confirmation uses the present clock.
+        with self.lock, self.connection.transaction():
+            self.connection.execute("SET TRANSACTION READ ONLY")
+            rows = self.connection.execute(
+                f"SELECT DISTINCT batch_id FROM {SCHEMA}.revisions "
+                "WHERE dataset=%s AND month BETWEEN %s AND %s "
+                "AND available_at IS NULL ORDER BY batch_id LIMIT %s",
+                (dataset, month_date(start), month_date(end), max_batches),
+            ).fetchall()
+        return sum(self.confirm_batch_availability(row[0]) for row in rows)
+
+    def collection_progress(self, collection_id):
+        with self.lock, self.connection.transaction():
+            self.connection.execute("SET TRANSACTION READ ONLY")
+            return self.connection.execute(
+                f"SELECT batch_id,request FROM {SCHEMA}.batches "
+                "WHERE jsonb_typeof(request)='object' "
+                "AND request->>'collection_id'=%s ORDER BY captured_from,batch_id",
+                (collection_id,),
+            ).fetchall()
+
+    def mark_collection_fragment(self, batch_id):
+        with self.operation():
+            row = self.connection.execute(
+                f"UPDATE {SCHEMA}.batches SET request=jsonb_set("
+                "request,'{confirmed}','true'::jsonb) "
+                "WHERE batch_id=%s AND jsonb_typeof(request)='object' "
+                "AND request ? 'collection_id' RETURNING batch_id",
+                (batch_id,),
+            ).fetchone()
+            check(row is not None, "collection_fragment_not_found")
 
     def read_range(self, dataset, start, end, as_of=None, basis="available"):
         # Parameterized query and short read-only snapshot; never a source call.

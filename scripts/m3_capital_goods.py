@@ -15,6 +15,7 @@ def main(argv=None):
         "command", choices=("prepare-schema", "query", "collect", "replay")
     )
     parser.add_argument("--material", type=Path)
+    parser.add_argument("--resume-id")
     parser.add_argument("--start")
     parser.add_argument("--end")
     parser.add_argument("--dataset", choices=("advm3", "m3"), default="m3")
@@ -30,6 +31,8 @@ def main(argv=None):
         parser.error("--confirm-dev-write is required")
     if args.command in {"query", "collect"} and (not args.start or not args.end):
         parser.error("--start and --end are required")
+    if args.resume_id and args.command != "collect":
+        parser.error("--resume-id requires collect")
     if args.command == "replay" and args.material is None:
         parser.error("--material is required for replay")
     if args.allow_upstream and args.command != "query":
@@ -66,7 +69,11 @@ def main(argv=None):
             )
         elif args.command == "collect":
             result = service.collect_range(
-                args.start, args.end, dataset=args.dataset, confirm_write=True
+                args.start,
+                args.end,
+                dataset=args.dataset,
+                confirm_write=True,
+                resume_id=args.resume_id,
             )
         else:
             result = service.query_range(
@@ -78,6 +85,8 @@ def main(argv=None):
                 allow_upstream=args.allow_upstream,
             )
         print(json.dumps(result, ensure_ascii=False))
+        if args.command == "collect" and result.get("status") != "complete":
+            return 1 if result.get("storage_failure") else 2
         return 0
     except Exception as error:
         print(json.dumps({"success": False, "exception": classify_exception(error)}))

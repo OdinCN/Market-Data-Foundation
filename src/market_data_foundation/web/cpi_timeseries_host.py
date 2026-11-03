@@ -257,7 +257,14 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         gdp_options=None,
         claims_options=None,
         jolts_options=None,
+        m3_query_host=None,
     ):
+        if m3_query_host is not None:
+            from market_data_foundation.web.m3_query_api import M3QueryHost
+
+            if not isinstance(m3_query_host, M3QueryHost):
+                raise ValueError("m3_query_host_invalid")
+        self.m3_query_host = m3_query_host
         super().__init__(
             settings,
             connector=connector,
@@ -1273,6 +1280,11 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
     from market_data_foundation.web.gdp_api import timeseries_router as gdp_router
 
     app.include_router(gdp_router(runtime.gdp_timeseries))
+    from market_data_foundation.web.m3_query_api import (
+        timeseries_router as m3_query_router,
+    )
+
+    app.include_router(m3_query_router(runtime.m3_query_host))
     from market_data_foundation.web.claims_api import timeseries_router as claims_router
 
     app.include_router(claims_router(runtime.claims_timeseries))

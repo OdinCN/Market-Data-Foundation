@@ -12,6 +12,18 @@
 
 分类依据为本段取得并留存的 [Census 聚合序列组成](https://www.census.gov/manufacturing/m3/historical_data/aggseries.pdf)：MDM 为耐用品，NXA 为 NDE 非国防资本品减去 36F 非国防飞机制造业，不额外扩大剔除范围。净订单和出货定义见本段留存的 [Census Definitions](https://www.census.gov/manufacturing/m3/definitions/index.html)。单位依据为第1段留存的 [历史序列页](https://www.census.gov/manufacturing/m3/historical/timeseries.html)。FRED `DGORDER / NEWORDER / ANXAVS` 仍只是具名参考，未接入或回退。
 
+## 第3段增量与明确边界
+
+长范围按一个指标和至多相邻两个月生成请求；每次调用最多六次来源请求，取得、验证并逐片存储后才进入下一片。数值输入和数据库锁分离，Garage 验证不持有 PostgreSQL 家族锁。新 `collect` 是一次新的更新，会重新核验范围内已有值；输出 `collection_id`，同一次调用因失败或预算中止后，用 `collect --resume-id <collection_id>` 和相同端点、起止范围续跑，仅跳过该采集已确认的分片。相同值不产生经济修订；变化值按取得顺序形成修订。达到单次预算时返回 partial、余量和恢复身份，CLI 退出码为 2；存储结果未知退出码为 1。
+
+每个片段的采集身份、范围、预期值与确认状态随无密钥批次元数据保存在本包已有 batches 记录；原始材料仍按既有 Garage 合同验证。写入后可用确认失败时，同一采集的续跑仅确认其已提交分片，采用实际恢复时间并核对回读。范围不匹配的恢复身份拒绝；没有已持久化分片的身份不会跳过任何请求。同一 collection_id 应由一个调用方顺序续跑；跨进程并发编排尚未接入。
+
+当前查询的临时补源也逐指标、逐小窗执行且最多六次。204、超时等失败不丢弃已读取的本地值或之前成功的临时片段；响应保留所有指标/月缺口、受控错误分类与来源请求计数，不含原始异常或 Key，临时补源不落库。遇到限流、传输失败或未知尝试数即停止，留下未处理缺口。历史截止只读本地，继续区分 observed 与 available；预报与完整报告仍独立。
+
+已在现有预览主机挂载 `/api/r5/m3/timeseries/query` 和 `/api-help` 候选路由，需要主机显式注入并授权 `M3QueryHost`；默认无绑定时返回 503，不证明当前环境已启用。查询沿用 `start/end`、`series`、`local_only`、`query_mode`、`as_of`、`as_of_basis`，并可显式选择数据集。当前补源需现有来源准入授权；历史始终本地。OpenAPI 参数、API-help 和合成 TestClient 响应已核对。未添加 M3 资产目录注册、Web 页面、采集 jobs 路由或策略：不得把候选查询路由当成整包已接入或后台任务可执行。本段没有运行浏览器验收。
+
+第3段无 Census 实时请求；利用第2段保留原文在 DEV 验证一个单指标片段：Garage GET/PUT/GET 三次，新增一条本包批次元数据，数值新增与经济修订均为零；同材料重放零新增，现有六条指标值均可回读。该操作不改写旧族、共享配置或权限。离线测试覆盖新更新发现变动、同值幂等、跨年长范围、部分失败与同采集续跑、确认失败恢复、来源 204 部分返回和既有预览路由注入。详细证据在 `artifacts/m3-segment3/`，控制面回执在事务 `artifacts/segment3/review.md`。
+
 ## 来源与版本合同
 
 明确选择 `https://api.census.gov/data/timeseries/eits/advm3`（预报）或 `/m3`（完整报告）。固定 get 包含 `data_type_code,time_slot_id,seasonally_adj,category_code,cell_value,error_data`；筛选美国、SA=yes、error_data=no、一个分类和**一个类型**。每个数值请求仍为最多两个相邻月份。三项采集一次逻辑批次需要三个请求，使用同一端点、同一窗口，不拼接端点。
@@ -32,7 +44,7 @@
 
 `m3_capital_goods_timeseries.py` 提供当前查询、指定 observed/available 截止的本地历史查询、受控采集与同材料导入回读。内部 source snapshot 的 obtained_at 映射为存储/对外 observed_at；消费者没有新增 obtained 截止口径。历史查询永不回源；当前查询默认本地，显式 allow_upstream 可补缺口且**不落库**。collect/import 需要显式写入授权，保存后逐项核对回读。latest 的变化率视图提供同端点相邻月百分比，分母为零或输入未确认可用时为空。
 
-本地查询已支持最多 2400 个月的窗口，不把本次两个月实采上限当作产品历史范围上限。当前来源补充和一次受控采集仍限定小窗；长范围来源分页、断点采集和策略运行留后续。脚本 `uv run python scripts/m3_capital_goods.py --help` 说明 prepare-schema/query/collect/replay；默认查询本地，历史截止参数为 `--as-of` 与 `--basis observed|available`，写入命令需 `--confirm-dev-write`，来源访问需显式选定现有 Census request-control 状态。未增加 Web API 或页面入口。
+本地查询已支持最多 2400 个月的窗口，不把本次两个月实采上限当作产品历史范围上限。第3段已增加长范围有界来源分片与同一次采集的续跑；策略运行留后续。脚本 `uv run python scripts/m3_capital_goods.py --help` 说明 prepare-schema/query/collect/replay；默认查询本地，历史截止参数为 `--as-of` 与 `--basis observed|available`，写入命令需 `--confirm-dev-write`，来源访问需显式选定现有 Census request-control 状态。第3段已在现有预览主机装配可显式注入的 M3 查询候选路由；资产目录、页面和采集任务尚未接入。
 
 ## 本段实测与范围
 

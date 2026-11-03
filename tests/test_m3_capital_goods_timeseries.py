@@ -80,7 +80,9 @@ def test_collect_readback_replay_and_current_query_are_explicit():
     again = s.import_batch(batch(), confirm_write=True)
     assert again["saved_points"] == 0 and again["saved_revisions"] == 0
     assert s.query_range("2025-01", "2025-02") == before
-    assert len(s.store.raw_store.saved) == 1
+    assert (
+        len(s.store.raw_store.saved) == 4
+    )  # three fragments plus independent replay material
 
 
 def test_unchanged_recapture_preserves_first_times_and_economic_revisions():
@@ -279,9 +281,9 @@ def test_local_history_range_is_not_limited_to_live_probe_window():
     s, c = service()
     result = s.query_range("2024-01", "2025-12", as_of=STAMP)
     assert result["coverage"]["expected"] == 72 and result["provider_requests"] == 0
-    with pytest.raises(ContractError, match="requires_batching"):
-        s.query_range("2024-01", "2025-12", allow_upstream=True)
-    assert not s.source.calls
+    current = s.query_range("2024-01", "2025-12", allow_upstream=True)
+    assert current["budget_exhausted"] and current["provider_requests"] <= 6
+    assert current["coverage"]["expected"] == 72
 
 
 def test_retained_batch_roundtrip_preserves_times_and_recovers_after_restart():
