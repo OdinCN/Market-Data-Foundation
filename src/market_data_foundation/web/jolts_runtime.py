@@ -1,4 +1,4 @@
-"""Explicit standalone JOLTS composition; never touches the shared preview."""
+"""Explicit JOLTS composition for standalone and optional shared DEV hosts."""
 
 from dataclasses import dataclass
 from pathlib import Path

@@ -22,7 +22,7 @@ JOLTS_SOURCE = replace(
     pagination_contract="eight IDs per window; registered 20 years, unregistered 10",
     freshness_contract=(
         "retrieval-bound local changes; P/R only from footnotes; "
-        "annual five-year revision policy still pending"
+        "bounded five-year maintenance implemented; official revision proof pending"
     ),
 )
 JOLTS_BINDING = replace(
@@ -44,6 +44,6 @@ JOLTS_BINDING = replace(
         "definitions_and_release_material_pending",
         "no_provider_fallback",
         "no_official_vintage_reconstruction",
-        "manual_collection_only",
+        "automatic_collection_requires_explicit_worker_and_strategy_opt_in",
     ),
 )

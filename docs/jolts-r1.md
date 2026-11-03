@@ -291,3 +291,30 @@ HTTP relay将只读请求交给真实共享ASGI装配，使用既有可信虚拟
 业务数据、DEV schema/业务数据、凭据/共享配额、主控CHECKPOINT或handoff，也没有push、
 PR、合并或生产动作。后续段仍需整包复核、具名官方材料资格补齐及后续获授权的PR准备；
 本段不表示整族验收或部署。
+
+## 第5A段：共享18761实际入口
+
+在 Owner 授权的 MDF-DEV 验收入口 `http://192.168.10.20:18761/`，沿原
+`scripts/mdf_cpi_timeseries_web.py` 装配启动本工作树的已构建前后端。
+共享 `package-config-dev` 的 `mdf-dev/macro` 记录从r9改为r10，仅在原八族
+`enabled_capability_ids` 中增加 `jolts`；凭据引用保持不变。原八族的运行参数、
+独立任务目录、来源准入和共享配额路径均沿用原服务。JOLTS另外显式开启本地查询、
+手工采集和临时补源能力，独立状态目录沿用第3段的留存目录；本段没有提交采集。
+
+18761由独立四小时临时systemd unit `mdf-jolts-dev-web-20261103-r1.service` 提供，
+生命周期独立于本次CLI。原服务启动参数、配置备份、实际PID、停止截止与可执行回退
+入口均记录在事务 `artifacts/segment5a/runtime.json` 和 `rollback.sh`；回退会停止
+候选、恢复原共享配置并以原工作树/参数启动Claims服务。原八族worker未修改；
+JOLTS策略保持暂停，没有启动自动worker，也没有迁移或写入业务数据。
+
+浏览器通过实际18761、既有Playwright和Chromium，以GET/HEAD核验1440/800/480页面。
+先用 `local_only=true` 确认2026-07至2026-08八原生序列共16行且无缺口，再核对Web
+当前查询的 `local_only=false`、历史查询的true、列投影、原始正文、请求预览、API说明、
+240月可编辑表单、真实周期状态、最近执行详情和官方日历超链接。旧八族以本地查询、
+状态、API说明和资产页面进行只读回归。实际URL、截图、HTTP摘要和分块测试结果均留
+`artifacts/segment5a`；第4段的临时端口证据及原超时/失败记录单独保留。
+
+来源新增逻辑请求及HTTP尝试均为0，不重试BLS网页403。来源资格与官方材料/日历缺口
+保持原样；已经实现的有界五年维护和显式worker/策略准入替换了声明中陈旧的
+`manual_collection_only`、年度回修实现pending文案，官方规则正文资格仍待补齐。
+本段不表示整族正式验收，不包含push、PR、合并或生产操作。
