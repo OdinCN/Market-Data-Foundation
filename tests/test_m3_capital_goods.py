@@ -1,4 +1,4 @@
-"""Deterministic contracts; synthetic numbers are not live NXA qualification."""
+"""Deterministic contracts; live NXA evidence is retained separately."""
 
 import copy
 import json
@@ -46,12 +46,13 @@ def no_network(monkeypatch):
     monkeypatch.setattr(socket.socket, "connect", forbidden)
 
 
-def request(dataset="m3", category="MDM"):
-    return M3Request(dataset, category, "2025-01", "2025-02")
+def request(dataset="m3", category="MDM", kind="NO"):
+    return M3Request(dataset, category, "2025-01", "2025-02", kind)
 
 
-def table(category="MDM"):
-    return copy.deepcopy(TABLES[category])
+def table(category="MDM", kind="NO"):
+    t = copy.deepcopy(TABLES[category])
+    return [t[0], *(row for row in t[1:] if row[0] == kind)]
 
 
 def encoded(t):
@@ -70,7 +71,7 @@ def change(t, field, value):
 
 
 @pytest.mark.parametrize("dataset,stage", [("advm3", "advance"), ("m3", "full")])
-@pytest.mark.parametrize("category,kinds", [("MDM", "NO"), ("NXA", "NO,VS")])
+@pytest.mark.parametrize("category,kinds", [("MDM", "NO"), ("NXA", "NO")])
 def test_official_example_request_shape_without_slot_predicate(
     dataset, stage, category, kinds
 ):
@@ -148,15 +149,15 @@ def test_unrecognized_values_are_rejected(value):
 
 
 def test_absent_row_is_local_missing_with_no_invented_slot_or_pointer():
-    t = table("NXA")
-    t.pop(2)
-    snap = parse(t, request(category="NXA"))
+    t = table("NXA", "VS")
+    t.pop(1)
+    snap = parse(t, request(category="NXA", kind="VS"))
     missing = [c for c in snap.cells if c.reason == "source_row_absent"]
     assert len(missing) == 1 and missing[0].data_type_code == "VS"
     assert (
         missing[0].value is missing[0].source_pointer is missing[0].time_slot_id is None
     )
-    assert len([c for c in snap.cells if c.value is not None]) == 3
+    assert len([c for c in snap.cells if c.value is not None]) == 1
 
 
 @pytest.mark.parametrize(

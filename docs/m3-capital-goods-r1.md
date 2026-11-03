@@ -1,45 +1,47 @@
-# 美国耐用品与核心资本品 R1：来源适配基础
+# 美国耐用品与核心资本品 R1：来源、存储与查询基础
 
-本段在 PR25 基线内增加独立 Census M3 适配和确定性解析，不注册第十族、不改变既有九族、来源配置、策略或运行服务。消费者语义按 `MBO_MDF_MACRO_PRD_R1_SEMANTIC_CONFIRMATION_20261101.md`；Owner 后续授权已允许本段实现。
+本包第2段已补齐三项有界真实来源证据，并完成独立存储、当前/历史查询、受控单批采集及真实 DEV 回读基础。仍非完整页面或全族产品验收。使用既有 MDF 控制面，消费者语义按 MBO 的宏观 PRD 与 2026-11-01 语义确认；既有九族、能力配置、策略和运行服务未改变。
 
-| 产品 | Census 候选映射 | 原始口径 | 本段 DEV 证据 |
-|---|---|---|---|
-| 美国耐用品新订单 | `MDM / NO` | 新订单净额，扣除取消订单 | `advm3` 与 `m3` 各返回 2025-01、2025-02 两行，严格解析通过 |
-| 非国防且剔除飞机资本品新订单 | `NXA / NO` | 同范围新订单净额 | 两个数据集的 NXA/NO,VS 小窗组合均返回 204；映射仍是候选，未取得真实数值资格 |
-| 同口径资本品出货 | `NXA / VS` | 出货金额，与订单独立 | 同上；未证明 NXA 分类和实际可用组合，不从其他来源拼接 |
+| 指标 | Census 分类 / 类型 | 实际口径与来源证据 |
+|---|---|---|
+| 美国耐用品新订单 | `MDM / NO` | 耐用品新订单净额；第1段两个端点均取得两个月真实行，第2段 m3 单批再次取得 |
+| 非国防除飞机资本品新订单 | `NXA / NO` | 非国防资本品减非国防飞机制造业；第2段 advm3、m3 单独 NO 请求均 200、两行 |
+| 同口径资本品出货 | `NXA / VS` | 同一 NXA 分类的出货金额；第2段 advm3、m3 单独 VS 请求均 200、两行 |
 
-三项目标均为美国、月度、名义金额、百万当期美元、季调、非年化水平。订单不是出货，金额不是实际数量指数。净订单可为有符号有限数；真实 0 保留为 0，缺失保持空值，NaN、Infinity、非法数值和未知结构拒绝。环比由同一快照、同一指标的相邻月水平计算百分比；缺输入或分母为 0 时返回具体未计算原因，不填 0。
+三项均为美国、月频、SA、百万当期美元、名义金额、非年化水平。新订单扣除取消订单，可以为有符号有限值；真实零、缺值和非法数值严格区分。出货按制造商产品销售的净销售金额定义，不能用订单代替。
 
-单位依据为 [Census 历史序列页](https://www.census.gov/manufacturing/m3/historical/timeseries.html)，本段留存该页，明确金额单位为 millions of dollars（IS/US 比率例外，本段不请求）。净订单定义依据为主控本次提供的 [Census Definitions](https://www.census.gov/manufacturing/m3/definitions/index.html)；本 Session 未再次请求此页。MDM/NXA 与 NO/VS 的静态代码线索不能替代逐项实际资格，尤其 NXA 两项仍有真实缺口。FRED `DGORDER / NEWORDER / ANXAVS` 只保留为需求中的具名参考，代码没有 FRED 连接、回退或拼接。
+分类依据为本段取得并留存的 [Census 聚合序列组成](https://www.census.gov/manufacturing/m3/historical_data/aggseries.pdf)：MDM 为耐用品，NXA 为 NDE 非国防资本品减去 36F 非国防飞机制造业，不额外扩大剔除范围。净订单和出货定义见本段留存的 [Census Definitions](https://www.census.gov/manufacturing/m3/definitions/index.html)。单位依据为第1段留存的 [历史序列页](https://www.census.gov/manufacturing/m3/historical/timeseries.html)。FRED `DGORDER / NEWORDER / ANXAVS` 仍只是具名参考，未接入或回退。
 
-## 来源合同与版本
+## 来源与版本合同
 
-两个独立端点为 `https://api.census.gov/data/timeseries/eits/advm3`（预报）与 `https://api.census.gov/data/timeseries/eits/m3`（完整报告）。请求固定 `get=data_type_code,time_slot_id,seasonally_adj,category_code,cell_value,error_data`，筛选美国、SA=yes、error_data=no 和明确的分类/类型。每个请求最多两个相邻月份，MDM 只取 NO，NXA 候选取 NO,VS。不发送 `time_slot_id=0` 筛选。
+明确选择 `https://api.census.gov/data/timeseries/eits/advm3`（预报）或 `/m3`（完整报告）。固定 get 包含 `data_type_code,time_slot_id,seasonally_adj,category_code,cell_value,error_data`；筛选美国、SA=yes、error_data=no、一个分类和**一个类型**。每个数值请求仍为最多两个相邻月份。三项采集一次逻辑批次需要三个请求，使用同一端点、同一窗口，不拼接端点。
 
-请求依据为主控已读取并提供的官方 [advm3 示例](https://api.census.gov/data/timeseries/eits/advm3/examples.html) 与 [m3 示例](https://api.census.gov/data/timeseries/eits/m3/examples.html)，结合本段实际取得的两个 variables.json。`time_slot_id` 是必需的 get 维度，不是 predicate-only。返回 MDM 表头含四组重复筛选列，逐行值一致；解析允许这些列各一至两次，其他列唯一。冲突、重复单元格、越界月份、NSA、误差数据、错分类/类型/地理、未知列或槽位均拒绝。允许列重排。
+第1段 NXA/NO,VS 组合返回 204；第2段四次单独 NO/VS 请求全部成功。当前适配因此禁止组合类型，不能把原 204 解释为分类不存在或来源无值。第1段四次遗漏 time_slot_id 的 400 和一次猜测 slot0 筛选的 204 均保留；请求不发送 slot0 过滤。依据为主控提供的 [advm3 示例](https://api.census.gov/data/timeseries/eits/advm3/examples.html)、[m3 示例](https://api.census.gov/data/timeseries/eits/m3/examples.html) 以及已留存的元数据和真实行。
 
-已观察的行中 `time` 分别为所请求的 `2025-01 / 2025-02`，作为观测参考月保存；`time_slot_id` 为字符串 `0`，原样保留。目前只接受这一已观察槽位；这是响应识别范围，不是请求过滤或发布版本号。没有返回 `program_code`，不凭空补造。报告阶段来自明确的数据集端点；两份快照分别保留，即使值相等也不合并为同一官方版本。
+响应 `time` 为参考月；`time_slot_id=0` 是已观察响应维度，保留原值而不解释成发布版本号。未返回 program_code，不补造。重复筛选列各允许一至两次且必须一致，其他列唯一；冲突、重复单元格、越界月、错分类/类型/季调/地理、误差数据、未知列和槽位均拒绝。空值与已识别缺值标记保留为空，缺行局部投影为空，不填零。
 
-[官方日历](https://www.census.gov/manufacturing/m3/release_schedule.html) 明确预报 8:30、完整报告 10:00，且日期不同；本段已留存此页，未实现日历调度。历史页明确当前月份值可修订。此时读取的旧月份仍是**当前来源快照**，不是该月原始发布档案，也不是指定事件 actual。
+[官方日历](https://www.census.gov/manufacturing/m3/release_schedule.html) 分别给出预报 8:30 和完整报告 10:00，日期不同。日历不绑定当前 API 数值为特定事件 actual。两端点返回值即使相同也不合并版本。所有本次旧月数据均标为 `current_source_snapshot`；官方事件和来源版本日期保持空。原始参考月、逐请求 MDF 取得时间、可用确认时间分别保留，不把首次捕获或本地 revision=1 当作官方首发，不计算缺少事件与具名事前共识证据的 surprise。
 
-快照保留请求、参考月、槽位、来源单元格指针、原始材料摘要与 MDF 取得时间；来源版本日期、官方发布事件均为空。`qualification=parsed_contract_only_not_event_qualified` 不被 HTTP200、解析成功或本地序号提升。`binding_evidence` 明确区分有界 MDM 真实行证据与 NXA 未核实绑定。事件 actual、原官方前值、MDF 前可消费值和本次修订前值后续分别处理；无事件/具名事前共识证据不计算 surprise。日期级证据不补成盘中秒级时间。
+## 存储、查询和回读
 
-## 实现、复用与核验
+`m3_capital_goods_store.py` 使用独立 schema `mdf_m3_capital_goods_dev_r1`，含 batches、revisions、latest 和 m3_timeseries_rates。迁移沿用显式 ensure_schema、schema owner 核验、短事务和家族专属 advisory lock，不授权新数据库权限。数据库 month 为月首日 `date`，对外仍为 `YYYY-MM`。dataset 是版本键的一部分，预报与完整报告互不覆盖。
 
-`historical/m3_capital_goods.py` 提供有界请求、严格解析、缺值投影、快照与同快照环比。`historical/m3_capital_goods_source.py` 提供默认关闭的候选来源、单次 HTTPS 交换与宏观资格观察。有效私有凭据通过调用方注入的既有 loader 加载，不增设凭据发现或配置回退。请求控制注入既有 Census 使用的 `CpiRequestControl`；本次只读核验使用 segment1 下独立记账状态，不改共享配置。
+三个来源响应连同无密钥请求和逐响应取得时间封装成可精确恢复原始字节的批次材料，复用 `VerifiedGarageRawStore` 的 GET-before-PUT 与读回校验。raw、观察另留忽略的 artifacts；Git 仅保留合成 fixture。批次内容身份用于同材料重放；经济修订只由同指标/月/端点的金额或缺失状态变化产生，重复捕获同值保留原捕获和可用时间。
 
-复用现有 `HttpResult`、严格 HTTP 头与报文边界校验、来源异常分类，以及 `MacroCapability.TIMESERIES / Fixture / Binding / Evidence / observe` 合同。新传输只允许 advm3/m3 两个精确端点，不放宽锁定 MARTS 的既有传输。每次至多一次交换、20 秒超时、正文上限 1 MiB，无自动重试、重定向或切源。真实 raw/观察只落忽略的 artifacts，Git fixture 使用明确标注的合成数值；NXA 合成测试不冒充真实资格。
+数值事务先提交，available_at 在后续事务确认。若确认失败，值保留为未确认可用；正常同批重放再次确认，使用**本次**确认时间，不倒填、不插入修订。`replay --material` 可恢复保留材料并沿用原取得时间；公开的 `confirm_batch_availability` 也可确认指定已提交批次。未确认较新值不会默默展示旧版可用值。确定性测试覆盖确认失败、重放恢复、恢复前后历史截止与 PostgreSQL 已存在批次分支。
 
-本段累计 **16 次真实 HTTP，其中 9 次数值请求**。初始 12 次与纠正后 4 次均保留：
+`m3_capital_goods_timeseries.py` 提供当前查询、指定 observed/available 截止的本地历史查询、受控采集与同材料导入回读。内部 source snapshot 的 obtained_at 映射为存储/对外 observed_at；消费者没有新增 obtained 截止口径。历史查询永不回源；当前查询默认本地，显式 allow_upstream 可补缺口且**不落库**。collect/import 需要显式写入授权，保存后逐项核对回读。latest 的变化率视图提供同端点相邻月百分比，分母为零或输入未确认可用时为空。
 
-- 初始：6 次元数据 200；1 次猜测文档路径 404；4 次缺少 time_slot_id 的数值请求 400；1 次带未经核实 slot0 的有限组合 204。最后的 204 不证明数据集无值。最初四次数值失败使用既有 legacy loader；修正后的请求使用当前 mdf-dev/macro 保存的 Census 凭据；不将不同凭据的尝试合并为认证结论。
-- 纠正后：advm3/MDM 与 m3/MDM 各 200，两行；advm3/NXA 与 m3/NXA 各 204。每次请求均限定 2025-01 至 2025-02，无重试。初始日志留存副本，累计日志追加，不删除失败证据。
+本地查询已支持最多 2400 个月的窗口，不把本次两个月实采上限当作产品历史范围上限。当前来源补充和一次受控采集仍限定小窗；长范围来源分页、断点采集和策略运行留后续。脚本 `uv run python scripts/m3_capital_goods.py --help` 说明 prepare-schema/query/collect/replay；默认查询本地，历史截止参数为 `--as-of` 与 `--basis observed|available`，写入命令需 `--confirm-dev-write`，来源访问需显式选定现有 Census request-control 状态。未增加 Web API 或页面入口。
 
-审查/测试与来源材料在工作树 `artifacts/segment1/`，包括 `source-observations.json`、初始日志副本、raw、`review.md`、`tests.json` 和逐用例终态。确定性回归覆盖净订单符号、零/缺值、歧义维度、错口径、异常结构、无重试/切源、凭据回显防护、资格 schema、旧 MARTS 边界与九族既有合同。
+## 本段实测与范围
 
-## 剩余工作段
+第1段累计 16 次 HTTP、9 次数值的原始失败/成功记录和取得时间保留在 `artifacts/segment1`，未覆盖。
 
-1. 在另行有界的来源核验中解决 NXA 分类/NO/VS 的实际可用请求，取得两项真实行和代码定义证据。保留本段 204 的局部缺口；不得先宣告三项完整就绪。
-2. 按已核实能力接入现有存储与查询，验证采集后回读；补真实发布材料和事件/修订证据，独立保留预报与完整报告版本。
-3. 实现整包页面、API 说明及实际响应一致性、策略进程和执行追踪，使用 MDF-DEV Playwright + Chromium 验收宽窄窗。运行联调、真实业务库写入、能力/策略启停、服务启动和部署不在本段。
-4. 耐用品包后续收口后按既有授权推进工业产出与产能利用率；本段没有新增 G.17 或共享日历实现。
+第2段累计 **12 次真实 HTTP，其中 Census 9 次（7 次数值、2 次定义材料），另含现有 Garage 原始材料验证 3 次**。先取得两个端点的 NXA/NO、NXA/VS 共四次成功请求，再以 m3 三个逐项请求取得一个两月三指标批次；所有数值窗口均为 2025-01 至 2025-02，无自动重试。Garage 三次交换为一次批次材料的 GET/PUT/GET，不含凭据或签名信息的输出。来源访问已停止。
+
+真实 DEV 联调已完成：既有连接器核验数据库/角色、192.168.10.4:5432 与 TLS 后，新增上述独立 schema；写入 **1 个批次、6 条指标月记录、0 条经济修订**，可用回读为 6/6；同材料重放新增 0、修订 0，仍回读 6/6；另以新进程 CLI 从保留材料重放成功，阻断 HTTP 后仍新增 0、修订 0、回读 6/6。数据库 month 类型为 date，变化率视图有六行，捕获前历史截止返回 0 条可用记录。原始批次材料另经现有 Garage 精确读回验证。此为真实 DEV 数据写入，不是隔离测试；未改写既有九族记录、凭据、共享能力或策略。
+
+本段证据在工作树 `artifacts/segment2`，包括 review.md、tests.json、source-observations.json、dev-result.json、逐用例终态、来源 raw 和 DEV 回读；事务目录 `/srv/market-data-foundation-control/transactions/MDF-M3-20261103-R1/artifacts/segment2` 提供同名可读副本。早期测试记录器相对路径错误和修复前 Ruff 失败均保留，最终回归另记，不覆盖失败日志。
+
+剩余工作为长范围来源采集、完整 Web API/页面接入、调度日历、策略进程与执行追踪，以及 MDF-DEV Playwright + Chromium 宽窄窗验收。真实发布档案、事件修订与共识按证据渐进补齐。G.17、工业产出和产能利用率留后续包；本段未启动自动 worker、18761 预览或部署，未推送。

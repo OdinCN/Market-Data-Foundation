@@ -1,6 +1,6 @@
 """Census M3 source contract; parsed snapshots never establish release actuals.
 
-MDM/NO shape observed on DEV for advm3 and m3; NXA numeric binding is unverified.
+MDM/NO and NXA/NO, NXA/VS rows observed on DEV for advm3 and m3.
 New orders are net of cancellations: signed finite amounts are valid.
 """
 
@@ -50,6 +50,7 @@ class M3Request:
     category_code: Literal["MDM", "NXA"]
     start_month: str
     end_month: str
+    data_type_code: Literal["NO", "VS"] = "NO"
 
     def __post_init__(self):
         check(
@@ -65,6 +66,7 @@ class M3Request:
         except Exception:
             raise ContractError("census_m3_month_invalid") from None
         check(0 <= last - first <= 1, "month_window_invalid")
+        check((self.category_code, self.data_type_code) in SERIES, "type_invalid")
 
     @property
     def endpoint(self):
@@ -85,7 +87,7 @@ class M3Request:
 
     @property
     def kinds(self):
-        return ("NO",) if self.category_code == "MDM" else ("NO", "VS")
+        return (self.data_type_code,)
 
     def persisted(self):
         return {
@@ -135,11 +137,7 @@ class M3Snapshot:
 
     @property
     def binding_evidence(self):
-        return (
-            "MDM_NO_bounded_DEV_rows_observed"
-            if self.request.category_code == "MDM"
-            else "NXA_numeric_binding_unverified"
-        )
+        return "bounded_DEV_rows_observed_single_type_request"
 
     @property
     def complete(self):
@@ -151,7 +149,7 @@ def parse_response(raw, request: M3Request, *, obtained_at, forbidden_secret=Non
 
     Only slot 0 has been observed. It is retained as a source dimension, without
     interpreting it as a release version. Unknown slots fail closed for review.
-    NXA uses a candidate binding and has no DEV numeric qualification evidence.
+    Each request selects one type; comma-separated NO,VS returned 204 on DEV.
     """
     check(type(request) is M3Request, "request_invalid")
     check(
