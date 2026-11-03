@@ -602,7 +602,7 @@ export type CpiJob = CpiJobIntent & {
   classification: string | null;
   result: {
     provider_requests?: number;
-    provider_attempts?: number;
+    provider_attempts?: number | null;
     saved_points?: number;
     saved_revisions?: number;
     coverage_complete?: boolean;
@@ -657,7 +657,12 @@ export function validJob(
           job.result.provider_attempts,
           job.result.saved_points,
           job.result.saved_revisions,
-        ].every((v) => v === undefined || (Number.isInteger(v) && v! >= 0)) &&
+        ].every(
+          (v) =>
+            v === undefined ||
+            (profile.id === "m3" && v === null) ||
+            (Number.isInteger(v) && v! >= 0),
+        ) &&
         (job.result.coverage_complete === undefined ||
           typeof job.result.coverage_complete === "boolean") &&
         (job.result.completion === undefined ||

@@ -121,6 +121,7 @@ function fixture() {
   }[] = [];
   const jobs: CpiJob[] = [];
   const enabled = {
+    m3: false,
     cpi: false,
     ppi: false,
     pce: false,

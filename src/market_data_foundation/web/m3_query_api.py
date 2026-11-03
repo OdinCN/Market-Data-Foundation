@@ -5,6 +5,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from market_data_foundation.canonical.model import ContractError
 from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
@@ -14,7 +15,10 @@ from market_data_foundation.historical.m3_capital_goods_timeseries import (
     M3TimeSeriesService,
     _months,
 )
+from market_data_foundation.web.cpi_timeseries_api import admitted_job
+from market_data_foundation.web.cpi_timeseries_dispatch import dispatch_job
 from market_data_foundation.web.cpi_timeseries_jobs import WebError
+from market_data_foundation.web.gdp_api import body, request_schema
 from market_data_foundation.web.pce_dev_host import CANDIDATE_ORIGIN, admitted
 
 PREFIX = "/api/r5/m3/timeseries"
@@ -42,7 +46,7 @@ class M3QueryHost:
             raise ValueError("m3_explicit_factories_required")
         self.read_factory, self.query_factory = read_factory, query_factory
         self.allow_read, self.allow_source = allow_read, allow_source
-        self.upstream_access = upstream_access
+        self._source_admission = upstream_access
 
     @contextmanager
     def service(self, upstream=False):
@@ -110,7 +114,7 @@ class M3QueryHost:
         if upstream and not (
             self.allow_source
             and self.query_factory is not None
-            and self.upstream_access() is True
+            and self._source_admission() is True
         ):
             raise WebError("m3_source_not_bound", 403)
         with self.service(upstream) as service:
@@ -194,6 +198,66 @@ def timeseries_router(host):
         except Exception as error:
             return failure(error)
 
+    def read_host_operation(operation):
+        def endpoint(request: Request):
+            try:
+                guard(request)
+                if request.query_params:
+                    raise WebError("unsupported_parameters")
+                method = getattr(host, operation, None)
+                if method is None:
+                    raise WebError("m3_operation_not_enabled", 503)
+                return JSONResponse(method())
+            except Exception as error:
+                return failure(error)
+
+        return endpoint
+
+    for operation in ("status", "jobs", "executions"):
+        router.add_api_route(
+            "/" + operation,
+            read_host_operation(operation),
+            methods=["GET"],
+            name="m3_" + operation,
+        )
+
+    async def submit_job(request: Request, *, resume=False):
+        try:
+            expected = PREFIX + ("/jobs/resume" if resume else "/jobs")
+            scoped = Request(dict(request.scope, path=PREFIX + "/jobs"))
+            if request.url.path != expected or not admitted_job(scoped, prefix=PREFIX):
+                raise WebError("operator_not_authorized", 403)
+            if host is None or not hasattr(host, "submit"):
+                raise WebError("m3_operation_not_enabled", 503)
+            command = await body(request)
+
+            def execute(value, on_started=None):
+                return host.submit(value, on_started=on_started, resume=resume)
+
+            result = await run_in_threadpool(dispatch_job, execute, command)
+            return JSONResponse(result, 202 if result["state"] == "running" else 200)
+        except Exception as error:
+            return failure(error)
+
+    @router.post(
+        "/jobs",
+        openapi_extra=request_schema(
+            {
+                "request_id": {"type": "string", "format": "uuid"},
+                "action": {"type": "string", "enum": ["init", "initialize", "update"]},
+                "start": {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"},
+                "end": {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"},
+            },
+            ["request_id", "action", "start", "end"],
+        ),
+    )
+    async def submit(request: Request):
+        return await submit_job(request)
+
+    @router.post("/jobs/resume")
+    async def resume(request: Request):
+        return await submit_job(request, resume=True)
+
     @router.get("/api-help")
     def api_help(request: Request):
         try:
@@ -210,7 +274,34 @@ def timeseries_router(host):
                 "current_default": "local_only=true",
                 "history": "local only; aware as_of; observed or available",
                 "source_snapshot": "event attribution unconfirmed",
-                "jobs": "not yet connected",
+                "jobs": "explicit host-bound manual collection with persisted receipts"
+                if hasattr(host, "submit")
+                else "not yet connected",
+                "parameters": {
+                    "start/end": "inclusive YYYY-MM",
+                    "series": "three named identities",
+                    "dataset": "m3 full / advm3 advance",
+                    "local_only": "true default",
+                    "query_mode": "current / history",
+                    "as_of": "aware inclusive cutoff",
+                    "as_of_basis": "observed / available",
+                },
+                "fields": {
+                    "points[].value": "decimal string or null, million current USD",
+                    "points[].source": "dataset-specific capture evidence",
+                    "missing/source_failure": "explicit gaps and safe source failures",
+                    "provider_requests/provider_attempts": (
+                        "bounded logical and HTTP counts"
+                    ),
+                    "persisted": "false for every query",
+                },
+                "coverage": "Complete counts observed values; missing and zero remain distinct.",  # noqa: E501
+                "history_semantics": (
+                    "Local only; MDF confirmation is not an official event release."
+                ),
+                "collection": (
+                    "Manual bounded fragments; resume uses same collection ID."
+                ),
             }
         except Exception as error:
             return failure(error)

@@ -425,6 +425,24 @@ class InMemoryM3Store:
         with self.lock:
             return _select(self.rows, dataset, start, end, as_of, basis)
 
+    def status(self):
+        with self.lock:
+            latest = {s: None for s in SERIES_IDS}
+            for row in _select(
+                self.rows, "m3", "1900-01", "9998-12", None, "available"
+            ):
+                if (
+                    row["value"] is not None
+                    and (latest[row["series_id"]] or "") < row["month"]
+                ):
+                    latest[row["series_id"]] = row["month"]
+            return {
+                "latest_months": latest,
+                "observation_count": len(self.rows),
+                "revision_count": sum(r["revision"] > 1 for r in self.rows),
+                "batch_count": len(self.batches),
+            }
+
 
 class PostgresM3Store:
     def __init__(self, connection, raw_store, *, clock=lambda: datetime.now(UTC)):
@@ -645,3 +663,25 @@ class PostgresM3Store:
                 d[k] = None if d[k] is None else instant(d[k]).isoformat()
             rows.append(d)
         return _select(rows, dataset, start, end, as_of, basis)
+
+    def status(self):
+        with self.lock, self.connection.transaction():
+            self.connection.execute("SET TRANSACTION READ ONLY")
+            counts = self.connection.execute(
+                f"SELECT count(*), count(*) FILTER (WHERE revision>1), "
+                f"(SELECT count(*) FROM {SCHEMA}.batches) FROM {SCHEMA}.revisions"
+            ).fetchone()
+            rows = self.connection.execute(
+                f"SELECT series_id,max(month) FROM {SCHEMA}.latest "
+                "WHERE dataset='m3' AND available_at IS NOT NULL AND value IS NOT NULL "
+                "GROUP BY series_id"
+            ).fetchall()
+        latest = {s: None for s in SERIES_IDS}
+        for series, month in rows:
+            latest[series] = month.strftime("%Y-%m")
+        return {
+            "latest_months": latest,
+            "observation_count": counts[0],
+            "revision_count": counts[1],
+            "batch_count": counts[2],
+        }

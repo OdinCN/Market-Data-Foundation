@@ -44,7 +44,7 @@
 
 `m3_capital_goods_timeseries.py` 提供当前查询、指定 observed/available 截止的本地历史查询、受控采集与同材料导入回读。内部 source snapshot 的 obtained_at 映射为存储/对外 observed_at；消费者没有新增 obtained 截止口径。历史查询永不回源；当前查询默认本地，显式 allow_upstream 可补缺口且**不落库**。collect/import 需要显式写入授权，保存后逐项核对回读。latest 的变化率视图提供同端点相邻月百分比，分母为零或输入未确认可用时为空。
 
-本地查询已支持最多 2400 个月的窗口，不把本次两个月实采上限当作产品历史范围上限。第3段已增加长范围有界来源分片与同一次采集的续跑；策略运行留后续。脚本 `uv run python scripts/m3_capital_goods.py --help` 说明 prepare-schema/query/collect/replay；默认查询本地，历史截止参数为 `--as-of` 与 `--basis observed|available`，写入命令需 `--confirm-dev-write`，来源访问需显式选定现有 Census request-control 状态。第3段已在现有预览主机装配可显式注入的 M3 查询候选路由；资产目录、页面和采集任务尚未接入。
+本地查询已支持最多 2400 个月的窗口，不把本次两个月实采上限当作产品历史范围上限。第3段已增加长范围有界来源分片与同一次采集的续跑；策略运行留后续。脚本 `uv run python scripts/m3_capital_goods.py --help` 说明 prepare-schema/query/collect/replay；默认查询本地，历史截止参数为 `--as-of` 与 `--basis observed|available`，写入命令需 `--confirm-dev-write`，来源访问需显式选定现有 Census request-control 状态。第4段已提供显式启用的 M3 资产、范围查询和人工采集入口；页面与任务仍须按下述边界继续核验。
 
 ## 本段实测与范围
 
@@ -57,3 +57,12 @@
 本段证据在工作树 `artifacts/segment2`，包括 review.md、tests.json、source-observations.json、dev-result.json、逐用例终态、来源 raw 和 DEV 回读；事务目录 `/srv/market-data-foundation-control/transactions/MDF-M3-20261103-R1/artifacts/segment2` 提供同名可读副本。早期测试记录器相对路径错误和修复前 Ruff 失败均保留，最终回归另记，不覆盖失败日志。
 
 剩余工作为长范围来源采集、完整 Web API/页面接入、调度日历、策略进程与执行追踪，以及 MDF-DEV Playwright + Chromium 宽窄窗验收。真实发布档案、事件修订与共识按证据渐进补齐。G.17、工业产出和产能利用率留后续包；本段未启动自动 worker、18761 预览或部署，未推送。
+
+
+## 第4段：共同入口与剩余验收
+
+M3 作为独立 Census 能力加入现有资产和接入包目录；来源、凭据和本地读取均需显式绑定，旧族默认不变。共同范围查询可选择 m3 完整报告或 advm3 预报，按月份倒序显示三项金额。当前页面明确请求临时补源且不保存，历史页面按 available 截止只读本地；来源失败保留本地结果与缺口。临时来源点的 observed_at 是本次观察，available_at 为 null。单次页面补源最多六个片段并共享 15 秒来源预算；非空源及零值按十进制字符串处理。页面暂只展示金额，历史同截止变化率查询尚未接入。
+
+人工采集入口使用既有持久任务回执及同一个 collection_id；每次执行最多六个来源片段，未完成需显式按原任务恢复，新更新重新核验。任务完成和数值覆盖不等价；空值和未取得数据不补零。当前人工采集只选完整报告 m3；预报采集入口尚未装配。DEV 预览参数为 `--allow-m3-local-read`、`--allow-m3-source-query`、`--allow-m3-collect`，并需独立的 `--m3-job-directory` 与明确的 `--m3-request-control-path`；不自动启用或启动周期 worker。
+
+本段 Chromium 使用隔离内存数据及虚构来源验证查询和人工任务，不代表真实 DEV 采集写入或 Garage 回读。真实历史月正文、同截止变化率、执行简报完整细节、周期策略与进程、官方事件绑定以及真实 DEV 浏览器全链路仍需后续逐项验收。历史值快照不作官方首次发布；本包尚未达到完整交付门禁。

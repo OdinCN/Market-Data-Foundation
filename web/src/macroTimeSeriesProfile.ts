@@ -1,4 +1,5 @@
 import {
+  M3,
   JOLTS,
   CLAIMS,
   GDP,
@@ -14,6 +15,7 @@ import {
 
 export type MacroProfile = Readonly<{
   id:
+    | "m3"
     | "cpi"
     | "ppi"
     | "pce"
@@ -322,4 +324,29 @@ export const JOLTS_PROFILE: MacroProfile = Object.freeze({
   ] as const,
   historyNotice:
     "全国非农合计、季调（SA）八项。数量为千岗位/千人次流量，流量不代表去重人数；职位空缺月末存量不可跨月求和。官方Rate已是percent（4.3即4.3%）；数量月差保留原单位，数量累计ratio按百分比展示，比率变化为百分点。零值有效，null与缺行不补零。初始化240月可编辑，实际覆盖以本地和来源返回为准。首次捕获不是官方首发；日历计划不当实际发布，连续版本未绑定官方事件。source_qualified=false：官方定义/方法与具名发布正文资格仍缺，网页403缺口保留。",
+});
+
+export const M3_PROFILE: MacroProfile = Object.freeze({
+  id: "m3",
+  label: "美国耐用品与核心资本品",
+  provider: "Census",
+  asset: M3,
+  basePath: "/api/r5/m3/timeseries",
+  series: [
+    ["durable_goods_new_orders", "耐用品新订单 · 季调", "durable", "sa"],
+    [
+      "nondefense_ex_aircraft_capital_goods_new_orders",
+      "核心资本品新订单 · 季调",
+      "orders",
+      "sa",
+    ],
+    [
+      "nondefense_ex_aircraft_capital_goods_shipments",
+      "核心资本品出货 · 季调",
+      "shipments",
+      "sa",
+    ],
+  ] as const,
+  historyNotice:
+    "月频季调，百万当期美元，非年化；新订单是扣除取消订单的净额。完整报告 m3 与预报 advm3 独立查询。当前旧月快照及首次捕获不代表官方首发；尚未绑定事件 actual。",
 });

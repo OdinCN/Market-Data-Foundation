@@ -117,9 +117,10 @@ class M3CandidateSource:
         self._transport = transport
         self._clock = clock
 
-    def fetch(self, request: M3Request):
+    def fetch(self, request: M3Request, *, timeout=20):
         check(self._enabled is True, "explicit_opt_in_required")
         check(type(request) is M3Request, "request_invalid")
+        check(type(timeout) in (int, float) and 0 < timeout <= 20, "timeout_invalid")
         attempts, status = 0, None
         try:
             key = self._credential_loader()
@@ -134,7 +135,7 @@ class M3CandidateSource:
                 result = transport.get(
                     request.endpoint,
                     request.persisted()["parameters"] | {"key": key},
-                    timeout=20,
+                    timeout=timeout,
                     max_response_bytes=MAX_RESPONSE_BYTES,
                 )
                 check(

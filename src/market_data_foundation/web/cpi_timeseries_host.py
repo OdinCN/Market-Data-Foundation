@@ -109,11 +109,15 @@ class TimeSeriesPackages(PackageHost):
                     "mdf.macro.bea.gdp-growth",
                     "mdf.macro.dol.claims",
                     "mdf.macro.bls.jolts",
+                    "mdf.macro.census.durable-capital-goods",
                 }:
                     unavailable = Eligibility(
                         allowed=False,
                         reasons=[
-                            "jolts_timeseries_not_enabled"
+                            "m3_timeseries_not_enabled"
+                            if revision.definition_ref.identity
+                            == "mdf.macro.census.durable-capital-goods"
+                            else "jolts_timeseries_not_enabled"
                             if revision.definition_ref.identity == "mdf.macro.bls.jolts"
                             else "claims_timeseries_not_enabled"
                             if revision.definition_ref.identity
@@ -258,6 +262,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         claims_options=None,
         jolts_options=None,
         m3_query_host=None,
+        m3_options=None,
     ):
         if m3_query_host is not None:
             from market_data_foundation.web.m3_query_api import M3QueryHost
@@ -851,6 +856,11 @@ class TimeSeriesRuntime(ReadonlyRuntime):
                 claims_options.request_control_path,
             ]
         bind_jolts(self, jolts_options, occupied_paths=paths)
+        from market_data_foundation.web.m3_runtime import bind_m3
+
+        if m3_query_host is not None and m3_options is not None:
+            raise ValueError("m3_host_binding_conflict")
+        bind_m3(self, m3_options, occupied_paths=paths)
         from market_data_foundation.web.source_verification import bind_source_verifier
 
         bind_source_verifier(self, claims_options)
@@ -1307,6 +1317,12 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
             "/api/r5/jolts/timeseries",
         )
         job_post = any(admitted_job(request, prefix=prefix) for prefix in prefixes)
+        job_post = job_post or admitted_job(request, prefix="/api/r5/m3/timeseries")
+        if request.url.path == "/api/r5/m3/timeseries/jobs/resume":
+            job_post = admitted_job(
+                Request(dict(request.scope, path="/api/r5/m3/timeseries/jobs")),
+                prefix="/api/r5/m3/timeseries",
+            )
         if request.url.path == "/api/r5/retail/timeseries/jobs/resume":
             job_post = admitted_retail_job(request)
         strategy_put = (

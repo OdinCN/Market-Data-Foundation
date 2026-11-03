@@ -18,8 +18,14 @@ export type RangePoint = Omit<CpiPoint, "month"> & {
 export type RangeGap = { series_id: string; period: string; reason?: string };
 export type RangeResult = Omit<
   CpiResult,
-  "points" | "missing" | "calculation_missing" | "start_month" | "end_month"
+  | "points"
+  | "missing"
+  | "calculation_missing"
+  | "start_month"
+  | "end_month"
+  | "provider_attempts"
 > & {
+  provider_attempts: number | null;
   start_period: string;
   end_period: string;
   points: RangePoint[];

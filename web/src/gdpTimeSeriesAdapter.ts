@@ -355,7 +355,9 @@ export function validGdpJob(job: CpiJob): boolean {
           result.provider_attempts,
           result.saved_points,
           result.saved_revisions,
-        ].every((v) => v === undefined || count(v)) &&
+        ].every(
+          (v) => v === undefined || (typeof v === "number" && count(v)),
+        ) &&
         (result.source_missing === undefined ||
           (Array.isArray(result.source_missing) &&
             result.source_missing.every(

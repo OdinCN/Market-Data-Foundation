@@ -463,8 +463,10 @@ function CpiTimeSeriesCollectionContent({
       <h3>{profile.label} 受控采集</h3>
       <CpiAvailabilityNotice profile={profile} availability={availability} />
       <p>
-        共 {profile.series.length}{" "}
-        种口径一起采集。长范围由后端自动分批，无需手动拆分。
+        共 {profile.series.length} 种口径一起采集。
+        {profile.id === "m3"
+          ? "本次最多执行六个来源分片；如未完成，请使用原请求继续。"
+          : "长范围由后端自动分批，无需手动拆分。"}
       </p>
       <details>
         <summary>口径与采集说明</summary>
@@ -701,7 +703,7 @@ function CpiTimeSeriesCollectionContent({
                     </div>
                   </dl>
                 </button>
-                {profile.id === "retail" &&
+                {(profile.id === "retail" || profile.id === "m3") &&
                   ["failed", "unknown"].includes(job.state) && (
                     <button
                       disabled={busy || !enabled || !confirmed}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -11,7 +12,10 @@ from market_data_foundation.historical.m3_capital_goods import (
     M3Request,
     check,
 )
-from market_data_foundation.historical.m3_capital_goods_source import M3SourceError
+from market_data_foundation.historical.m3_capital_goods_source import (
+    M3CandidateSource,
+    M3SourceError,
+)
 from market_data_foundation.historical.m3_capital_goods_store import (
     SERIES_IDS,
     M3Batch,
@@ -19,6 +23,7 @@ from market_data_foundation.historical.m3_capital_goods_store import (
 )
 
 MAX_SOURCE_REQUESTS = 6
+QUERY_SOURCE_BUDGET_SECONDS = 15.0
 
 
 def _months(start, end):
@@ -354,11 +359,33 @@ class M3TimeSeriesService:
         if allow_upstream:
             plan = list(_planned_requests(dataset, months, indexed, series_ids))
             budget_exhausted = len(plan) > MAX_SOURCE_REQUESTS
+            deadline = time.monotonic() + QUERY_SOURCE_BUDGET_SECONDS
             for request in plan[:MAX_SOURCE_REQUESTS]:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0.1:
+                    budget_exhausted = True
+                    failures.append(
+                        {
+                            "classification": "census_m3_query_deadline",
+                            "http_status": None,
+                            "attempts": 0,
+                            "series_id": SERIES[
+                                (request.category_code, request.data_type_code)
+                            ],
+                            "start_month": request.start_month,
+                            "end_month": request.end_month,
+                        }
+                    )
+                    break
                 requests += 1
                 try:
                     check(self.source is not None, "source_not_bound")
-                    snapshot = self.source.fetch(request)
+                    if isinstance(self.source, M3CandidateSource):
+                        snapshot = self.source.fetch(
+                            request, timeout=min(20, remaining)
+                        )
+                    else:
+                        snapshot = self.source.fetch(request)
                     check(snapshot.request == request, "source_request_mismatch")
                     batch = M3Batch((snapshot,))
                 except Exception as error:
@@ -391,7 +418,7 @@ class M3TimeSeriesService:
                             row,
                             origin="upstream",
                             revision=None,
-                            available_at=row["observed_at"],
+                            available_at=None,
                         )
         points = []
         for series, month in sorted(expected, key=lambda k: (k[1], k[0]), reverse=True):
@@ -462,6 +489,7 @@ def build_service(
     package_directory,
     request_control=None,
     allow_live=False,
+    credential_loader=None,
 ):
     """Exact existing DEV PG/Garage binding; construction does no DDL or HTTP."""
     import tomllib
@@ -522,7 +550,7 @@ def build_service(
         return M3TimeSeriesService(
             PostgresM3Store(connection, raw),
             M3CandidateSource(
-                credential_loader=credential,
+                credential_loader=credential_loader or credential,
                 request_control=request_control,
                 enabled=allow_live,
             ),
