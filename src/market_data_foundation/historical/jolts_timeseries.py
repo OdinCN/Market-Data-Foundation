@@ -115,14 +115,18 @@ class JoltsTimeSeriesService(_core.CpiTimeSeriesService):
         )
 
 
-def build_service(*, allow_live=False, request_control_path, **options):
-    """Explicit writer binding over the shared PG/Garage store; no bootstrap."""
+def build_service(*, allow_live=False, request_control_path=None, **options):
+    """Writer over shared PG/Garage and BLS admission; no bootstrap."""
     source = BlsJoltsRangeSource(
         allow_live=allow_live,
         registered=options.get("registered", True),
         credential_loader=options.get("credential_loader"),
         secret_path=options.get("secret_path", _core.DEFAULT_SECRET_PATH),
-        request_control=CpiRequestControl(Path(request_control_path)),
+        request_control=CpiRequestControl(
+            _core.DEFAULT_REQUEST_CONTROL_PATH
+            if request_control_path is None
+            else Path(request_control_path)
+        ),
         max_requests=8,
         max_transport_attempts=1,
     )

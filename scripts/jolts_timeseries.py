@@ -38,8 +38,6 @@ def main(argv=None):
                 runtime_path=args.runtime,
                 secret_path=args.secret,
                 credential_loader=lambda: None,
-                request_control_path=args.state_directory
-                / "jolts-bls-request-control.json",
             )
             with service.store.operation():
                 service.store.ensure_schema()

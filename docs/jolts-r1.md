@@ -125,6 +125,10 @@ download.bls.gov 和 downloadt.bls.gov 的目录请求均为403；data.bls.gov �
   `allow_live=True`。读工厂使用短连接并设置 `default_transaction_read_only=on`，
   无来源凭据加载、raw 写入或 DDL。共享 BLS 请求合同仍为注册20年/未注册10年窗口，
   本族每范围最多8逻辑请求、默认单次传输、20秒 HTTP 超时。
+  默认读补源与采集均复用 `cpi_timeseries.DEFAULT_REQUEST_CONTROL_PATH`，与
+  CPI/PPI/Employment 共用同一 BLS 凭据的滚动配额、单飞锁和 cooldown；
+  仅任务 journal、策略等族状态独立。测试/受控调用可显式注入 `request_control_path`，
+  `state_directory` 不再隐式隔离 BLS 配额，构造工厂本身不读取控制文件。
 - [手工 Host](../src/market_data_foundation/web/jolts_timeseries.py) 复用
   `TimeSeriesHost` 的权限、任务 journal、UUID 重放、异步 dispatch 和同截止回读；
   [独立 app 工厂](../src/market_data_foundation/web/jolts_runtime.py) 只装配 JOLTS。
@@ -139,7 +143,8 @@ download.bls.gov 和 downloadt.bls.gov 的目录请求均为403；data.bls.gov �
   默认全部八序列、`local_only=true`；显式当前 `local_only=false` 只临时补缺。
   history/as_of 始终本地，available 截止包含等号，所有比较操作数用相同 cutoff。
   `measure=index` 沿就业原生值接口命名，不表示价格指数；不支持篮子或季调过滤。
-  查询、帮助、状态、任务列表 GET 均不 DDL、不刷新日历、不创建任务或状态文件。
+  查询、帮助、状态、任务列表 GET 均不 DDL、不刷新日历、不创建任务或族策略状态文件；
+  显式当前补源的 BLS 请求仍须更新共享请求控制。
 - POST body 为 `request_id`（规范UUID）、`action`（init/initialize/update）、
   `start`、`end` 及可选 `series`。`init` 仅补缺，`initialize/update` 显式刷新指定范围
   和12月比较缓冲。回执含实际来源计数、saved_points/saved_revisions、按 available
@@ -160,6 +165,8 @@ download.bls.gov 和 downloadt.bls.gov 的目录请求均为403；data.bls.gov �
 `jolts-timeseries/dev-r1/sha256/` namespace。业务数值和来源原文不进入 Git。
 
 本段实际新抓取5个 BLS 逻辑请求/5次 HTTP 尝试（上限8/16，超时20秒），均为200。
+这5次 DEV 请求使用了临时隔离控制文件；主控复核修复仅使后续默认请求接入共享控制，
+没有补填此前计数、清空或访问既有共享配额文件，修复本身新增真实来源请求为0。
 未重试第1段403入口，也没有 FRED 请求或提供者替换。先采集2025-07至08历史小窗及
 12月缓冲，112个值入库；指定范围重复更新新增点/修订均为0；同 request_id HTTP重放
 零来源调用。随后显式临时查询2026-08返回8项，业务库数量仍为112，临时点的

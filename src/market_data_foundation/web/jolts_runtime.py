@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from market_data_foundation.historical import cpi_timeseries as _core
 from market_data_foundation.historical.cpi_request_control import CpiRequestControl
 from market_data_foundation.historical.jolts_timeseries import (
     BlsJoltsRangeSource,
@@ -20,6 +21,7 @@ def create_jolts_app(
     runtime_path,
     secret_path,
     state_directory,
+    request_control_path=None,
     allow_read=False,
     allow_collect=False,
     allow_source=False,
@@ -33,7 +35,11 @@ def create_jolts_app(
     state = Path(state_directory)
     if not state.is_absolute() or ".." in state.parts:
         raise ValueError("jolts_absolute_state_directory_required")
-    control = state / "jolts-bls-request-control.json"
+    control = (
+        _core.DEFAULT_REQUEST_CONTROL_PATH
+        if request_control_path is None
+        else Path(request_control_path)
+    )
 
     def read():
         return build_read_service(runtime_path=runtime_path, secret_path=secret_path)
