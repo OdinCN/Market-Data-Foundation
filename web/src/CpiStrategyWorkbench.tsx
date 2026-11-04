@@ -928,6 +928,7 @@ function CpiStrategyWorkbenchContent({
       <WorkflowTable
         label="周期任务"
         className="periodic-workbench"
+        revealDetailsOnSelect
         columns={[
           "策略",
           "采集目标",

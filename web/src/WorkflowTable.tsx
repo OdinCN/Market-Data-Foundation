@@ -12,6 +12,7 @@ export function WorkflowTable({
   pageSize,
   locateId,
   className,
+  revealDetailsOnSelect = false,
 }: {
   label: string;
   columns: string[];
@@ -24,11 +25,30 @@ export function WorkflowTable({
   pageSize?: number;
   locateId?: string | null;
   className?: string;
+  revealDetailsOnSelect?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const located = useRef<string | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const detail = useRef<HTMLElement>(null);
+  function selectRow(id: string) {
+    onSelect(id);
+    if (revealDetailsOnSelect) {
+      requestAnimationFrame(() => {
+        const pane = detail.current;
+        const list = root.current?.querySelector(".list-pane");
+        if (!pane || !list) return;
+        const target = pane.getBoundingClientRect();
+        const source = list.getBoundingClientRect();
+        if (target.top > source.top + 1 && target.top >= source.bottom - 1) {
+          pane.scrollIntoView({ block: "start", behavior: "auto" });
+          pane.focus({ preventScroll: true });
+        }
+      });
+    }
+  }
   useEffect(() => {
     if (!locateId) {
       located.current = null;
@@ -51,7 +71,7 @@ export function WorkflowTable({
     ? visible.slice(currentPage * pageSize, (currentPage + 1) * pageSize)
     : visible;
   return (
-    <div className={`workbench${className ? ` ${className}` : ""}`}>
+    <div ref={root} className={`workbench${className ? ` ${className}` : ""}`}>
       <section aria-label={label} className="list-pane">
         <div className="searchbar">
           <input
@@ -89,7 +109,7 @@ export function WorkflowTable({
                   key={row.id}
                   className={row.id === selected ? "selected" : ""}
                   aria-selected={row.id === selected}
-                  onClick={() => onSelect(row.id)}
+                  onClick={() => selectRow(row.id)}
                 >
                   {row.cells.map((cell, i) => (
                     <td key={i} data-label={columns[i]}>
@@ -98,7 +118,7 @@ export function WorkflowTable({
                           className="row-link"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onSelect(row.id);
+                            selectRow(row.id);
                           }}
                           aria-label={`选择 ${row.search}`}
                         >
@@ -137,7 +157,28 @@ export function WorkflowTable({
           </div>
         )}
       </section>
-      <aside className="detail-pane" aria-label={`${label}详情`}>
+      <aside
+        ref={detail}
+        tabIndex={revealDetailsOnSelect ? -1 : undefined}
+        className="detail-pane"
+        aria-label={`${label}详情`}
+      >
+        {revealDetailsOnSelect && (
+          <button
+            className="detail-return"
+            onClick={() => {
+              const row = root.current?.querySelector<HTMLButtonElement>(
+                'tr[aria-selected="true"] .row-link',
+              );
+              (
+                row?.closest("tr") ?? root.current?.querySelector(".list-pane")
+              )?.scrollIntoView({ block: "start", behavior: "auto" });
+              row?.focus({ preventScroll: true });
+            }}
+          >
+            返回周期列表
+          </button>
+        )}
         {children ?? (
           <div className="empty detail-empty">
             <span aria-hidden="true">▦</span>

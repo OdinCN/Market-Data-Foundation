@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import {
   act,
   cleanup,
@@ -104,4 +104,70 @@ it("preserves search and pagination when selecting an ordinary row", () => {
   expect(
     (screen.getByLabelText("搜索测试执行") as HTMLInputElement).value,
   ).toBe("record-2");
+});
+
+it("reveals stacked details only after an explicit selection and offers a return", () => {
+  const original = HTMLElement.prototype.scrollIntoView;
+  const scroll = vi.fn();
+  HTMLElement.prototype.scrollIntoView = scroll;
+  let stacked = true;
+  const geometry = vi
+    .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+    .mockImplementation(function (this: HTMLElement) {
+      return {
+        x: 0,
+        y: this.classList.contains("detail-pane") && stacked ? 400 : 0,
+        top: this.classList.contains("detail-pane") && stacked ? 400 : 0,
+        left: 0,
+        right: 900,
+        bottom: this.classList.contains("detail-pane") && stacked ? 700 : 300,
+        width: 900,
+        height: 300,
+        toJSON: () => ({}),
+      };
+    });
+  const frame = vi
+    .spyOn(window, "requestAnimationFrame")
+    .mockImplementation((callback) => {
+      callback(0);
+      return 1;
+    });
+  try {
+    const select = vi.fn();
+    const props = {
+      label: "周期任务",
+      columns: ["策略"],
+      rows,
+      selected: "record-0",
+      onSelect: select,
+      revealDetailsOnSelect: true,
+    };
+    const view = render(
+      <WorkflowTable {...props}>
+        <h3>策略详情</h3>
+      </WorkflowTable>,
+    );
+    expect(scroll).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "选择 record-0" }));
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(screen.getByRole("complementary"));
+    view.rerender(
+      <WorkflowTable {...props} rows={[...rows]}>
+        <h3>轮询后的详情</h3>
+      </WorkflowTable>,
+    );
+    expect(scroll).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "返回周期列表" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "选择 record-0" }),
+    );
+    expect(scroll).toHaveBeenCalledTimes(2);
+    stacked = false;
+    fireEvent.click(screen.getByRole("button", { name: "选择 record-0" }));
+    expect(scroll).toHaveBeenCalledTimes(2);
+  } finally {
+    geometry.mockRestore();
+    frame.mockRestore();
+    HTMLElement.prototype.scrollIntoView = original;
+  }
 });

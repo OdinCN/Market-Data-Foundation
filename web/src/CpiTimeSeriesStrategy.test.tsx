@@ -139,7 +139,8 @@ it("has one preset row and one inline toggle; detail has no create, history edit
   const detail = within(
     screen.getByRole("complementary", { name: "周期任务详情" }),
   );
-  expect(detail.queryByRole("button")).toBeNull();
+  expect(detail.getAllByRole("button")).toHaveLength(1);
+  expect(detail.getByRole("button", { name: "返回周期列表" })).toBeTruthy();
   expect(detail.queryByRole("textbox")).toBeNull();
   expect(screen.queryByText(/private_policy_marker/)).toBeNull();
   expect(

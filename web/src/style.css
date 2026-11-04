@@ -1595,6 +1595,7 @@ footer {
 .periodic-workbench th {
   font-size: 12px;
   white-space: normal;
+  text-wrap: balance;
 }
 .periodic-workbench td,
 .periodic-workbench .row-link {
@@ -1604,25 +1605,25 @@ footer {
   word-break: normal;
 }
 .periodic-workbench th:nth-child(1) {
-  width: 14%;
+  width: 15%;
 }
 .periodic-workbench th:nth-child(2) {
-  width: 17%;
+  width: 18%;
 }
 .periodic-workbench th:nth-child(3) {
   width: 8%;
 }
 .periodic-workbench th:nth-child(4) {
-  width: 13%;
-}
-.periodic-workbench th:nth-child(5) {
-  width: 20%;
-}
-.periodic-workbench th:nth-child(6) {
   width: 12%;
 }
+.periodic-workbench th:nth-child(5) {
+  width: 18%;
+}
+.periodic-workbench th:nth-child(6) {
+  width: 11%;
+}
 .periodic-workbench th:nth-child(7) {
-  width: 16%;
+  width: 18%;
 }
 .strategy-control {
   display: flex;
@@ -1717,8 +1718,11 @@ button.strategy-switch[data-unconfirmed="true"] {
   .periodic-workbench {
     grid-template-columns: minmax(1040px, 1fr) minmax(360px, 0.45fr);
   }
+  .periodic-workbench .detail-return {
+    display: none;
+  }
 }
-@container periodic (max-width: 1000px) {
+@container periodic (max-width: 880px) {
   .periodic-workbench .table-wrap {
     overflow: visible;
     border: 0;
@@ -1756,7 +1760,7 @@ button.strategy-switch[data-unconfirmed="true"] {
     justify-content: flex-start;
     gap: 4px;
     min-width: 0;
-    padding: 12px;
+    padding: 8px 10px;
     border-top: 1px solid var(--border);
   }
   .periodic-workbench td::before {
@@ -1764,15 +1768,26 @@ button.strategy-switch[data-unconfirmed="true"] {
     font-size: 12px;
     color: var(--muted);
   }
-  .periodic-workbench td:nth-child(1),
-  .periodic-workbench td:nth-child(2),
-  .periodic-workbench td:nth-child(5),
-  .periodic-workbench td:nth-child(7) {
+  .periodic-workbench td:nth-child(5) {
     grid-column: 1 / -1;
   }
-  .periodic-workbench td:nth-child(1) {
+  .periodic-workbench td:nth-child(-n + 2) {
     border-top: 0;
   }
+  .periodic-workbench tr.selected {
+    background: var(--selected);
+  }
+}
+.periodic-workbench .detail-pane {
+  scroll-margin-top: 16px;
+}
+.periodic-workbench .detail-pane:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.periodic-workbench .detail-return {
+  margin-bottom: 12px;
+  min-height: 44px;
 }
 @media (prefers-reduced-motion: reduce) {
   .strategy-switch-thumb {
