@@ -70,6 +70,13 @@ const obj = (v: unknown): RecordValue =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as RecordValue) : {};
 const reasons: Record<string, string> = {
   calendar_fallback_not_covered: "官方备用日历未覆盖该期，主日历尚待确认",
+  calendar_fallback_conflict: "官方备用日历与已保留的该期状态或发布时间不一致",
+  calendar_cancelled_after_completion:
+    "该期执行完成后，官方日历又撤销了该期发布",
+  calendar_changed_after_completion: "该期执行完成后，官方日历信息发生变化",
+  calendar_moved_after_execution: "该期已有执行记录，官方发布时间随后发生变更",
+  gdp_calendar_moved_after_execution:
+    "该季度估计已有执行记录，官方发布时间随后发生变更",
   calendar_conflict: "官方日历信息存在冲突",
   calendar_reference_month_conflict: "官方日历参考期不一致",
   calendar_removed: "该期已从官方日历移除",
@@ -234,10 +241,39 @@ export function autoCollectionDiagnosis(
         `${new Date(now).getUTCFullYear()}-Q${Math.floor(new Date(now).getUTCMonth() / 3) + 1}`
       : reference >
         new Date(now).toISOString().slice(0, reference.length === 10 ? 10 : 7);
+    // Only affirmative unpublished/not-covered evidence can be advisory.
+    // Cancellation and post-execution changes outrank a retained TBA placeholder.
+    const validation = text(target.calendar_validation);
+    const adverseCode = target.calendar_cancelled_after_completion
+      ? "calendar_cancelled_after_completion"
+      : target.calendar_changed_after_completion
+        ? "calendar_changed_after_completion"
+        : target.state === "calendar_removed" ||
+            [target.publication_status, target.status].some((status) =>
+              ["CANCELLED", "CANCELED", "WITHDRAWN"].includes(
+                String(status).toUpperCase(),
+              ),
+            ) ||
+            (target.cancellation_evidence &&
+              (typeof target.cancellation_evidence !== "object" ||
+                Object.keys(target.cancellation_evidence).length > 0))
+          ? "calendar_removed"
+          : undefined;
+    const code = adverseCode ?? validation;
+    const explicitCalendarProblem =
+      !!adverseCode ||
+      (!!code &&
+        /conflict|cancel|removed|moved_after_execution|changed_after_completion/.test(
+          code,
+        ));
+    const ordinaryUnpublished =
+      !code || code === "calendar_fallback_not_covered";
     const farTba =
       !target.release_at &&
       futureReference &&
       !anyAttempt &&
+      ordinaryUnpublished &&
+      !explicitCalendarProblem &&
       (String(target.publication_status).toUpperCase() === "TBA" ||
         target.calendar_validation === "calendar_fallback_not_covered");
     const historical =
@@ -251,9 +287,17 @@ export function autoCollectionDiagnosis(
             upcoming.reference_week ??
             "",
         );
-    if (target.calendar_execution_blocked || farTba) {
-      const code = text(target.calendar_validation);
-      const reason = diagnosisReason(code, "官方日历已取消、有冲突或尚未确认");
+    if (
+      target.calendar_execution_blocked ||
+      explicitCalendarProblem ||
+      farTba
+    ) {
+      const reason = diagnosisReason(
+        code,
+        farTba
+          ? "官方尚未公布该期发布时间"
+          : "官方日历已取消、有冲突或尚未确认",
+      );
       const item: PlanIssue = {
         kind: farTba ? "future" : "blocked",
         period,
@@ -267,10 +311,10 @@ export function autoCollectionDiagnosis(
         reason,
         impact: farTba
           ? `仅${period}等待官方确认，不影响${current}的发布计划。`
-          : `仅该期自动触发暂停${historical ? "；历史覆盖尚未确认，其他已确认期次按各自计划执行" : "，该期不能按原日历确认采集"}。`,
+          : `仅该期自动触发暂停${historical ? "；历史覆盖尚未确认，其他已确认期次按各自计划执行" : "，该期不能按原日历确认采集"}。${upcoming && upcoming !== target && !upcoming.calendar_execution_blocked ? `不影响${current}已确认期次的发布计划。` : ""}`,
         next: farTba
           ? "等待官方公布；由现有日历刷新取得证据后再核实该期。"
-          : "等待官方有效日历重新确认；查看此期日历与阶段证据。当前没有绕过日历准入的操作。",
+          : "等待主官方日历重新确认该期状态和时间，并核对保留的阶段证据；现有执行结果独立保留，不自动重放该期采集。当前没有绕过日历准入的操作。",
       };
       (farTba ? advisories : issues).push(item);
     }

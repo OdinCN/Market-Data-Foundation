@@ -169,3 +169,80 @@ it("does not hide an unresolved historical failure when automatic collection is 
   expect(d.state).toBe("已暂停");
   expect(d.issues[0].period).toBe("2026-08");
 });
+
+it.each([
+  [{ calendar_validation: "calendar_fallback_conflict" }, "备用日历与已保留"],
+  [
+    {
+      status: "cancelled",
+      calendar_validation: "calendar_fallback_not_covered",
+    },
+    "移除",
+  ],
+  [{ calendar_validation: "calendar_conflict" }, "冲突"],
+  [
+    {
+      calendar_validation: "calendar_fallback_not_covered",
+      state: "calendar_removed",
+    },
+    "移除",
+  ],
+  [
+    {
+      calendar_validation: "calendar_fallback_not_covered",
+      cancellation_evidence: { source: "official" },
+    },
+    "移除",
+  ],
+  [
+    {
+      calendar_validation: "calendar_fallback_not_covered",
+      calendar_cancelled_after_completion: true,
+    },
+    "完成后",
+  ],
+  [
+    {
+      calendar_validation: "calendar_fallback_not_covered",
+      calendar_changed_after_completion: true,
+    },
+    "完成后",
+  ],
+  [{ calendar_validation: "calendar_moved_after_execution" }, "已有执行记录"],
+  [
+    { calendar_validation: "gdp_calendar_moved_after_execution" },
+    "已有执行记录",
+  ],
+  [
+    {
+      publication_status: "cancelled",
+      calendar_validation: "calendar_fallback_not_covered",
+    },
+    "移除",
+  ],
+] as const)(
+  "explicit calendar problem outranks unchanged TBA/null/no-attempt placeholder: %j",
+  (problem, reason) => {
+    const d = autoCollectionDiagnosis(
+      entry([
+        {
+          reference_month: "2027-12",
+          publication_status: "TBA",
+          release_at: null,
+          calendar_execution_blocked: true,
+          target: { state: "pending", attempts: 0 },
+          history: { state: "blocked", attempts: 0 },
+          ...problem,
+        },
+      ]),
+      now,
+    );
+    expect(d.state).toBe("需处理");
+    expect(d.advisories).toHaveLength(0);
+    expect(d.issues[0].period).toBe("2027-12");
+    expect(d.issues[0].reason).toContain(reason);
+    expect(d.issues[0].impact).toContain("不影响2026-10");
+    expect(d.issues[0].next).toContain("不自动重放");
+    expect(d.summary).toContain("2026-11-17 21:30:00");
+  },
+);
