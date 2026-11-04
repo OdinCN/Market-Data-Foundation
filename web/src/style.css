@@ -1651,7 +1651,7 @@ button.strategy-switch {
   line-height: 1;
   touch-action: manipulation;
 }
-button.strategy-switch:hover:not(:disabled) {
+button.strategy-switch[data-unconfirmed="false"]:hover {
   background: #a0252b;
 }
 button.strategy-switch[aria-checked="true"] {
@@ -1659,7 +1659,7 @@ button.strategy-switch[aria-checked="true"] {
   border-color: #105431;
   padding: 0 40px 0 12px;
 }
-button.strategy-switch[aria-checked="true"]:hover:not(:disabled) {
+button.strategy-switch[aria-checked="true"][data-unconfirmed="false"]:hover {
   background: #105f37;
 }
 button.strategy-switch:disabled {
