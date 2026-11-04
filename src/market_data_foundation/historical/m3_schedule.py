@@ -3,7 +3,6 @@
 import calendar
 import hashlib
 import json
-import os
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
@@ -519,18 +518,4 @@ class M3AutoStrategy(CpiAutoStrategy):
         return {**super()._view(value), "policy": POLICY}
 
     def get(self):
-        value = super().get()
-        path = self.strategy_path.with_name("m3-worker.json")
-        if path.exists():
-            try:
-                process = json.loads(path.read_text())
-                value["worker"]["process"] = process
-                if process["state"] == "stopped":
-                    value["worker"]["state"] = "stopped"
-                else:
-                    os.kill(process["pid"], 0)
-            except ProcessLookupError:
-                value["worker"]["state"] = "stopped"
-            except OSError, ValueError, KeyError:
-                value["worker"]["state"] = "unknown"
-        return {**value, "policy": POLICY}
+        return {**super().get(), "policy": POLICY}

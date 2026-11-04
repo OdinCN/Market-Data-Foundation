@@ -201,6 +201,7 @@ def automatic_executions(snapshot, *, profile=CPI_PROFILE):
             completed = None
         result = {
             **(stage.get("result") or {}),
+            "availability_verified": stage.get("availability_verified"),
             "summary_scope": "latest_stage_attempt",
             "scheduler_attempts_total": stage.get("attempts"),
         }

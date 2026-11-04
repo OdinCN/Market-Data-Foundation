@@ -254,6 +254,8 @@ class GdpTimeSeriesHost:
             return GdpReleaseRecords(service.store).read(**params)
 
     def strategy(self):
+        from market_data_foundation.web.macro_runtime_facts import collection_facts
+
         self._read_allowed()
         value, snapshot = self.auto_strategy.get(), self.scheduler.status()
         future = [
@@ -265,6 +267,7 @@ class GdpTimeSeriesHost:
         ]
         return {
             **value,
+            **collection_facts(self),
             "calendar_status": snapshot["calendar_status"],
             "calendar": snapshot["calendar"],
             "next_release_at": min(future) if future else None,

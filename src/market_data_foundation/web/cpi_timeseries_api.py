@@ -499,9 +499,14 @@ class TimeSeriesHost:
         return result
 
     def strategy(self):
+        from market_data_foundation.web.macro_runtime_facts import collection_facts
+
         value = self.auto_strategy.get()
         return strategy_projection(
-            value, self.scheduler.status(), self.clock(), profile=self.profile
+            {**value, **collection_facts(self)},
+            self.scheduler.status(),
+            self.clock(),
+            profile=self.profile,
         )
 
     def update_strategy(self, command):
@@ -522,10 +527,8 @@ class TimeSeriesHost:
             capabilities = self.capabilities(self.source())
             if not capabilities["collect"]:
                 raise WebError(capabilities["reason"], 403)
-        value = self.auto_strategy.update(**command)
-        return strategy_projection(
-            value, self.scheduler.status(), self.clock(), profile=self.profile
-        )
+        self.auto_strategy.update(**command)
+        return self.strategy()
 
     def schedule(self):
         strategy = self.auto_strategy.get()
@@ -622,61 +625,14 @@ class TimeSeriesHost:
                         },
                         profile=self.profile,
                     )
+                    job["numeric_result"] = written
+                    self.journal.save(job)
                     material = self.capture_material(
                         service, command["start"], command["end"], written
                     )
-                read_start, read_end = command["start"], command["end"]
-                if self.profile.key in {
-                    "ppi",
-                    "pce",
-                    "employment",
-                    "consumption",
-                    "jolts",
-                }:
-                    months = [
-                        p["month"]
-                        for p in written.get("source_returned_series_months", [])
-                    ]
-                    read_start = min([read_start, *months])
-                    read_end = max([read_end, *months])
-                with self.service() as service:
-                    readback = execute_profile(
-                        service,
-                        "query",
-                        {
-                            "start": read_start,
-                            "end": read_end,
-                            "basket": "all",
-                            "adjustment": "all",
-                            "local_only": True,
-                            "vintage_mode": "available",
-                            **(
-                                {
-                                    "series": command["series"],
-                                    "basket": None,
-                                    "adjustment": None,
-                                }
-                                if "series" in command
-                                else {}
-                            ),
-                        },
-                        profile=self.profile,
-                    )
-                verified, result = verify_readback(
-                    written, readback, command, profile=self.profile
-                )
-                result["release_material"] = material
-                job.update(
-                    state="complete" if verified else "failed",
-                    result=result,
-                    classification=(
-                        None
-                        if verified
-                        else "source_range_incomplete"
-                        if not result["readback"]["refresh_coverage_complete"]
-                        else "local_readback_incomplete"
-                    ),
-                )
+                    job["release_material"] = material
+                    self.journal.save(job)
+                self.finish_retained(job, written, material)
             except Exception as error:
                 document = error_document(error)
                 classification = (
@@ -698,17 +654,87 @@ class TimeSeriesHost:
             self.journal.save(job)
             return job
 
+    def finish_retained(self, job, written, material):
+        command = job
+        read_start, read_end = command["start"], command["end"]
+        if self.profile.key in {
+            "ppi",
+            "pce",
+            "employment",
+            "consumption",
+            "jolts",
+        }:
+            months = [
+                p["month"] for p in written.get("source_returned_series_months", [])
+            ]
+            read_start = min([read_start, *months])
+            read_end = max([read_end, *months])
+        with self.service() as service:
+            readback = execute_profile(
+                service,
+                "query",
+                {
+                    "start": read_start,
+                    "end": read_end,
+                    "basket": "all",
+                    "adjustment": "all",
+                    "local_only": True,
+                    "vintage_mode": "available",
+                    **(
+                        {
+                            "series": command["series"],
+                            "basket": None,
+                            "adjustment": None,
+                        }
+                        if "series" in command
+                        else {}
+                    ),
+                },
+                profile=self.profile,
+            )
+        verified, result = verify_readback(
+            written, readback, command, profile=self.profile
+        )
+        result["release_material"] = material
+        job.update(
+            state="complete" if verified else "failed",
+            result=result,
+            classification=(
+                None
+                if verified
+                else "source_range_incomplete"
+                if not result["readback"]["refresh_coverage_complete"]
+                else "local_readback_incomplete"
+            ),
+        )
+
     def replay(self, record, command):
         if record.get("series") != command.get("series") or any(
             record.get(key) != value for key, value in command.items()
         ):
             raise WebError("request_id_conflict", 409)
         if record["state"] == "running":
-            return next(
+            record = next(
                 r
                 for r in self.journal.list()
                 if r["request_id"] == command["request_id"]
             )
+        if record["state"] == "unknown" and record.get("numeric_result"):
+            with self.journal.execution():
+                record = self.journal.read(command["request_id"])
+                if record["state"] in {"running", "unknown"}:
+                    self.finish_retained(
+                        record,
+                        record["numeric_result"],
+                        record.get("release_material")
+                        or {
+                            "state": "unknown",
+                            "classification": "release_material_interrupted",
+                        },
+                    )
+                    record["finished_at"] = self.clock().isoformat()
+                    record["recovery"] = "original_numeric_result_readback"
+                    self.journal.save(record)
         return record
 
 

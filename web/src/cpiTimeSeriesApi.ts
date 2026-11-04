@@ -733,6 +733,10 @@ export async function readCpiJobs(
 }
 
 export type CpiStrategy = {
+  last_successful_collection_at?: string | null;
+  latest_data_period?: string | null;
+  latest_data_periods?: Record<string, string | null>;
+  collection_facts_classification?: string | null;
   exists: boolean;
   enabled: boolean;
   history_start: string;

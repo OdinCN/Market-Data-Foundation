@@ -491,3 +491,31 @@ def test_public_jobs_five_defaults_and_subset_readback(
         assert len(help_doc["series_ids"]) == len(EMPLOYMENT_PROFILE.series_ids)
         assert help_doc["series"]["LNS11300000"]["fred_alias"] == "CIVPART"
         assert help_doc["series"]["CES0500000002"]["value_unit"] == "hours"
+
+
+def test_interrupted_original_numeric_result_recovers_without_source(
+    tmp_path, monkeypatch
+):
+    _, runtime, source, data, _ = setup(tmp_path, monkeypatch)
+    host = runtime.employment_timeseries
+    cmd = command(start="2026-08", end="2026-09", action="update")
+    finish = host.finish_retained
+
+    def interrupt(*args):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(host, "finish_retained", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        host.submit(cmd)
+    original = host.journal.read(cmd["request_id"])
+    assert original["state"] == "running" and original["numeric_result"]
+    calls = len(source.calls)
+    counts = data.status()
+    monkeypatch.setattr(host, "finish_retained", finish)
+    recovered = host.submit(cmd)
+    assert recovered["state"] == "complete"
+    assert recovered["recovery"] == "original_numeric_result_readback"
+    assert recovered["started_at"] == original["started_at"]
+    assert recovered["release_material"] == original["release_material"]
+    assert len(source.calls) == calls and data.status() == counts
+    assert host.submit(cmd) == recovered

@@ -15,6 +15,10 @@ from market_data_foundation.historical.cpi_release_schedule import (
     now_utc,
 )
 from market_data_foundation.historical.cpi_timeseries_source import validate_month
+from market_data_foundation.historical.worker_observation import (
+    observe_worker,
+    process_identity,
+)
 
 AUTO_POLICY = {
     "release_windows": [
@@ -113,6 +117,7 @@ class CpiAutoStrategy:
             seconds=120
         ):
             worker["state"] = "stale"
+        worker = observe_worker(worker, self.strategy_path, self.scheduler.asset_key)
         return {
             "exists": value is not None and value.get("created", True),
             "enabled": (value or {}).get("enabled", False),
@@ -176,6 +181,7 @@ class CpiAutoStrategy:
             value["worker"] = {
                 "state": state,
                 "last_heartbeat_at": _aware(self.clock()).isoformat(),
+                "process": {**process_identity(os.getpid()), "state": "running"},
             }
             self._save(value)
         return self._view(value)

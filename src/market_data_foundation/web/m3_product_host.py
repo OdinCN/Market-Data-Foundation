@@ -130,11 +130,14 @@ class M3ProductHost(M3QueryHost):
             return ReleaseRecords(service.store).read(**params)
 
     def strategy(self):
+        from market_data_foundation.web.macro_runtime_facts import collection_facts
+
         if not self.allow_read:
             raise WebError("local_read_not_authorized", 403)
         value = self.auto_strategy.get()
         return {
             **value,
+            **collection_facts(self),
             "calendar_status": self.scheduler.status()["calendar_status"],
             "next_release_at": self.scheduler.status()["next_due"],
             "execution_state": value["worker"]["state"],

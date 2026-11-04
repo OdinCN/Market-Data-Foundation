@@ -63,6 +63,12 @@ const states: Record<string, string> = {
 };
 export const cpiStateText = (value?: string | null) =>
   value ? (states[value] ?? "尚未核实") : "未记录";
+export const workerStateText = (value?: string | null) =>
+  value && ["idle", "running", "paused"].includes(value)
+    ? `在线（${cpiStateText(value)}）`
+    : value === "stale"
+      ? "心跳已过期"
+      : cpiStateText(value);
 export function cpiExecutionStateText(
   state: string | undefined,
   result: Record<string, unknown> | null | undefined,
@@ -903,7 +909,15 @@ function CpiStrategyWorkbenchContent({
       {uncertain && <p role="alert">策略保存结果未知，正在自动核实。</p>}
       <WorkflowTable
         label="周期任务"
-        columns={["策略", "采集目标", "策略状态", "操作"]}
+        columns={[
+          "策略",
+          "采集目标",
+          "策略状态",
+          "执行器",
+          "最后成功采集（北京时间）",
+          "最新数据参考期",
+          "操作",
+        ]}
         selected={selection}
         onSelect={(id) => {
           setSelected(id);
@@ -924,11 +938,17 @@ function CpiStrategyWorkbenchContent({
               macroAssetLabel(e.profile),
               e.data
                 ? e.data.exists
-                  ? cpiStateText(
-                      e.data.state ?? (e.data.enabled ? "enabled" : "paused"),
-                    )
+                  ? e.data.enabled
+                    ? "已启用"
+                    : "已暂停"
                   : "未启动"
                 : "尚未核实",
+              e.data ? workerStateText(e.data.worker.state) : "尚未核实",
+              formatBeijingTime(
+                e.data?.last_successful_collection_at,
+                "未记录",
+              ),
+              e.data?.latest_data_period ?? "未知",
               <span key="toggle">
                 <button
                   disabled={
@@ -976,14 +996,29 @@ function CpiStrategyWorkbenchContent({
             </details>
             <dl>
               <Fact name="策略状态">
-                {data.exists
-                  ? cpiStateText(
-                      data.state ?? (data.enabled ? "enabled" : "paused"),
-                    )
-                  : "未启动"}
+                {data.exists ? (data.enabled ? "已启用" : "已暂停") : "未启动"}
               </Fact>
               <Fact name="运行状态">{cpiStateText(data.execution_state)}</Fact>
-              <Fact name="后台进程">{cpiStateText(data.worker.state)}</Fact>
+              <Fact name="后台进程">{workerStateText(data.worker.state)}</Fact>
+              <Fact name="最后成功采集（北京时间）">
+                {formatBeijingTime(
+                  data.last_successful_collection_at,
+                  "未记录",
+                )}
+              </Fact>
+              <Fact name="最新数据参考期">
+                {data.latest_data_period ?? "未知"}
+              </Fact>
+              <Fact name="各序列最新参考期">
+                {Object.entries(data.latest_data_periods ?? {})
+                  .map(([id, period]) => `${id}：${period ?? "未知"}`)
+                  .join("；") || "未知"}
+              </Fact>
+              {data.collection_facts_classification && (
+                <Fact name="采集状态读取">
+                  {data.collection_facts_classification}
+                </Fact>
+              )}
               <Fact name="最近心跳（北京时间）">
                 {formatBeijingTime(data.worker.last_heartbeat_at, "未记录")}
               </Fact>

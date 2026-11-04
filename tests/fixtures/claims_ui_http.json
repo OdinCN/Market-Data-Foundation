@@ -9720,6 +9720,17 @@
       "history_priority": "low",
       "event_binding": "calendar_is_not_value_evidence"
     },
+    "last_successful_collection_at": "2026-11-02T18:00:00+00:00",
+    "latest_data_period": "2026-10-31",
+    "latest_data_periods": {
+      "ICSA": "2026-10-31",
+      "ICNSA": "2026-10-31",
+      "CCSA": "2026-10-17",
+      "CCNSA": "2026-10-17",
+      "IC4WSA": "2026-10-31",
+      "CC4WSA": "2026-10-17"
+    },
+    "collection_facts_classification": null,
     "calendar_status": "fresh",
     "calendar": {
       "acquired_at": "2026-11-02T18:00:00+00:00",

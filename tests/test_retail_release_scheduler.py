@@ -78,7 +78,7 @@ def test_read_only_strategy_routes_and_real_paused_heartbeat(tmp_path, monkeypat
         assert not host.auto_strategy.get()["exists"]
         assert not host.scheduler.state_path.exists()
         assert not host.auto_strategy.strategy_path.exists()
-        assert not calls and not wire.calls
+        assert calls == ["read"] and not wire.calls
         assert (
             http.put(
                 PREFIX + "/strategy",
