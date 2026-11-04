@@ -1554,3 +1554,27 @@ footer {
 .credential-replacement p {
   margin: 0;
 }
+
+/* Keep both report amounts visible together in the shared asset panel. */
+.cpi-timeseries .m3-comparison-table {
+  min-width: 44rem;
+  width: 100%;
+  table-layout: fixed;
+}
+.cpi-timeseries .m3-comparison-table th,
+.cpi-timeseries .m3-comparison-table td {
+  min-width: 0;
+  max-width: none;
+  width: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  padding: 0.5rem 0.35rem;
+}
+.cpi-timeseries .m3-comparison-table th:first-child,
+.cpi-timeseries .m3-comparison-table td:first-child {
+  width: 4.5rem;
+}
+.cpi-timeseries .m3-comparison-table th:nth-child(2),
+.cpi-timeseries .m3-comparison-table td:nth-child(2) {
+  width: 6rem;
+}

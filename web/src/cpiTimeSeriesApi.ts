@@ -42,6 +42,10 @@ export function shiftMonth(month: string, by: number) {
   return `${Math.floor(n / 12)}-${String((n % 12) + 1).padStart(2, "0")}`;
 }
 export type CpiStatus = {
+  reports?: Record<
+    string,
+    { observation_count: number; latest_months: Record<string, string | null> }
+  >;
   initialization?: {
     preset_id: string;
     months: number;
@@ -595,14 +599,20 @@ export type CpiJobIntent =
   MacroPaths["/api/r5/cpi/timeseries/jobs"]["post"]["requestBody"]["content"]["application/json"];
 export type CpiJob = CpiJobIntent & {
   job_id: string;
-  state: "running" | "complete" | "failed" | "unknown" | "cancelled";
+  state:
+    | "running"
+    | "complete"
+    | "failed"
+    | "unknown"
+    | "cancelled"
+    | "waiting";
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
   classification: string | null;
   result: {
     provider_requests?: number;
-    provider_attempts?: number;
+    provider_attempts?: number | null;
     saved_points?: number;
     saved_revisions?: number;
     coverage_complete?: boolean;
@@ -641,7 +651,8 @@ export function validJob(
     uuidValid(job.request_id) &&
     ["init", "initialize", "update"].includes(job.action) &&
     rangeValid(job.start, job.end) &&
-    ["running", "complete", "failed", "unknown"].includes(job.state) &&
+    (["running", "complete", "failed", "unknown"].includes(job.state) ||
+      (profile.id === "m3" && job.state === "waiting")) &&
     Number.isFinite(Date.parse(job.created_at)) &&
     [job.started_at, job.finished_at].every(
       (v) =>
@@ -657,7 +668,12 @@ export function validJob(
           job.result.provider_attempts,
           job.result.saved_points,
           job.result.saved_revisions,
-        ].every((v) => v === undefined || (Number.isInteger(v) && v! >= 0)) &&
+        ].every(
+          (v) =>
+            v === undefined ||
+            (profile.id === "m3" && v === null) ||
+            (Number.isInteger(v) && v! >= 0),
+        ) &&
         (job.result.coverage_complete === undefined ||
           typeof job.result.coverage_complete === "boolean") &&
         (job.result.completion === undefined ||

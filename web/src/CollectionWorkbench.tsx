@@ -1,5 +1,6 @@
 import { macroAssetLabel } from "./macroTimeSeriesProfile";
 import {
+  M3_PROFILE,
   JOLTS_PROFILE,
   CLAIMS_PROFILE,
   GDP_PROFILE,
@@ -29,6 +30,7 @@ import {
   type Execution,
   type Interface,
   type Plans,
+  M3,
   JOLTS,
   joltsOperationMatches,
   CLAIMS,
@@ -97,6 +99,7 @@ export function CollectionWorkbench({
   employmentAvailability,
   retailAvailability,
   consumptionAvailability,
+  m3Availability,
   joltsAvailability,
   claimsAvailability,
   gdpAvailability,
@@ -109,6 +112,7 @@ export function CollectionWorkbench({
   transport: Transport;
   generation: number;
   invalidIdentity: boolean;
+  m3Availability?: CpiAvailability;
   joltsAvailability?: CpiAvailability;
   claimsAvailability?: CpiAvailability;
   gdpAvailability?: CpiAvailability;
@@ -219,6 +223,13 @@ export function CollectionWorkbench({
     (sameKey(asset?.key, GDP) ||
       (route.fields.get("asset") === GDP.identity &&
         route.fields.get("asset_revision") === GDP.revision));
+  const m3Target =
+    !invalidIdentity &&
+    !route.fields.has("operation") &&
+    (sameKey(asset?.key, M3) ||
+      (route.fields.get("asset") === M3.identity &&
+        route.fields.get("asset_revision") === M3.revision));
+  const newM3 = !!m3Availability?.data && !m3Availability.legacy;
   const newGdp = !!gdpAvailability?.data && !gdpAvailability.legacy;
   const joltsTarget =
     !invalidIdentity &&
@@ -239,65 +250,71 @@ export function CollectionWorkbench({
   const newRetail = !!retailAvailability?.data && !retailAvailability.legacy;
   const newEmployment =
     !!employmentAvailability?.data && !employmentAvailability.legacy;
-  const macroProfile = joltsTarget
-    ? JOLTS_PROFILE
-    : claimsTarget
-      ? CLAIMS_PROFILE
-      : gdpTarget
-        ? GDP_PROFILE
-        : consumptionTarget
-          ? CONSUMPTION_PROFILE
-          : retailTarget
-            ? RETAIL_PROFILE
-            : employmentTarget
-              ? EMPLOYMENT_PROFILE
-              : pceTarget
-                ? PCE_PROFILE
-                : isPpi
-                  ? PPI_PROFILE
-                  : CPI_PROFILE;
-  const macroAvailability = joltsTarget
-    ? joltsAvailability
-    : claimsTarget
-      ? claimsAvailability
-      : gdpTarget
-        ? gdpAvailability
-        : consumptionTarget
-          ? consumptionAvailability
-          : retailTarget
-            ? retailAvailability
-            : employmentTarget
-              ? employmentAvailability
-              : pceTarget
-                ? pceAvailability
-                : isPpi
-                  ? ppiAvailability
-                  : cpiAvailability;
+  const macroProfile = m3Target
+    ? M3_PROFILE
+    : joltsTarget
+      ? JOLTS_PROFILE
+      : claimsTarget
+        ? CLAIMS_PROFILE
+        : gdpTarget
+          ? GDP_PROFILE
+          : consumptionTarget
+            ? CONSUMPTION_PROFILE
+            : retailTarget
+              ? RETAIL_PROFILE
+              : employmentTarget
+                ? EMPLOYMENT_PROFILE
+                : pceTarget
+                  ? PCE_PROFILE
+                  : isPpi
+                    ? PPI_PROFILE
+                    : CPI_PROFILE;
+  const macroAvailability = m3Target
+    ? m3Availability
+    : joltsTarget
+      ? joltsAvailability
+      : claimsTarget
+        ? claimsAvailability
+        : gdpTarget
+          ? gdpAvailability
+          : consumptionTarget
+            ? consumptionAvailability
+            : retailTarget
+              ? retailAvailability
+              : employmentTarget
+                ? employmentAvailability
+                : pceTarget
+                  ? pceAvailability
+                  : isPpi
+                    ? ppiAvailability
+                    : cpiAvailability;
   const newPpi =
     !!ppiAvailability && !ppiAvailability.legacy && !!ppiAvailability.data;
   const newPce =
     !!pceAvailability && !pceAvailability.legacy && !!pceAvailability.data;
-  const newMacro = joltsTarget
-    ? !!joltsAvailability && !joltsAvailability.legacy
-    : claimsTarget
-      ? !!claimsAvailability && !claimsAvailability.legacy
-      : gdpTarget
-        ? !!gdpAvailability && !gdpAvailability.legacy
-        : consumptionTarget
-          ? !!consumptionAvailability && !consumptionAvailability.legacy
-          : retailTarget
-            ? !!retailAvailability && !retailAvailability.legacy
-            : employmentTarget
-              ? !!employmentAvailability && !employmentAvailability.legacy
-              : pceTarget
-                ? !!pceAvailability &&
-                  !pceAvailability.legacy &&
-                  (!!pceAvailability.data || !!pceAvailability.failure)
-                : isPpi
-                  ? !!ppiAvailability
-                  : !!cpiAvailability &&
-                    !cpiAvailability.legacy &&
-                    (!!cpiAvailability.data || !!cpiAvailability.failure);
+  const newMacro = m3Target
+    ? !!m3Availability && !m3Availability.legacy
+    : joltsTarget
+      ? !!joltsAvailability && !joltsAvailability.legacy
+      : claimsTarget
+        ? !!claimsAvailability && !claimsAvailability.legacy
+        : gdpTarget
+          ? !!gdpAvailability && !gdpAvailability.legacy
+          : consumptionTarget
+            ? !!consumptionAvailability && !consumptionAvailability.legacy
+            : retailTarget
+              ? !!retailAvailability && !retailAvailability.legacy
+              : employmentTarget
+                ? !!employmentAvailability && !employmentAvailability.legacy
+                : pceTarget
+                  ? !!pceAvailability &&
+                    !pceAvailability.legacy &&
+                    (!!pceAvailability.data || !!pceAvailability.failure)
+                  : isPpi
+                    ? !!ppiAvailability
+                    : !!cpiAvailability &&
+                      !cpiAvailability.legacy &&
+                      (!!cpiAvailability.data || !!cpiAvailability.failure);
   const macroPending =
     !!macroAvailability &&
     !macroAvailability.legacy &&
@@ -487,6 +504,14 @@ export function CollectionWorkbench({
       !invalidIdentity &&
       (filter === "all" || filter === keyOf(GDP) || gdpTarget),
   );
+  const m3Records = useVisiblePolling(
+    (signal) => readCpiExecutions(transport, signal, M3_PROFILE),
+    [transport, generation, M3_PROFILE.id],
+    newM3 &&
+      tab === "executions" &&
+      !invalidIdentity &&
+      (filter === "all" || filter === keyOf(M3) || m3Target),
+  );
   const joltsRecords = useVisiblePolling(
     (signal) => readCpiExecutions(transport, signal, JOLTS_PROFILE),
     [transport, generation, JOLTS_PROFILE.id],
@@ -504,6 +529,14 @@ export function CollectionWorkbench({
       (filter === "all" || filter === keyOf(CLAIMS) || claimsTarget),
   );
   const macroRecords = [
+    ...(executionSchedule === "all" &&
+    (filter === "all" || filter === keyOf(M3))
+      ? (m3Records.data?.executions ?? []).map((e) => ({
+          ...e,
+          profile: M3_PROFILE,
+          rowId: `m3:${e.id}`,
+        }))
+      : []),
     ...(executionSchedule === "all" &&
     (filter === "all" || filter === keyOf(GDP))
       ? (gdpRecords.data?.executions ?? []).map((e) => ({
@@ -599,6 +632,12 @@ export function CollectionWorkbench({
     operation: HISTORY_OPERATION,
   };
   function recordState(kind: "plans" | "jobs") {
+    if (filter === keyOf(M3))
+      return m3Records.failure
+        ? "M3执行记录读取失败"
+        : m3Records.busy
+          ? "正在读取M3执行记录…"
+          : "当前没有M3执行记录";
     if (filter === keyOf(JOLTS))
       return joltsRecords.failure
         ? "JOLTS执行记录读取失败"
@@ -1209,6 +1248,7 @@ export function CollectionWorkbench({
         consumptionTarget ||
         gdpTarget ||
         joltsTarget ||
+        m3Target ||
         claimsTarget) ? (
         <>
           <label>
@@ -1220,25 +1260,27 @@ export function CollectionWorkbench({
                   (a) => keyOf(a.key) === e.target.value,
                 );
                 const selectedKey =
-                  e.target.value === keyOf(JOLTS)
-                    ? JOLTS
-                    : e.target.value === keyOf(CLAIMS)
-                      ? CLAIMS
-                      : e.target.value === keyOf(GDP)
-                        ? GDP
-                        : e.target.value === keyOf(CONSUMPTION)
-                          ? CONSUMPTION
-                          : e.target.value === keyOf(RETAIL)
-                            ? RETAIL
-                            : e.target.value === keyOf(EMPLOYMENT)
-                              ? EMPLOYMENT
-                              : e.target.value === keyOf(PCE)
-                                ? PCE
-                                : e.target.value === keyOf(PPI)
-                                  ? PPI
-                                  : e.target.value === keyOf(CPI)
-                                    ? CPI
-                                    : selected?.key;
+                  e.target.value === keyOf(M3)
+                    ? M3
+                    : e.target.value === keyOf(JOLTS)
+                      ? JOLTS
+                      : e.target.value === keyOf(CLAIMS)
+                        ? CLAIMS
+                        : e.target.value === keyOf(GDP)
+                          ? GDP
+                          : e.target.value === keyOf(CONSUMPTION)
+                            ? CONSUMPTION
+                            : e.target.value === keyOf(RETAIL)
+                              ? RETAIL
+                              : e.target.value === keyOf(EMPLOYMENT)
+                                ? EMPLOYMENT
+                                : e.target.value === keyOf(PCE)
+                                  ? PCE
+                                  : e.target.value === keyOf(PPI)
+                                    ? PPI
+                                    : e.target.value === keyOf(CPI)
+                                      ? CPI
+                                      : selected?.key;
                 navigate("collection", {
                   asset: selectedKey?.identity ?? null,
                   asset_revision: selectedKey?.revision ?? null,
@@ -1695,6 +1737,8 @@ export function CollectionWorkbench({
           newEmployment ||
           newRetail ||
           newConsumption ||
+          newM3 ||
+          (filter === keyOf(M3) && m3Availability) ||
           newJolts ||
           (filter === keyOf(JOLTS) && joltsAvailability) ||
           newClaims ||
@@ -1705,6 +1749,15 @@ export function CollectionWorkbench({
           (filter === keyOf(CONSUMPTION) && consumptionAvailability)) ? (
         <CpiStrategyWorkbench
           transport={transport}
+          tenthProfile={
+            (newM3 || m3Target || filter === keyOf(M3)) && m3Availability
+              ? M3_PROFILE
+              : undefined
+          }
+          tenthAvailability={m3Availability}
+          tenthVisible={
+            !invalidIdentity && (filter === "all" || filter === keyOf(M3))
+          }
           ninthProfile={
             (newJolts || joltsTarget || filter === keyOf(JOLTS)) &&
             joltsAvailability
@@ -1885,7 +1938,8 @@ export function CollectionWorkbench({
             columns={["任务名称", "创建时间（北京时间）", "采集范围", "结果"]}
             pageSize={20}
             locateId={
-              (joltsTarget ||
+              (m3Target ||
+                joltsTarget ||
                 claimsTarget ||
                 gdpTarget ||
                 consumptionTarget ||

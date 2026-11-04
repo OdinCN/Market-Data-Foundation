@@ -1,4 +1,5 @@
 import {
+  M3_PROFILE,
   JOLTS_PROFILE,
   CLAIMS_PROFILE,
   GDP_PROFILE,
@@ -42,6 +43,7 @@ import { OverviewPage, PlatformPage } from "./WorkflowRuntime";
 import { Technical } from "./WorkflowTable";
 import { useResource } from "./workflowHooks";
 import {
+  M3,
   JOLTS,
   joltsOperationMatches,
   CLAIMS,
@@ -215,23 +217,25 @@ export default function App({
     ((!identity && !operation) || sameKey(key, CPI));
   const macroIdentity = identity ?? operationEntry?.asset?.identity;
   const macroProfile =
-    macroIdentity === JOLTS.identity
-      ? JOLTS_PROFILE
-      : macroIdentity === CLAIMS.identity
-        ? CLAIMS_PROFILE
-        : macroIdentity === GDP.identity
-          ? GDP_PROFILE
-          : macroIdentity === CONSUMPTION.identity
-            ? CONSUMPTION_PROFILE
-            : macroIdentity === RETAIL.identity
-              ? RETAIL_PROFILE
-              : macroIdentity === EMPLOYMENT.identity
-                ? EMPLOYMENT_PROFILE
-                : macroIdentity === PCE.identity
-                  ? PCE_PROFILE
-                  : macroIdentity === PPI.identity
-                    ? PPI_PROFILE
-                    : CPI_PROFILE;
+    macroIdentity === M3.identity
+      ? M3_PROFILE
+      : macroIdentity === JOLTS.identity
+        ? JOLTS_PROFILE
+        : macroIdentity === CLAIMS.identity
+          ? CLAIMS_PROFILE
+          : macroIdentity === GDP.identity
+            ? GDP_PROFILE
+            : macroIdentity === CONSUMPTION.identity
+              ? CONSUMPTION_PROFILE
+              : macroIdentity === RETAIL.identity
+                ? RETAIL_PROFILE
+                : macroIdentity === EMPLOYMENT.identity
+                  ? EMPLOYMENT_PROFILE
+                  : macroIdentity === PCE.identity
+                    ? PCE_PROFILE
+                    : macroIdentity === PPI.identity
+                      ? PPI_PROFILE
+                      : CPI_PROFILE;
   const collectionList =
     page.view === "collection" &&
     ["periodic", "executions"].includes(page.fields.get("tab") ?? "new");
@@ -249,6 +253,7 @@ export default function App({
         page.fields.get("tab") !== "periodic" ||
         collectionFilter !== keyOf(RETAIL)) &&
       (!collectionList || collectionFilter !== keyOf(JOLTS)) &&
+      (macroIdentity !== M3.identity || collectionList) &&
       (macroIdentity !== JOLTS.identity || collectionList) &&
       (!collectionList || collectionFilter !== keyOf(CLAIMS)) &&
       (macroIdentity !== CLAIMS.identity || collectionList) &&
@@ -353,6 +358,20 @@ export default function App({
     page.view === "collection",
     GDP_PROFILE,
   );
+  const m3Availability = useCpiAvailability(
+    transport,
+    generation,
+    !page.invalid &&
+      ["assets", "collection"].includes(page.view) &&
+      ((macroIdentity === M3.identity &&
+        (!revision || revision === M3.revision) &&
+        !operation) ||
+        (collectionList &&
+          !operation &&
+          (collectionFilter === "all" || collectionFilter === keyOf(M3)))),
+    page.view === "collection",
+    M3_PROFILE,
+  );
   const joltsAvailability = useCpiAvailability(
     transport,
     generation,
@@ -380,23 +399,25 @@ export default function App({
     CLAIMS_PROFILE,
   );
   const macroAvailability =
-    macroProfile.id === "jolts"
-      ? joltsAvailability
-      : macroProfile.id === "claims"
-        ? claimsAvailability
-        : macroProfile.id === "gdp"
-          ? gdpAvailability
-          : macroProfile.id === "consumption"
-            ? consumptionAvailability
-            : macroProfile.id === "retail"
-              ? retailAvailability
-              : macroProfile.id === "employment"
-                ? employmentAvailability
-                : macroProfile.id === "pce"
-                  ? pceAvailability
-                  : macroProfile.id === "ppi"
-                    ? ppiAvailability
-                    : cpiAvailability;
+    macroProfile.id === "m3"
+      ? m3Availability
+      : macroProfile.id === "jolts"
+        ? joltsAvailability
+        : macroProfile.id === "claims"
+          ? claimsAvailability
+          : macroProfile.id === "gdp"
+            ? gdpAvailability
+            : macroProfile.id === "consumption"
+              ? consumptionAvailability
+              : macroProfile.id === "retail"
+                ? retailAvailability
+                : macroProfile.id === "employment"
+                  ? employmentAvailability
+                  : macroProfile.id === "pce"
+                    ? pceAvailability
+                    : macroProfile.id === "ppi"
+                      ? ppiAvailability
+                      : cpiAvailability;
   const catalog = useResource<Catalog>(
     (signal) => request(transport, "/api/r5/cpi", query, signal),
     [transport, generation, query, wantsCatalog, page.view, page.invalid],
@@ -481,6 +502,7 @@ export default function App({
           !sameKey(key, RETAIL) &&
           !sameKey(key, CONSUMPTION) &&
           !sameKey(key, GDP) &&
+          !sameKey(key, M3) &&
           !sameKey(key, JOLTS) &&
           !sameKey(key, CLAIMS)) ||
           (!revision &&
@@ -505,6 +527,7 @@ export default function App({
       : asset;
   const menu = menus.find((m) => m[0] === page.view)!;
   const busy =
+    m3Availability.busy ||
     joltsAvailability.busy ||
     claimsAvailability.busy ||
     gdpAvailability.busy ||
@@ -841,6 +864,7 @@ export default function App({
                       employmentAvailability={employmentAvailability}
                       retailAvailability={retailAvailability}
                       consumptionAvailability={consumptionAvailability}
+                      m3Availability={m3Availability}
                       joltsAvailability={joltsAvailability}
                       claimsAvailability={claimsAvailability}
                       gdpAvailability={gdpAvailability}

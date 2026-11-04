@@ -380,7 +380,12 @@ it("D: projection keeps components/interfaces/assets/materials/services separate
   ).body as Catalog;
   const model = project(d, c, null);
   expect(model.components.map((c) => c.id)).toEqual(["Macro", "TDX", "KD"]);
-  expect(model.interfaces).toHaveLength(20);
+  expect(model.interfaces).toHaveLength(21);
+  expect(
+    model.assets.find(
+      (a) => a.key.identity === "mdf.macro.census.durable-capital-goods",
+    )?.label,
+  ).toBe("美国耐用品与核心资本品");
   expect(
     model.assets.find((a) => a.key.identity === "mdf.macro.bls.jolts")?.label,
   ).toBe("美国 JOLTS 职位空缺与劳动力流动");

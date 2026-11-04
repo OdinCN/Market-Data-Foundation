@@ -497,7 +497,7 @@ it("a verification configuration conflict clears old authentication success and 
   expect(button("重读核对配置").disabled).toBe(false);
 });
 
-it("all nine capabilities deduplicate complete relationships without hiding distinct paths", async () => {
+it("all configured capabilities deduplicate complete relationships without hiding distinct paths", async () => {
   const h = host();
   const original = await getPackage(h.transport, "macro", signal());
   const cpi = original.capabilities.find((cap) => cap.capability_id === "cpi")!;
@@ -522,7 +522,7 @@ it("all nine capabilities deduplicate complete relationships without hiding dist
   tab("来源配置");
   const region = screen.getByRole("region", { name: "能力与来源关系" });
   const details = region.querySelectorAll("details");
-  expect(details).toHaveLength(9);
+  expect(details).toHaveLength(original.capabilities.length);
   for (const [index, detail] of [...details].entries()) {
     const relations = original.capabilities[index].source_relations ?? [];
     const distinct = new Set(

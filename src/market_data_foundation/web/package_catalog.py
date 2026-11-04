@@ -24,6 +24,7 @@ from market_data_foundation.historical.daily_bars import RAW_DAILY_BARS
 from market_data_foundation.historical.employment_contract import BLS_EMPLOYMENT
 from market_data_foundation.historical.gdp_contract import GDP_DEFINITION
 from market_data_foundation.historical.jolts_contract import JOLTS_DEFINITION
+from market_data_foundation.historical.m3_contract import M3_DEFINITION
 from market_data_foundation.historical.retail_contract import CENSUS_RETAIL
 from market_data_foundation.web.dto import DTO
 from market_data_foundation.web.source_catalog import (
@@ -98,7 +99,7 @@ PACKAGES = (
         "宏观数据接入包",
         "Macro",
         "美国 CPI、PPI、JOLTS、就业、零售销售、消费与收入、初请与续请失业金、"
-        "GDP与增长、PCE价格指数九族；启用配置不代表来源准入或当前可执行。",
+        "GDP与增长、PCE价格指数及耐用品与核心资本品；启用不代表来源或运行就绪。",
         (
             CapabilityView(
                 capability_id="cpi",
@@ -123,6 +124,12 @@ PACKAGES = (
                 title="美国就业",
                 definition_ref=ref(BLS_EMPLOYMENT),
                 required_sources=["BLS"],
+            ),
+            CapabilityView(
+                capability_id="m3",
+                title="美国耐用品与核心资本品",
+                definition_ref=ref(M3_DEFINITION),
+                required_sources=["Census"],
             ),
             CapabilityView(
                 capability_id="retail",
@@ -240,7 +247,11 @@ class PackageCatalog:
                                 if row.source_name == "FRED"
                                 else row.source_name
                             ),
-                            release_calendar=calendars.get(row.source_name, "未装配"),
+                            release_calendar=(
+                                "Census M3 官方发布日历（调度未装配）"
+                                if cap.capability_id == "m3"
+                                else calendars.get(row.source_name, "未装配")
+                            ),
                             backup_status=(
                                 "CSV 备用数值通路未装配，不是当前可用来源"
                                 if cap.capability_id == "claims"

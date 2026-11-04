@@ -463,8 +463,12 @@ function CpiTimeSeriesCollectionContent({
       <h3>{profile.label} 受控采集</h3>
       <CpiAvailabilityNotice profile={profile} availability={availability} />
       <p>
-        共 {profile.series.length}{" "}
-        种口径一起采集。长范围由后端自动分批，无需手动拆分。
+        共 {profile.series.length} 种口径一起采集。
+        {profile.id === "m3" &&
+          "每项同时采集耐用品先行报告（Advance）与制造业完整报告，分别保留。"}
+        {profile.id === "m3"
+          ? "历史按已验证的最多240个月窗口逐指标获取，后台推进并持久记录进度；实际错误可按原请求恢复。"
+          : "长范围由后端自动分批，无需手动拆分。"}
       </p>
       <details>
         <summary>口径与采集说明</summary>
@@ -701,8 +705,9 @@ function CpiTimeSeriesCollectionContent({
                     </div>
                   </dl>
                 </button>
-                {profile.id === "retail" &&
-                  ["failed", "unknown"].includes(job.state) && (
+                {(profile.id === "retail" || profile.id === "m3") &&
+                  (["failed", "unknown"].includes(job.state) ||
+                    (profile.id === "m3" && job.state === "waiting")) && (
                     <button
                       disabled={busy || !enabled || !confirmed}
                       onClick={() => void resumeJob(job)}

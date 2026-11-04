@@ -13,6 +13,10 @@ export type Key = { identity: string; revision: string };
 export const keyOf = (key: Key) => `${key.identity}@${key.revision}`;
 export const sameKey = (a?: Key | null, b?: Key | null) =>
   !!a && !!b && a.identity === b.identity && a.revision === b.revision;
+export const M3: Key = {
+  identity: "mdf.macro.census.durable-capital-goods",
+  revision: "r1",
+};
 export const JOLTS: Key = {
   identity: "mdf.macro.bls.jolts",
   revision: "r1-segment1",
@@ -232,6 +236,7 @@ const titles: Record<string, string> = {
   "mdf.macro.fred-alfred.vintage-bundle": "FRED / ALFRED · 历史修订",
   "mdf.macro.fomc-statement-document": "美国 FOMC · 政策声明",
   "mdf.macro.ecb.sdmx.exr": "ECB SDMX · 汇率",
+  "mdf.macro.census.durable-capital-goods": "美国耐用品与核心资本品",
   "mdf.macro.estat.sdmx.prc_hicp_minr": "Eurostat SDMX · HICP",
   "mdf.market.bars.daily.raw": "TDX · 原始日线",
   "mdf.kd.sector-analysis.current-rank": "KD · 板块当前排名",

@@ -546,7 +546,115 @@ const claims: Help = {
     "/releases?event_id=dol-claims-2026-10-29&reference_week=2026-10-24&source_version=2026-10-29&read_mode=event",
 };
 
+const m3: Help = {
+  parameters: [
+    [
+      "include_mom",
+      "否 / false",
+      "计算同阶段同截止1月环比；页面随指标选择发送",
+    ],
+    ["start / end", "是", "YYYY-MM，含首尾，最多2400个月"],
+    ["series", "否 / 全部三项", "三项 series_id，逗号分隔"],
+    [
+      "dataset",
+      "否 / m3",
+      "both 两报告并排；m3 完整报告；advm3 先行报告；API省略仍m3",
+    ],
+    [
+      "local_only",
+      "否 / true",
+      "当前页面发 false 允许临时补源；历史页面发 true；查询永不写库",
+    ],
+    ["query_mode", "否 / current", "current 或 history，历史必须指定 as_of"],
+    ["as_of", "否", "含时区的历史截止时刻，inclusive"],
+    [
+      "as_of_basis",
+      "否 / available",
+      "available 为 MDF 提交后确认可用；observed 为来源观察时间",
+    ],
+  ],
+  fields: [
+    ["dataset / report_stage", "string", "独立的 m3/full 或 advm3/advance"],
+    [
+      "points[].mom_percent / mom_reason",
+      "decimal string|null / string|null",
+      "同阶段环比百分数；API六位，页面两位百分比；缺基期或零分母为null",
+    ],
+    ["points[].series_id / month", "string", "指标及参考月"],
+    [
+      "points[].value",
+      "decimal string|null",
+      "百万当期美元；零有效，缺值为 null",
+    ],
+    ["points[].source", "object", "季调、月频、单位、报告阶段和原始来源指针"],
+    [
+      "points[].observed_at / available_at",
+      "ISO string|null",
+      "来源观察时刻 / MDF 提交确认时刻；临时补源 available_at=null",
+    ],
+    [
+      "missing / source_failure / budget_exhausted",
+      "array / object|null / boolean",
+      "完整缺口、安全来源失败和有界查询状态",
+    ],
+    [
+      "coverage / persisted / provider_requests / provider_attempts",
+      "object / boolean / integer / integer|null",
+      "有效值覆盖、是否写库及本次请求次数；未知次数为 null",
+    ],
+    [
+      "query_mode / as_of / as_of_basis",
+      "string / ISO string|null / string",
+      "历史截止及观察或可用时间口径",
+    ],
+  ],
+  source:
+    "Census MDM/NO、NXA/NO、NXA/VS 分别请求；新订单扣除取消订单。m3 与 advm3 不拼接，快照不证明首发。",
+  coverage:
+    "本地优先，两阶段共用150秒来源预算、单请求20秒、页面180秒；按已验证的大窗补源，失败保留已有值和全部缺口。页面按所选指标展示同阶段同截止1月环比，两位百分比；API保留六位，缺前值/零分母为空并显示中文理由。仅选择金额时include_mom=false。",
+  missing:
+    "null、未返回和真实零分开；同一截止只读本地，不用今天值重建官方历史。",
+  periodNotice:
+    "参考月不是发布时间；临时补源未落库，available_at 为 null。历史截止读取 MDF observed 或 available，原始响应保留报告阶段。",
+  example: {
+    dataset: "m3",
+    report_stage: "full",
+    query_mode: "current",
+    as_of: null,
+    as_of_basis: "available",
+    local_only: false,
+    points: [
+      {
+        series_id: "durable_goods_new_orders",
+        month: "2025-01",
+        dataset: "m3",
+        value: "100",
+        status: "available",
+        origin: "upstream",
+        observed_at: "2026-11-03T00:00:00Z",
+        available_at: null,
+        revision: null,
+      },
+    ],
+    coverage: { expected: 1, available: 1 },
+    missing: [],
+    source_failure: null,
+    budget_exhausted: false,
+    status: "complete",
+    persisted: false,
+    provider_requests: 1,
+    provider_attempts: 1,
+  },
+  failureExample:
+    'HTTP 400\n{"status":"ERROR","classification":"m3_request_invalid"}\nHTTP 403\n{"status":"ERROR","classification":"m3_source_not_bound"}',
+  collectionHelp:
+    "POST jobs 四键 request_id/action/start/end，联合采集 m3/advm3 各三项；后台按已验证的最多240个月窗口逐指标推进，并保存已确认分片与待请求进度。240个月×两阶段×三指标通常六次来源请求，初始化可复用已确认阶段，这不是官方范围上限。来源缺值可完成并明确缺口，未请求不冒充来源缺值；来源失败或存储未知时 POST jobs/resume 使用同一编号和范围继续；限流等待保留 retry_at。新更新重新核验。GET releases 只读官方材料；未留存时返回证据空态。GET/PUT strategy 读取或保存暂停默认的周期策略，GET schedule 读取官方计划；只有显式运行 worker 才有进程和心跳。",
+  historyRequest:
+    "/query?start=2025-01&end=2025-02&dataset=m3&query_mode=history&local_only=true&as_of_basis=available&as_of=2026-11-03T12%3A00%3A00Z",
+};
+
 export function nativeQueryHelp(profile: MacroProfile): Help | undefined {
+  if (profile.id === "m3") return m3;
   if (profile.id === "jolts") return jolts;
   if (profile.id === "gdp") return gdp;
   if (profile.id === "claims") return claims;

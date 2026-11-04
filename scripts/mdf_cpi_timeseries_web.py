@@ -24,6 +24,7 @@ from market_data_foundation.web.cpi_timeseries_api import (
 from market_data_foundation.web.cpi_timeseries_host import create_timeseries_preview
 from market_data_foundation.web.gdp_runtime import GdpOptions
 from market_data_foundation.web.jolts_runtime import JoltsOptions
+from market_data_foundation.web.m3_runtime import M3Options
 from market_data_foundation.web.pce_dev_host import CANDIDATE_LISTENER
 from market_data_foundation.web.readonly_host import (
     ReadonlySettings,
@@ -77,6 +78,14 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_job(request, prefix="/api/r5/gdp/timeseries")
                 or admitted_job(request, prefix="/api/r5/claims/timeseries")
                 or admitted_job(request, prefix="/api/r5/jolts/timeseries")
+                or admitted_job(request, prefix="/api/r5/m3/timeseries")
+                or (
+                    request.url.path == "/api/r5/m3/timeseries/jobs/resume"
+                    and admitted_job(
+                        Request(dict(request.scope, path="/api/r5/m3/timeseries/jobs")),
+                        prefix="/api/r5/m3/timeseries",
+                    )
+                )
                 or (
                     request.url.path == "/api/r5/retail/timeseries/strategy"
                     and admitted_strategy(
@@ -101,6 +110,7 @@ class TimeSeriesHandler(CandidateHandler):
                 or admitted_strategy(request, prefix="/api/r5/gdp/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/claims/timeseries")
                 or admitted_strategy(request, prefix="/api/r5/jolts/timeseries")
+                or admitted_strategy(request, prefix="/api/r5/m3/timeseries")
             )
         return super().request_admitted(request)
 
@@ -190,6 +200,11 @@ def main():
     parser.add_argument("--allow-jolts-collect", action="store_true")
     parser.add_argument("--allow-jolts-source", action="store_true")
     parser.add_argument("--jolts-state-directory", type=Path)
+    parser.add_argument("--allow-m3-local-read", action="store_true")
+    parser.add_argument("--allow-m3-collect", action="store_true")
+    parser.add_argument("--allow-m3-source-query", action="store_true")
+    parser.add_argument("--m3-job-directory", type=Path)
+    parser.add_argument("--m3-request-control-path", type=Path)
     args = parser.parse_args()
     if args.enable_claims_timeseries and (
         args.claims_schedule_path is None or args.claims_job_directory is None
@@ -250,8 +265,23 @@ def main():
             allow_collect=args.allow_jolts_collect,
             allow_source=args.allow_jolts_source,
         )
+    m3_options = None
+    if args.allow_m3_local_read or args.allow_m3_collect or args.allow_m3_source_query:
+        require(
+            args.m3_job_directory is not None
+            and args.m3_request_control_path is not None,
+            "m3_independent_paths_required",
+        )
+        m3_options = M3Options(
+            job_directory=args.m3_job_directory,
+            request_control_path=args.m3_request_control_path,
+            allow_read=args.allow_m3_local_read,
+            allow_collect=args.allow_m3_collect,
+            allow_source=args.allow_m3_source_query,
+        )
     app = create_timeseries_preview(
         settings,
+        m3_options=m3_options,
         jolts_options=jolts_options,
         enabled=True,
         claims_options=ClaimsOptions(

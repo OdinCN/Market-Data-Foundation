@@ -69,6 +69,7 @@ export function cpiExecutionStateText(
   _profile: MacroProfile = CPI_PROFILE,
   scope: { start?: string | null; end?: string | null } = {},
 ) {
+  if (_profile.id === "m3" && state === "waiting") return "等待来源准入";
   if (_profile.id === "claims") {
     const data = (result?.result ?? result) as Record<string, unknown> | null;
     const c = data?.coverage as Record<string, number> | undefined;
@@ -162,6 +163,7 @@ type Schedule = {
   targets: (Stage & {
     reference_week?: string | null;
     reference_month?: string;
+    dataset?: "m3" | "advm3";
     reference_quarter?: string;
     estimate_kind?: string;
     publication_status?: string;
@@ -176,8 +178,10 @@ type Schedule = {
 };
 function ResultFacts({
   result,
+  profile,
 }: {
   result: Record<string, unknown> | null | undefined;
+  profile?: MacroProfile;
 }) {
   if (!result) return <p>执行结果未记录</p>;
   // Some automatic receipts wrap the job result. Preserve statistics recorded
@@ -189,10 +193,10 @@ function ResultFacts({
     nested = (nested as Record<string, unknown>).result;
   }
   const labels: Record<string, string> = {
-    saved_points: "新增观测",
-    saved_revisions: "新增修订",
-    provider_requests: "来源请求",
-    provider_attempts: "来源尝试",
+    saved_points: profile?.id === "m3" ? "本次执行新增观测" : "新增观测",
+    saved_revisions: profile?.id === "m3" ? "本次执行新增修订" : "新增修订",
+    provider_requests: profile?.id === "m3" ? "本次执行来源请求" : "来源请求",
+    provider_attempts: profile?.id === "m3" ? "本次执行来源尝试" : "来源尝试",
     scheduler_attempts_total: "累计调度尝试",
     actual_http_total: "累计实际请求",
   };
@@ -358,6 +362,77 @@ export function CpiExecutionDetail({
   return (
     <>
       <h3>执行详情</h3>
+      {profile.id === "m3" &&
+        result?.reports &&
+        typeof result.reports === "object" && (
+          <section aria-label="分报告采集结果">
+            <h4>两阶段采集结果</h4>
+            {Object.entries(
+              result.reports as Record<
+                string,
+                {
+                  coverage?: { available: number; expected: number };
+                  remaining_requests?: number;
+                  source_failure?: unknown;
+                  storage_failure?: unknown;
+                }
+              >,
+            ).map(([d, r]) => (
+              <p key={d}>
+                {d === "m3" ? "制造业完整报告" : "耐用品先行报告（Advance）"}：
+                {r.coverage
+                  ? `${r.coverage.available} / ${r.coverage.expected} 有值`
+                  : "执行中"}
+                ，待请求 {r.remaining_requests ?? "未记录"}；
+                {r.storage_failure
+                  ? "存储结果未知"
+                  : r.source_failure
+                    ? "来源请求失败/等待"
+                    : "已返回结果"}
+              </p>
+            ))}
+          </section>
+        )}
+
+      {profile.id === "m3" && result && (
+        <dl>
+          <Fact name="已确认来源分片">
+            {String(result.completed_requests ?? "未记录")}
+          </Fact>
+          <Fact name="待请求分片">
+            {String(result.remaining_requests ?? "未记录")}
+          </Fact>
+          {!!result.source_failure &&
+            typeof result.source_failure === "object" &&
+            !!(result.source_failure as Record<string, unknown>).retry_at && (
+              <Fact name="来源准入重试时间（北京时间）">
+                {formatBeijingTime(
+                  String(
+                    (result.source_failure as Record<string, unknown>).retry_at,
+                  ),
+                )}
+              </Fact>
+            )}
+          <Fact name="已确认请求点数">
+            {String(result.requested_points ?? "未记录")}
+          </Fact>
+          {Array.isArray(result.pending) && (
+            <Fact name="尚未确认请求的指标月">
+              {String(result.pending.length)}
+            </Fact>
+          )}
+          {!!result.source_failure && (
+            <Fact name="来源状态">
+              {typeof result.source_failure === "object"
+                ? String(
+                    (result.source_failure as Record<string, unknown>)
+                      .classification ?? "来源请求失败",
+                  )
+                : "来源请求失败"}
+            </Fact>
+          )}
+        </dl>
+      )}
       {material && (
         <section aria-label="发布材料执行结果">
           <h4>发布材料</h4>
@@ -410,7 +485,12 @@ export function CpiExecutionDetail({
         </Fact>
         {e.classification && <Fact name="结果分类">{e.classification}</Fact>}
       </dl>
-      <ResultFacts result={e.result} />
+      {profile.id === "m3" && (
+        <p className="small">
+          以下新增和请求数仅属于本次执行；恢复时已确认的分片不会重复请求，范围覆盖包括之前确认的分片。
+        </p>
+      )}
+      <ResultFacts result={e.result} profile={profile} />
       {profile.id === "claims" ? (
         <ClaimsCollectionDetails result={e.result} />
       ) : profile.id === "gdp" ? (
@@ -528,6 +608,9 @@ function CpiStrategyWorkbenchContent({
   sixthProfile,
   sixthAvailability,
   sixthVisible = true,
+  tenthProfile,
+  tenthAvailability,
+  tenthVisible = true,
   ninthProfile,
   ninthAvailability,
   ninthVisible = true,
@@ -551,6 +634,9 @@ function CpiStrategyWorkbenchContent({
   additionalProfile?: MacroProfile;
   additionalAvailability?: CpiAvailability;
   additionalVisible?: boolean;
+  tenthProfile?: MacroProfile;
+  tenthAvailability?: CpiAvailability;
+  tenthVisible?: boolean;
   ninthProfile?: MacroProfile;
   ninthAvailability?: CpiAvailability;
   ninthVisible?: boolean;
@@ -630,6 +716,13 @@ function CpiStrategyWorkbenchContent({
     seventhAvailability ?? emptyAvailability,
     !!seventhProfile && seventhVisible,
   );
+  const tenth = useStrategyControl(
+    transport,
+    generation,
+    tenthProfile ?? primaryProfile,
+    tenthAvailability ?? emptyAvailability,
+    !!tenthProfile && tenthVisible,
+  );
   const ninth = useStrategyControl(
     transport,
     generation,
@@ -645,6 +738,16 @@ function CpiStrategyWorkbenchContent({
     !!eighthProfile && eighthVisible,
   );
   const entries = [
+    ...(tenthProfile
+      ? [
+          {
+            profile: tenthProfile,
+            availability: tenthAvailability ?? emptyAvailability,
+            visible: tenthVisible,
+            ...tenth,
+          },
+        ]
+      : []),
     ...(ninthProfile
       ? [
           {
@@ -778,7 +881,9 @@ function CpiStrategyWorkbenchContent({
       ? `${target.release_at?.slice(0, 10) ?? "计划日期未知"} · ${target.reference_week ?? "参考周待发布材料确认"}`
       : quarterly
         ? target.reference_quarter
-        : target.reference_month;
+        : profile.id === "m3"
+          ? `${target.reference_month} · ${target.dataset === "advm3" ? "耐用品先行报告（Advance）" : "制造业完整报告"}`
+          : target.reference_month;
   const shown = !!selection;
   const currentCalendarError =
     calendar.data?.calendar?.error ?? calendar.data?.calendar_error;
@@ -1060,7 +1165,9 @@ function CpiStrategyWorkbenchContent({
                     className="month-plan-card"
                     role="listitem"
                     key={
-                      quarterly || weekly ? target.key : target.reference_month
+                      quarterly || weekly || profile.id === "m3"
+                        ? target.key
+                        : target.reference_month
                     }
                   >
                     <header>

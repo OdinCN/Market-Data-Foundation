@@ -589,7 +589,7 @@ function PackageEditor({
             <section aria-label="能力与来源关系">
               <h3>
                 {snapshot.package_id === "macro"
-                  ? "九族与来源关系"
+                  ? "能力与来源关系"
                   : "能力与来源关系"}
               </h3>
               {snapshot.capabilities.map((cap) => (

@@ -678,8 +678,8 @@
               "$ref": "#/components/schemas/FamilyDTO"
             },
             "type": "array",
-            "maxItems": 13,
-            "minItems": 13,
+            "maxItems": 14,
+            "minItems": 14,
             "title": "Families"
           },
           "instances": {

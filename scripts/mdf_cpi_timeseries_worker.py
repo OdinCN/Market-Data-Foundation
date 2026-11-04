@@ -33,9 +33,13 @@ def build_parser():
             "consumption",
             "gdp",
             "claims",
+            "m3",
         ),
         default="cpi",
     )
+    parser.add_argument("--opt-in-m3-worker", action="store_true")
+    parser.add_argument("--m3-job-directory", type=Path)
+    parser.add_argument("--m3-request-control-path", type=Path)
     parser.add_argument("--opt-in-claims-worker", action="store_true")
     parser.add_argument("--claims-schedule-path", type=Path)
     parser.add_argument("--claims-job-directory", type=Path)
@@ -87,6 +91,10 @@ def build_parser():
 def build_runtime(args):
     if not getattr(args, f"opt_in_{args.asset}_worker"):
         raise ValueError(f"explicit_{args.asset}_worker_opt_in_required")
+    if args.asset == "m3" and (
+        args.m3_job_directory is None or args.m3_request_control_path is None
+    ):
+        raise ValueError("m3_independent_paths_required")
     paths = [args.schedule_path, args.job_directory]
     if args.asset == "gdp":
         if args.gdp_schedule_path is None or args.gdp_job_directory is None:
@@ -139,8 +147,19 @@ def build_runtime(args):
         identity,
         identity,
     )
+    from market_data_foundation.web.m3_runtime import M3Options
+
     return TimeSeriesRuntime(
         settings,
+        m3_options=M3Options(
+            job_directory=args.m3_job_directory,
+            request_control_path=args.m3_request_control_path,
+            allow_read=True,
+            allow_collect=args.allow_collect,
+            allow_source=args.allow_collect,
+        )
+        if args.asset == "m3"
+        else None,
         claims_options=ClaimsOptions(
             args.claims_schedule_path,
             args.claims_job_directory,
@@ -236,7 +255,9 @@ def main(argv=None):
         runtime = build_runtime(args)
         # Construction and heartbeat never create/enable a strategy or collect.
         # tick rereads persistent enabled; even paused workers remain observable.
-        if args.asset == "claims":
+        if args.asset == "m3":
+            host = runtime.m3_query_host
+        elif args.asset == "claims":
             host = runtime.claims_timeseries
         elif args.asset == "gdp":
             host = runtime.gdp_timeseries
@@ -252,15 +273,42 @@ def main(argv=None):
             host = runtime.employment_timeseries
         else:
             host = runtime.pce_timeseries
-        if args.once:
-            emit(host.auto_strategy.tick())
+        if args.asset == "m3":
+            import json
+            from datetime import UTC, datetime
+
+            process_path = host.auto_strategy.strategy_path.with_name("m3-worker.json")
+            process_path.parent.mkdir(parents=True, exist_ok=True)
+            process_path.write_text(
+                json.dumps(
+                    {
+                        "pid": os.getpid(),
+                        "state": "running",
+                        "started_at": datetime.now(UTC).isoformat(),
+                    }
+                )
+            )
+        try:
+            if args.once:
+                emit(host.auto_strategy.tick())
+            else:
+                run_worker(
+                    host.auto_strategy,
+                    poll_seconds=args.poll_seconds,
+                    sleep=worker_sleep,
+                )
             return 0
-        run_worker(
-            host.auto_strategy,
-            poll_seconds=args.poll_seconds,
-            sleep=worker_sleep,
-        )
-        return 0
+        finally:
+            if args.asset == "m3":
+                process_path.write_text(
+                    json.dumps(
+                        {
+                            "pid": os.getpid(),
+                            "state": "stopped",
+                            "stopped_at": datetime.now(UTC).isoformat(),
+                        }
+                    )
+                )
     except KeyboardInterrupt:
         return 130
     except Exception as error:

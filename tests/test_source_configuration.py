@@ -252,11 +252,11 @@ def test_actual_preview_rejects_cross_origin_verification(
     verifier.assert_not_called()
 
 
-def test_nine_canonical_relationships_include_disabled_claims(tmp_path):
+def test_ten_canonical_relationships_include_disabled_claims(tmp_path):
     host = fixture_host(tmp_path / "config")
     with TestClient(create_package_app(host)) as http:
         body = http.get(PATH).json()
-    assert len(body["capabilities"]) == 9
+    assert len(body["capabilities"]) == 10
     assert body["enabled_capability_ids"] == []
     assert all(c["title"].startswith("美国") for c in body["capabilities"])
     claims = next(c for c in body["capabilities"] if c["capability_id"] == "claims")

@@ -50,7 +50,13 @@ def test_code_inventory_is_stable_bounded_and_never_opens_host_scope(monkeypatch
         assert body["evidence_mode"] == "CODE_CONTRACTS_ONLY"
         assert body["scope"] == "NAMED_R5_I2_ALLOWLIST"
         entries = body["entries"]
-        assert len(entries) == 20 <= source_catalog.MAX_ENTRIES
+        assert len(entries) == 21 <= source_catalog.MAX_ENTRIES
+        m3 = next(
+            e
+            for e in entries
+            if e["identity"] == "mdf.source.census.m3.capital-goods@r1"
+        )
+        assert m3["asset"]["identity"] == "mdf.macro.census.durable-capital-goods"
         assert len({e["identity"] for e in entries}) == len(entries)
 
         def order(e):

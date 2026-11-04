@@ -4,7 +4,7 @@ import {
   CpiExecutionDetail,
   cpiExecutionStateText,
 } from "./CpiStrategyWorkbench";
-import { CPI_PROFILE, PPI_PROFILE } from "./macroTimeSeriesProfile";
+import { CPI_PROFILE, PPI_PROFILE, M3_PROFILE } from "./macroTimeSeriesProfile";
 import { shiftMonth, type CpiExecution } from "./cpiTimeSeriesApi";
 
 afterEach(cleanup);
@@ -326,3 +326,43 @@ it.each([
     expect(screen.queryByText(/4 \/ 4/)).toBeNull();
   },
 );
+
+it("labels M3 recovery counters as the current execution and preserves full-scope coverage", () => {
+  render(
+    <CpiExecutionDetail
+      profile={M3_PROFILE}
+      execution={
+        {
+          id: "same-collection",
+          origin: "manual",
+          action: "update",
+          start: "2025-03",
+          end: "2025-04",
+          created_at: null,
+          started_at: null,
+          finished_at: null,
+          state: "complete",
+          classification: null,
+          result: {
+            saved_points: 0,
+            saved_revisions: 0,
+            provider_requests: 0,
+            provider_attempts: 0,
+            coverage_complete: true,
+            readback: {
+              expected_points: 6,
+              point_count: 6,
+              missing: [],
+              source_missing: [],
+              source_unavailable: [],
+            },
+          },
+        } satisfies CpiExecution
+      }
+    />,
+  );
+  expect(screen.getByText("本次执行新增观测")).toBeTruthy();
+  expect(screen.getByText("本次执行来源请求")).toBeTruthy();
+  expect(screen.getByText(/恢复时已确认的分片不会重复请求/)).toBeTruthy();
+  expect(screen.getByText("范围覆盖：6 / 6 条。")).toBeTruthy();
+});

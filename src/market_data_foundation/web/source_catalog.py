@@ -81,6 +81,11 @@ from market_data_foundation.historical.gdp_contract import (
 )
 from market_data_foundation.historical.jolts_binding import JOLTS_BINDING, JOLTS_SOURCE
 from market_data_foundation.historical.jolts_contract import JOLTS_DEFINITION
+from market_data_foundation.historical.m3_contract import (
+    M3_BINDING,
+    M3_DEFINITION,
+    M3_SOURCE,
+)
 from market_data_foundation.historical.sdmx_official import _contracts as sdmx_contracts
 from market_data_foundation.historical.tdx_recent_daily import (
     RECENT_BINDING,
@@ -333,6 +338,15 @@ def directory(query: DirectoryQuery) -> DirectoryDTO:
             PCE_SOURCE,
             PCE_BINDING_CANDIDATE,
             PCE_DEFINITION,
+        ),
+        (
+            "Macro",
+            "Census",
+            "m3_contract",
+            "M3_SOURCE",
+            M3_SOURCE,
+            M3_BINDING,
+            M3_DEFINITION,
         ),
         (
             "Macro",
