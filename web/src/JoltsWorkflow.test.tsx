@@ -263,8 +263,8 @@ it("JOLTS strategy toggles with one PUT and no confirmation dialog", async () =>
       }}
     />,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "启动" }));
-  await screen.findByRole("button", { name: "暂停" });
+  fireEvent.click(await screen.findByRole("switch", { checked: false }));
+  await screen.findByRole("switch", { checked: true });
   expect(puts).toBe(1);
   expect(screen.queryByRole("dialog")).toBeNull();
 });

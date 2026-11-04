@@ -92,7 +92,7 @@ export function WorkflowTable({
                   onClick={() => onSelect(row.id)}
                 >
                   {row.cells.map((cell, i) => (
-                    <td key={i}>
+                    <td key={i} data-label={columns[i]}>
                       {i === 0 ? (
                         <button
                           className="row-link"

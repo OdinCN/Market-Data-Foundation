@@ -636,7 +636,7 @@ it("lists all three preset strategies in one table and uses explicit BEA calenda
   const row = within(region)
     .getByRole("button", { name: /选择 美国 PCE/ })
     .closest("tr")!;
-  fireEvent.click(within(row).getByRole("button", { name: "启动" }));
+  fireEvent.click(within(row).getByRole("switch", { checked: false }));
   await flush();
   expect(h.calls.filter((c) => c.method === "PUT")).toEqual([
     {

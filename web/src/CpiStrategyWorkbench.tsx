@@ -17,6 +17,7 @@ import type { Transport } from "./api";
 import { formatBeijingTime } from "./beijingTime";
 import { releaseLink, releaseReasonTexts } from "./macroReleaseLinks";
 import { Fact, WorkflowTable } from "./WorkflowTable";
+import { StrategySwitch } from "./StrategySwitch";
 import { keyOf } from "./workflowModel";
 import { useVisiblePolling } from "./useVisiblePolling";
 import {
@@ -521,6 +522,8 @@ function useStrategyControl(
 ) {
   const [saving, setSaving] = useState(false);
   const [uncertain, setUncertain] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const uncertainTarget = useRef<boolean | null>(null);
   const writing = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -553,6 +556,7 @@ function useStrategyControl(
     )
       return;
     writing.current = true;
+    setNotice(null);
     resource.invalidate();
     setSaving(true);
     try {
@@ -564,7 +568,10 @@ function useStrategyControl(
       );
       if (mounted.current) resource.commit(value);
     } catch {
-      if (mounted.current) setUncertain(true);
+      if (mounted.current) {
+        uncertainTarget.current = !data.enabled;
+        setUncertain(true);
+      }
     } finally {
       writing.current = false;
       if (mounted.current) setSaving(false);
@@ -573,13 +580,24 @@ function useStrategyControl(
   }
   // A successful independent read resolves an uncertain PUT, without repeating it.
   useEffect(() => {
-    if (data) setUncertain(false);
+    if (data) {
+      if (uncertainTarget.current !== null) {
+        setNotice(
+          data.enabled === uncertainTarget.current
+            ? "已回读确认当前策略"
+            : "切换未确认，已回读当前策略",
+        );
+        uncertainTarget.current = null;
+      }
+      setUncertain(false);
+    }
   }, [data]);
   return {
     resource,
     data,
     saving,
     uncertain,
+    notice,
     toggle,
   };
 }
@@ -902,13 +920,14 @@ function CpiStrategyWorkbenchContent({
   const calendarTime = (value?: string | null) =>
     formatBeijingTime(value, "未记录").replace(" 北京时间", "");
   return (
-    <>
+    <div className="periodic-layout">
       {(resource.stale || calendar.stale) && (
         <p role="alert">状态已陈旧，保留上次数据并自动重读。</p>
       )}
       {uncertain && <p role="alert">策略保存结果未知，正在自动核实。</p>}
       <WorkflowTable
         label="周期任务"
+        className="periodic-workbench"
         columns={[
           "策略",
           "采集目标",
@@ -947,10 +966,14 @@ function CpiStrategyWorkbenchContent({
               formatBeijingTime(
                 e.data?.last_successful_collection_at,
                 "未记录",
-              ),
+              ).replace(" 北京时间", ""),
               e.data?.latest_data_period ?? "未知",
-              <span key="toggle">
-                <button
+              <span key="toggle" className="strategy-control">
+                <StrategySwitch
+                  asset={macroAssetLabel(e.profile)}
+                  enabled={e.data?.enabled ?? null}
+                  saving={e.saving}
+                  uncertain={e.uncertain}
                   disabled={
                     !e.data ||
                     e.saving ||
@@ -961,13 +984,17 @@ function CpiStrategyWorkbenchContent({
                       (!e.availability.data?.web_capabilities.collect ||
                         (e.profile.id === "gdp" && !!e.availability.failure)))
                   }
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void e.toggle();
-                  }}
-                >
-                  {e.saving ? "保存中…" : e.data?.enabled ? "暂停" : "启动"}
-                </button>
+                  onToggle={() => void e.toggle()}
+                />
+                {(e.uncertain || e.resource.stale || e.notice) && (
+                  <span className="strategy-control-note" role="status">
+                    {e.uncertain
+                      ? "保存结果未知，正在核实"
+                      : e.resource.stale
+                        ? "状态读取失败，等待重读"
+                        : e.notice}
+                  </span>
+                )}
                 {!e.availability.data?.web_capabilities.collect &&
                   e.availability.data?.web_capabilities.reason && (
                     <span>
@@ -1010,9 +1037,20 @@ function CpiStrategyWorkbenchContent({
                 {data.latest_data_period ?? "未知"}
               </Fact>
               <Fact name="各序列最新参考期">
-                {Object.entries(data.latest_data_periods ?? {})
-                  .map(([id, period]) => `${id}：${period ?? "未知"}`)
-                  .join("；") || "未知"}
+                {Object.keys(data.latest_data_periods ?? {}).length ? (
+                  <ul className="strategy-periods">
+                    {Object.entries(data.latest_data_periods ?? {}).map(
+                      ([id, period]) => (
+                        <li key={id}>
+                          <span>{id}</span>
+                          <span>{period ?? "未知"}</span>
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                ) : (
+                  "未知"
+                )}
               </Fact>
               {data.collection_facts_classification && (
                 <Fact name="采集状态读取">
@@ -1372,6 +1410,6 @@ function CpiStrategyWorkbenchContent({
           </>
         )}
       </WorkflowTable>
-    </>
+    </div>
   );
 }

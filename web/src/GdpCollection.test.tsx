@@ -44,7 +44,12 @@ const response = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status });
 const flush = () => act(async () => {});
 const button = (name: string) =>
-  screen.getByRole("button", { name }) as HTMLButtonElement;
+  screen.getByRole(
+    ["启动", "暂停", "保存中…"].includes(name) ? "switch" : "button",
+    ["启动", "暂停", "保存中…"].includes(name)
+      ? { checked: name === "暂停" }
+      : { name },
+  ) as HTMLButtonElement;
 const nativeStatus = {
   ...fixture.status,
   latest_months: {},

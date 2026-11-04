@@ -443,13 +443,13 @@ it("shows null reference-week calendar as release plans and toggles strategy onc
     fixture.schedule.calendar.source,
   );
   expect(within(source).queryByRole("button")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "启动" }));
+  fireEvent.click(screen.getByRole("switch", { checked: false }));
   await flush();
   expect(writes).toEqual([{ enabled: true }]);
   expect(screen.getByText("后台进程").parentElement!.textContent).toContain(
     "尚未启动",
   );
-  fireEvent.click(screen.getByRole("button", { name: "暂停" }));
+  fireEvent.click(screen.getByRole("switch", { checked: true }));
   await flush();
   expect(writes).toEqual([{ enabled: true }, { enabled: false }]);
 });

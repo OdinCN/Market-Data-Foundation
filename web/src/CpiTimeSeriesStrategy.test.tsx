@@ -29,7 +29,12 @@ const availability: CpiAvailability = {
 const response = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), { status });
 const button = (name: string) =>
-  screen.getByRole("button", { name }) as HTMLButtonElement;
+  screen.getByRole(
+    ["启动", "暂停", "保存中…"].includes(name) ? "switch" : "button",
+    ["启动", "暂停", "保存中…"].includes(name)
+      ? { checked: name === "暂停" }
+      : { name },
+  ) as HTMLButtonElement;
 const flush = () => act(async () => {});
 const advance = () =>
   act(async () => {
@@ -140,7 +145,7 @@ it("has one preset row and one inline toggle; detail has no create, history edit
   expect(
     screen.queryByRole("button", { name: /创建|刷新|新建周期/ }),
   ).toBeNull();
-  expect(screen.getAllByRole("button", { name: "启动" })).toHaveLength(1);
+  expect(screen.getAllByRole("switch", { checked: false })).toHaveLength(1);
   fireEvent.click(button("启动"));
   await flush();
   fireEvent.click(button("暂停"));
@@ -506,4 +511,29 @@ it("identifies blocked calendar months without erasing prior execution facts", a
   ).toBeTruthy();
   expect(within(card).getByText("新增观测")).toBeTruthy();
   expect(within(card).getByText("4")).toBeTruthy();
+});
+
+it("keeps enabled distinct from a stopped executor and reports a failed change after readback", async () => {
+  const h = fixture({
+    exists: true,
+    enabled: true,
+    worker: { state: "stopped", last_heartbeat_at: null },
+  });
+  render(
+    <CpiTimeSeriesStrategy
+      transport={h.transport}
+      availability={availability}
+    />,
+  );
+  await flush();
+  expect(
+    screen.getByRole("switch", { checked: true }).getAttribute("aria-label"),
+  ).toContain("CPI");
+  expect(screen.getByText("已停止")).toBeTruthy();
+  h.failSave();
+  fireEvent.click(screen.getByRole("switch"));
+  await flush();
+  expect(screen.getByRole("switch", { checked: true })).toBeTruthy();
+  expect(screen.getByText("切换未确认，已回读当前策略")).toBeTruthy();
+  expect(h.calls.filter((c) => c.method === "PUT")).toHaveLength(1);
 });

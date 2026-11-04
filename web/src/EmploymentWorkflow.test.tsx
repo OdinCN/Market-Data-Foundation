@@ -411,10 +411,10 @@ it("employment strategy uses its independent plan and only start/pause controls"
     />,
   );
   await flush();
-  fireEvent.click(screen.getByRole("button", { name: /启动/ }));
+  fireEvent.click(screen.getByRole("switch", { checked: false }));
   await flush();
   expect(writes).toEqual([{ enabled: true }]);
-  expect(screen.getByRole("button", { name: /暂停/ })).toBeTruthy();
+  expect(screen.getByRole("switch", { checked: true })).toBeTruthy();
 });
 
 it.each(["ui=r5&view=assets", "page=3"])(

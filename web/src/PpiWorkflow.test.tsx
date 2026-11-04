@@ -597,10 +597,8 @@ it("shows CPI and PPI as two preset rows in one table with one toggle each and s
   await flush();
   expect(screen.getAllByRole("table")).toHaveLength(1);
   const row = screen.getByText("美国 PPI").closest("tr")!;
-  expect(
-    within(row).getAllByRole("button", { name: /^(启动|暂停)$/ }),
-  ).toHaveLength(1);
-  fireEvent.click(within(row).getByRole("button", { name: "启动" }));
+  expect(within(row).getAllByRole("switch")).toHaveLength(1);
+  fireEvent.click(within(row).getByRole("switch", { checked: false }));
   await flush();
   expect(h.calls.filter((c) => c.method === "PUT")).toEqual([
     {

@@ -586,7 +586,7 @@ it("uses the real shared App retail periodic row with start/pause and truthful d
   await waitFor(() =>
     expect(
       within(row)
-        .getByRole("button", { name: "启动" })
+        .getByRole("switch", { checked: false })
         .hasAttribute("disabled"),
     ).toBe(false),
   );
@@ -596,10 +596,10 @@ it("uses the real shared App retail periodic row with start/pause and truthful d
   expect(screen.getByText("2026-11-17 21:30:00 北京时间")).toBeTruthy();
   expect(screen.getByText("target_month_not_returned")).toBeTruthy();
   expect(screen.getByText(/继续使用有效缓存/)).toBeTruthy();
-  fireEvent.click(within(row).getByRole("button", { name: "启动" }));
-  await screen.findByRole("button", { name: "暂停" });
-  fireEvent.click(screen.getByRole("button", { name: "暂停" }));
-  await screen.findByRole("button", { name: "启动" });
+  fireEvent.click(within(row).getByRole("switch", { checked: false }));
+  await screen.findByRole("switch", { checked: true });
+  fireEvent.click(screen.getByRole("switch", { checked: true }));
+  await screen.findByRole("switch", { checked: false });
   expect(strategyCalls.filter((m) => m === "PUT")).toHaveLength(2);
   expect(h.calls.some((c) => /\/cpi\/timeseries/.test(c.path))).toBe(false);
 });
@@ -622,7 +622,7 @@ it.each(["loading", "failed"])(
     });
     expect(
       within(row)
-        .getByRole("button", { name: "启动" })
+        .getByRole("switch", { checked: false })
         .hasAttribute("disabled"),
     ).toBe(true);
     fireEvent.click(row);
