@@ -65,7 +65,7 @@ export function useAutoCollection(
     };
   }, []);
   async function read(signal?: AbortSignal) {
-    const [strategy, control] = await Promise.all([
+    const [strategy, control, schedule] = await Promise.all([
       readCpiStrategy(transport, signal, profile),
       cpiRequest<WorkerObservation>(
         transport,
@@ -76,8 +76,20 @@ export function useAutoCollection(
       )
         .then(checked)
         .catch(() => null),
+      cpiRequest<{
+        calendar_status: string;
+        targets: Record<string, unknown>[];
+      }>(transport, "/schedule", { signal }, 15000, profile)
+        .then((value) =>
+          value &&
+          typeof value.calendar_status === "string" &&
+          Array.isArray(value.targets)
+            ? value
+            : null,
+        )
+        .catch(() => null),
     ]);
-    return { ...strategy, control };
+    return { ...strategy, control, schedule };
   }
   const resource = useVisiblePolling(
     read,
@@ -210,7 +222,15 @@ export function useAutoCollection(
   };
 }
 export function autoCollectionState(entry: {
-  data: (CpiStrategy & { control: WorkerObservation | null }) | null;
+  data:
+    | (CpiStrategy & {
+        control: WorkerObservation | null;
+        schedule?: {
+          calendar_status: string;
+          targets: Record<string, unknown>[];
+        } | null;
+      })
+    | null;
   saving: boolean;
   uncertain: boolean;
   resource: { stale: boolean };
@@ -218,27 +238,49 @@ export function autoCollectionState(entry: {
   const { data } = entry;
   if (entry.saving) return data?.enabled ? "正在处理" : "正在开启";
   if (!data || entry.uncertain || entry.resource.stale) return "待核实";
-  if (!data.enabled)
-    return data.worker.state === "running"
-      ? "已暂停（当前任务收尾）"
-      : "已暂停";
+  if (!data.enabled) return "已暂停";
   if (!data.control) return "待核实";
   if (!data.control.online) return "需处理";
-  if (data.execution_state === "running" || data.worker.state === "running")
-    return "采集中";
+  // A running loop heartbeat includes calendar checks; task stages establish collection.
+  if (!data.schedule) return "待核实（计划读取未确认）";
+  const stages: Record<string, unknown>[] = [];
+  function collect(value: unknown) {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      value.forEach(collect);
+      return;
+    }
+    const item = value as Record<string, unknown>;
+    if (typeof item.state === "string") stages.push(item);
+    for (const key of ["target", "auto", "history"]) collect(item[key]);
+  }
+  data.schedule.targets.forEach(collect);
+  if (stages.some((s) => s.state === "running")) return "采集中";
   if (
-    ["failed", "blocked", "pending_exhausted", "error"].includes(
-      data.execution_state ?? "",
-    )
+    stages.some((s) => ["unknown", "outcome_unknown"].includes(String(s.state)))
   )
-    return "需处理";
-  if (["unknown", "outcome_unknown"].includes(data.execution_state ?? ""))
     return "待核实";
   if (
-    ["awaiting_provider", "retrying", "pending"].includes(
-      data.execution_state ?? "",
+    stages.some(
+      (s) =>
+        s.state === "awaiting_provider" ||
+        s.state === "retrying" ||
+        (s.state === "failed" && !!s.next_attempt_at),
     )
   )
     return "重试中";
+  if (
+    stages.some((s) =>
+      ["failed", "pending_exhausted", "error"].includes(String(s.state)),
+    ) ||
+    data.schedule.targets.some((t) => t.calendar_execution_blocked)
+  )
+    return "需处理";
+  if (
+    !["fresh", "degraded_cached_calendar"].includes(
+      data.schedule.calendar_status,
+    )
+  )
+    return "需处理（日历未就绪）";
   return data.next_release_at ? "待发布" : "待核实（下次发布未确认）";
 }

@@ -17,6 +17,10 @@ function fixture(initialEnabled = false, initialOnline = false) {
   let release = () => {};
   const calls: { path: string; method: string }[] = [];
   const transport: Transport = async (path, init) => {
+    if (String(path).endsWith("/schedule"))
+      return new Response(
+        JSON.stringify({ calendar_status: "fresh", targets: [] }),
+      );
     const method = init?.method ?? "GET";
     calls.push({ path: String(path), method });
     if (method === "POST") {
@@ -182,4 +186,29 @@ it("source capability refusal has no runtime or policy effects", async () => {
   });
   expect(h.calls.every((c) => c.method === "GET")).toBe(true);
   expect(result.current.notice).toContain("binding_missing");
+});
+
+it("distinguishes real task activity from loop heartbeat, retry and unknown outcomes", () => {
+  const value = {
+    data: {
+      enabled: true,
+      worker: { state: "running" },
+      control: { online: true },
+      next_release_at: "2026-11-10T13:30:00Z",
+      schedule: { calendar_status: "fresh", targets: [] },
+    },
+    saving: false,
+    uncertain: false,
+    resource: { stale: false },
+  } as unknown as Parameters<typeof autoCollectionState>[0];
+  expect(autoCollectionState(value)).toBe("待发布");
+  for (const [state, next_attempt_at, expected] of [
+    ["running", null, "采集中"],
+    ["failed", "2026-11-05T00:00:00Z", "重试中"],
+    ["outcome_unknown", null, "待核实"],
+    ["failed", null, "需处理"],
+  ]) {
+    value.data!.schedule!.targets = [{ target: { state, next_attempt_at } }];
+    expect(autoCollectionState(value)).toBe(expected);
+  }
 });
