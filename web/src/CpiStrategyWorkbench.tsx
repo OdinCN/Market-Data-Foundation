@@ -1,3 +1,4 @@
+import { planTargetKey, type PlanIssue } from "./autoCollectionDiagnosis";
 import { ClaimsCollectionDetails } from "./ClaimsCollectionDetails";
 import { CodeBlock } from "./CpiQueryDetails";
 import { quarterValid } from "./QuarterField";
@@ -17,7 +18,7 @@ import type { Transport } from "./api";
 import { formatBeijingTime } from "./beijingTime";
 import { releaseLink, releaseReasonTexts } from "./macroReleaseLinks";
 import { Fact, WorkflowTable } from "./WorkflowTable";
-import { useAutoCollection, autoCollectionState } from "./useAutoCollection";
+import { useAutoCollection } from "./useAutoCollection";
 import { StrategySwitch } from "./StrategySwitch";
 import { keyOf } from "./workflowModel";
 import { useVisiblePolling } from "./useVisiblePolling";
@@ -597,6 +598,34 @@ function CpiStrategyWorkbenchContent({
   selectedId?: string | null;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const layout = useRef<HTMLDivElement>(null);
+  const [locatedIssue, setLocatedIssue] = useState<string | null>(null);
+  useEffect(() => setLocatedIssue(null), [selectedId, selected]);
+  function locateIssue(issue: PlanIssue) {
+    const card = [
+      ...(layout.current?.querySelectorAll<HTMLElement>("[data-plan-key]") ??
+        []),
+    ].find((node) => node.dataset.planKey === issue.targetKey);
+    if (!card) return;
+    if (issue.stage === "历史核实")
+      card
+        .querySelector<HTMLDetailsElement>(".stage-history")
+        ?.setAttribute("open", "");
+    const pane = layout.current?.querySelector<HTMLElement>(".detail-pane");
+    const target =
+      issue.stage === "历史核实"
+        ? (card.querySelector<HTMLElement>(".stage-history") ?? card)
+        : card;
+    if (pane)
+      pane.scrollTop +=
+        target.getBoundingClientRect().top -
+        pane.getBoundingClientRect().top -
+        16;
+    target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+    setLocatedIssue(issue.targetKey ?? null);
+  }
+
   const emptyAvailability: CpiAvailability = {
     data: null,
     legacy: false,
@@ -821,18 +850,20 @@ function CpiStrategyWorkbenchContent({
           ? `${target.reference_month} · ${target.dataset === "advm3" ? "耐用品先行报告（Advance）" : "制造业完整报告"}`
           : target.reference_month;
   const shown = !!selection;
+  const displayPlan =
+    (data?.schedule as unknown as Schedule | null) ?? calendar.data;
   const currentCalendarError =
-    calendar.data?.calendar?.error ?? calendar.data?.calendar_error;
-  const refresh = calendar.data?.calendar;
+    displayPlan?.calendar?.error ?? displayPlan?.calendar_error;
+  const refresh = displayPlan?.calendar;
   const calendarUsable =
-    calendar.data?.calendar_status === "fresh" ||
-    (calendar.data?.calendar_status === "degraded_cached_calendar" &&
+    displayPlan?.calendar_status === "fresh" ||
+    (displayPlan?.calendar_status === "degraded_cached_calendar" &&
       refresh?.refresh_mode === "cache" &&
       !!refresh.cache_valid_until);
   const calendarTime = (value?: string | null) =>
     formatBeijingTime(value, "未记录").replace(" 北京时间", "");
   return (
-    <div className="periodic-layout">
+    <div className="periodic-layout" ref={layout}>
       {(resource.stale || calendar.stale) && (
         <p role="alert">状态已陈旧，保留上次数据并自动重读。</p>
       )}
@@ -892,11 +923,12 @@ function CpiStrategyWorkbenchContent({
                   />
                 </span>
                 <span className="auto-state">
-                  运行情况：{autoCollectionState(e)}
+                  运行情况：{e.diagnosis.state}
                 </span>
                 {e.data?.enabled &&
                   e.data.control &&
                   !e.data.control.online &&
+                  e.data.control.registered &&
                   !e.uncertain && (
                     <button
                       className="auto-recover"
@@ -914,16 +946,16 @@ function CpiStrategyWorkbenchContent({
                     {e.notice}
                   </span>
                 )}
-                {e.data?.enabled &&
-                  (!e.data.control?.online ||
-                    autoCollectionState(e) === "需处理") && (
-                    <span className="strategy-control-note">{e.reason}</span>
-                  )}
-                {!e.availability.data?.web_capabilities.collect && (
+                {(!e.data ||
+                  e.data.enabled ||
+                  e.diagnosis.issues.length > 0) && (
                   <span className="strategy-control-note">
-                    来源未就绪：
-                    {e.availability.data?.web_capabilities.reason ??
-                      "请检查来源配置与凭据"}
+                    {e.diagnosis.listReason}
+                  </span>
+                )}
+                {!e.diagnosis.issues.length && e.diagnosis.advisories[0] && (
+                  <span className="small">
+                    远期提示：{e.diagnosis.advisories[0].summary}
                   </span>
                 )}
               </span>,
@@ -942,23 +974,64 @@ function CpiStrategyWorkbenchContent({
           }))}
       >
         {shown && detailVisible && !data && (
-          <p role="status">
-            {profile.label} 策略
-            {resource.failure || entry.availability.failure
-              ? "读取失败，等待重读。"
-              : "正在读取…"}
-          </p>
+          <section aria-label="自动采集问题说明">
+            <p role="status">
+              {profile.label} 策略
+              {resource.failure || entry.availability.failure
+                ? "读取失败，等待重读。"
+                : "正在读取…"}
+            </p>
+            {entry.diagnosis.issues.map((issue, index) => (
+              <article className="auto-issue" key={index}>
+                <strong>{issue.summary}</strong>
+                <p>
+                  对象：{issue.period} · {issue.stage}
+                </p>
+                <p>影响：{issue.impact}</p>
+                <p>下一步：{issue.next}</p>
+              </article>
+            ))}
+          </section>
         )}
         {shown && detailVisible && data && (
           <>
             <h3>{profile.label} 策略详情</h3>
             <p className="auto-summary">
               自动采集{data.enabled ? "已开启" : "已暂停"} ·{" "}
-              {autoCollectionState(entry)}
+              {entry.diagnosis.state}
             </p>
-            {data.enabled && !data.control?.online && (
-              <p role="status">{entry.reason}；请使用任务行的恢复自动采集。</p>
-            )}
+            <section className="auto-diagnosis" aria-label="自动采集问题说明">
+              <p>{entry.diagnosis.summary}</p>
+              {entry.diagnosis.issues.map((issue, index) => (
+                <article
+                  key={`${issue.targetKey ?? "asset"}/${issue.stage}/${index}`}
+                  className="auto-issue"
+                >
+                  <strong>{issue.summary}</strong>
+                  <p>
+                    对象：{issue.period} · {issue.stage}
+                  </p>
+                  <p>影响：{issue.impact}</p>
+                  <p>下一步：{issue.next}</p>
+                  {issue.targetKey && (
+                    <button onClick={() => locateIssue(issue)}>
+                      定位{issue.period} · {issue.stage}
+                    </button>
+                  )}
+                </article>
+              ))}
+              {entry.diagnosis.advisories.map((issue, index) => (
+                <article key={`advisory-${index}`} className="auto-advisory">
+                  <strong>远期日历提示：{issue.period}</strong>
+                  <p>{issue.reason}。</p>
+                  <p>{issue.impact}</p>
+                  <p>下一步：{issue.next}</p>
+                  <button onClick={() => locateIssue(issue)}>
+                    定位{issue.period} · {issue.stage}
+                  </button>
+                </article>
+              ))}
+            </section>
             <p className="small">
               暂停只停止后续自动触发；已在采集的任务正常收尾，手动采集不受影响。最新数据期不代表所有序列齐全。
             </p>
@@ -1019,12 +1092,12 @@ function CpiStrategyWorkbenchContent({
                             "日历来源异常，缓存有效性尚未确认",
                           clock_reversal: "时间异常",
                         } as Record<string, string>
-                      )[calendar.data?.calendar_status ?? ""] ?? "尚未核实")}
+                      )[displayPlan?.calendar_status ?? ""] ?? "尚未核实")}
                 </Fact>
                 <Fact name="日历最后成功获取时间（北京时间）">
                   {formatBeijingTime(
-                    calendar.data?.calendar?.acquired_at ??
-                      calendar.data?.calendar?.fetched_at,
+                    displayPlan?.calendar?.acquired_at ??
+                      displayPlan?.calendar?.fetched_at,
                     "未记录",
                   )}
                 </Fact>
@@ -1088,7 +1161,7 @@ function CpiStrategyWorkbenchContent({
                 主日历入口暂不可用，已切换到同一机构的官方备用入口。存在冲突或未覆盖的
                 {periodLabel}暂停自动采集，等待主入口确认。
               </p>
-            ) : calendar.data?.calendar_status === "degraded_cached_calendar" &&
+            ) : displayPlan?.calendar_status === "degraded_cached_calendar" &&
               !calendarUsable ? (
               <p role="status">
                 本次日历刷新失败，保留已缓存计划，等待刷新确认。
@@ -1122,6 +1195,11 @@ function CpiStrategyWorkbenchContent({
                 <summary>日历刷新详情</summary>
                 <p>{currentCalendarError}</p>
               </details>
+            )}
+            {entry.diagnosis.issues.length > 0 && (
+              <p className="small">
+                下方最近执行记录与上述事项分别判断；其他期次或手动成功不表示该问题已解决。
+              </p>
             )}
             <RecentExecution
               transport={transport}
@@ -1190,7 +1268,7 @@ function CpiStrategyWorkbenchContent({
               role="list"
               aria-label={`${profile.label} ${periodLabel}计划`}
             >
-              {[...(calendar.data?.targets ?? [])]
+              {[...(displayPlan?.targets ?? [])]
                 .sort((a, b) =>
                   quarterly
                     ? (b.reference_quarter ?? "").localeCompare(
@@ -1201,7 +1279,8 @@ function CpiStrategyWorkbenchContent({
                 )
                 .map((target) => (
                   <article
-                    className="month-plan-card"
+                    className={`month-plan-card${locatedIssue === planTargetKey(target) ? " located-plan" : ""}`}
+                    data-plan-key={planTargetKey(target)}
                     role="listitem"
                     key={
                       quarterly || weekly || profile.id === "m3"
@@ -1368,7 +1447,7 @@ function CpiStrategyWorkbenchContent({
                     </div>
                   </article>
                 ))}
-              {!calendar.data?.targets.length && (
+              {!displayPlan?.targets.length && (
                 <p>
                   {calendar.failure
                     ? `${periodLabel}计划读取失败，当前计划尚未核实。`

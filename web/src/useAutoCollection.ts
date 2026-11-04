@@ -1,3 +1,8 @@
+import {
+  autoCollectionDiagnosis,
+  type DiagnosisEntry,
+  type PlanSnapshot,
+} from "./autoCollectionDiagnosis";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
 import type { MacroProfile } from "./macroTimeSeriesProfile";
@@ -76,10 +81,13 @@ export function useAutoCollection(
       )
         .then(checked)
         .catch(() => null),
-      cpiRequest<{
-        calendar_status: string;
-        targets: Record<string, unknown>[];
-      }>(transport, "/schedule", { signal }, 15000, profile)
+      cpiRequest<PlanSnapshot>(
+        transport,
+        "/schedule",
+        { signal },
+        15000,
+        profile,
+      )
         .then((value) =>
           value &&
           typeof value.calendar_status === "string" &&
@@ -204,83 +212,25 @@ export function useAutoCollection(
     target.current = null;
     setUncertain(false);
   }, [data, uncertain, resource.stale]);
+  const diagnosis = autoCollectionDiagnosis({
+    data,
+    saving,
+    uncertain,
+    resource,
+    availability,
+  });
   return {
     resource,
     data,
     saving,
     uncertain,
     notice,
-    reason: data?.control?.online
-      ? typeof data.last_result?.classification === "string"
-        ? `最近执行受阻：${data.last_result.classification}`
-        : "请展开近期执行与分期结果核对阻塞原因"
-      : data?.control
-        ? (reasons[data.control.reason] ?? "实际服务状态待核实")
-        : "实际服务状态读取失败，等待核实",
+    diagnosis,
+    reason: diagnosis.listReason,
     toggle: () => act(),
     recover: () => act(true),
   };
 }
-export function autoCollectionState(entry: {
-  data:
-    | (CpiStrategy & {
-        control: WorkerObservation | null;
-        schedule?: {
-          calendar_status: string;
-          targets: Record<string, unknown>[];
-        } | null;
-      })
-    | null;
-  saving: boolean;
-  uncertain: boolean;
-  resource: { stale: boolean };
-}) {
-  const { data } = entry;
-  if (entry.saving) return data?.enabled ? "正在处理" : "正在开启";
-  if (!data || entry.uncertain || entry.resource.stale) return "待核实";
-  if (!data.enabled) return "已暂停";
-  if (!data.control) return "待核实";
-  if (!data.control.online) return "需处理";
-  // A running loop heartbeat includes calendar checks; task stages establish collection.
-  if (!data.schedule) return "待核实（计划读取未确认）";
-  const stages: Record<string, unknown>[] = [];
-  function collect(value: unknown) {
-    if (!value || typeof value !== "object") return;
-    if (Array.isArray(value)) {
-      value.forEach(collect);
-      return;
-    }
-    const item = value as Record<string, unknown>;
-    if (typeof item.state === "string") stages.push(item);
-    for (const key of ["target", "auto", "history"]) collect(item[key]);
-  }
-  data.schedule.targets.forEach(collect);
-  if (stages.some((s) => s.state === "running")) return "采集中";
-  if (
-    stages.some((s) => ["unknown", "outcome_unknown"].includes(String(s.state)))
-  )
-    return "待核实";
-  if (
-    stages.some(
-      (s) =>
-        s.state === "awaiting_provider" ||
-        s.state === "retrying" ||
-        (s.state === "failed" && !!s.next_attempt_at),
-    )
-  )
-    return "重试中";
-  if (
-    stages.some((s) =>
-      ["failed", "pending_exhausted", "error"].includes(String(s.state)),
-    ) ||
-    data.schedule.targets.some((t) => t.calendar_execution_blocked)
-  )
-    return "需处理";
-  if (
-    !["fresh", "degraded_cached_calendar"].includes(
-      data.schedule.calendar_status,
-    )
-  )
-    return "需处理（日历未就绪）";
-  return data.next_release_at ? "待发布" : "待核实（下次发布未确认）";
+export function autoCollectionState(entry: DiagnosisEntry) {
+  return autoCollectionDiagnosis(entry).state;
 }

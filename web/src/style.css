@@ -1950,3 +1950,33 @@ button.strategy-switch::before {
     gap: 8px;
   }
 }
+.auto-diagnosis {
+  margin: 8px 0 14px;
+  font-size: 13px;
+}
+.auto-diagnosis p {
+  margin: 6px 0;
+  line-height: 1.6;
+}
+.auto-issue,
+.auto-advisory {
+  border-left: 3px solid var(--accent);
+  padding: 8px 10px;
+  margin: 10px 0;
+  overflow-wrap: anywhere;
+}
+.auto-issue {
+  border-left-color: #b86a19;
+  background: color-mix(in srgb, #b86a19 7%, transparent);
+}
+.auto-advisory {
+  border-left-color: var(--muted);
+}
+.auto-diagnosis button {
+  font-size: 12px;
+  padding: 5px 8px;
+}
+.periodic-workbench .located-plan {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
