@@ -32,7 +32,7 @@ it("keeps confirmed state while saving, labels the asset and stops row selection
     </div>,
   );
   expect(control.getAttribute("aria-checked")).toBe("true");
-  expect(control.textContent).toBe("保存中");
+  expect(control.textContent).toBe("正在开启或暂停");
   fireEvent.click(control);
   expect(toggle).toHaveBeenCalledTimes(1);
   view.rerender(

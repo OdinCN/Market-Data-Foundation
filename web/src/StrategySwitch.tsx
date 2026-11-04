@@ -14,12 +14,12 @@ export function StrategySwitch({
   onToggle: () => void;
 }) {
   const note = saving
-    ? "正在保存策略，等待结果"
+    ? "正在协调自动采集，等待实际回读"
     : uncertain
       ? "保存结果未知，等待独立回读"
       : enabled === null
         ? "策略状态尚未核实"
-        : "仅控制策略启用，执行器状态独立显示";
+        : "自动采集意图；实际运行情况另列";
   return (
     <button
       type="button"
@@ -38,9 +38,9 @@ export function StrategySwitch({
       }}
     >
       <span className="strategy-switch-thumb" aria-hidden="true" />
-      <span className="strategy-switch-label">
+      <span className="strategy-switch-label sr-only">
         {saving
-          ? "保存中"
+          ? "正在开启或暂停"
           : uncertain
             ? "待核实"
             : enabled === null

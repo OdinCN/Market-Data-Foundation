@@ -1,3 +1,4 @@
+import { onlineWorkerFixture } from "./workerControlTestFixture";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   cleanup,
@@ -81,6 +82,8 @@ afterEach(() => {
 function wire(sourceFailure = false) {
   const calls: string[] = [];
   const transport: Transport = async (input, init) => {
+    if (String(input).endsWith("/worker"))
+      return new Response(JSON.stringify(onlineWorkerFixture));
     const path = String(input),
       url = new URL(path, "http://fixture.invalid");
     calls.push(path);
@@ -360,6 +363,8 @@ it("consumes actual compact jobs/executions and editable calendar-year collectio
   expect(validStrategy(fixture.strategy, profile)).toBe(true);
   const writes: Record<string, string>[] = [];
   const transport: Transport = async (path, init) => {
+    if (String(path).endsWith("/worker"))
+      return new Response(JSON.stringify(onlineWorkerFixture));
     if (init?.method === "POST") {
       const b = JSON.parse(String(init.body));
       writes.push(b);
@@ -415,6 +420,8 @@ it("shows null reference-week calendar as release plans and toggles strategy onc
   let strategy = fixture.strategy;
   const writes: unknown[] = [];
   const transport: Transport = async (path, init) => {
+    if (String(path).endsWith("/worker"))
+      return new Response(JSON.stringify(onlineWorkerFixture));
     if (String(path).endsWith("/schedule")) return response(fixture.schedule);
     if (init?.method === "PUT") {
       const body = JSON.parse(String(init.body));
@@ -446,7 +453,7 @@ it("shows null reference-week calendar as release plans and toggles strategy onc
   fireEvent.click(screen.getByRole("switch", { checked: false }));
   await flush();
   expect(writes).toEqual([{ enabled: true }]);
-  expect(screen.getByText("后台进程").parentElement!.textContent).toContain(
+  expect(screen.getByText("实际进程状态").parentElement!.textContent).toContain(
     "尚未启动",
   );
   fireEvent.click(screen.getByRole("switch", { checked: true }));

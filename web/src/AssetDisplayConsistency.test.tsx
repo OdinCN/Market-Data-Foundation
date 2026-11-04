@@ -136,7 +136,7 @@ it("uses the same seven asset names across collection options, strategy rows, ex
         .getAllByRole("row")
         .slice(1);
       expect(
-        rows.map((row) => row.querySelectorAll("td")[1].textContent).sort(),
+        rows.map((row) => row.querySelectorAll("td")[0].textContent).sort(),
       ).toEqual([...names].sort());
     }
     cleanup();

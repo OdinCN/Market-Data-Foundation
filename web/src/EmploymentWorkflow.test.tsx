@@ -1,3 +1,4 @@
+import { onlineWorkerFixture } from "./workerControlTestFixture";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   cleanup,
@@ -83,6 +84,8 @@ it("employment filters series and units, reverses months and preserves exact HTT
   const paths: string[] = [];
   let original = "";
   const transport: Transport = async (path) => {
+    if (String(path).endsWith("/worker"))
+      return new Response(JSON.stringify(onlineWorkerFixture));
     paths.push(String(path));
     const selected = new URL(String(path), "http://fixture").searchParams
       .get("series")!
@@ -298,6 +301,8 @@ it("editable initialization confirms DEV, refreshes briefs and opens the shared 
   const onExecution = vi.fn();
   let jobs: CpiJob[] = [];
   const transport: Transport = async (path, init) => {
+    if (String(path).endsWith("/worker"))
+      return new Response(JSON.stringify(onlineWorkerFixture));
     expect(String(path).startsWith(profile.basePath)).toBe(true);
     if (init?.method === "POST") {
       const command = JSON.parse(String(init.body));
@@ -368,6 +373,8 @@ it("editable initialization confirms DEV, refreshes briefs and opens the shared 
       route={route}
       navigate={vi.fn()}
       transport={async (path) => {
+        if (String(path).endsWith("/worker"))
+          return new Response(JSON.stringify(onlineWorkerFixture));
         expect(String(path)).toBe(profile.basePath + "/executions");
         return response({
           executions: [{ ...jobs[0], id: jobs[0].job_id, origin: "manual" }],
@@ -399,6 +406,8 @@ it("employment strategy uses its independent plan and only start/pause controls"
       availability={availability}
       selected
       transport={async (path, init) => {
+        if (String(path).endsWith("/worker"))
+          return new Response(JSON.stringify(onlineWorkerFixture));
         expect(String(path).startsWith(profile.basePath)).toBe(true);
         if (String(path).endsWith("/schedule"))
           return response({ targets: [], calendar: { state: "missing" } });
@@ -425,6 +434,8 @@ it.each(["ui=r5&view=assets", "page=3"])(
     render(
       <App
         transport={async (input) => {
+          if (String(input).endsWith("/worker"))
+            return new Response(JSON.stringify(onlineWorkerFixture));
           const path = new URL(String(input), "http://fixture").pathname;
           paths.push(path);
           if (path === profile.basePath + "/status")
@@ -471,6 +482,8 @@ it("opens the ordinary employment asset row through the shared runtime catalog",
   render(
     <App
       transport={async (input) => {
+        if (String(input).endsWith("/worker"))
+          return new Response(JSON.stringify(onlineWorkerFixture));
         const path = new URL(String(input), "http://fixture").pathname;
         paths.push(path);
         if (path === profile.basePath + "/status")
@@ -538,6 +551,8 @@ function publicAppTransport(
 ): Transport {
   let jobs: CpiJob[] = [];
   return async (input, init) => {
+    if (String(input).endsWith("/worker"))
+      return new Response(JSON.stringify(onlineWorkerFixture));
     const path = new URL(String(input), "http://fixture").pathname;
     paths.push(path);
     if (path === profile.basePath + "/status")
@@ -739,6 +754,8 @@ it.each(["matching", "wrong_source", "wrong_binding"])(
     render(
       <App
         transport={async (input, init) => {
+          if (String(input).endsWith("/worker"))
+            return new Response(JSON.stringify(onlineWorkerFixture));
           const path = new URL(String(input), "http://fixture").pathname;
           return path === "/api/r5/sources"
             ? response({ ...catalog.body, entries: [entry] })

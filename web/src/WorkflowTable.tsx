@@ -51,6 +51,9 @@ export function WorkflowTable({
       document.body.style.overflow = previous;
     };
   }, [rightDetails, narrow, detailOpen]);
+  useEffect(() => {
+    if (rightDetails && detail.current) detail.current.scrollTop = 0;
+  }, [selected, rightDetails]);
   function closeDetails() {
     setDetailOpen(false);
     root.current

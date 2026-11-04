@@ -1,3 +1,4 @@
+import { onlineWorkerFixture } from "./workerControlTestFixture";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   act,
@@ -68,6 +69,8 @@ function fixture(initial: Partial<CpiStrategy> = {}) {
     signal?: AbortSignal | null;
   }[] = [];
   const transport: Transport = async (input, init) => {
+    if (String(input).endsWith("/worker"))
+      return new Response(JSON.stringify(onlineWorkerFixture));
     const path = String(input),
       method = init?.method ?? "GET",
       body = init?.body ? JSON.parse(String(init.body)) : undefined;
@@ -122,7 +125,7 @@ function fixture(initial: Partial<CpiStrategy> = {}) {
   };
 }
 function select() {
-  fireEvent.click(screen.getByText("官方发布自动采集"));
+  fireEvent.click(screen.getByRole("button", { name: /^选择 / }));
 }
 it("has one preset row and one inline toggle; detail has no create, history editor, duplicate toggle or JSON policy", async () => {
   const h = fixture();
@@ -139,7 +142,7 @@ it("has one preset row and one inline toggle; detail has no create, history edit
   const detail = within(
     screen.getByRole("complementary", { name: "周期任务详情" }),
   );
-  expect(detail.getAllByRole("button")).toHaveLength(2);
+  expect(detail.getAllByRole("button")).toHaveLength(1);
   expect(detail.getByRole("button", { name: "关闭详情" })).toBeTruthy();
   expect(detail.queryByRole("textbox")).toBeNull();
   expect(screen.queryByText(/private_policy_marker/)).toBeNull();
@@ -196,6 +199,8 @@ it("does not cancel or resend an inflight PUT during polling, visibility changes
   let signal: AbortSignal | null | undefined;
   let writes = 0;
   const transport: Transport = async (input, init) => {
+    if (String(input).endsWith("/worker"))
+      return new Response(JSON.stringify(onlineWorkerFixture));
     if (init?.method === "PUT") {
       writes++;
       signal = init.signal;
@@ -261,7 +266,7 @@ it("reconciles an uncertain PUT through read-only polling without repeating the 
   h.failRead();
   fireEvent.click(button("启动"));
   await flush();
-  expect(screen.getByText(/策略保存结果未知/)).toBeTruthy();
+  expect(screen.getByText(/操作结果待核实/)).toBeTruthy();
   expect(button("启动").disabled).toBe(true);
   h.failRead(false);
   h.set({ exists: true, enabled: true, state: "enabled" });
@@ -269,12 +274,14 @@ it("reconciles an uncertain PUT through read-only polling without repeating the 
   expect(button("暂停").disabled).toBe(false);
   expect(h.calls.filter((c) => c.method === "PUT")).toHaveLength(1);
 });
-it("blocks toggles while a strategy read is inflight so pre-write reads cannot unlock an uncertain mutation", async () => {
+it("invalidates a pending read when the explicit action changes strategy", async () => {
   vi.useFakeTimers();
   const h = fixture();
   let release!: () => void;
   let reads = 0;
   const transport: Transport = async (input, init) => {
+    if (String(input).endsWith("/worker"))
+      return new Response(JSON.stringify(onlineWorkerFixture));
     if (
       String(input).endsWith("/strategy") &&
       init?.method !== "PUT" &&
@@ -290,14 +297,13 @@ it("blocks toggles while a strategy read is inflight so pre-write reads cannot u
   );
   await flush();
   await advance();
-  expect(button("启动").disabled).toBe(true);
-  fireEvent.click(button("启动"));
-  expect(h.calls.filter((c) => c.method === "PUT")).toHaveLength(0);
-  await act(async () => release());
   expect(button("启动").disabled).toBe(false);
   fireEvent.click(button("启动"));
   await flush();
   expect(h.calls.filter((c) => c.method === "PUT")).toHaveLength(1);
+  await act(async () => release());
+  await flush();
+  expect(button("暂停").disabled).toBe(false);
 });
 
 it.each([
@@ -375,7 +381,9 @@ it("renders month cards with stage grids, real attempt evidence and separate his
   expect(list.querySelector("table")).toBeNull();
   const card = within(list).getByRole("listitem");
   expect(card.querySelector("header")?.textContent).toContain("2026-09");
-  expect(card.querySelectorAll(".month-stage-grid > div")).toHaveLength(4);
+  expect(
+    card.querySelectorAll(".month-stage-grid > div, .stage-history > div"),
+  ).toHaveLength(4);
   expect(within(card).getByText("2026-10-24 20:31:00")).toBeTruthy();
   expect(within(card).getByText("2026-10-25 08:00:00")).toBeTruthy();
   expect(within(card).getByText("新增观测")).toBeTruthy();
@@ -530,11 +538,14 @@ it("keeps enabled distinct from a stopped executor and reports a failed change a
   expect(
     screen.getByRole("switch", { checked: true }).getAttribute("aria-label"),
   ).toContain("CPI");
-  expect(screen.getByText("执行器：已停止")).toBeTruthy();
+  select();
+  expect(screen.getByText("实际进程状态").parentElement?.textContent).toContain(
+    "已停止",
+  );
   h.failSave();
   fireEvent.click(screen.getByRole("switch"));
   await flush();
   expect(screen.getByRole("switch", { checked: true })).toBeTruthy();
-  expect(screen.getByText("切换未确认，已回读当前策略")).toBeTruthy();
+  expect(screen.getByText(/当前策略已开启/)).toBeTruthy();
   expect(h.calls.filter((c) => c.method === "PUT")).toHaveLength(1);
 });
