@@ -139,12 +139,12 @@ it("has one preset row and one inline toggle; detail has no create, history edit
   const detail = within(
     screen.getByRole("complementary", { name: "周期任务详情" }),
   );
-  expect(detail.getAllByRole("button")).toHaveLength(1);
-  expect(detail.getByRole("button", { name: "返回周期列表" })).toBeTruthy();
+  expect(detail.getAllByRole("button")).toHaveLength(2);
+  expect(detail.getByRole("button", { name: "关闭详情" })).toBeTruthy();
   expect(detail.queryByRole("textbox")).toBeNull();
   expect(screen.queryByText(/private_policy_marker/)).toBeNull();
   expect(
-    screen.queryByRole("button", { name: /创建|刷新|新建周期/ }),
+    screen.queryByRole("button", { name: /创建|刷新日历|新建周期/ }),
   ).toBeNull();
   expect(screen.getAllByRole("switch", { checked: false })).toHaveLength(1);
   fireEvent.click(button("启动"));
@@ -530,7 +530,7 @@ it("keeps enabled distinct from a stopped executor and reports a failed change a
   expect(
     screen.getByRole("switch", { checked: true }).getAttribute("aria-label"),
   ).toContain("CPI");
-  expect(screen.getByText("已停止")).toBeTruthy();
+  expect(screen.getByText("执行器：已停止")).toBeTruthy();
   h.failSave();
   fireEvent.click(screen.getByRole("switch"));
   await flush();

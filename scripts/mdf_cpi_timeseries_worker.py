@@ -1,6 +1,7 @@
 """Explicit macro worker using the selected capability's Web runtime binding."""
 
 import argparse
+import fcntl
 import os
 import random
 import sys
@@ -273,6 +274,14 @@ def main(argv=None):
             host = runtime.employment_timeseries
         else:
             host = runtime.pce_timeseries
+        host.auto_strategy.strategy_path.parent.mkdir(parents=True, exist_ok=True)
+        executor_lock = host.auto_strategy.strategy_path.with_suffix(
+            ".executor.lock"
+        ).open("a")
+        try:
+            fcntl.flock(executor_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError("worker_already_running") from None
         if args.asset == "m3":
             import json
             from datetime import UTC, datetime

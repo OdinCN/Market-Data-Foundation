@@ -1233,7 +1233,9 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         )
 
 
-def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **options):
+def create_timeseries_preview(
+    settings, *, enabled=False, ui_directory=None, worker_control=None, **options
+):
     if enabled is not True:
         raise ValueError("cpi_timeseries_web_opt_in_required")
     runtime = TimeSeriesRuntime(settings, **options)
@@ -1301,6 +1303,12 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
     app.include_router(
         timeseries_router(runtime.jolts_timeseries, profile=JOLTS_PROFILE)
     )
+    from market_data_foundation.web.worker_control import (
+        admitted_worker,
+        install_worker_control,
+    )
+
+    install_worker_control(app, runtime, worker_control)
     app.state.timeseries_runtime = runtime
 
     @app.middleware("http")
@@ -1317,7 +1325,9 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
             "/api/r5/jolts/timeseries",
             "/api/r5/m3/timeseries",
         )
-        job_post = any(admitted_job(request, prefix=prefix) for prefix in prefixes)
+        job_post = admitted_worker(request) or any(
+            admitted_job(request, prefix=prefix) for prefix in prefixes
+        )
         job_post = job_post or admitted_job(request, prefix="/api/r5/m3/timeseries")
         if request.url.path == "/api/r5/m3/timeseries/jobs/resume":
             job_post = admitted_job(

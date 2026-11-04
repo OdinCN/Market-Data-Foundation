@@ -614,7 +614,7 @@ it("shows CPI and PPI as two preset rows in one table with one toggle each and s
   expect(
     within(
       screen.getByRole("complementary", { name: "周期任务详情" }),
-    ).getByRole("button", { name: "返回周期列表" }),
+    ).getByRole("button", { name: "关闭详情" }),
   ).toBeTruthy();
 });
 it("shows an unconfigured PPI host honestly and blocks query and collection without CPI fallback", async () => {

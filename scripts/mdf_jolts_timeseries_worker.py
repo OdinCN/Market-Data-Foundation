@@ -52,6 +52,7 @@ def main(argv=None):
     bounds.add_argument(
         "--deadline", help="Absolute aware DEV deadline, at most 4 hours"
     )
+    bounds.add_argument("--window-state", type=Path)
     parser.add_argument("--no-upstream", action="store_true")
     args = parser.parse_args(argv)
     if not args.opt_in_jolts_worker or not args.allow_collect:
@@ -60,13 +61,22 @@ def main(argv=None):
         parser.error("max-seconds must be between 1 and 600")
     now = datetime.now(UTC)
     try:
-        deadline = (
-            datetime.fromisoformat(args.deadline)
-            if args.deadline
-            else now + timedelta(seconds=args.max_seconds)
-        )
-        if deadline.utcoffset() is None or not now < deadline <= now + timedelta(
-            hours=4
+        if args.window_state:
+            from market_data_foundation.web.worker_control import read_window
+
+            deadline = datetime.fromisoformat(
+                read_window(args.window_state)["expires_at"]
+            )
+        else:
+            deadline = (
+                datetime.fromisoformat(args.deadline)
+                if args.deadline
+                else now + timedelta(seconds=args.max_seconds)
+            )
+        if (
+            deadline.utcoffset() is None
+            or not now < deadline
+            or (not args.window_state and deadline > now + timedelta(hours=4))
         ):
             raise ValueError
     except ValueError, TypeError:

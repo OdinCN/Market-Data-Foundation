@@ -12,7 +12,7 @@ export function WorkflowTable({
   pageSize,
   locateId,
   className,
-  revealDetailsOnSelect = false,
+  rightDetails = false,
 }: {
   label: string;
   columns: string[];
@@ -25,7 +25,7 @@ export function WorkflowTable({
   pageSize?: number;
   locateId?: string | null;
   className?: string;
-  revealDetailsOnSelect?: boolean;
+  rightDetails?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -33,20 +33,38 @@ export function WorkflowTable({
   const located = useRef<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const detail = useRef<HTMLElement>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia?.("(max-width: 760px)");
+    if (!media) return;
+    const update = () => setNarrow(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    if (!rightDetails || !narrow || !detailOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [rightDetails, narrow, detailOpen]);
+  function closeDetails() {
+    setDetailOpen(false);
+    root.current
+      ?.querySelector<HTMLButtonElement>('tr[aria-selected="true"] .row-link')
+      ?.focus({ preventScroll: true });
+  }
   function selectRow(id: string) {
     onSelect(id);
-    if (revealDetailsOnSelect) {
-      requestAnimationFrame(() => {
-        const pane = detail.current;
-        const list = root.current?.querySelector(".list-pane");
-        if (!pane || !list) return;
-        const target = pane.getBoundingClientRect();
-        const source = list.getBoundingClientRect();
-        if (target.top > source.top + 1 && target.top >= source.bottom - 1) {
-          pane.scrollIntoView({ block: "start", behavior: "auto" });
-          pane.focus({ preventScroll: true });
-        }
-      });
+    if (rightDetails) {
+      setDetailOpen(true);
+      if (narrow)
+        requestAnimationFrame(() =>
+          detail.current?.focus({ preventScroll: true }),
+        );
     }
   }
   useEffect(() => {
@@ -157,26 +175,51 @@ export function WorkflowTable({
           </div>
         )}
       </section>
+      {rightDetails && narrow && detailOpen && (
+        <button
+          className="detail-backdrop"
+          aria-label="关闭策略详情遮罩"
+          onClick={closeDetails}
+        />
+      )}
       <aside
         ref={detail}
-        tabIndex={revealDetailsOnSelect ? -1 : undefined}
-        className="detail-pane"
+        tabIndex={rightDetails ? -1 : undefined}
+        className={`detail-pane${rightDetails && detailOpen ? " right-details-open" : ""}`}
+        role={rightDetails && narrow && detailOpen ? "dialog" : undefined}
+        aria-modal={rightDetails && narrow && detailOpen ? true : undefined}
+        onKeyDown={(event) => {
+          if (!rightDetails || !narrow || !detailOpen) return;
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            closeDetails();
+          }
+          if (event.key === "Tab") {
+            const buttons = [
+              ...(detail.current?.querySelectorAll<HTMLElement>(
+                'button:not(:disabled),a[href],input:not(:disabled),[tabindex="0"]',
+              ) ?? []),
+            ].filter((el) => el.getClientRects().length);
+            const first = buttons[0],
+              last = buttons.at(-1);
+            if (
+              event.shiftKey &&
+              (document.activeElement === first ||
+                document.activeElement === detail.current)
+            ) {
+              event.preventDefault();
+              last?.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+              event.preventDefault();
+              first?.focus();
+            }
+          }
+        }}
         aria-label={`${label}详情`}
       >
-        {revealDetailsOnSelect && (
-          <button
-            className="detail-return"
-            onClick={() => {
-              const row = root.current?.querySelector<HTMLButtonElement>(
-                'tr[aria-selected="true"] .row-link',
-              );
-              (
-                row?.closest("tr") ?? root.current?.querySelector(".list-pane")
-              )?.scrollIntoView({ block: "start", behavior: "auto" });
-              row?.focus({ preventScroll: true });
-            }}
-          >
-            返回周期列表
+        {rightDetails && (
+          <button className="detail-close" onClick={closeDetails}>
+            关闭详情
           </button>
         )}
         {children ?? (

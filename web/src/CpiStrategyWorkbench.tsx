@@ -17,6 +17,7 @@ import type { Transport } from "./api";
 import { formatBeijingTime } from "./beijingTime";
 import { releaseLink, releaseReasonTexts } from "./macroReleaseLinks";
 import { Fact, WorkflowTable } from "./WorkflowTable";
+import { WorkerControl } from "./WorkerControl";
 import { StrategySwitch } from "./StrategySwitch";
 import { keyOf } from "./workflowModel";
 import { useVisiblePolling } from "./useVisiblePolling";
@@ -928,16 +929,8 @@ function CpiStrategyWorkbenchContent({
       <WorkflowTable
         label="周期任务"
         className="periodic-workbench"
-        revealDetailsOnSelect
-        columns={[
-          "策略",
-          "采集目标",
-          "策略状态",
-          "执行器",
-          "最后成功采集（北京时间）",
-          "最新数据参考期",
-          "操作",
-        ]}
+        rightDetails
+        columns={["采集目标", "执行器与数据", "策略"]}
         selected={selection}
         onSelect={(id) => {
           setSelected(id);
@@ -954,21 +947,24 @@ function CpiStrategyWorkbenchContent({
             id: `${e.profile.id}-auto`,
             search: `${macroAssetLabel(e.profile)} 官方发布自动采集`,
             cells: [
-              "官方发布自动采集",
-              macroAssetLabel(e.profile),
-              e.data
-                ? e.data.exists
-                  ? e.data.enabled
-                    ? "已启用"
-                    : "已暂停"
-                  : "未启动"
-                : "尚未核实",
-              e.data ? workerStateText(e.data.worker.state) : "尚未核实",
-              formatBeijingTime(
-                e.data?.last_successful_collection_at,
-                "未记录",
-              ).replace(" 北京时间", ""),
-              e.data?.latest_data_period ?? "未知",
+              <span className="strategy-target">
+                <span>{macroAssetLabel(e.profile)}</span>
+                <small>官方发布自动采集</small>
+              </span>,
+              <span className="strategy-data">
+                <span>
+                  执行器：
+                  {e.data ? workerStateText(e.data.worker.state) : "尚未核实"}
+                </span>
+                <span>
+                  采集：
+                  {formatBeijingTime(
+                    e.data?.last_successful_collection_at,
+                    "未记录",
+                  ).replace(" 北京时间", "")}
+                </span>
+                <span>参考期：{e.data?.latest_data_period ?? "未知"}</span>
+              </span>,
               <span key="toggle" className="strategy-control">
                 <StrategySwitch
                   asset={macroAssetLabel(e.profile)}
@@ -1017,6 +1013,12 @@ function CpiStrategyWorkbenchContent({
         {shown && detailVisible && data && (
           <>
             <h3>{profile.label} 策略详情</h3>
+            <WorkerControl
+              key={profile.id}
+              transport={transport}
+              profile={profile}
+              onUpdated={() => resource.refresh()}
+            />
             <details>
               <summary>口径与采集说明</summary>
               <p>{profileScopeText(profile)}</p>

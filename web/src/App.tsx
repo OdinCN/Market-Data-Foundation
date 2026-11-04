@@ -162,7 +162,13 @@ export default function App({
       hash.set("reference", PCE_REFERENCE);
     location.hash = hash.toString();
     setPage(appRoute());
-    document.querySelector("main")?.scrollIntoView?.({ block: "start" });
+    const selectingStrategy =
+      view === "collection" &&
+      page.view === "collection" &&
+      page.fields.get("tab") === "periodic" &&
+      "schedule" in fields;
+    if (!selectingStrategy)
+      document.querySelector("main")?.scrollIntoView?.({ block: "start" });
   };
   const directory = useResource<Directory>(
     (signal) => request(transport, "/api/r5/sources", {}, signal),

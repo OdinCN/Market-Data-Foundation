@@ -106,26 +106,15 @@ it("preserves search and pagination when selecting an ordinary row", () => {
   ).toBe("record-2");
 });
 
-it("reveals stacked details only after an explicit selection and offers a return", () => {
-  const original = HTMLElement.prototype.scrollIntoView;
+it("opens and closes right-side details only after user selection without scrolling", () => {
+  vi.stubGlobal("matchMedia", () => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
   const scroll = vi.fn();
+  const original = HTMLElement.prototype.scrollIntoView;
   HTMLElement.prototype.scrollIntoView = scroll;
-  let stacked = true;
-  const geometry = vi
-    .spyOn(HTMLElement.prototype, "getBoundingClientRect")
-    .mockImplementation(function (this: HTMLElement) {
-      return {
-        x: 0,
-        y: this.classList.contains("detail-pane") && stacked ? 400 : 0,
-        top: this.classList.contains("detail-pane") && stacked ? 400 : 0,
-        left: 0,
-        right: 900,
-        bottom: this.classList.contains("detail-pane") && stacked ? 700 : 300,
-        width: 900,
-        height: 300,
-        toJSON: () => ({}),
-      };
-    });
   const frame = vi
     .spyOn(window, "requestAnimationFrame")
     .mockImplementation((callback) => {
@@ -133,41 +122,37 @@ it("reveals stacked details only after an explicit selection and offers a return
       return 1;
     });
   try {
-    const select = vi.fn();
     const props = {
       label: "周期任务",
       columns: ["策略"],
       rows,
       selected: "record-0",
-      onSelect: select,
-      revealDetailsOnSelect: true,
+      onSelect: vi.fn(),
+      rightDetails: true,
     };
     const view = render(
       <WorkflowTable {...props}>
         <h3>策略详情</h3>
       </WorkflowTable>,
     );
-    expect(scroll).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "选择 record-0" }));
-    expect(scroll).toHaveBeenCalledTimes(1);
-    expect(document.activeElement).toBe(screen.getByRole("complementary"));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(scroll).not.toHaveBeenCalled();
     view.rerender(
       <WorkflowTable {...props} rows={[...rows]}>
-        <h3>轮询后的详情</h3>
+        <h3>轮询详情</h3>
       </WorkflowTable>,
     );
-    expect(scroll).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "返回周期列表" }));
+    expect(scroll).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "关闭详情" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "选择 record-0" }),
     );
-    expect(scroll).toHaveBeenCalledTimes(2);
-    stacked = false;
-    fireEvent.click(screen.getByRole("button", { name: "选择 record-0" }));
-    expect(scroll).toHaveBeenCalledTimes(2);
   } finally {
-    geometry.mockRestore();
     frame.mockRestore();
     HTMLElement.prototype.scrollIntoView = original;
+    vi.unstubAllGlobals();
   }
 });

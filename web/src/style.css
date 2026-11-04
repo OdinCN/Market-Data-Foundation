@@ -1579,119 +1579,134 @@ footer {
   width: 6rem;
 }
 
-/* Periodic strategies adapt to the list's available space, including sidebar changes. */
+/* Balanced periodic workspace; narrow devices use a right-side detail drawer. */
 .periodic-layout {
   container: periodic / inline-size;
   min-width: 0;
 }
-.periodic-workbench {
-  grid-template-columns: minmax(0, 1fr);
+.workbench.periodic-workbench {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+.periodic-workbench .table-wrap {
+  overflow-x: auto;
 }
 .periodic-workbench table {
-  min-width: 0;
+  min-width: 470px;
   table-layout: fixed;
   font-size: 13px;
 }
 .periodic-workbench th {
-  font-size: 12px;
   white-space: normal;
   text-wrap: balance;
+  font-size: 12px;
+}
+.periodic-workbench th:nth-child(1) {
+  width: 40%;
+}
+.periodic-workbench th:nth-child(2) {
+  width: 38%;
+}
+.periodic-workbench th:nth-child(3) {
+  width: 22%;
+}
+.periodic-workbench td {
+  padding: 10px 8px;
 }
 .periodic-workbench td,
 .periodic-workbench .row-link {
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.5;
   overflow-wrap: break-word;
   word-break: normal;
 }
-.periodic-workbench th:nth-child(1) {
-  width: 15%;
-}
-.periodic-workbench th:nth-child(2) {
-  width: 18%;
-}
-.periodic-workbench th:nth-child(3) {
-  width: 8%;
-}
-.periodic-workbench th:nth-child(4) {
-  width: 12%;
-}
-.periodic-workbench th:nth-child(5) {
-  width: 18%;
-}
-.periodic-workbench th:nth-child(6) {
-  width: 11%;
-}
-.periodic-workbench th:nth-child(7) {
-  width: 18%;
-}
+.strategy-target,
+.strategy-data,
 .strategy-control {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: 4px;
+}
+.strategy-target small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.strategy-data {
+  font-size: 12px;
+}
+.strategy-data > span {
+  max-width: 100%;
 }
 .strategy-control-note {
-  font-size: 12px;
   color: var(--text);
+  font-size: 12px;
 }
 button.strategy-switch {
   position: relative;
   flex: 0 0 auto;
-  width: 128px;
-  min-width: 128px;
-  height: 44px;
-  border: 1px solid #8f2020;
-  border-radius: 999px;
-  padding: 0 12px 0 40px;
-  background: #b92f35;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 650;
-  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 88px;
+  min-width: 88px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
   line-height: 1;
+  white-space: nowrap;
   touch-action: manipulation;
 }
-button.strategy-switch[data-unconfirmed="false"]:hover {
-  background: #a0252b;
+button.strategy-switch::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  width: 56px;
+  height: 22px;
+  border-radius: 12px;
+  background: #b92f35;
+  border: 1px solid #8f2020;
 }
-button.strategy-switch[aria-checked="true"] {
+button.strategy-switch:hover:not(:disabled) {
+  background: transparent;
+}
+button.strategy-switch[aria-checked="true"]::before {
   background: #187447;
   border-color: #105431;
-  padding: 0 40px 0 12px;
-}
-button.strategy-switch[aria-checked="true"][data-unconfirmed="false"]:hover {
-  background: #105f37;
 }
 button.strategy-switch:disabled {
   opacity: 1;
   cursor: not-allowed;
 }
-button.strategy-switch[data-unconfirmed="true"] {
+button.strategy-switch[data-unconfirmed="true"]::before {
   background: var(--button);
-  border: 2px dashed var(--muted);
-  color: var(--text);
+  border: 1px dashed var(--muted);
 }
 .strategy-switch-thumb {
   position: absolute;
-  left: 9px;
+  left: 4px;
   top: 9px;
-  width: 24px;
-  height: 24px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  background: #fff;
-  border: 1px solid #ffffffb3;
-  box-shadow: 0 1px 3px #0005;
-  transition: transform 160ms ease;
+  background: white;
+  box-shadow: 0 1px 2px #0005;
+  transition: transform 150ms ease;
 }
 .strategy-switch[aria-checked="true"] .strategy-switch-thumb {
-  transform: translateX(82px);
+  transform: translateX(34px);
 }
 .strategy-switch[data-unconfirmed="true"] .strategy-switch-thumb {
   background: var(--muted);
 }
 .strategy-switch:focus-visible {
-  outline: 3px solid var(--accent);
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 .strategy-periods {
@@ -1704,90 +1719,108 @@ button.strategy-switch[data-unconfirmed="true"] {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 4px 16px;
+  gap: 4px 12px;
   padding: 4px 0;
+}
+.periodic-workbench .detail-pane {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
 }
 .periodic-workbench .detail-pane .fact {
   flex-wrap: wrap;
   font-size: 13px;
 }
 .periodic-workbench .detail-pane dd {
-  flex: 1 1 240px;
+  flex: 1 1 220px;
 }
-@container periodic (min-width: 1460px) {
-  .periodic-workbench {
-    grid-template-columns: minmax(1040px, 1fr) minmax(360px, 0.45fr);
+.periodic-workbench .detail-close {
+  display: none;
+}
+.periodic-workbench .detail-pane:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.periodic-workbench .list-pane::after {
+  content: "列表空间不足时，可在列表内横向滚动查看策略开关。采集时间为北京时间。";
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+  background: #0005;
+  border: 0;
+  border-radius: 0;
+}
+@media (max-width: 760px) {
+  .workbench.periodic-workbench {
+    display: block;
   }
-  .periodic-workbench .detail-return {
+  .periodic-workbench .detail-pane {
+    position: fixed;
+    inset: 0 0 0 auto;
+    z-index: 50;
+    width: min(94vw, 520px);
+    height: 100dvh;
+    max-height: none;
+    border-radius: 12px 0 0 12px;
     display: none;
   }
-}
-@container periodic (max-width: 880px) {
-  .periodic-workbench .table-wrap {
-    overflow: visible;
-    border: 0;
+  .periodic-workbench .detail-pane.right-details-open {
+    display: block;
+  }
+  .periodic-workbench .detail-close {
+    display: block;
+    margin: 0 0 12px auto;
+  }
+  .periodic-workbench .list-pane::after {
+    content: "选择一项，从右侧打开策略详情。采集时间为北京时间。";
   }
   .periodic-workbench table,
   .periodic-workbench tbody {
     display: block;
     width: 100%;
+    min-width: 0;
   }
   .periodic-workbench thead {
     position: absolute;
     width: 1px;
     height: 1px;
-    padding: 0;
     overflow: hidden;
     clip-path: inset(50%);
-    white-space: nowrap;
-  }
-  .periodic-workbench tbody {
-    display: grid;
-    gap: 12px;
   }
   .periodic-workbench tbody tr {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    border: 1px solid var(--border2);
-    border-radius: 10px;
-    overflow: hidden;
-    background: var(--panel);
-  }
-  .periodic-workbench td {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    justify-content: flex-start;
-    gap: 4px;
-    min-width: 0;
-    padding: 8px 10px;
+    grid-template-columns: minmax(0, 1fr) 96px;
+    padding: 8px 0;
     border-top: 1px solid var(--border);
   }
-  .periodic-workbench td::before {
-    content: attr(data-label);
-    font-size: 12px;
-    color: var(--muted);
+  .periodic-workbench td {
+    display: block;
+    min-width: 0;
+    border: 0;
+    padding: 4px 8px;
   }
-  .periodic-workbench td:nth-child(5) {
-    grid-column: 1 / -1;
+  .periodic-workbench td:nth-child(1) {
+    grid-area: 1 / 1;
   }
-  .periodic-workbench td:nth-child(-n + 2) {
-    border-top: 0;
+  .periodic-workbench td:nth-child(2) {
+    grid-area: 2 / 1 / 3 / -1;
   }
-  .periodic-workbench tr.selected {
-    background: var(--selected);
+  .periodic-workbench td:nth-child(3) {
+    grid-area: 1 / 2;
+    align-self: center;
   }
-}
-.periodic-workbench .detail-pane {
-  scroll-margin-top: 16px;
-}
-.periodic-workbench .detail-pane:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.periodic-workbench .detail-return {
-  margin-bottom: 12px;
-  min-height: 44px;
+  .strategy-data {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 3px 12px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .strategy-switch-thumb {
