@@ -197,3 +197,20 @@ it("an observed empty summary is different from a failed summary", async () => {
   await screen.findByText(/最新数据期：读取失败，待核实/);
   expect(screen.queryByText(/本地尚无已确认的有效观测/)).toBeNull();
 });
+
+it("does not claim paused or absent execution before strategy facts have loaded", async () => {
+  let complete: (r: Response) => void = () => {};
+  const transport: Transport = async (u) =>
+    String(u).endsWith("/summary")
+      ? Response.json({ status: "OK", series: [] })
+      : new Promise((r) => {
+          complete = r;
+        });
+  render(<Page transport={transport} />);
+  await screen.findByText("自动采集状态：正在读取…");
+  expect(screen.queryByText(/^自动采集已暂停/)).toBeNull();
+  expect(screen.getAllByText("正在读取执行记录…").length).toBeGreaterThan(0);
+  complete(Response.json(base));
+  await screen.findByText("自动采集已暂停 · 已暂停");
+  expect(screen.getAllByText("尚无成功自动作业").length).toBeGreaterThan(0);
+});

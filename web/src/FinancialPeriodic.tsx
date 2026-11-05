@@ -118,6 +118,16 @@ export function useFinancialPeriodic(
     [notice, setNotice] = useState("");
   const busy = useRef(false);
   const data = resource.data;
+  const successText = data
+    ? formatBeijingTime(data.last_successful_collection_at, "尚无成功自动作业")
+    : resource.failure
+      ? "读取失败，待核实"
+      : "正在读取执行记录…";
+  const nextText = data
+    ? formatBeijingTime(data.next_check_at, "未安排")
+    : resource.failure
+      ? "读取失败，待核实"
+      : "正在读取计划…";
   async function act(enabled: boolean, recover = false) {
     if (busy.current || pending) return;
     busy.current = true;
@@ -263,7 +273,7 @@ export function useFinancialPeriodic(
         <span>
           最近成功采集（北京时间）：
           <br />
-          {formatBeijingTime(data?.last_successful_collection_at, "未记录")}
+          {successText}
         </span>
         <span>
           最新数据期：{latestText}
@@ -278,7 +288,11 @@ export function useFinancialPeriodic(
     <>
       <h3>金融条件日频 策略详情</h3>
       <p>
-        自动采集{data?.enabled ? "已开启" : "已暂停"} · {state}
+        {data
+          ? `自动采集${data.enabled ? "已开启" : "已暂停"} · ${state}`
+          : resource.failure
+            ? "自动采集状态：读取失败，待核实"
+            : "自动采集状态：正在读取…"}
       </p>
       {notice && <p role="status">{notice}</p>}
       {resource.failure && (
@@ -289,12 +303,8 @@ export function useFinancialPeriodic(
         个日历日，保留真实修订；停用时间更长的历史区间可从新建采集手动更新。已有数据、维护检查完成和自然发布捕获分别记录。
       </p>
       <dl>
-        <Fact name="下次维护检查（北京时间）">
-          {formatBeijingTime(data?.next_check_at, "未安排")}
-        </Fact>
-        <Fact name="最近成功自动作业（北京时间）">
-          {formatBeijingTime(data?.last_successful_collection_at, "未记录")}
-        </Fact>
+        <Fact name="下次维护检查（北京时间）">{nextText}</Fact>
+        <Fact name="最近成功自动作业（北京时间）">{successText}</Fact>
       </dl>
       <button
         onClick={() =>
