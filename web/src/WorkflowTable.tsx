@@ -47,6 +47,7 @@ export function WorkflowTable({
     if (!rightDetails || !narrow || !detailOpen) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    detail.current?.focus({ preventScroll: true });
     return () => {
       document.body.style.overflow = previous;
     };

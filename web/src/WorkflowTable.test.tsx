@@ -156,3 +156,40 @@ it("opens and closes right-side details only after user selection without scroll
     vi.unstubAllGlobals();
   }
 });
+
+it("moves focus into an open detail when desktop becomes a drawer so Escape reaches it", () => {
+  const media = {
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  };
+  vi.stubGlobal("matchMedia", () => media);
+  try {
+    render(
+      <WorkflowTable
+        label="周期任务"
+        columns={["策略"]}
+        rows={rows}
+        selected="record-0"
+        onSelect={vi.fn()}
+        rightDetails
+      >
+        <h3>策略详情</h3>
+      </WorkflowTable>,
+    );
+    const row = screen.getByRole("button", { name: "选择 record-0" });
+    fireEvent.click(row);
+    row.focus();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    act(() => {
+      media.matches = true;
+      media.addEventListener.mock.calls[0][1]();
+    });
+    expect(document.activeElement).toBe(screen.getByRole("dialog"));
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(row);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
