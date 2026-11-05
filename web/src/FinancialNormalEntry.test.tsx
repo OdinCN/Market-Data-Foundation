@@ -97,8 +97,8 @@ it("keeps the real macro catalog/filter/search while alternating financial daily
     target: { value: "金融" },
   });
   pickFinancial();
-  const daily = await screen.findByLabelText("起始观测日");
-  expect(daily.getAttribute("type")).toBe("date");
+  const daily = await screen.findByLabelText("开始日期");
+  expect(daily.getAttribute("placeholder")).toBe("YYYY-MM-DD");
   expect(screen.getByLabelText("搜索数据资产")).toBeTruthy();
   expect(screen.getByLabelText("接入包筛选")).toBeTruthy();
   expect(
@@ -106,8 +106,10 @@ it("keeps the real macro catalog/filter/search while alternating financial daily
   ).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "查询本地数据" }));
   await screen.findByRole("button", { name: "固定此截止" });
-  fireEvent.click(screen.getByRole("button", { name: "API 说明" }));
-  await screen.findByText("真实 API 入口与合同");
+  fireEvent.click(screen.getByRole("tab", { name: "API说明" }));
+  await screen.findByRole("heading", {
+    name: "GET /api/r5/financial/timeseries/query",
+  });
   fireEvent.change(screen.getByLabelText("搜索数据资产"), {
     target: { value: "CPI" },
   });
@@ -119,14 +121,14 @@ it("keeps the real macro catalog/filter/search while alternating financial daily
   );
   const month = await screen.findByLabelText("查询月份");
   expect((month as HTMLInputElement).value).toMatch(/^\d{4}-\d{2}$/);
-  expect(screen.queryByLabelText("起始观测日")).toBeNull();
+  expect(screen.queryByLabelText("开始日期")).toBeNull();
   fireEvent.change(screen.getByLabelText("搜索数据资产"), {
     target: { value: "金融" },
   });
   pickFinancial();
   expect(
-    (await screen.findByLabelText("起始观测日")).getAttribute("type"),
-  ).toBe("date");
+    (await screen.findByLabelText("开始日期")).getAttribute("placeholder"),
+  ).toBe("YYYY-MM-DD");
   expect(requests.every((r) => r.method === "GET")).toBe(true);
 });
 it("uses the existing target, tabs and unified execution detail; retains the original job deep link", async () => {
@@ -136,7 +138,7 @@ it("uses the existing target, tabs and unified execution detail; retains the ori
   await screen.findByRole("option", { name: "金融条件日频（十项）" });
   fireEvent.change(select, { target: { value: keyOf(FINANCIAL) } });
   expect(
-    ((await screen.findByLabelText("起始观测日")) as HTMLInputElement).value,
+    ((await screen.findByLabelText("采集开始日期")) as HTMLInputElement).value,
   ).toBe("2006-11-05");
   expect(screen.getByLabelText("采集目标").tagName).toBe("SELECT");
   expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
@@ -151,24 +153,24 @@ it("uses the existing target, tabs and unified execution detail; retains the ori
   fireEvent.change(screen.getByLabelText("采集目标"), {
     target: { value: keyOf(FINANCIAL) },
   });
-  await screen.findByLabelText("起始观测日");
+  await screen.findByLabelText("采集开始日期");
   fireEvent.click(screen.getByRole("tab", { name: "执行记录" }));
   const row = await screen.findByRole("button", {
     name: new RegExp(`选择 金融条件日频 ${id}`),
   });
   fireEvent.click(row);
-  await screen.findByRole("heading", { name: "日频作业详情" });
+  await screen.findByRole("heading", { name: "执行详情" });
   expect(
     screen
       .getByRole("complementary", { name: "执行记录详情" })
-      .contains(screen.getByRole("heading", { name: "日频作业详情" })),
+      .contains(screen.getByRole("heading", { name: "执行详情" })),
   ).toBe(true);
   expect(screen.getByLabelText("执行资产筛选")).toBeTruthy();
   await act(async () => {
     location.hash = `ui=r5&view=collection&asset=${FINANCIAL.identity}&asset_revision=r1&tab=executions&job=${id}`;
     window.dispatchEvent(new Event("hashchange"));
   });
-  await screen.findByRole("heading", { name: "日频作业详情" });
+  await screen.findByRole("heading", { name: "执行详情" });
   expect(screen.getByRole("tab", { name: "新建采集" })).toBeTruthy();
   expect(requests.every((r) => r.method === "GET")).toBe(true);
 });
@@ -180,8 +182,11 @@ it("distinguishes a confirmed empty financial execution scope from an unbound le
   fireEvent.change(screen.getByLabelText("采集目标"), {
     target: { value: keyOf(FINANCIAL) },
   });
-  await screen.findByLabelText("起始观测日");
-  fireEvent.click(screen.getByRole("button", { name: "查看执行记录 →" }));
+  await screen.findByLabelText("采集开始日期");
+  fireEvent.click(screen.getByRole("tab", { name: "执行记录" }));
+  fireEvent.change(screen.getByLabelText("执行资产筛选"), {
+    target: { value: keyOf(FINANCIAL) },
+  });
   await screen.findByText("当前已查询范围没有金融日频执行记录。");
   expect(
     screen.queryByText("未选择读取范围或此资产尚未绑定读取能力 / 尚未查询。"),

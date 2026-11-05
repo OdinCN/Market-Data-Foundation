@@ -161,7 +161,9 @@ export function RuntimeAssets({
           )}
           <WorkflowTable
             className={
-              cpiSelected && expanded ? "cpi-asset-expanded" : undefined
+              (cpiSelected || financialSelected) && expanded
+                ? "cpi-asset-expanded"
+                : undefined
             }
             label="数据资产"
             columns={["数据资产", "接入包", "可见原因"]}
@@ -209,7 +211,7 @@ export function RuntimeAssets({
               <>
                 <div className="toolbar cpi-asset-title">
                   <h3>{selected.title}</h3>
-                  {cpiSelected && (
+                  {(cpiSelected || financialSelected) && (
                     <>
                       {cpiAction}
                       <button

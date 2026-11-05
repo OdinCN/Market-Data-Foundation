@@ -124,7 +124,7 @@ def project(snapshot, selected, start, end):
                 row[3] if row and state in {"observed", "provider_missing"} else None
             )
             origin = row[10] if row else batch[7] if batch else None
-            primary = origin in {
+            primary = (origin or spec.get("origin")) in {
                 "federal_reserve_board",
                 "new_york_fed",
                 "us_treasury",

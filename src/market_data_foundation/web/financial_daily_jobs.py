@@ -242,6 +242,48 @@ def coverage(store, start, end, *, as_of=None):
     )
 
 
+def local_summary(store, *, as_of=None):
+    cutoff = stamp(as_of or now())
+    with store.read_snapshot():
+        rows = store.connection.execute(
+            f"""SELECT series_id,count(*),count(value),
+            min(observation_date) FILTER(WHERE value IS NOT NULL),
+            max(observation_date) FILTER(WHERE value IS NOT NULL),
+            max(available_at),max(observed_at),sum(revision-1)
+            FROM (SELECT DISTINCT ON(series_id,observation_date) *
+            FROM {store.schema}.revisions WHERE available_at<=%s
+            ORDER BY series_id,observation_date,revision DESC) r GROUP BY series_id""",
+            (cutoff,),
+        ).fetchall()
+    found = {r[0]: r for r in rows}
+    return dict(
+        status="OK",
+        as_of=cutoff.isoformat(),
+        provider_requests=0,
+        observation_count=sum(r[1] for r in rows),
+        revision_count=sum(r[7] for r in rows),
+        last_available_at=max((r[5] for r in rows), default=None).isoformat()
+        if rows
+        else None,
+        series=[
+            dict(
+                series_id=sid,
+                returned_days=found[sid][1] if sid in found else 0,
+                valid_rows=found[sid][2] if sid in found else 0,
+                first=found[sid][3].isoformat()
+                if sid in found and found[sid][3]
+                else None,
+                last=found[sid][4].isoformat()
+                if sid in found and found[sid][4]
+                else None,
+                last_available_at=found[sid][5].isoformat() if sid in found else None,
+                last_observed_at=found[sid][6].isoformat() if sid in found else None,
+            )
+            for sid in SERIES_IDS
+        ],
+    )
+
+
 class FinancialJobs:
     def __init__(
         self,
@@ -277,6 +319,8 @@ class FinancialJobs:
                     job_id=command["request_id"],
                     command=command,
                     created_at=now(),
+                    started_at=now(),
+                    origin="manual",
                     state="running",
                     steps=plan(command),
                     provider_requests=0,
@@ -403,6 +447,9 @@ class FinancialJobs:
                         step.update(
                             state=state,
                             classification=code,
+                            http_status=error.http_status
+                            if isinstance(error, FinancialError)
+                            else None,
                             retry_at=error.retry_at.isoformat()
                             if isinstance(error, FinancialError) and error.retry_at
                             else None,
@@ -438,6 +485,8 @@ class FinancialJobs:
                 if service:
                     service.store.close()
                 record["updated_at"] = now()
+                if record["state"] != "running":
+                    record["finished_at"] = record["updated_at"]
                 self.journal.save(record)
             return record
 

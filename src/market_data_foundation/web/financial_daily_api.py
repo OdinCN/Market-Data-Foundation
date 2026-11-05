@@ -23,6 +23,7 @@ from market_data_foundation.web.financial_daily_jobs import (
     FinancialJobs,
     coverage,
     identifier,
+    local_summary,
     stamp,
     status,
 )
@@ -48,6 +49,7 @@ HELP = dict(
     dataset_id=DATASET_ID,
     endpoints=dict(
         status=PREFIX + "/status",
+        summary=PREFIX + "/summary",
         query=PREFIX
         + "/query?start=YYYY-MM-DD&end=YYYY-MM-DD&series=DGS10"
         + "&as_of=ISO8601&offset=0&limit=200",
@@ -118,6 +120,19 @@ def financial_router(options=None, *, service_factory=build_service, jobs=None):
             return dict(status="OK", **HELP)
         except Exception as error:
             return fail(error)
+
+    @router.get("/summary")
+    def summary():
+        service = None
+        try:
+            require()
+            service = service_factory()
+            return local_summary(service.store)
+        except Exception as error:
+            return fail(error)
+        finally:
+            if service:
+                service.store.close()
 
     @router.get("/query")
     def query(request: Request):

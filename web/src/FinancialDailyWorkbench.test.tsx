@@ -29,8 +29,11 @@ it("submits from HTTP LAN using the existing secure-random fallback", async () =
   );
   await waitFor(() =>
     expect(
-      (screen.getByLabelText("起始观测日") as HTMLInputElement).value,
+      (screen.getByLabelText("采集开始日期") as HTMLInputElement).value,
     ).toBeTruthy(),
+  );
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
   );
   fireEvent.click(screen.getByRole("button", { name: "提交日频作业" }));
   await waitFor(() =>
@@ -61,8 +64,11 @@ it("keeps an explicit admission rejection distinct from an unknown network resul
   );
   await waitFor(() =>
     expect(
-      (screen.getByLabelText("起始观测日") as HTMLInputElement).value,
+      (screen.getByLabelText("采集开始日期") as HTMLInputElement).value,
     ).toBeTruthy(),
+  );
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
   );
   fireEvent.click(screen.getByRole("button", { name: "提交日频作业" }));
   await screen.findByRole("alert");
@@ -132,10 +138,13 @@ it("reads defaults without writes and submits exactly one editable twenty-year j
   );
   await waitFor(() =>
     expect(
-      (screen.getByLabelText("起始观测日") as HTMLInputElement).value,
+      (screen.getByLabelText("采集开始日期") as HTMLInputElement).value,
     ).toBe("2006-11-05"),
   );
   expect(calls.every((c) => c.method === "GET")).toBe(true);
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
+  );
   fireEvent.click(screen.getByRole("button", { name: "提交日频作业" }));
   await waitFor(() => expect(navigate).toHaveBeenCalled());
   const writes = calls.filter((c) => c.method === "POST");
@@ -161,8 +170,11 @@ it("does not repeat an uncertain POST and verifies the original identity by GET"
   );
   await waitFor(() =>
     expect(
-      (screen.getByLabelText("起始观测日") as HTMLInputElement).value,
+      (screen.getByLabelText("采集开始日期") as HTMLInputElement).value,
     ).toBeTruthy(),
+  );
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
   );
   fireEvent.click(screen.getByRole("button", { name: "提交日频作业" }));
   await screen.findByRole("button", { name: "核实原请求" });
@@ -203,4 +215,55 @@ it("query and refresh use only local GET with a fixed cutoff", async () => {
   expect(calls.filter((c) => c.url.includes("/query?")).at(-1)!.url).toContain(
     "as_of=2026-11-05T14%3A00%3A00.000Z",
   );
+});
+
+it("shows the exact failed daily period, reason and recovery without converting a real HTTP failure to a calendar wait", async () => {
+  const base = fixture();
+  const request_id = "00000000-0000-4000-8000-000000000003";
+  const transport: Transport = async (input, init) =>
+    String(input).endsWith("/jobs/" + request_id)
+      ? Response.json({
+          status: "OK",
+          job: {
+            request_id,
+            state: "partial",
+            created_at: "2026-11-05T17:00:00Z",
+            command: {
+              action: "update",
+              start: "2026-11-01",
+              end: "2026-11-06",
+            },
+            provider_requests: 1,
+            steps: [
+              {
+                series_id: "DGS2",
+                start: "2026-11-01",
+                end: "2026-11-06",
+                state: "failed",
+                classification: "financial_http_failure",
+                retry_at: "2026-11-05T18:00:00Z",
+              },
+            ],
+          },
+        })
+      : base.transport(input, init);
+  const r = route("collection", "executions");
+  r.fields.set("job", request_id);
+  render(
+    <FinancialDailyWorkbench
+      route={r}
+      navigate={vi.fn()}
+      transport={transport}
+      generation={0}
+      embedded
+      detailOnly
+    />,
+  );
+  await screen.findByRole("heading", { name: "执行详情" });
+  const alert = screen.getByRole("alert");
+  expect(alert.textContent).toContain("2026-11-01 至 2026-11-06");
+  expect(alert.textContent).toContain("具名来源暂未成功响应");
+  expect(alert.textContent).not.toContain("尚未进入");
+  expect(screen.getByRole("button", { name: "续跑此作业" })).toBeTruthy();
+  expect(base.calls.every((c) => c.method === "GET")).toBe(true);
 });

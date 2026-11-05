@@ -189,7 +189,7 @@ export function HttpExchangePanel({
     </section>
   );
 }
-function CompactTable({
+export function CompactTable({
   headers,
   rows,
   label,

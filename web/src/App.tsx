@@ -808,8 +808,12 @@ export default function App({
                         <button
                           onClick={() =>
                             navigate("collection", {
-                              asset: macroProfile.asset.identity,
-                              asset_revision: macroProfile.asset.revision,
+                              asset: financialExact
+                                ? FINANCIAL.identity
+                                : macroProfile.asset.identity,
+                              asset_revision: financialExact
+                                ? FINANCIAL.revision
+                                : macroProfile.asset.revision,
                               operation: null,
                               tab: "new",
                             })

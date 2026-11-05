@@ -1,3 +1,4 @@
+import { ExecutionFacts } from "./ExecutionFacts";
 import { planTargetKey, type PlanIssue } from "./autoCollectionDiagnosis";
 import { ClaimsCollectionDetails } from "./ClaimsCollectionDetails";
 import { CodeBlock } from "./CpiQueryDetails";
@@ -468,38 +469,25 @@ export function CpiExecutionDetail({
           )}
         </section>
       )}
-      <dl>
-        <Fact name="记录编号">{e.id}</Fact>
-        <Fact name="关联资产">{macroAssetLabel(profile)}</Fact>
-        <Fact name="来源">
-          {e.origin !== "manual" ? "自动策略" : "手动采集"}
-        </Fact>
-        <Fact name="采集方式">
-          {cpiActionText(
-            e.origin !== "manual"
-              ? e.action === "withdraw"
-                ? "withdraw"
-                : (e.stage ?? e.action)
-              : e.action,
-          )}
-        </Fact>
-        <Fact name="范围">
-          {e.start ?? "未记录"} 至 {e.end ?? "未记录"}
-        </Fact>
-        <Fact name="创建时间（北京时间）">
-          {formatBeijingTime(e.created_at, "未记录")}
-        </Fact>
-        <Fact name="开始时间（北京时间）">
-          {formatBeijingTime(e.started_at, "未记录")}
-        </Fact>
-        <Fact name="结束时间（北京时间）">
-          {formatBeijingTime(e.finished_at, "未记录")}
-        </Fact>
-        <Fact name="执行结果">
-          {cpiExecutionStateText(e.state, e.result, profile, e)}
-        </Fact>
-        {e.classification && <Fact name="结果分类">{e.classification}</Fact>}
-      </dl>
+      <ExecutionFacts
+        id={e.id}
+        asset={macroAssetLabel(profile)}
+        source={e.origin !== "manual" ? "自动策略" : "手动采集"}
+        action={cpiActionText(
+          e.origin !== "manual"
+            ? e.action === "withdraw"
+              ? "withdraw"
+              : (e.stage ?? e.action)
+            : e.action,
+        )}
+        start={e.start}
+        end={e.end}
+        createdAt={e.created_at}
+        startedAt={e.started_at}
+        finishedAt={e.finished_at}
+        result={cpiExecutionStateText(e.state, e.result, profile, e)}
+        classification={e.classification}
+      />
       {profile.id === "m3" && (
         <p className="small">
           以下新增和请求数仅属于本次执行；恢复时已确认的分片不会重复请求，范围覆盖包括之前确认的分片。

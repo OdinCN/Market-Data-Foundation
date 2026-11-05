@@ -297,3 +297,42 @@ def test_default_day_ignores_beijing_and_utc_midnight():
         datetime(2026, 11, 6, 1, tzinfo=UTC),
     ]:
         assert defaults(at=at) == {"start": "2006-11-05", "end": "2026-11-05"}
+
+
+def test_local_summary_reads_confirmed_daily_versions_without_source_or_schema_write():
+    from contextlib import nullcontext
+    from datetime import date
+
+    from market_data_foundation.web.financial_daily_jobs import local_summary
+    from tests.test_financial_daily import AT
+
+    seen = []
+
+    class Connection:
+        def execute(self, sql, parameters):
+            assert sql.lstrip().startswith("SELECT") and "available_at<=%s" in sql
+            seen.append(parameters)
+            return SimpleNamespace(
+                fetchall=lambda: [
+                    ("DGS10", 3, 2, date(2026, 11, 2), date(2026, 11, 4), AT, AT, 1)
+                ]
+            )
+
+    out = local_summary(
+        SimpleNamespace(
+            read_snapshot=nullcontext,
+            connection=Connection(),
+            schema="test_financial_daily_summary",
+        ),
+        as_of=AT,
+    )
+    assert (
+        out["observation_count"] == 3
+        and out["revision_count"] == 1
+        and out["provider_requests"] == 0
+    )
+    assert (
+        out["last_available_at"] == AT.isoformat()
+        and len(out["series"]) == 10
+        and len(seen) == 1
+    )

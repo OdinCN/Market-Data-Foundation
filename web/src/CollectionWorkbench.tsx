@@ -1335,61 +1335,16 @@ export function CollectionWorkbench({
         </div>
       )}
       {tab === "new" && financialTarget ? (
-        <div className="workbench collection-form">
-          <section>
-            {targetControl}
-            <FinancialDailyWorkbench
-              route={route}
-              navigate={navigate}
-              transport={transport}
-              generation={generation}
-              embedded
-            />
-          </section>
-          <aside className="detail-pane" aria-label="采集上下文">
-            <h3>采集上下文</h3>
-            <dl>
-              <Fact name="采集目标">金融条件日频（十项）</Fact>
-              <Fact name="数据粒度">观测日；日频</Fact>
-              <Fact name="存储策略">PG 日频版本与 Garage 原件</Fact>
-              <Fact name="运行方式">人工初始化 / 增量；常驻尚未接入</Fact>
-            </dl>
-            <p>
-              七项原机构输入、MDF 派生通胀补偿、两条信用指定归档与 FRED
-              尾段分别留存身份。
-            </p>
-            <button
-              onClick={() =>
-                navigate("assets", {
-                  asset: FINANCIAL.identity,
-                  asset_revision: FINANCIAL.revision,
-                  tab: "local",
-                  operation: null,
-                  reference: null,
-                  as_of: null,
-                })
-              }
-            >
-              查看资产 →
-            </button>
-            <button
-              onClick={() =>
-                navigate(
-                  "collection",
-                  {
-                    tab: "executions",
-                    job: null,
-                    execution_asset: keyOf(FINANCIAL),
-                    execution_schedule: "all",
-                  },
-                  true,
-                )
-              }
-            >
-              查看执行记录 →
-            </button>
-          </aside>
-        </div>
+        <>
+          {targetControl}
+          <FinancialDailyWorkbench
+            route={route}
+            navigate={navigate}
+            transport={transport}
+            generation={generation}
+            embedded
+          />
+        </>
       ) : tab === "new" &&
         (newMacro || macroPending) &&
         (cpiTarget ||
