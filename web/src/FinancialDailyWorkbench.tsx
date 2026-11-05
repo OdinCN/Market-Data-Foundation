@@ -506,21 +506,33 @@ export function FinancialDailyWorkbench({
             )}
             {(jobs.data?.jobs ?? []).slice(0, 5).map((j) => (
               <section key={j.request_id} className="execution-brief-card">
-                <h4>
+                <strong>
                   金融日频 ·{" "}
                   {j.command.action === "init" ? "初始化采集" : "更新指定范围"}
-                </h4>
+                </strong>
                 <dl>
-                  <Fact name="请求编号">{j.request_id}</Fact>
-                  <Fact name="创建时间">{formatBeijingTime(j.created_at)}</Fact>
-                  <Fact name="采集范围">
-                    {j.command.start} 至 {j.command.end}
-                  </Fact>
-                  <Fact name="结果">
-                    {label(j.state)} ·{" "}
-                    {j.steps.filter((s) => s.state === "complete").length}/
-                    {j.steps.length}
-                  </Fact>
+                  <div>
+                    <dt>请求编号</dt>
+                    <dd className="request-id">{j.request_id}</dd>
+                  </div>
+                  <div>
+                    <dt>创建时间</dt>
+                    <dd>{formatBeijingTime(j.created_at)}</dd>
+                  </div>
+                  <div>
+                    <dt>采集范围</dt>
+                    <dd>
+                      {j.command.start} 至 {j.command.end}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>结果</dt>
+                    <dd>
+                      {label(j.state)} ·{" "}
+                      {j.steps.filter((s) => s.state === "complete").length}/
+                      {j.steps.length}
+                    </dd>
+                  </div>
                 </dl>
                 <button
                   onClick={() => go("collection", "executions", j.request_id)}
