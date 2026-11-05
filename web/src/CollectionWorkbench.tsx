@@ -657,6 +657,17 @@ export function CollectionWorkbench({
     operation: HISTORY_OPERATION,
   };
   function recordState(kind: "plans" | "jobs") {
+    if (kind === "jobs" && filter === keyOf(FINANCIAL)) {
+      if (!financialRegistered)
+        return "金融日频人工接入尚未核实，执行记录尚未查询。";
+      if (financialRecords.busy) return "正在读取金融日频执行记录…";
+      if (financialRecords.failure)
+        return "金融日频执行记录读取失败，当前结果尚未核实。";
+      return financialRecords.data
+        ? "当前已查询范围没有金融日频执行记录。"
+        : "金融日频执行记录尚未查询。";
+    }
+
     if (filter === keyOf(M3))
       return m3Records.failure
         ? "M3执行记录读取失败"

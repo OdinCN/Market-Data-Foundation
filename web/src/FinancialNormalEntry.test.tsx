@@ -33,7 +33,7 @@ const job = {
   steps: [],
   coverage: { series: [], as_of: "2026-11-05T12:00:00Z" },
 };
-async function setup() {
+async function setup(financialJobs = [job]) {
   root = mkdtempSync(join(tmpdir(), "mdf-d01-financial-entry-"));
   const b = asgi("financial_manual", "d01_ui_exchange.py", { store_dir: root });
   await b.exchange({
@@ -53,7 +53,7 @@ async function setup() {
       const data = url.endsWith("/status")
         ? { defaults: { start: "2006-11-05", end: "2026-11-05" }, series: [] }
         : url.endsWith("/jobs")
-          ? { jobs: [job] }
+          ? { jobs: financialJobs }
           : url.includes("/jobs/")
             ? { job }
             : url.includes("/query?")
@@ -170,5 +170,21 @@ it("uses the existing target, tabs and unified execution detail; retains the ori
   });
   await screen.findByRole("heading", { name: "日频作业详情" });
   expect(screen.getByRole("tab", { name: "新建采集" })).toBeTruthy();
+  expect(requests.every((r) => r.method === "GET")).toBe(true);
+});
+
+it("distinguishes a confirmed empty financial execution scope from an unbound legacy reader", async () => {
+  const requests = await setup([]);
+  nav("采集任务");
+  await screen.findByRole("option", { name: "金融条件日频（十项）" });
+  fireEvent.change(screen.getByLabelText("采集目标"), {
+    target: { value: keyOf(FINANCIAL) },
+  });
+  await screen.findByLabelText("起始观测日");
+  fireEvent.click(screen.getByRole("button", { name: "查看执行记录 →" }));
+  await screen.findByText("当前已查询范围没有金融日频执行记录。");
+  expect(
+    screen.queryByText("未选择读取范围或此资产尚未绑定读取能力 / 尚未查询。"),
+  ).toBeNull();
   expect(requests.every((r) => r.method === "GET")).toBe(true);
 });
