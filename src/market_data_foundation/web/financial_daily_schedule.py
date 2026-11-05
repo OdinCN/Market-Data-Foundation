@@ -138,7 +138,11 @@ class FinancialSchedule:
             if f"{name}:{at.isoformat()}" not in state["tasks"]
         ]
         next_at = min([*waiting, *next_slots, *due], default=None)
-        successful = [t["completed_at"] for t in tasks if t["state"] == "complete"]
+        successful = [
+            t["completed_at"]
+            for t in tasks
+            if t["state"] == "complete" and t.get("completed_at")
+        ]
         return dict(
             status="OK",
             enabled=state["enabled"],
@@ -168,6 +172,27 @@ class FinancialSchedule:
             at = self.clock()
             with self.lock("policy.lock"):
                 state = self.read()
+                # A normal product resume can complete an exhausted automatic job.
+                # Reconcile that durable receipt, including while paused, without
+                # another acquisition or a synthetic collection timestamp.
+                reconciled = False
+                for task in state["tasks"].values():
+                    if task["state"] == "complete":
+                        continue
+                    receipt = jobs.journal.read(task["request_id"])
+                    if receipt and receipt["state"] == "complete":
+                        task.update(
+                            state="complete",
+                            job_state="complete",
+                            failures=[],
+                            provider_requests=receipt["provider_requests"],
+                            completed_at=receipt.get("finished_at")
+                            or receipt.get("updated_at"),
+                        )
+                        task.pop("classification", None)
+                        reconciled = True
+                if reconciled:
+                    self._save(state)
                 if not state["enabled"]:
                     return dict(state="paused")
                 candidates = [

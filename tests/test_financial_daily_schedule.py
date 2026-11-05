@@ -321,3 +321,32 @@ def test_financial_write_admission_is_applied_in_composed_web(tmp_path, monkeypa
             public.status_code == 405
         )  # composed public Host rejects sensitive methods
         assert not (tmp_path / "state/schedule.json").exists()
+
+
+def test_product_resume_of_exhausted_job_is_reconciled_while_paused_without_fetch(
+    tmp_path,
+):
+    clock = [AT]
+    schedule = FinancialSchedule(tmp_path, clock=lambda: clock[0])
+    schedule.enabled(True)
+    jobs = Jobs(fail=True)
+    for _ in range(10):
+        schedule.tick(jobs)
+        clock[0] += timedelta(minutes=5)
+    assert all(t["attempts"] == MAX_ATTEMPTS for t in schedule.get()["tasks"])
+    original_calls = len(jobs.calls)
+    fixed = schedule.get()["tasks"][0]
+    # Normal product resume is independent of the scheduler.
+    jobs.records[fixed["request_id"]].update(
+        state="complete", finished_at=clock[0].isoformat()
+    )
+    schedule.enabled(False)
+    assert schedule.tick(jobs)["state"] == "paused"
+    matched = next(
+        t for t in schedule.get()["tasks"] if t["request_id"] == fixed["request_id"]
+    )
+    assert (
+        matched["state"] == "complete"
+        and matched["completed_at"] == clock[0].isoformat()
+    )
+    assert matched["attempts"] == MAX_ATTEMPTS and len(jobs.calls) == original_calls
