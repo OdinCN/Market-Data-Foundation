@@ -1,3 +1,4 @@
+import { FINANCIAL } from "./FinancialDailyWorkbench";
 import { macroAssetLabel } from "./macroTimeSeriesProfile";
 import { CPI_PROFILE, type MacroProfile } from "./macroTimeSeriesProfile";
 import { useState, type ReactNode } from "react";
@@ -22,6 +23,7 @@ export function RuntimeAssets({
   reference,
   cpi,
   cpiAction,
+  financial,
   profile = CPI_PROFILE,
 }: {
   data: Packages | null;
@@ -34,6 +36,7 @@ export function RuntimeAssets({
   reference: ReactNode;
   cpi?: ReactNode;
   cpiAction?: ReactNode;
+  financial?: ReactNode;
   profile?: MacroProfile;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -78,6 +81,8 @@ export function RuntimeAssets({
             a.revisions.some((r) => sameKey(r.definition_ref, profile.asset)),
           ),
       ));
+  const financialSelected =
+    !!financial && route.fields.get("asset") === FINANCIAL.identity;
   const revision = route.fields.has("asset_revision")
     ? selected?.revisions.find(
         (r) => r.definition_ref.revision === route.fields.get("asset_revision"),
@@ -171,9 +176,13 @@ export function RuntimeAssets({
               cells: [
                 r.title,
                 r.owners.map((p) => p.name).join(" / "),
-                r.revisions.some((v) => v.capability_enabled)
-                  ? "能力已启用"
-                  : "保留历史",
+                r.revisions.some((v) =>
+                  v.visibility_basis?.includes("REGISTERED_MANUAL"),
+                )
+                  ? "已登记人工通路"
+                  : r.revisions.some((v) => v.capability_enabled)
+                    ? "能力已启用"
+                    : "保留历史",
               ],
             }))}
             selected={selected?.identity}
@@ -213,41 +222,44 @@ export function RuntimeAssets({
                   )}
                 </div>
                 {cpiSelected && cpi}
-                {!cpiSelected && selected.revisions.length > 1 && (
-                  <label>
-                    数据定义
-                    <select
-                      aria-label="数据定义"
-                      value={revision?.definition_ref.revision ?? ""}
-                      onChange={(e) =>
-                        navigate(
-                          "assets",
-                          {
-                            asset_revision: e.target.value || null,
-                            operation: null,
-                            version: null,
-                            tab: null,
-                          },
-                          true,
-                        )
-                      }
-                    >
-                      <option value="">请选择数据定义</option>
-                      {[
-                        ...new Set(
-                          selected.revisions.map(
-                            (r) => r.definition_ref.revision,
+                {financialSelected && financial}
+                {!cpiSelected &&
+                  !financialSelected &&
+                  selected.revisions.length > 1 && (
+                    <label>
+                      数据定义
+                      <select
+                        aria-label="数据定义"
+                        value={revision?.definition_ref.revision ?? ""}
+                        onChange={(e) =>
+                          navigate(
+                            "assets",
+                            {
+                              asset_revision: e.target.value || null,
+                              operation: null,
+                              version: null,
+                              tab: null,
+                            },
+                            true,
+                          )
+                        }
+                      >
+                        <option value="">请选择数据定义</option>
+                        {[
+                          ...new Set(
+                            selected.revisions.map(
+                              (r) => r.definition_ref.revision,
+                            ),
                           ),
-                        ),
-                      ].map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                {!cpiSelected && revision && (
+                        ].map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                {!cpiSelected && !financialSelected && revision && (
                   <>
                     <dl>
                       <Fact name="能力状态">
@@ -347,6 +359,13 @@ export function RuntimeAssets({
           </WorkflowTable>
         </>
       )}
+      {financialSelected && !selected && !busy && (data || failure) && (
+        <section aria-label="日频登记资产读取">
+          <h3>金融条件日频（十项）</h3>
+          <p>当前目录持有尚未确认；本地查询将独立核验，未据此声称已有数据。</p>
+          {financial}
+        </section>
+      )}
       {cpiSelected && !selected && !busy && (data || failure) && (
         <section>
           <div className="toolbar cpi-asset-title">
@@ -357,6 +376,7 @@ export function RuntimeAssets({
         </section>
       )}
       {!cpiSelected &&
+        !financialSelected &&
         !revision &&
         (!filter ||
           packages.some((p) =>

@@ -340,7 +340,8 @@ class PackageHost:
             )
             h = raw_history if permission == "allowed" else None
             retained = h is not None and h.holding == "present"
-            if not on and not retained:
+            registered = h is not None and h.manual_registered
+            if not on and not retained and not registered:
                 continue
             local = Eligibility(
                 allowed=None, reasons=["history_or_read_permission_unknown"]
@@ -390,7 +391,8 @@ class PackageHost:
                     definition_ref=definition,
                     capability_enabled=on,
                     visibility_basis=(["ENABLED_MAPPING"] if on else [])
-                    + (["RETAINED_HISTORY"] if retained else []),
+                    + (["RETAINED_HISTORY"] if retained else [])
+                    + (["REGISTERED_MANUAL"] if registered else []),
                     source_entries=rows,
                     metadata_view_permission=permission,
                     local_holding=holding,

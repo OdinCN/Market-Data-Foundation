@@ -302,7 +302,11 @@ export interface components {
       /** Capability Enabled */
       capability_enabled: boolean;
       /** Visibility Basis */
-      visibility_basis: ("ENABLED_MAPPING" | "RETAINED_HISTORY")[];
+      visibility_basis: (
+        | "ENABLED_MAPPING"
+        | "RETAINED_HISTORY"
+        | "REGISTERED_MANUAL"
+      )[];
       /** Source Entries */
       source_entries: components["schemas"]["DirectoryEntryDTO-Input"][];
       /**
@@ -326,7 +330,11 @@ export interface components {
       /** Capability Enabled */
       capability_enabled: boolean;
       /** Visibility Basis */
-      visibility_basis: ("ENABLED_MAPPING" | "RETAINED_HISTORY")[];
+      visibility_basis: (
+        | "ENABLED_MAPPING"
+        | "RETAINED_HISTORY"
+        | "REGISTERED_MANUAL"
+      )[];
       /** Source Entries */
       source_entries: components["schemas"]["DirectoryEntryDTO-Output"][];
       /**

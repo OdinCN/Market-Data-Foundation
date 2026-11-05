@@ -64,6 +64,12 @@ from market_data_foundation.historical.daily_bars import (
     TDX_R1_DAILY_BINDING,
     TDX_R1_DAILY_SOURCE,
 )
+from market_data_foundation.historical.financial_daily import (
+    DEFINITION as FINANCIAL_DEFINITION,
+)
+from market_data_foundation.historical.financial_daily_catalog import (
+    contracts as financial_contracts,
+)
 from market_data_foundation.historical.fomc_statement import (
     STATEMENT_BINDING_CANDIDATE,
     STATEMENT_DOCUMENT,
@@ -395,6 +401,18 @@ def directory(query: DirectoryQuery) -> DirectoryDTO:
         ),
     )
     entries = [_entry(*spec) for spec in specs]
+    entries.extend(
+        _entry(
+            "Macro",
+            name,
+            "financial_daily_catalog",
+            "contracts",
+            source,
+            binding,
+            FINANCIAL_DEFINITION,
+        )
+        for name, source, binding in financial_contracts()
+    )
     for provider in ("ECB", "ESTAT"):
         source, definition, binding = sdmx_contracts(provider)
         entries.append(

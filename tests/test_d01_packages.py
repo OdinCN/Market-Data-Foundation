@@ -106,6 +106,11 @@ def test_first_enable_required_keep_and_package_environment_isolation(tmp_path):
             "BEA": "missing",
             "Census": "configured",
             "FRED": "configured",
+            "Federal Reserve Board": "configured",
+            "New York Fed": "configured",
+            "US Treasury": "configured",
+            "MDF": "configured",
+            "Credit archive": "configured",
         }
         assert put(client, ["daily_raw"], package="tdx").status_code == 200
         assert client.get(f"{PATH}/macro").json() == ppi
@@ -165,7 +170,7 @@ def test_real_identities_source_variants_and_other_code_catalog_are_preserved(tm
         }
         directory = client.get("/api/r5/sources").json()
         assert directory["evidence_mode"] == "CODE_CONTRACTS_ONLY"
-        assert len(directory["entries"]) == 21
+        assert len(directory["entries"]) == 27
         assert any(
             e["identity"] == "mdf.source.census.m3.capital-goods@r1"
             for e in directory["entries"]
@@ -178,7 +183,7 @@ def test_real_identities_source_variants_and_other_code_catalog_are_preserved(tm
                     if e["asset"]
                 }
             )
-            == 16
+            == 17
         )
 
 

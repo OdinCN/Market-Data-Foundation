@@ -499,7 +499,7 @@ export default function App({
   const asset = model.assets.find((a) => sameKey(a.key, key));
   const financialExact =
     identity === FINANCIAL.identity &&
-    revision === FINANCIAL.revision &&
+    (!revision || revision === FINANCIAL.revision) &&
     !operation;
   const invalidIdentity = !!(
     directory.data &&
@@ -733,34 +733,6 @@ export default function App({
               )}
               {page.view !== "overview" && (
                 <section className="content-panel">
-                  {["assets", "collection"].includes(page.view) &&
-                    !financialExact && (
-                      <div className="toolbar">
-                        <button
-                          onClick={() =>
-                            navigate(page.view, {
-                              asset: FINANCIAL.identity,
-                              asset_revision: "r1",
-                              operation: null,
-                              tab: page.view === "collection" ? "new" : "local",
-                              job: null,
-                            })
-                          }
-                        >
-                          金融条件日频（十项）
-                        </button>
-                      </div>
-                    )}
-                  {["assets", "collection"].includes(page.view) &&
-                    financialExact &&
-                    !invalidIdentity && (
-                      <FinancialDailyWorkbench
-                        route={page}
-                        navigate={navigate}
-                        transport={transport}
-                        generation={generation}
-                      />
-                    )}
                   {page.view === "access" && (
                     <PackageSources
                       data={packages.data}
@@ -772,9 +744,21 @@ export default function App({
                       changed={() => setGeneration((g) => g + 1)}
                     />
                   )}
-                  {page.view === "assets" && !financialExact && (
+                  {page.view === "assets" && (
                     <RuntimeAssets
                       profile={macroProfile}
+                      financial={
+                        financialExact && !invalidIdentity ? (
+                          <FinancialDailyWorkbench
+                            key={`${identity}:${revision}`}
+                            route={page}
+                            navigate={navigate}
+                            transport={transport}
+                            generation={generation}
+                            embedded
+                          />
+                        ) : undefined
+                      }
                       data={packages.data}
                       busy={packages.busy}
                       failure={packages.failure}
@@ -887,7 +871,7 @@ export default function App({
                       ordinary={ordinaryQuery}
                     />
                   )}
-                  {page.view === "collection" && !financialExact && (
+                  {page.view === "collection" && (
                     <CollectionWorkbench
                       key={`${identity}:${revision}:${operation}`}
                       assets={model.assets}

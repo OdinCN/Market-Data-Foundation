@@ -22,6 +22,12 @@ from market_data_foundation.historical.consumption_contract import (
 )
 from market_data_foundation.historical.daily_bars import RAW_DAILY_BARS
 from market_data_foundation.historical.employment_contract import BLS_EMPLOYMENT
+from market_data_foundation.historical.financial_daily import (
+    DEFINITION as FINANCIAL_DEFINITION,
+)
+from market_data_foundation.historical.financial_daily_catalog import (
+    PATHS as FINANCIAL_PATHS,
+)
 from market_data_foundation.historical.gdp_contract import GDP_DEFINITION
 from market_data_foundation.historical.jolts_contract import JOLTS_DEFINITION
 from market_data_foundation.historical.m3_contract import M3_DEFINITION
@@ -99,8 +105,14 @@ PACKAGES = (
         "宏观数据接入包",
         "Macro",
         "美国 CPI、PPI、JOLTS、就业、零售销售、消费与收入、初请与续请失业金、"
-        "GDP与增长、PCE价格指数及耐用品与核心资本品；启用不代表来源或运行就绪。",
+        "GDP与增长、PCE价格指数、耐用品与核心资本品及金融条件日频十项；启用不代表来源或运行就绪。",
         (
+            CapabilityView(
+                capability_id="financial_daily",
+                title="金融条件日频（十项）",
+                definition_ref=ref(FINANCIAL_DEFINITION),
+                required_sources=[name for _, name, _ in FINANCIAL_PATHS],
+            ),
             CapabilityView(
                 capability_id="cpi",
                 title="美国 CPI",
@@ -243,12 +255,17 @@ class PackageCatalog:
                             source_id=row.source_name,
                             numeric_path=row.source_contract.product,
                             original_institution=(
-                                "DOL/ETA"
+                                "ICE Data Indices, LLC"
+                                if cap.capability_id == "financial_daily"
+                                and row.source_name in {"FRED", "Credit archive"}
+                                else "DOL/ETA"
                                 if row.source_name == "FRED"
                                 else row.source_name
                             ),
                             release_calendar=(
-                                "Census M3 官方发布日历（调度未装配）"
+                                "按观测日人工初始化/增量；日频常驻未接入"
+                                if cap.capability_id == "financial_daily"
+                                else "Census M3 官方发布日历（调度未装配）"
                                 if cap.capability_id == "m3"
                                 else calendars.get(row.source_name, "未装配")
                             ),
@@ -356,6 +373,7 @@ class SourceVerification(VerificationFacts):
 
 
 class HistoryEvidence(DTO):
+    manual_registered: bool = False
     definition_ref: ContractRef
     holding: Literal["present", "absent", "unknown"]
     metadata_view_permission: Permission = "unknown"
@@ -376,7 +394,9 @@ class Eligibility(DTO):
 class AssetRevision(DTO):
     definition_ref: ContractRef
     capability_enabled: bool
-    visibility_basis: list[Literal["ENABLED_MAPPING", "RETAINED_HISTORY"]]
+    visibility_basis: list[
+        Literal["ENABLED_MAPPING", "RETAINED_HISTORY", "REGISTERED_MANUAL"]
+    ]
     source_entries: list[DirectoryEntryDTO]
     metadata_view_permission: Permission
     local_holding: Literal["UNKNOWN", "ABSENT", "PRESENT"]

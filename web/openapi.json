@@ -1373,7 +1373,8 @@
               "type": "string",
               "enum": [
                 "ENABLED_MAPPING",
-                "RETAINED_HISTORY"
+                "RETAINED_HISTORY",
+                "REGISTERED_MANUAL"
               ]
             },
             "type": "array",
@@ -1447,7 +1448,8 @@
               "type": "string",
               "enum": [
                 "ENABLED_MAPPING",
-                "RETAINED_HISTORY"
+                "RETAINED_HISTORY",
+                "REGISTERED_MANUAL"
               ]
             },
             "type": "array",

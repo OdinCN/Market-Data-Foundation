@@ -32,7 +32,7 @@ type Step = {
   valid_rows?: number;
   retained?: { raw_sha: string; metadata_sha: string; observed_at: string };
 };
-type Job = {
+export type FinancialJob = {
   request_id: string;
   state: string;
   classification?: string;
@@ -124,7 +124,7 @@ class FinancialRequestError extends Error {
     super(message);
   }
 }
-async function call<T>(
+export async function financialCall<T>(
   transport: Transport,
   path: string,
   signal?: AbortSignal,
@@ -155,11 +155,15 @@ export function FinancialDailyWorkbench({
   navigate,
   transport,
   generation,
+  embedded = false,
+  detailOnly = false,
 }: {
   route: Route;
   navigate: Navigate;
   transport: Transport;
   generation: number;
+  embedded?: boolean;
+  detailOnly?: boolean;
 }) {
   const collecting = route.view === "collection";
   const tab = route.fields.get("tab") ?? (collecting ? "new" : "local");
@@ -180,20 +184,22 @@ export function FinancialDailyWorkbench({
   const [query, setQuery] = useState<Query | null>(null);
   const [point, setPoint] = useState<Point | null>(null);
   const status = useVisiblePolling(
-    (signal) => call<Status>(transport, "/status", signal),
+    (signal) => financialCall<Status>(transport, "/status", signal),
     [generation],
     true,
     undefined,
     false,
   );
   const jobs = useVisiblePolling(
-    (signal) => call<{ jobs: Job[] }>(transport, "/jobs", signal),
+    (signal) =>
+      financialCall<{ jobs: FinancialJob[] }>(transport, "/jobs", signal),
     [generation],
-    collecting,
+    collecting && !detailOnly,
   );
   const jobId = route.fields.get("job");
   const detail = useVisiblePolling(
-    (signal) => call<{ job: Job }>(transport, `/jobs/${jobId}`, signal),
+    (signal) =>
+      financialCall<{ job: FinancialJob }>(transport, `/jobs/${jobId}`, signal),
     [jobId, generation],
     !!jobId,
   );
@@ -206,13 +212,21 @@ export function FinancialDailyWorkbench({
     }
   }, [status.data, start]);
   function go(view: "assets" | "collection", nextTab: string) {
-    navigate(view, {
-      asset: FINANCIAL.identity,
-      asset_revision: "r1",
-      operation: null,
-      tab: nextTab,
-      job: null,
-    });
+    navigate(
+      view,
+      {
+        asset: FINANCIAL.identity,
+        asset_revision: "r1",
+        operation: null,
+        tab: nextTab,
+        job: null,
+        reference: null,
+        as_of: null,
+        execution_asset:
+          nextTab === "executions" ? `${FINANCIAL.identity}@r1` : null,
+      },
+      view === route.view,
+    );
   }
   async function submit(resume?: string) {
     if (busy || uncertain) return;
@@ -220,7 +234,7 @@ export function FinancialDailyWorkbench({
     setFailure(null);
     const request_id = resume ?? requestId();
     try {
-      const result = await call<{ job: Job }>(
+      const result = await financialCall<{ job: FinancialJob }>(
         transport,
         resume ? "/jobs/resume" : "/jobs",
         undefined,
@@ -230,6 +244,7 @@ export function FinancialDailyWorkbench({
         asset: FINANCIAL.identity,
         asset_revision: "r1",
         tab: "executions",
+        execution_asset: `${FINANCIAL.identity}@r1`,
         job: result.job.request_id,
       });
       jobs.refresh();
@@ -257,13 +272,17 @@ export function FinancialDailyWorkbench({
     if (!uncertain) return;
     setBusy(true);
     try {
-      const result = await call<{ job: Job }>(transport, `/jobs/${uncertain}`);
+      const result = await financialCall<{ job: FinancialJob }>(
+        transport,
+        `/jobs/${uncertain}`,
+      );
       setUncertain(null);
       setFailure(null);
       navigate("collection", {
         asset: FINANCIAL.identity,
         asset_revision: "r1",
         tab: "executions",
+        execution_asset: `${FINANCIAL.identity}@r1`,
         job: result.job.request_id,
       });
     } catch (error) {
@@ -286,7 +305,7 @@ export function FinancialDailyWorkbench({
         limit: "200",
       });
       if (cutoff) p.set("as_of", new Date(cutoff).toISOString());
-      const result = await call<Query>(transport, `/query?${p}`);
+      const result = await financialCall<Query>(transport, `/query?${p}`);
       setQuery(result);
       setPoint(null);
     } catch (error) {
@@ -297,29 +316,8 @@ export function FinancialDailyWorkbench({
       setBusy(false);
     }
   }
-  return (
+  const failureNotice = (
     <>
-      <div className="toolbar">
-        <h2>金融条件日频 · 十项</h2>
-        <button onClick={() => go("collection", "new")}>采集数据</button>
-        <button onClick={() => go("assets", "local")}>查询数据</button>
-        <button onClick={() => go("collection", "executions")}>执行详情</button>
-        <button
-          onClick={async () => {
-            try {
-              setHelp(await call(transport, "/api-help"));
-            } catch {
-              setFailure("financial_api_help_unavailable");
-            }
-          }}
-        >
-          API 说明
-        </button>
-      </div>
-      <p>
-        原机构输入、政策生效投影与 MDF
-        派生分别标识。百分比原值；信用另列基点。仅人工作业，无日频常驻执行器。
-      </p>
       {(failure || status.failure || jobs.failure || detail.failure) && (
         <p role="alert">
           {failure ?? "本地读取暂不可用，请刷新核实。"}
@@ -334,6 +332,101 @@ export function FinancialDailyWorkbench({
           )}
         </p>
       )}
+    </>
+  );
+  const jobDetail = (
+    <>
+      {detailOnly && failureNotice}
+      {detailOnly && !job && (
+        <p role="status">
+          {detail.busy
+            ? "正在读取日频作业…"
+            : "请求的日频作业暂不可核实，未改选其他任务。"}
+        </p>
+      )}
+      {job && (
+        <section aria-label="日频作业详情">
+          <h3>日频作业详情</h3>
+          <p>
+            作业 {job.request_id} · {label(job.state)} · 完成{" "}
+            {job.steps.filter((s) => s.state === "complete").length}/
+            {job.steps.length} 段 · 实际上游请求 {job.provider_requests}
+          </p>
+          {job.classification && <p role="alert">{job.classification}</p>}
+          {["partial", "unknown"].includes(job.state) && (
+            <button
+              disabled={busy || !!uncertain}
+              onClick={() => submit(job.request_id)}
+            >
+              续跑此作业
+            </button>
+          )}
+          {job.coverage && <CoverageTable rows={job.coverage.series} />}
+          <details open={job.state !== "complete"}>
+            <summary>逐段进度、失败与原件定位</summary>
+            <ul className="financial-steps">
+              {job.steps.map((s, i) => (
+                <li key={i}>
+                  <strong>{s.series_id}</strong> {s.start} 至 {s.end} ·{" "}
+                  {s.source} · {label(s.state)} · 请求{" "}
+                  {s.provider_requests ?? 0} · 有效值 {s.valid_rows ?? "待回读"}
+                  {s.classification && (
+                    <p role="alert">
+                      {s.classification}；仅影响本段。
+                      {s.retry_at
+                        ? `冷却至 ${s.retry_at}，之后续跑。`
+                        : "核对来源/存储恢复后续跑同一作业。"}
+                    </p>
+                  )}
+                  {s.result && (
+                    <details>
+                      <summary>持久批次与原件</summary>
+                      <pre className="financial-json">
+                        {JSON.stringify(
+                          { batch: s.result, retained: s.retained },
+                          null,
+                          2,
+                        )}
+                      </pre>
+                    </details>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </section>
+      )}
+    </>
+  );
+  if (detailOnly) return jobDetail;
+  return (
+    <>
+      {(!embedded || !collecting) && (
+        <div className="toolbar">
+          {!embedded && <h2>金融条件日频 · 十项</h2>}
+          <button onClick={() => go("collection", "new")}>采集数据</button>
+          <button onClick={() => go("assets", "local")}>查询数据</button>
+          <button onClick={() => go("collection", "executions")}>
+            执行详情
+          </button>
+          <button
+            onClick={async () => {
+              try {
+                setHelp(await financialCall(transport, "/api-help"));
+              } catch {
+                setFailure("financial_api_help_unavailable");
+              }
+            }}
+          >
+            API 说明
+          </button>
+        </div>
+      )}
+      <p>
+        原机构输入、政策生效投影与 MDF
+        派生分别标识。百分比原值；信用另列基点。仅人工作业，无日频常驻执行器。
+      </p>
+      {failureNotice}
       {help !== null && (
         <details open>
           <summary>真实 API 入口与合同</summary>
@@ -349,10 +442,12 @@ export function FinancialDailyWorkbench({
           className="collection-form"
         >
           <h3>新建日频作业</h3>
-          <label>
-            采集目标
-            <input value="金融条件日频（十项）" readOnly />
-          </label>
+          {!embedded && (
+            <label>
+              采集目标
+              <input value="金融条件日频（十项）" readOnly />
+            </label>
+          )}
           <label>
             执行方式
             <select
@@ -427,63 +522,13 @@ export function FinancialDailyWorkbench({
                 asset: FINANCIAL.identity,
                 asset_revision: "r1",
                 tab: "executions",
+                execution_asset: `${FINANCIAL.identity}@r1`,
                 job: id,
               })
             }
-          />
-          {job && (
-            <section aria-label="日频作业详情">
-              <h3>日频作业详情</h3>
-              <p>
-                作业 {job.request_id} · {label(job.state)} · 完成{" "}
-                {job.steps.filter((s) => s.state === "complete").length}/
-                {job.steps.length} 段 · 实际上游请求 {job.provider_requests}
-              </p>
-              {job.classification && <p role="alert">{job.classification}</p>}
-              {["partial", "unknown"].includes(job.state) && (
-                <button
-                  disabled={busy || !!uncertain}
-                  onClick={() => submit(job.request_id)}
-                >
-                  续跑此作业
-                </button>
-              )}
-              {job.coverage && <CoverageTable rows={job.coverage.series} />}
-              <details open={job.state !== "complete"}>
-                <summary>逐段进度、失败与原件定位</summary>
-                <ul className="financial-steps">
-                  {job.steps.map((s, i) => (
-                    <li key={i}>
-                      <strong>{s.series_id}</strong> {s.start} 至 {s.end} ·{" "}
-                      {s.source} · {label(s.state)} · 请求{" "}
-                      {s.provider_requests ?? 0} · 有效值{" "}
-                      {s.valid_rows ?? "待回读"}
-                      {s.classification && (
-                        <p role="alert">
-                          {s.classification}；仅影响本段。
-                          {s.retry_at
-                            ? `冷却至 ${s.retry_at}，之后续跑。`
-                            : "核对来源/存储恢复后续跑同一作业。"}
-                        </p>
-                      )}
-                      {s.result && (
-                        <details>
-                          <summary>持久批次与原件</summary>
-                          <pre className="financial-json">
-                            {JSON.stringify(
-                              { batch: s.result, retained: s.retained },
-                              null,
-                              2,
-                            )}
-                          </pre>
-                        </details>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            </section>
-          )}
+          >
+            {jobDetail}
+          </WorkflowTable>
         </>
       )}
       {!collecting && (
