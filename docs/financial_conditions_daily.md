@@ -1,82 +1,93 @@
 # 金融条件日频数据层 r1
 
-本模块只提供独立数据链，未接 Web、常驻 worker 或二十年初始化作业。
-稳定数据集为 `mdf.macro.financial-conditions.daily@r1`，来源绑定为
-`mdf.binding.fred.financial-conditions.daily@r1`。run/attempt 不构成数据集身份。
+仅提供数据链；工作台、正常产品作业、常驻执行器和二十年初始化在后续段接入。
+稳定数据集为 `mdf.macro.financial-conditions.daily@r1`。run/attempt 不构成数据集身份。
+数据库物理版本 r2 可从已存在 r1 增量升级，不重建或删除原数据；查询不迁移。
 
-## 当前来源准入
+## 明确来源绑定
 
-2026-11-05 核查的 [FRED 条款](https://fred.stlouisfed.org/legal/) 中，API
-Prohibitions (k)/(l) 对所述开发用途和存储、缓存、归档及数据库纳入设有限制。
-当前既有绑定没有证明本持久化 DEV 用途已取得相应许可。十条序列统一保持
-`fred_retention_permission_unconfirmed`，在凭据解析、HTTP 和采集写入之前拒绝。
-API key、Owner 的开发授权与数据提供方的使用许可是不同事实；没有客户端绕过开关。
-后续取得适用许可后，应更新本包固定来源审阅，逐条完成原生 metadata/小窗资格核验，
-再启用既有数据接口。不得静默转到原始机构或其他分发者。
+Owner 为内部 MDF-DEV 明确绑定 `mdf.binding.financial-conditions.origin-dev@r1`。
+CLI 默认使用此绑定，不是 FRED 失败后的自动替代。十条代码只作指标映射。
+`registry` 同时保留 `source_use`（原 FRED 受限状态）和 `active_binding`（本次明确绑定）。
+`query` 每行返回实际机构、分发者、身份、来源、请求、出处、条款和必要声明。
 
-| 原生序列 | 原始机构/含义 | 日历与单位 |
+| 代码映射 | 实际输入/身份 | 单位与日期 |
 |---|---|---|
-| DFEDTARL / DFEDTARU | Federal Reserve Board，目标区间下/上限 | 每日七天；Percent，NSA；表示该日有效界限 |
-| EFFR | NY Fed，无担保隔夜有效利率 | Daily；Percent，NSA |
-| SOFR | NY Fed，有担保隔夜融资利率 | Daily；Percent，NSA |
-| DGS2 / DGS10 | Federal Reserve Board，固定期限名义收益率 | Daily；Percent，NSA；不是逐券成交价 |
-| DFII10 | Federal Reserve Board，10 年通胀挂钩实际收益率 | Daily；Percent，NSA；允许负值 |
-| T10YIE | St. Louis Fed，10 年盈亏平衡通胀率 | Daily；Percent，NSA；不称纯通胀调查或独立风险因子 |
-| BAMLC0A0CM / BAMLH0A0HYM2 | ICE，投资级/高收益 OAS | Daily Close；Percent，NSA；bp=Percent×100 |
+| DFEDTARL / DFEDTARU | 联储理事会政策变动表；有效状态投影 | Percent；七天；`policy_effective_date` 为具体变更起点 |
+| EFFR / SOFR | 纽约联储 Markets Data API，独立原始观测 | Percent；effectiveDate；一般次工作日发布不等于逐点实际可得时刻 |
+| DGS2 / DGS10 | 美国财政部 XML 名义 par curve 的 BC_2YEAR / BC_10YEAR | Percent；NEW_DATE；不是逐券盘中报价 |
+| DFII10 | 财政部 XML 实际 par curve 的 TC_10YEAR | Percent；NEW_DATE；允许负值 |
+| T10YIE | MDF：同日财政部名义 10Y 减实际 10Y；非 FRED 实采 | 百分点；同一 MDF 截止的两腿值、修订、batch、原件与时间均保留 |
+| BAMLC0A0CM / BAMLH0A0HYM2 | 原 FRED/ICE 未准入 | 未请求；不得替换指数；Percent 原值与 bp=Percent×100 保留定义 |
 
-ICE [投资级](https://fred.stlouisfed.org/series/BAMLC0A0CM) 与
-[高收益](https://fred.stlouisfed.org/series/BAMLH0A0HYM2) 的公开说明还涉及复制/分发许可，
-并注明自 2026 年 4 月起 FRED 仅包括三年观察。精确 API 起止尚未实测，不能承诺二十年。
-ICE 月末可有周末观察，不能统一删掉周末。工作日假期日历未独立核实时，缺行保持
-`not_returned_calendar_unconfirmed`，不凭缺行推定休市。
+[理事会政策表](https://www.federalreserve.gov/monetarypolicy/openmarket.htm) 和
+[出处规则](https://www.federalreserve.gov/disclaimer.htm)；政策单一目标不能伪装成上下限，
+无区间证据的早期日期留缺。投影不是当天新公布或原始日观察。
+[纽约联储条款](https://www.newyorkfed.org/privacy/termsofuse)允许所述存储/使用，并要求参考利率
+出处及特定声明；`active_binding`、已存 metadata、每行 `source_binding` 均包含该声明。
+[财政部原生 XML 说明](https://home.treasury.gov/treasury-daily-interest-rate-xml-feed)及政府目录
+[名义](https://catalog.data.gov/dataset/interest-rate-statistics-daily-treasury-yield-curve-rates)、
+[实际](https://catalog.data.gov/dataset/daily-treasury-real-yield-curve-rates)标注 CC0。
+本绑定仅为已授权内部 DEV，不推导新的第三方分发能力。
 
-## 复用接口
+原 `mdf.binding.fred.financial-conditions.daily@r1` 的存储许可未确认；显式选择
+`--source-binding fred-r1` 仍在读取凭据、HTTP 和写入前拒绝，无客户端绕过开关。
+ICE 两项继续保留许可/可取范围缺口，不宣称二十年历史；无来源间静默回退。
 
-- `financial_daily.py`：十项注册、日期、稳定定义/绑定和来源使用准入。
-- `financial_daily_source.py`：复用已有精确 FRED HTTPS 与持久限流，原生 metadata/观测解析。
-- `financial_daily_store.py`：显式迁移、PG 日日期修订、Garage 内容地址与原批次恢复。
-- `financial_daily_service.py`：逐系列部分结算、纯本地查询、统一截止投影。
-- `financial_daily_runtime.py`：既有 DEV PG/TLS、Garage、宏观包 FRED 凭据解析接口；不写配置。
-
-调用 `FinancialDailyService.collect(start,end,selected=...)`，每条单独保存并结算；失败不抹去
-其他已确认序列。只恢复失败的 series 可重新指定 `selected`；不把多次 FRED 请求称为原子快照。
-存储提交未知但 batch 已留存时，调用 `recover(batch_id)` 从原 raw/metadata 回读确认，
-不再次访问 FRED、不改原观察时间。原始回包先验证凭据安全，再交 raw sink；语义解析不触发重抓。
+## 正常数据层 CLI
 
 ```bash
 uv run --no-sync python scripts/mdf_financial_conditions.py registry
 uv run --no-sync python scripts/mdf_financial_conditions.py migrate --opt-in-dev-write
-uv run --no-sync python scripts/mdf_financial_conditions.py query \
-  --start 2026-10-30 --end 2026-11-03 --series DFEDTARL SOFR DGS10
 uv run --no-sync python scripts/mdf_financial_conditions.py collect \
-  --start 2026-10-30 --end 2026-11-03 --opt-in-dev-write
+  --start 2026-10-23 --end 2026-10-30 --opt-in-dev-write
+uv run --no-sync python scripts/mdf_financial_conditions.py query \
+  --start 2026-10-23 --end 2026-10-30 --series DFEDTARL EFFR DGS10 DFII10 T10YIE
 ```
 
-最后一条在本版返回权限阻塞，**不会**取得数值。查询无来源请求或 DDL。
-迁移写入 `mdf_financial_conditions_daily_dev_r1`，只创建新命名空间/对象，拒绝不认识的既有
-命名空间，不清理历史、不重建全库。受控数据只允许进入 `test_financial_daily_*`，不能进入产品表。
+同包 collect 按项结算八条准入项和两条受限项，整体 `partial` 是准确结果。
+本段实采入口限 31 天；财政部每次窗口须在同一月份，跨月请求明确失败，不默截断。
+长历史作业及分块编排留后续段。只重试失败系列可指定 `--series`；单独请求 T10YIE
+复用同一存储截止下已有的两腿，不隐式采集缺腿。查询不触发来源 HTTP 或 DDL。
+共享政策表/名义曲线在同次 collect 中复用原件，实际请求次数独立于八条指标数。
 
-## 时间、缺项与版本
+模块分工：`financial_daily_origin.py` 为具名原机构适配与 MDF 派生；
+`financial_daily_source.py` 保留原 FRED 解析/准入及通用有界传输控制；
+`financial_daily_store.py` 复用 PG 与 Garage；`financial_daily_service.py` 提供部分结算和纯本地查询；
+`financial_daily_runtime.py` 使用现有 DEV PG/TLS、Garage 配置，不改凭据或运行配置。
+新原机构绑定不读取 FRED 凭据。端点固定，拒绝重定向，不接受客户端任意 URL。
 
-- `observation_date` 是来源参考日。政策日有效不等于政策宣布或 MDF 当时可知。
-- FRED `realtime_start/end` 保持日期精度；来源逐点发布时间/可得时间没有证据时为 null。
-  metadata 的 last_updated 也不借作每个数值的发布时间。
-- `observed_at` 是该数值第一次 MDF 观察，`available_at` 是提交返回后确认的可用时间。
-  默认按后者选择截止版本；显式 `basis=observed` 仅描述 MDF 观察史，不是官方历史 vintage。
-- 相同输入重放不增经济版本、不重置首次时间；仅数值或点号状态变化增版，原批次和原文可追。
-  点号为 `provider_missing`，不能补零。源失败、尚未可得、未到本地截止、日历未知分别返回。
-- 确认中断的当前值为 `commit_pending`，旧已确认值只作为 `last_confirmed` 独立提供；
-  不把旧版本的时间/材料冒称当前未确认版本。
+## 时间、范围、缺项与版本
+
+- 原始观测、政策生效投影、MDF 派生分别标识；派生不是 FRED T10YIE 收到值，也不是纯通胀预期。
+- 本次回补的历史值不证明初值。逐条实际来源公布/可得时刻未证明时为 null；来源一般发布计划独立展示。
+- `observed_at` 为 MDF 首次捕获；`available_at` 为提交后确认可用。默认按后者读取同一截止。
+  显式 `basis=observed` 只描述 MDF 观察史，不是官方 vintage；早期截止不借后来数据。
+- `response_first/last_observation` 仅为该窗口实际响应；不拿它们当全源历史起止。
+  财政部公告的起点保留年精度，全源最后可得日未证明为 null。
+- 请求结果、失败原因和 metadata 仅作用于相应请求日期；后来的窄批次不能污染旧窗口。
+- 周末非观测、明确来源缺值、未采集、请求失败、提交未知、材料范围未证明分别处理，缺失不补零。
+  工作日假期未核实时缺行仍为 `not_returned_calendar_unconfirmed`，不凭缺行推定休市。
+- 同内容重放不增经济版本、不重置首次时间；值/缺值变化保留版本。政策实际生效起点变化、
+  派生两腿版本变化即使差值相同也保留语义新版本；两腿必须同日、在所记录统一截止可用。
+- 原始 HTTP 字节先进入校验的 Garage 内容地址，再做语义解析。每批 metadata 原件独立定位。
+- 确认中断的当前值为 `commit_pending`，旧值仅作 `last_confirmed`。`recover --batch-id ...`
+  从原批次原件恢复，不发新来源请求、不改首次捕获时间。
 
 ## 验证边界
 
-确定性检查：`uv run --no-sync pytest -q tests/test_financial_daily.py`。
-私网存储检查必须显式开启，默认云 CI 排除：
+确定性回归：
+
+```bash
+uv run --no-sync pytest -q tests/test_financial_daily.py tests/test_financial_daily_origin.py
+```
+
+私网测试需要显式双重 opt-in，默认云 CI 排除：
 
 ```bash
 MDF_FINANCIAL_DAILY_DEV_OPT_IN=1 uv run --no-sync pytest -q \
   tests/test_financial_daily_dev.py --live-provider -m 'live_provider and postgres_integration'
 ```
 
-该检查以受控回包及受控修订写真实 PG/Garage，使用独立测试 schema；不是官方来源实采。
-本段不提供 workbench/常驻执行，不改变已有十族策略、进程、配置或 DEV 绝对截止。
+测试字节/受控修订只能写独立 `test_financial_daily_*` 命名空间；与产品实际官方样本分开。
+本段不改变旧十族策略、进程、配置或 DEV 绝对截止，不交付自然发布或二十年初始化验收。

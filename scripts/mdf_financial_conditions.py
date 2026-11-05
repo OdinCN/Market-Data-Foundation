@@ -35,6 +35,9 @@ def main():
         "--basis", choices=["available", "observed"], default="available"
     )
     parser.add_argument("--batch-id")
+    parser.add_argument(
+        "--source-binding", choices=["origin-r1", "fred-r1"], default="origin-r1"
+    )
     parser.add_argument("--opt-in-dev-write", action="store_true")
     args = parser.parse_args()
     service = None
@@ -47,7 +50,7 @@ def main():
                 and not args.opt_in_dev_write
             ):
                 raise FinancialError("financial_dev_write_opt_in_required")
-            if args.operation == "collect":
+            if args.operation == "collect" and args.source_binding == "fred-r1":
                 # Permission is checked before credentials, source HTTP or PG.
                 if not permitted_series(tuple(args.series)):
                     require_source_permission(args.series[0])
@@ -56,6 +59,7 @@ def main():
                 live_opt_in=args.operation == "collect",
                 credential_loader=bound_fred_credential,
                 selected=tuple(args.series),
+                source_binding=args.source_binding,
             )
             if args.operation == "migrate":
                 result = service.store.migrate()

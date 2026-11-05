@@ -150,3 +150,104 @@ def test_financial_daily_private_dev_storage():
     except Exception as error:
         raise FinancialError("financial_dev_probe_" + type(error).__name__) from None
     assert result["status"] == "passed"
+
+
+@pytest.mark.live_provider
+@pytest.mark.postgres_integration
+def test_financial_daily_existing_r1_upgrade_preserves_content():
+    if os.environ.get("MDF_FINANCIAL_DAILY_DEV_OPT_IN") != "1":
+        pytest.skip("explicit private DEV storage opt-in required")
+    from market_data_foundation.historical.financial_daily import (
+        DATASET_ID,
+        DEFINITION_REVISION,
+    )
+    from market_data_foundation.historical.financial_daily_store import (
+        DDL,
+        PREVIOUS_REVISION,
+        REVISION,
+    )
+
+    schema = "test_financial_daily_upgrade_" + uuid4().hex[:10]
+    service = build_service(write=True, schema=schema)
+    c = service.store.connection
+    try:
+        with c.transaction():
+            c.execute(f"CREATE SCHEMA {schema}")
+            c.execute(f"REVOKE ALL ON SCHEMA {schema} FROM PUBLIC")
+            for sql in DDL.read_text().split(";"):
+                if sql.strip():
+                    c.execute(sql.replace("{s}", schema))
+            c.execute(
+                f"INSERT INTO {schema}.schema_metadata VALUES(true,%s,%s,%s)",
+                (PREVIOUS_REVISION, DATASET_ID, DEFINITION_REVISION),
+            )
+        at = datetime.now(UTC)
+        batch = replace(payload(at=at), metadata_observed_at=at)
+        saved = service.store.save(batch)
+        assert service.store.migrate()["state"] == "upgraded"
+        assert service.store.migrate()["state"] == "already_prepared"
+        assert (
+            c.execute(
+                f"SELECT schema_revision FROM {schema}.schema_metadata"
+            ).fetchone()[0]
+            == REVISION
+        )
+        assert (
+            c.execute(f"SELECT batch_id FROM {schema}.batches").fetchone()[0]
+            == saved["batch_id"]
+        )
+        assert (
+            service.query(START, END, selected=("DGS2",))["rows"][0]["value"]
+            == "2.0000"
+        )
+    finally:
+        service.close()
+
+
+@pytest.mark.live_provider
+@pytest.mark.postgres_integration
+def test_financial_daily_derived_equal_value_retains_changed_input_versions():
+    """Synthetic Treasury-shaped bytes in a dedicated test namespace only."""
+    if os.environ.get("MDF_FINANCIAL_DAILY_DEV_OPT_IN") != "1":
+        pytest.skip("explicit private DEV storage opt-in required")
+    from market_data_foundation.historical.claims_source import ClaimsResponse
+    from market_data_foundation.historical.financial_daily_origin import (
+        OriginSource,
+        derive,
+    )
+    from tests.test_financial_daily import Control
+    from tests.test_financial_daily_origin import treasury_raw
+
+    service = build_service(
+        write=True, schema="test_financial_daily_legs_" + uuid4().hex[:10]
+    )
+    try:
+        service.store.migrate()
+        for i in range(2):
+            raw = treasury_raw(value="4.20" if i == 0 else "4.30")
+            if i:
+                raw = raw.replace(b"-0.12", b"-0.02")
+            source = OriginSource(
+                controls={"home.treasury.gov": Control()},
+                transport=lambda _request: ClaimsResponse(200, raw),
+            )
+            for sid in ("DGS10", "DFII10"):
+                service.store.save(source.fetch(sid, "2026-10-30", "2026-10-30"))
+            inputs = service.query(
+                "2026-10-30", "2026-10-30", selected=("DGS10", "DFII10")
+            )
+            batch = derive(inputs)
+            saved = service.store.save(batch)
+            assert saved["saved_points"] == 1
+            r = service.query("2026-10-30", "2026-10-30", selected=("T10YIE",))["rows"][
+                0
+            ]
+            assert r["value"] == "4.32" and r["revision"] == i + 1
+            assert [leg["revision"] for leg in r["provider_extra"]["inputs"]] == [
+                i + 1,
+                i + 1,
+            ]
+        assert service.store.save(batch)["saved_points"] == 0
+        assert service.recover(batch.batch_id)["saved_points"] == 0
+    finally:
+        service.close()

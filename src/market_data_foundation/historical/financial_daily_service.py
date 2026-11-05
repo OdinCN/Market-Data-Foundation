@@ -23,7 +23,7 @@ def credit_bp(value):
 
 def project(snapshot, selected, start, end):
     values = {(r[0], r[1].isoformat()): r for r in snapshot["values"]}
-    batches = {r[0]: r for r in snapshot["batches"]}
+    batches = snapshot["batches"]
     attempts = {}
     for record in snapshot["attempts"]:
         attempts.setdefault(record[0], []).append(record)
@@ -31,9 +31,16 @@ def project(snapshot, selected, start, end):
     rows = []
     for sid in series_ids(selected):
         metric = BY_ID[sid]
-        batch = batches.get(sid)
-        metadata = batch[2] if batch else {}
         for at in dates(start, end):
+            batch = next(
+                (
+                    r
+                    for r in batches
+                    if r[0] == sid and r[5].isoformat() <= at <= r[6].isoformat()
+                ),
+                None,
+            )
+            metadata = batch[2] if batch else {}
             attempt = next(
                 (
                     r
@@ -43,29 +50,42 @@ def project(snapshot, selected, start, end):
                 None,
             )
             row = values.get((sid, at))
+            from market_data_foundation.historical.financial_daily_origin import binding
+
+            spec = binding(sid)
             if (sid, at) in pending:
                 state = "commit_pending"
             elif row:
                 state = "observed" if row[3] is not None else "provider_missing"
+            elif (
+                not spec["storage_permitted"]
+                and attempt
+                and attempt[2] == "fred_ice_permission_required"
+            ):
+                state = "source_permission_required"
             elif attempt and attempt[1] in {"failed", "unknown"}:
                 state = (
                     "request_failed"
                     if attempt[1] == "failed"
                     else "request_outcome_unknown"
                 )
-            elif not batch:
+            elif not batch and not any(r[0] == sid for r in batches):
                 state = "not_known_at_cutoff"
             elif not any(
                 r[0] == sid and r[1].isoformat() <= at <= r[2].isoformat()
                 for r in snapshot["ranges"]
             ):
                 state = "not_collected"
-            elif at < metadata["observation_start"]:
+            elif (
+                metadata.get("observation_start") and at < metadata["observation_start"]
+            ):
                 state = "outside_provider_range"
             elif non_observation_day(metric, at):
                 state = "non_observation_day"
-            elif at > metadata["observation_end"]:
+            elif metadata.get("observation_end") and at > metadata["observation_end"]:
                 state = "not_yet_available_from_provider"
+            elif sid == "T10YIE" and metadata.get("origin") == "mdf_derived":
+                state = "derived_inputs_unavailable"
             else:
                 state = "not_returned_calendar_unconfirmed"
             last_confirmed = None
@@ -81,6 +101,29 @@ def project(snapshot, selected, start, end):
             value = (
                 row[3] if row and state in {"observed", "provider_missing"} else None
             )
+            origin = row[10] if row else batch[7] if batch else None
+            primary = origin in {
+                "federal_reserve_board",
+                "new_york_fed",
+                "us_treasury",
+                "mdf_derived",
+            }
+            provenance = (
+                spec
+                if primary
+                else dict(
+                    original_agency=metric.original_agency,
+                    distributor=metric.distributor,
+                    source_url=metric.source_url,
+                    attribution=f"{metric.original_agency} via FRED",
+                    identity="FRED_original_series" if origin == "fred" else None,
+                )
+            )
+            if origin == "controlled_fixture":
+                provenance["attribution"] = (
+                    "Controlled fixture; no official numeric acquisition"
+                )
+            extra = row[4] if row else {}
             rows.append(
                 dict(
                     dataset_id=DATASET_ID,
@@ -94,16 +137,16 @@ def project(snapshot, selected, start, end):
                     basis_points=credit_bp(value)
                     if value is not None and metric.credit_bp
                     else None,
-                    original_agency=metric.original_agency,
-                    distributor=metric.distributor,
-                    source_url=metric.source_url,
-                    attribution="Controlled fixture; no official numeric acquisition"
-                    if (row[10] if row else batch[7] if batch else None)
-                    == "controlled_fixture"
-                    else f"{metric.original_agency} via FRED",
+                    original_agency=provenance["original_agency"],
+                    distributor=provenance["distributor"],
+                    source_url=provenance["source_url"],
+                    attribution=provenance["attribution"],
+                    source_binding=provenance,
+                    source_request=row[11] if row and len(row) > 11 else None,
+                    identity=provenance.get("identity"),
                     source_publication_at=None,
                     source_available_at=None,
-                    policy_effective_date=at
+                    policy_effective_date=extra.get("policy_effective_date", at)
                     if row and metric.policy_effective
                     else None,
                     policy_announcement_at=None,
@@ -113,7 +156,7 @@ def project(snapshot, selected, start, end):
                     batch_id=row[5] if row else None,
                     raw_locator=row[8] if row else None,
                     metadata_locator=row[9] if row else None,
-                    origin=row[10] if row else batch[7] if batch else None,
+                    origin=origin,
                     provider_extra=row[4] if row else None,
                     latest_request_state=attempt[1] if attempt else None,
                     latest_request_classification=attempt[2] if attempt else None,
@@ -162,6 +205,8 @@ class FinancialDailyService:
         results = {}
         before = self.source.request_count
         for sid in selected:
+            if sid == "T10YIE" and getattr(self.source, "is_origin_binding", False):
+                continue
             batch = None
             try:
                 batch = self.source.fetch(sid, start, end)
@@ -190,6 +235,26 @@ class FinancialDailyService:
                     state="unknown",
                     classification="financial_storage_outcome_unknown",
                     retained_batch_id=batch.batch_id if batch else None,
+                )
+        if "T10YIE" in selected and getattr(self.source, "is_origin_binding", False):
+            from market_data_foundation.historical.financial_daily_origin import derive
+
+            try:
+                inputs = self.query(start, end, selected=("DGS10", "DFII10"))
+                batch = derive(inputs, observed_at=self.clock())
+                if not batch.points:
+                    raise FinancialError("financial_derived_inputs_unavailable")
+                saved = self.store.save(batch)
+                self.store.record_attempt(
+                    "T10YIE", start, end, "complete", bid=saved["batch_id"]
+                )
+                results["T10YIE"] = dict(state="complete", **saved)
+            except FinancialError as error:
+                self.store.record_attempt(
+                    "T10YIE", start, end, "failed", error.classification
+                )
+                results["T10YIE"] = dict(
+                    state="failed", classification=error.classification
                 )
         return dict(
             state="complete"

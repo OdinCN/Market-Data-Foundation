@@ -239,6 +239,9 @@ def test_projection_keeps_dot_weekend_future_policy_and_credit_meanings():
     assert states["2026-11-02"] == "provider_missing"
     assert states["2026-11-04"] == "not_collected"
     data["ranges"] = [("DGS2", day(START), day("2026-11-05"))]
+    data["batches"] = [
+        tuple(list(data["batches"][0][:6]) + [day("2026-11-05"), data["batches"][0][7]])
+    ]
     requested_future = project(data, ("DGS2",), START, "2026-11-05")
     assert requested_future["rows"][-1]["state"] == "not_yet_available_from_provider"
     assert result["rows"][0]["value"] == "2.0000" and result["provider_requests"] == 0

@@ -68,15 +68,19 @@ def build_service(
     runtime_path=DEFAULT_RUNTIME_PATH,
     secret_path=DEFAULT_SECRET_PATH,
     schema=SCHEMA,
+    source_binding="origin-r1",
 ):
     series_ids(selected)
     if live_opt_in:
         if not write:
             raise FinancialError("financial_live_collection_write_required")
-        if not permitted_series(selected):
-            require_source_permission(selected[0])
-        if credential_loader is None:
-            raise FinancialError("financial_bound_credential_loader_required")
+        if source_binding not in {"origin-r1", "fred-r1"}:
+            raise FinancialError("financial_source_binding_invalid")
+        if source_binding == "fred-r1":
+            if not permitted_series(selected):
+                require_source_permission(selected[0])
+            if credential_loader is None:
+                raise FinancialError("financial_bound_credential_loader_required")
     connection = None
     try:
         runtime = tomllib.loads(Path(runtime_path).read_text())
@@ -104,8 +108,23 @@ def build_service(
             if write
             else None
         )
-        source = (
-            DailyFredSource.live(
+        source = None
+        if live_opt_in and source_binding == "origin-r1":
+            from market_data_foundation.historical.financial_daily_origin import (
+                OriginSource,
+            )
+
+            source = OriginSource.live(
+                control_directory=Path(
+                    "/srv/market-data-foundation-control/transactions/MDF-MACRO-RELIABLE-UPDATE-20261104-R1/runtime/financial-daily-origin-control"
+                ),
+                live_opt_in=True,
+                raw_sink=lambda _request, response, _observed, _attempts: (
+                    raw.put_verified(response.body)
+                ),
+            )
+        elif live_opt_in:
+            source = DailyFredSource.live(
                 series=selected,
                 credential_loader=credential_loader,
                 request_control_path=DEFAULT_CONTROL,
@@ -114,9 +133,6 @@ def build_service(
                     raw.put_verified(response.body)
                 ),
             )
-            if live_opt_in
-            else None
-        )
         return FinancialDailyService(
             PostgresDailyStore(connection, raw, schema=schema), source
         )

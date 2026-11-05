@@ -26,7 +26,7 @@ SOURCE_REVIEW = "2026-11-05-fred-api-storage-permission-unconfirmed"
 DEFINITION = DatasetDefinition(
     DATASET_ID,
     DEFINITION_REVISION,
-    "Ten named FRED daily series, independent observation dates",
+    "Ten daily metric aliases, explicit sources and observation dates",
     "政策目标、隔夜利率、国债收益率、通胀补偿与信用利差",
     False,
     "series_id + observation_date; never a monthly key",
@@ -226,8 +226,15 @@ def permitted_series(selected):
 
 
 def registry():
+    from market_data_foundation.historical.financial_daily_origin import binding
+
     return [
-        dict(asdict(m), source_url=m.source_url, source_use=source_policy(m.series_id))
+        dict(
+            asdict(m),
+            source_url=m.source_url,
+            source_use=source_policy(m.series_id),
+            active_binding=binding(m.series_id),
+        )
         for m in METRICS
     ]
 

@@ -29,9 +29,11 @@ from market_data_foundation.historical.financial_daily_source import (
 from market_data_foundation.historical.verified_garage_raw import VerifiedGarageRawStore
 
 SCHEMA = "mdf_financial_conditions_daily_dev_r1"
-REVISION = "financial.daily.physical.r1"
+REVISION = "financial.daily.physical.r2"
+PREVIOUS_REVISION = "financial.daily.physical.r1"
 LOCK_ID = 7312026110503
 DDL = Path(__file__).resolve().parents[3] / "db/financial_daily/001_daily.sql"
+UPGRADE = DDL.with_name("002_origin.sql")
 
 
 def schema_name(value):
@@ -112,12 +114,21 @@ class PostgresDailyStore:
                     is None
                 ):
                     raise FinancialError("financial_existing_namespace_unrecognized")
-                if self.connection.execute(
+                versions = self.connection.execute(
                     f"""
                     SELECT schema_revision, dataset_id, definition_revision FROM
                     {s}.schema_metadata
                     """
-                ).fetchall() != [(REVISION, DATASET_ID, DEFINITION_REVISION)]:
+                ).fetchall()
+                if versions == [(PREVIOUS_REVISION, DATASET_ID, DEFINITION_REVISION)]:
+                    self._upgrade()
+                    return dict(
+                        state="upgraded",
+                        schema=s,
+                        schema_revision=REVISION,
+                        previous_revision=PREVIOUS_REVISION,
+                    )
+                if versions != [(REVISION, DATASET_ID, DEFINITION_REVISION)]:
                     raise FinancialError("financial_schema_revision_mismatch")
                 return dict(
                     state="already_prepared", schema=s, schema_revision=REVISION
@@ -127,6 +138,7 @@ class PostgresDailyStore:
             for sql in DDL.read_text().split(";"):
                 if sql.strip():
                     self.connection.execute(sql.replace("{s}", s))
+            self._upgrade()
             self.connection.execute(
                 f"INSERT INTO {s}.schema_metadata VALUES(true,%s,%s,%s)",
                 (REVISION, DATASET_ID, DEFINITION_REVISION),
@@ -143,6 +155,15 @@ class PostgresDailyStore:
                 )
         return dict(state="prepared", schema=s, schema_revision=REVISION)
 
+    def _upgrade(self):
+        for sql in UPGRADE.read_text().split(";"):
+            if sql.strip():
+                self.connection.execute(sql.replace("{s}", self.schema))
+        self.connection.execute(
+            f"UPDATE {self.schema}.schema_metadata SET schema_revision=%s",
+            (REVISION,),
+        )
+
     def _safe_batch(self, batch):
         validate_batch(batch)
         if batch.observed_at > instant(self.clock()):
@@ -153,6 +174,33 @@ class PostgresDailyStore:
             raise FinancialError("financial_fixture_cannot_enter_product_dataset")
         if batch.origin == "fred":
             require_source_permission(batch.series_id)
+        if batch.origin == "mdf_derived":
+            for point in batch.points:
+                for leg in point.provider_extra["inputs"]:
+                    row = self.connection.execute(
+                        f"SELECT r.value,r.batch_id,r.available_at,b.origin "
+                        f"FROM {self.schema}.revisions r "
+                        f"JOIN {self.schema}.batches b USING(batch_id) "
+                        "WHERE r.series_id=%s "
+                        "AND r.observation_date=%s AND r.revision=%s",
+                        (
+                            leg["series_id"],
+                            day(point.observation_date),
+                            leg["revision"],
+                        ),
+                    ).fetchone()
+                    if (
+                        not row
+                        or row[0] is None
+                        or str(row[0]) != leg["value"]
+                        or row[1] != leg["batch_id"]
+                        or row[2] is None
+                        or row[3] != "us_treasury"
+                        or row[2] != datetime.fromisoformat(leg["available_at"])
+                        or row[2]
+                        > datetime.fromisoformat(point.provider_extra["cutoff"])
+                    ):
+                        raise FinancialError("financial_derived_persisted_leg_mismatch")
         if self.raw_store is None:
             raise FinancialError("financial_raw_store_required")
 
@@ -219,14 +267,19 @@ class PostgresDailyStore:
                     for point in batch.points:
                         prior = self.connection.execute(
                             f"""
-                            SELECT revision, value, observed_at FROM
+                            SELECT revision, value, observed_at, provider_extra FROM
                             {self.schema}.revisions WHERE
                             series_id=%s AND observation_date=%s ORDER BY revision
                             DESC LIMIT 1
                             """,
                             (point.series_id, day(point.observation_date)),
                         ).fetchone()
-                        if prior and prior[1] == point.value:
+                        if (
+                            prior
+                            and prior[1] == point.value
+                            and prior[3].get("semantic_identity")
+                            == point.provider_extra.get("semantic_identity")
+                        ):
                             continue
                         if prior and batch.observed_at <= prior[2]:
                             raise FinancialError("financial_observation_order_conflict")
@@ -295,14 +348,29 @@ class PostgresDailyStore:
         ) = row
         raw = self.raw_store.read_verified(sha, length)
         metadata_raw = self.raw_store.read_verified(msha, mlength)
+        if origin not in {"fred", "controlled_fixture"}:
+            from market_data_foundation.historical.financial_daily_origin import (
+                derived_points,
+                points,
+            )
+
+            parsed = (
+                derived_points(raw, start.isoformat(), end.isoformat())
+                if origin == "mdf_derived"
+                else points(raw, sid, start.isoformat(), end.isoformat())
+            )
+            parsed_meta = __import__("json").loads(metadata_raw)
+        else:
+            parsed = parse_observations(raw, sid, start.isoformat(), end.isoformat())
+            parsed_meta = parse_metadata(metadata_raw, sid)
         batch = DailyBatch(
             sid,
             start.isoformat(),
             end.isoformat(),
-            parse_observations(raw, sid, start.isoformat(), end.isoformat()),
+            parsed,
             raw,
             metadata_raw,
-            parse_metadata(metadata_raw, sid),
+            parsed_meta,
             mat,
             at,
             request,
@@ -344,7 +412,8 @@ class PostgresDailyStore:
                 SELECT DISTINCT ON(r.series_id, r.observation_date) r.series_id,
                 r.observation_date, r.revision, r.value, r.provider_extra, r.batch_id,
                 r.observed_at, r.available_at, b.raw_locator, b.metadata_locator,
-                b.origin FROM {s}.revisions r JOIN {s}.batches b USING(batch_id) WHERE
+                b.origin, b.request FROM {s}.revisions r
+                JOIN {s}.batches b USING(batch_id) WHERE
                 r.series_id=ANY(%s) AND r.observation_date BETWEEN %s AND %s AND
                 r.available_at IS NOT NULL AND r.{basis}_at<=%s ORDER BY r.series_id,
                 r.observation_date, r.revision DESC
@@ -353,14 +422,14 @@ class PostgresDailyStore:
             ).fetchall()
             batches = self.connection.execute(
                 f"""
-                SELECT DISTINCT ON(series_id) series_id, batch_id, metadata,
+                SELECT series_id, batch_id, metadata,
                 observed_at, available_at, start_date, end_date, origin FROM
                 {s}.batches
                 WHERE series_id=ANY(%s) AND available_at IS NOT NULL AND
-                {basis}_at<=%s
+                {basis}_at<=%s AND start_date<=%s AND end_date>=%s
                 ORDER BY series_id, observed_at DESC, batch_id
                 """,
-                (list(selected), cutoff),
+                (list(selected), cutoff, day(end), day(start)),
             ).fetchall()
             attempts = self.connection.execute(
                 f"""

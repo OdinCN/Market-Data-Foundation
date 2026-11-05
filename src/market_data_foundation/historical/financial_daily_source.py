@@ -137,6 +137,15 @@ def parse_observations(raw, sid, start, end):
 
 
 def validate_batch(batch):
+    if isinstance(batch, DailyBatch) and batch.origin in {
+        "federal_reserve_board",
+        "new_york_fed",
+        "us_treasury",
+        "mdf_derived",
+    }:
+        from market_data_foundation.historical.financial_daily_origin import validate
+
+        return validate(batch)
     try:
         if not isinstance(batch, DailyBatch) or batch.origin not in {
             "fred",
@@ -224,6 +233,9 @@ class DailyFredSource:
             **options,
         )
 
+    def _validate_wire(self, raw):
+        document(raw, self._secret)
+
     def _read(self, request):
         attempts = 0
         while attempts < 3:
@@ -261,7 +273,7 @@ class DailyFredSource:
                             retry_at=error.retry_at,
                         ) from None
                 if response.status == 200:
-                    document(response.body, self._secret)
+                    self._validate_wire(response.body)
                     observed = instant(self.clock())
                     if self._raw_sink:
                         try:
