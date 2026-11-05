@@ -17,6 +17,14 @@ import { Tabs } from "./WorkflowTable";
 
 type Locator =
   | {
+      kind: "official_pdf_table_cell";
+      page: number;
+      table: string;
+      row: string;
+      column: string;
+      excerpt: string;
+    }
+  | {
       kind: "official_report_fragment";
       page: number | null;
       reference_header: string;
@@ -334,6 +342,7 @@ export function MacroReleaseRecords({
     index: "指数点",
     percent: "%",
     thousand_jobs: "千岗位",
+    thousand_persons: "千人次",
     million_USD: "百万美元",
     "USD/hour": "美元/小时",
     hours: "小时",
@@ -809,9 +818,13 @@ export function MacroReleaseRecords({
                                 : claim.locator.kind ===
                                     "official_report_fragment"
                                   ? `报告第${claim.locator.page ?? "未知"}页 · ${claim.locator.reference_header}`
-                                  : claim.locator.kind === "official_table_cell"
-                                    ? `${tableLabel(claim.locator.table)} · ${claim.locator.row} · ${claim.locator.column}`
-                                    : `材料段落 ${claim.locator.start}–${claim.locator.end}`}
+                                  : claim.locator.kind ===
+                                      "official_pdf_table_cell"
+                                    ? `PDF第${claim.locator.page ?? "未知"}页 · ${tableLabel(claim.locator.table)} · ${claim.locator.column}`
+                                    : claim.locator.kind ===
+                                        "official_table_cell"
+                                      ? `${tableLabel(claim.locator.table)} · ${claim.locator.row} · ${claim.locator.column}`
+                                      : `材料段落 ${claim.locator.start}–${claim.locator.end}`}
                             </summary>
                             {claim.locator.excerpt}
                             {claims &&
