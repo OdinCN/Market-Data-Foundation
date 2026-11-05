@@ -351,7 +351,9 @@ def test_explicit_same_identity_resume_reconciles_unknown_without_new_source(
     assert len(wire.calls) == 1
 
 
-def test_shared_worker_requires_retail_opt_in_paths_and_selects_retail(monkeypatch):
+def test_shared_worker_requires_retail_opt_in_paths_and_selects_retail(
+    tmp_path, monkeypatch
+):
     from types import SimpleNamespace
     from unittest.mock import Mock
 
@@ -372,7 +374,10 @@ def test_shared_worker_requires_retail_opt_in_paths_and_selects_retail(monkeypat
     parsed.opt_in_retail_worker = False
     with pytest.raises(ValueError, match="explicit_retail_worker_opt_in_required"):
         module.build_runtime(parsed)
-    runtime = SimpleNamespace(retail_timeseries=SimpleNamespace(auto_strategy=object()))
+    strategy = SimpleNamespace(
+        strategy_path=tmp_path / "retail" / "retail-strategy.json"
+    )
+    runtime = SimpleNamespace(retail_timeseries=SimpleNamespace(auto_strategy=strategy))
     constructor, run = Mock(return_value=runtime), Mock()
     monkeypatch.setattr(module, "TimeSeriesRuntime", constructor)
     monkeypatch.setattr(module, "run_worker", run)
@@ -383,6 +388,8 @@ def test_shared_worker_requires_retail_opt_in_paths_and_selects_retail(monkeypat
     assert constructor.call_args.kwargs["pce_enabled"] is False
     assert constructor.call_args.kwargs["employment_enabled"] is False
     assert run.call_args.args[0] is runtime.retail_timeseries.auto_strategy
+    assert strategy.strategy_path.with_suffix(".executor.lock").is_file()
+    assert not strategy.strategy_path.exists()
 
 
 def test_public_retail_openapi_is_current_and_strategy_has_typed_body():
