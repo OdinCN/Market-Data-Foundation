@@ -1,4 +1,66 @@
 import type { MacroProfile } from "./macroTimeSeriesProfile";
+
+export type ReleaseMaterialResult = {
+  state?: string;
+  reasons?: string[];
+  event_ids?: string[];
+  evidence_ids?: string[];
+  material_outcomes?: {
+    event_id?: string;
+    evidence_id?: string;
+    evidence_ids?: string[];
+  }[];
+  reports?: Record<string, ReleaseMaterialResult>;
+};
+
+type ReleaseEvidenceLink = {
+  eventId: string;
+  evidenceId: string | undefined;
+  report: string | undefined;
+};
+
+export function releaseEvidenceLinks(
+  material: ReleaseMaterialResult,
+): ReleaseEvidenceLink[] {
+  const events = new Map<string, { evidence: Set<string>; report?: string }>();
+  function event(id: string) {
+    if (!events.has(id)) events.set(id, { evidence: new Set() });
+    return events.get(id)!;
+  }
+  function collect(outcome: ReleaseMaterialResult, report?: string) {
+    const ids = [...new Set(outcome.event_ids ?? [])];
+    for (const id of ids) {
+      const link = event(id);
+      if (report) link.report = report;
+    }
+    // A single-event result can own several proofs. Multi-event aggregate
+    // arrays have independent ordering and cannot establish any pairing.
+    if (ids.length === 1) {
+      for (const proof of outcome.evidence_ids ?? [])
+        event(ids[0]).evidence.add(proof);
+    }
+    for (const proof of outcome.material_outcomes ?? []) {
+      if (!proof.event_id) continue;
+      const link = event(proof.event_id);
+      if (report) link.report = report;
+      for (const id of proof.evidence_ids ?? []) link.evidence.add(id);
+      if (proof.evidence_id) link.evidence.add(proof.evidence_id);
+    }
+    for (const [name, child] of Object.entries(outcome.reports ?? {}))
+      collect(child, name);
+  }
+  collect(material);
+  return [...events].flatMap<ReleaseEvidenceLink>(([eventId, value]) =>
+    value.evidence.size
+      ? [...value.evidence].map((evidenceId) => ({
+          eventId,
+          evidenceId,
+          report: value.report,
+        }))
+      : [{ eventId, evidenceId: undefined, report: value.report }],
+  );
+}
+
 export function releaseLink(
   profile: MacroProfile,
   eventId: string,

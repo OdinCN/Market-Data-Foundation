@@ -415,3 +415,61 @@ def test_interrupted_automatic_material_attempt_respects_reservation_and_recover
     )
     assert recovered["material_retry"]["state"] == "retained"
     assert len(wire.calls) == numeric_calls
+
+
+def test_tba_calendar_is_readable_pauses_material_and_restored_identity_recovers(
+    tmp_path, monkeypatch
+):
+    from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
+    from tests.test_m3_segment6 import CALENDAR
+
+    h, _, wire, clock, calls = scheduler_host(tmp_path, monkeypatch)
+    fetch = h.material_fetcher
+    first_fetch = [True]
+
+    def fetch_once_unavailable(url, family):
+        if first_fetch.pop() if first_fetch else False:
+            calls.append((url, family))
+            raise CpiTimeSeriesError("release_http_503")
+        return fetch(url, family)
+
+    h.material_fetcher = fetch_once_unavailable
+    h.auto_strategy.update(enabled=True, history_start=h.scheduler.history_start)
+    first = h.scheduler.due_check()
+    original = h.journal.read(first["request_id"])
+    numeric_calls = len(wire.calls)
+    start = clock[0]
+    clock[0] = start + timedelta(minutes=5)
+    h.scheduler.import_calendar(
+        CALENDAR.replace(b"10/27/2026", b"TBA").replace(b"11/3/2026", b"TBA"),
+        acquired_at=clock[0],
+    )
+    for minutes in (5, 61, 62):
+        clock[0] = start + timedelta(minutes=minutes)
+        assert h.scheduler.due_check()["action"] == "not_due"
+        assert h.strategy()["enabled"] is True
+        schedule = h.schedule()
+        assert schedule["calendar_status"] == "fresh"
+        target = schedule["targets"][1]
+        assert target["status"] == "TBA" and target["release_at"] is None
+        assert target["target"]["state"] == "complete"
+        assert target["target"]["material_retry"]["state"] == "calendar_changed"
+        assert target["target"]["material_retry"]["reasons"] == [
+            "m3_material_calendar_changed"
+        ]
+        assert h.journal.read(first["request_id"]) == original
+        assert len(wire.calls) == numeric_calls and len(calls) == 1
+    # Restore the same official identity after its original material cooldown.
+    h.scheduler.import_calendar(
+        CALENDAR.replace(b"10/27/2026", b"TBA"), acquired_at=clock[0]
+    )
+    recovered = h.scheduler.due_check()
+    assert recovered["action"] == "material_retry"
+    assert recovered["request_id"] == first["request_id"]
+    assert recovered["material_retry"]["state"] == "retained"
+    final = h.journal.read(first["request_id"])
+    assert final["numeric_result"] == original["numeric_result"]
+    assert final["numeric_finished_at"] == original["numeric_finished_at"]
+    assert final["finished_at"] == original["finished_at"]
+    assert len(wire.calls) == numeric_calls and len(calls) == 2
+    assert len(h.executions()["executions"]) == 1

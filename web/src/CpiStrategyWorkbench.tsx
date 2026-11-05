@@ -16,7 +16,12 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
 import { formatBeijingTime } from "./beijingTime";
-import { releaseLink, releaseReasonTexts } from "./macroReleaseLinks";
+import {
+  releaseEvidenceLinks,
+  releaseLink,
+  releaseReasonTexts,
+  type ReleaseMaterialResult,
+} from "./macroReleaseLinks";
 import { Fact, WorkflowTable } from "./WorkflowTable";
 import { useAutoCollection } from "./useAutoCollection";
 import { StrategySwitch } from "./StrategySwitch";
@@ -360,12 +365,7 @@ export function CpiExecutionDetail({
       ? (e.result.result as Record<string, unknown>)
       : e.result;
   const material = result?.release_material as
-    | {
-        state?: string;
-        reasons?: string[];
-        event_ids?: string[];
-        evidence_ids?: string[];
-      }
+    | ReleaseMaterialResult
     | undefined;
   return (
     <>
@@ -452,13 +452,20 @@ export function CpiExecutionDetail({
           {releaseReasonTexts(material.reasons).map((reason) => (
             <p key={reason}>{reason}</p>
           ))}
-          {material.event_ids?.map((id, i) => (
-            <p key={id}>
-              <a href={releaseLink(profile, id, material.evidence_ids?.[i])}>
-                打开发布事件与证据
-              </a>
-            </p>
-          ))}
+          {releaseEvidenceLinks(material).map(
+            ({ eventId, evidenceId, report }) => (
+              <p key={`${eventId}:${evidenceId ?? "event"}`}>
+                <a href={releaseLink(profile, eventId, evidenceId)}>
+                  {profile.id === "m3" && report === "advm3"
+                    ? "打开耐用品先行报告事件"
+                    : profile.id === "m3" && report === "m3"
+                      ? "打开制造业完整报告事件"
+                      : "打开发布事件"}
+                  {evidenceId ? "与证据" : ""}
+                </a>
+              </p>
+            ),
+          )}
         </section>
       )}
       <dl>
