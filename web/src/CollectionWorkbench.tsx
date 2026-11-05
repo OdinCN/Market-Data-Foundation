@@ -98,6 +98,7 @@ export function CollectionWorkbench({
   navigate,
   transport,
   generation,
+  financialRegistered = false,
   invalidIdentity,
   cpiAvailability,
   ppiAvailability,
@@ -117,6 +118,7 @@ export function CollectionWorkbench({
   navigate: Navigate;
   transport: Transport;
   generation: number;
+  financialRegistered?: boolean;
   invalidIdentity: boolean;
   m3Availability?: CpiAvailability;
   joltsAvailability?: CpiAvailability;
@@ -400,7 +402,7 @@ export function CollectionWorkbench({
       financialCall<{ jobs: FinancialJob[] }>(transport, "/jobs", signal),
     [transport, generation, refresh, filter, tab],
     tab === "executions" &&
-      assets.some((a) => sameKey(a.key, FINANCIAL)) &&
+      financialRegistered &&
       !invalidIdentity &&
       (filter === "all" || filter === keyOf(FINANCIAL)),
   );

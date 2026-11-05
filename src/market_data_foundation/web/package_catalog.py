@@ -108,12 +108,6 @@ PACKAGES = (
         "GDP与增长、PCE价格指数、耐用品与核心资本品及金融条件日频十项；启用不代表来源或运行就绪。",
         (
             CapabilityView(
-                capability_id="financial_daily",
-                title="金融条件日频（十项）",
-                definition_ref=ref(FINANCIAL_DEFINITION),
-                required_sources=[name for _, name, _ in FINANCIAL_PATHS],
-            ),
-            CapabilityView(
                 capability_id="cpi",
                 title="美国 CPI",
                 definition_ref=ref(BLS_CPI_HEADLINES),
@@ -172,6 +166,12 @@ PACKAGES = (
                 title="美国 PCE价格指数",
                 definition_ref=ref(PCE_DEFINITION),
                 required_sources=["BEA"],
+            ),
+            CapabilityView(
+                capability_id="financial_daily",
+                title="金融条件日频（十项）",
+                definition_ref=ref(FINANCIAL_DEFINITION),
+                required_sources=[name for _, name, _ in FINANCIAL_PATHS],
             ),
         ),
     ),

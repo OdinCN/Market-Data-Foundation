@@ -179,7 +179,7 @@ export default function App({
   const packages = useResource<Packages>(
     (signal) => getPackages(transport, signal),
     [transport, generation, page.invalid],
-    !page.invalid && ["access", "assets"].includes(page.view),
+    !page.invalid && ["access", "assets", "collection"].includes(page.view),
   );
   const management = useResource<Management>(
     (signal) => request(transport, "/api/r3/management", undefined, signal),
@@ -875,6 +875,19 @@ export default function App({
                     <CollectionWorkbench
                       key={`${identity}:${revision}:${operation}`}
                       assets={model.assets}
+                      financialRegistered={
+                        packages.data?.packages.some((p) =>
+                          p.assets.some(
+                            (a) =>
+                              a.identity === FINANCIAL.identity &&
+                              a.revisions.some((r) =>
+                                r.visibility_basis.includes(
+                                  "REGISTERED_MANUAL",
+                                ),
+                              ),
+                          ),
+                        ) ?? false
+                      }
                       asset={selectedAsset}
                       source={invalidIdentity ? undefined : source}
                       invalidIdentity={invalidIdentity || missingMapping}
