@@ -457,6 +457,7 @@ def test_pce_worker_requires_optin_and_never_ticks_cpi_or_ppi(tmp_path, monkeypa
         module.build_runtime(parser.parse_args(args))
     captured = []
     strategies = {name: Mock() for name in ("cpi", "ppi", "pce")}
+    strategies["pce"].strategy_path = tmp_path / "pce" / "auto-strategy.json"
     runtime = SimpleNamespace(
         timeseries=SimpleNamespace(auto_strategy=strategies["cpi"]),
         ppi_timeseries=SimpleNamespace(auto_strategy=strategies["ppi"]),
@@ -473,6 +474,10 @@ def test_pce_worker_requires_optin_and_never_ticks_cpi_or_ppi(tmp_path, monkeypa
     assert captured[0]["ppi_allow_collect"] is False
     assert captured[0]["pce_allow_collect"] is True
     assert captured[0]["pce_enabled"] is True
+    assert strategies["pce"].strategy_path.with_suffix(".executor.lock").is_file()
+    assert not strategies["pce"].strategy_path.exists()
+    strategies["cpi"].tick.assert_not_called()
+    strategies["ppi"].tick.assert_not_called()
 
 
 def test_pce_replacement_failure_never_falls_back_to_legacy(fixture, monkeypatch):

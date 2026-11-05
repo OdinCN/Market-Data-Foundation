@@ -29,6 +29,52 @@ def test_employment_comparison_keeps_each_prior_role_and_all_revision_months():
     assert row["actual"]["locator"]["excerpt"]
 
 
+def test_employment_material_scopes_remain_distinct_and_do_not_invent_levels():
+    repo = repository("employment")
+    repo.import_material(*material("empsit_10022026.html"))
+    rows = repo.read()["events"][0]["value_comparisons"]
+    expected_changes = {
+        "CES0000000001": "29",
+        "CES0500000001": "46",
+        "CES1000000001": "-2",
+        "CES2000000001": "11",
+        "CES3000000001": "9",
+        "CES5000000001": "-10",
+        "CES5500000001": "-7",
+        "CES6000000001": "-9",
+        "CES6500000001": "20",
+        "CES7000000001": "10",
+        "CES8000000001": "6",
+        "CES9000000001": "-17",
+    }
+    scopes = {
+        (r["series_id"], r["statistic"], r["unit"], r["adjustment"]): r["actual"][
+            "value"
+        ]
+        for r in rows
+    }
+    assert scopes == {
+        **{
+            (sid, "net_change_1m", "thousand_jobs", "sa"): value
+            for sid, value in expected_changes.items()
+        },
+        ("LNS11300000", "level", "percent", "sa"): "61.8",
+        ("LNS12300000", "level", "percent", "sa"): "59.2",
+        ("LNS14000000", "level", "percent", "sa"): "4.2",
+        ("CES0500000002", "level", "hours", "sa"): "34.4",
+        ("CES0500000003", "level", "USD/hour", "sa"): "37.81",
+    }
+    for row in rows:
+        assert row["reference_month"] == "2026-09"
+        assert row["actual"]["locator"]["excerpt"]
+        assert row["actual"]["continuous_version"] is None
+        assert row["actual"]["surprise"] is None
+        if row["series_id"] != "CES0000000001":
+            assert row["official_previous"] is None
+            assert row["previous_as_reported_in_this_release"] is None
+            assert row["revision_difference"] is None
+
+
 def test_late_prior_material_never_leaks_into_earlier_cutoff():
     repo = repository("pce")
     repo.import_material(*material("bea-pio-202609.html"))

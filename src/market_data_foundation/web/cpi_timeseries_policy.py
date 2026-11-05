@@ -201,10 +201,13 @@ def automatic_executions(snapshot, *, profile=CPI_PROFILE):
             completed = None
         result = {
             **(stage.get("result") or {}),
-            "availability_verified": stage.get("availability_verified"),
             "summary_scope": "latest_stage_attempt",
             "scheduler_attempts_total": stage.get("attempts"),
         }
+        # Legacy stages can omit this evidence. Do not invent a null field or
+        # overwrite a result-level observation when no stage-level one exists.
+        if "availability_verified" in stage:
+            result["availability_verified"] = stage["availability_verified"]
         if "release_material" in stage:
             result["release_material"] = stage["release_material"]
         if "actual_http" in stage:
