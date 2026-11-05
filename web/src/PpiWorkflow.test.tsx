@@ -1,3 +1,4 @@
+import { workerFixture } from "./autoCollectionTestFixture";
 import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import {
@@ -114,6 +115,7 @@ function result(profile: MacroProfile, query: CpiScope): CpiResult {
   };
 }
 function fixture() {
+  const worker = workerFixture();
   const calls: {
     path: string;
     method: string;
@@ -181,6 +183,10 @@ function fixture() {
           result: j.result,
         })),
       });
+    if (url.pathname.endsWith("/worker"))
+      return response(
+        worker(profile.id, init?.method === "POST" ? body.action : undefined),
+      );
     if (url.pathname.endsWith("/strategy")) {
       if (init?.method === "PUT") enabled[profile.id] = body.enabled;
       return response({
@@ -598,6 +604,7 @@ it("shows CPI and PPI as two preset rows in one table with one toggle each and s
   expect(screen.getAllByRole("table")).toHaveLength(1);
   const row = screen.getByText("美国 PPI").closest("tr")!;
   expect(within(row).getAllByRole("switch")).toHaveLength(1);
+  expect(h.calls.every((c) => c.method === "GET")).toBe(true);
   fireEvent.click(within(row).getByRole("switch", { checked: false }));
   await flush();
   expect(h.calls.filter((c) => c.method === "PUT")).toEqual([
@@ -605,6 +612,37 @@ it("shows CPI and PPI as two preset rows in one table with one toggle each and s
       path: "/api/r5/ppi/timeseries/strategy",
       method: "PUT",
       body: { enabled: true },
+    },
+  ]);
+  expect(h.calls.filter((c) => c.method !== "GET")).toEqual([
+    {
+      path: "/api/r5/ppi/timeseries/worker",
+      method: "POST",
+      body: { action: "start" },
+    },
+    {
+      path: "/api/r5/ppi/timeseries/strategy",
+      method: "PUT",
+      body: { enabled: true },
+    },
+  ]);
+  fireEvent.click(within(row).getByRole("switch", { checked: true }));
+  await flush();
+  expect(h.calls.filter((c) => c.method !== "GET")).toEqual([
+    {
+      path: "/api/r5/ppi/timeseries/worker",
+      method: "POST",
+      body: { action: "start" },
+    },
+    {
+      path: "/api/r5/ppi/timeseries/strategy",
+      method: "PUT",
+      body: { enabled: true },
+    },
+    {
+      path: "/api/r5/ppi/timeseries/strategy",
+      method: "PUT",
+      body: { enabled: false },
     },
   ]);
   fireEvent.click(within(row).getByRole("button", { name: /^选择/ }));

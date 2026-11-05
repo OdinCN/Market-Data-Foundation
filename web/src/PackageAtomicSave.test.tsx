@@ -38,7 +38,10 @@ function host(scenario = "default") {
       : existing.transport(input, init);
   return { packages, transport, store_dir };
 }
-function open(transport: Transport) {
+async function open(transport: Transport) {
+  // Establish the isolated Python fixture before testing the UI lifecycle.
+  // This GET changes no configuration and leaves all save assertions intact.
+  await getPackage(transport, "macro", new AbortController().signal);
   location.hash = "ui=r5&view=access&package=macro";
   return render(
     <App
@@ -83,7 +86,7 @@ const signal = () => new AbortController().signal;
 
 it("closing or cancelling password drafts sends no PUT and reopening has no stored input", async () => {
   const h = host();
-  open(h.transport);
+  await open(h.transport);
   await ready();
   choose("美国 CPI");
   enterKey();
@@ -109,7 +112,7 @@ it("closing or cancelling password drafts sends no PUT and reopening has no stor
 
 it("one real PUT saves capabilities and replacement, then GET exposes state only across restart", async () => {
   const h = host();
-  const view = open(h.transport);
+  const view = await open(h.transport);
   await ready();
   choose("美国 CPI");
   choose("美国 PCE价格指数");
@@ -151,7 +154,7 @@ it("one real PUT saves capabilities and replacement, then GET exposes state only
     ),
   ).toBe(KEY);
   view.unmount();
-  open(h.transport);
+  await open(h.transport);
   await ready();
   tab("来源配置");
   expect(screen.queryByLabelText("BLS 新凭据")).toBeNull();
@@ -170,7 +173,7 @@ it("one real PUT saves capabilities and replacement, then GET exposes state only
 
 it("removing the last capability for a source discards that source's pending replacement", async () => {
   const h = host();
-  open(h.transport);
+  await open(h.transport);
   await ready();
   choose("美国 CPI");
   enterKey();
@@ -199,7 +202,7 @@ it("removing the last capability for a source discards that source's pending rep
 
 it("blank replacement blocks save and cancelling replacement returns to keep semantics", async () => {
   const h = host();
-  open(h.transport);
+  await open(h.transport);
   await ready();
   choose("美国 CPI");
   tab("来源配置");
@@ -218,7 +221,7 @@ it("blank replacement blocks save and cancelling replacement returns to keep sem
 
 it("real CAS conflict does not publish password and reread requires fresh input", async () => {
   const h = host();
-  open(h.transport);
+  await open(h.transport);
   await ready();
   choose("美国 CPI");
   enterKey();
@@ -254,7 +257,7 @@ it("real CAS conflict does not publish password and reread requires fresh input"
 
 it("lost replacement receipt survives closing; reread never claims to verify the entered value or replays it", async () => {
   const h = host();
-  open(h.transport);
+  await open(h.transport);
   await ready();
   choose("美国 CPI");
   enterKey();
@@ -297,7 +300,7 @@ it("route changes while a replacement is in flight cannot enable a second save o
     }
     return result;
   };
-  open(transport);
+  await open(transport);
   await ready();
   choose("美国 CPI");
   enterKey();
@@ -350,7 +353,7 @@ it("a confirmed rejection drops submitted password and never automatically retri
     }
     return h.transport(input, init);
   };
-  open(transport);
+  await open(transport);
   await ready();
   choose("美国 CPI");
   enterKey();
@@ -374,7 +377,7 @@ it.each(["read_only", "write_unknown"])(
   "%s cannot edit or submit a secret",
   async (scenario) => {
     const h = host(scenario);
-    open(h.transport);
+    await open(h.transport);
     await ready();
     choose("美国 CPI");
     tab("来源配置");
@@ -399,6 +402,7 @@ it("FRED replacement can be cancelled, and verification requires explicit saved 
     enabled_capability_ids: ["claims"],
     source_changes: [],
   });
+  const verifiedSnapshot = await getPackage(h.transport, "macro", signal());
   let requests = 0;
   let release: (() => void) | undefined;
   const transport: Transport = async (input, init) => {
@@ -410,7 +414,7 @@ it("FRED replacement can be cancelled, and verification requires explicit saved 
       await new Promise<void>((resolve) => {
         release = resolve;
       });
-      const body = await getPackage(h.transport, "macro", signal());
+      const body = structuredClone(verifiedSnapshot);
       body.source_verifications = [
         {
           source_id: "FRED",
@@ -426,7 +430,7 @@ it("FRED replacement can be cancelled, and verification requires explicit saved 
     }
     return h.transport(input, init);
   };
-  open(transport);
+  await open(transport);
   await ready();
   tab("来源配置");
   expect(screen.getByRole("region", { name: "能力与来源关系" })).toBeTruthy();
@@ -486,7 +490,7 @@ it("a verification configuration conflict clears old authentication success and 
     }
     return response;
   };
-  open(transport);
+  await open(transport);
   await ready();
   tab("来源配置");
   expect(screen.getByText("认证已确认")).toBeTruthy();
@@ -517,7 +521,7 @@ it("all configured capabilities deduplicate complete relationships without hidin
     }
     return response;
   };
-  open(transport);
+  await open(transport);
   await ready();
   tab("来源配置");
   const region = screen.getByRole("region", { name: "能力与来源关系" });
@@ -552,7 +556,7 @@ it("all configured capabilities deduplicate complete relationships without hidin
 
 it("each adjacent entry shares one atomic save, with cancellation and all pending changes disclosed", async () => {
   const h = host();
-  open(h.transport);
+  await open(h.transport);
   await ready();
   choose("美国 CPI");
   choose("美国 PCE价格指数");
@@ -619,7 +623,7 @@ it.each([
       enabled_capability_ids: [capabilityId],
       source_changes: [],
     });
-    open(h.transport);
+    await open(h.transport);
     await act(async () => {
       location.hash = `ui=r5&view=access&package=${packageId}`;
       window.dispatchEvent(new Event("hashchange"));

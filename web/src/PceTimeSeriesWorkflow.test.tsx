@@ -1,3 +1,4 @@
+import { workerFixture } from "./autoCollectionTestFixture";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   act,
@@ -108,6 +109,7 @@ function result(query: CpiScope): CpiResult {
   };
 }
 function fixture() {
+  const worker = workerFixture();
   const calls: {
     path: string;
     method: string;
@@ -193,6 +195,10 @@ function fixture() {
             result: j.result,
           })),
         });
+      if (url.pathname.endsWith("/worker"))
+        return response(
+          worker(profile.id, init?.method === "POST" ? body.action : undefined),
+        );
       if (url.pathname.endsWith("/strategy")) {
         if (method === "PUT") enabled[profile.id] = body.enabled;
         return response({
@@ -636,6 +642,7 @@ it("lists all three preset strategies in one table and uses explicit BEA calenda
   const row = within(region)
     .getByRole("button", { name: /选择 美国 PCE/ })
     .closest("tr")!;
+  expect(h.calls.every((c) => c.method === "GET")).toBe(true);
   fireEvent.click(within(row).getByRole("switch", { checked: false }));
   await flush();
   expect(h.calls.filter((c) => c.method === "PUT")).toEqual([
@@ -643,6 +650,37 @@ it("lists all three preset strategies in one table and uses explicit BEA calenda
       path: `${PCE_PROFILE.basePath}/strategy`,
       method: "PUT",
       body: { enabled: true },
+    },
+  ]);
+  expect(h.calls.filter((c) => c.method !== "GET")).toEqual([
+    {
+      path: "/api/r5/pce/timeseries/worker",
+      method: "POST",
+      body: { action: "start" },
+    },
+    {
+      path: "/api/r5/pce/timeseries/strategy",
+      method: "PUT",
+      body: { enabled: true },
+    },
+  ]);
+  fireEvent.click(within(row).getByRole("switch", { checked: true }));
+  await flush();
+  expect(h.calls.filter((c) => c.method !== "GET")).toEqual([
+    {
+      path: "/api/r5/pce/timeseries/worker",
+      method: "POST",
+      body: { action: "start" },
+    },
+    {
+      path: "/api/r5/pce/timeseries/strategy",
+      method: "PUT",
+      body: { enabled: true },
+    },
+    {
+      path: "/api/r5/pce/timeseries/strategy",
+      method: "PUT",
+      body: { enabled: false },
     },
   ]);
 });
