@@ -1269,6 +1269,12 @@ export interface operations {
               family?: string;
               reference_month?: string;
               reference_months: string[];
+              value_comparisons?: {
+                [key: string]: unknown;
+              }[];
+              shared_publication?: {
+                [key: string]: unknown;
+              };
               actual_at?: string | null;
               source_version: {
                 value: string;
@@ -1669,6 +1675,12 @@ export interface operations {
               family?: string;
               reference_month?: string;
               reference_months: string[];
+              value_comparisons?: {
+                [key: string]: unknown;
+              }[];
+              shared_publication?: {
+                [key: string]: unknown;
+              };
               actual_at?: string | null;
               source_version: {
                 value: string;
@@ -2067,6 +2079,12 @@ export interface operations {
               family?: string;
               reference_month?: string;
               reference_months: string[];
+              value_comparisons?: {
+                [key: string]: unknown;
+              }[];
+              shared_publication?: {
+                [key: string]: unknown;
+              };
               actual_at?: string | null;
               source_version: {
                 value: string;
@@ -2465,6 +2483,12 @@ export interface operations {
               family?: string;
               reference_month?: string;
               reference_months: string[];
+              value_comparisons?: {
+                [key: string]: unknown;
+              }[];
+              shared_publication?: {
+                [key: string]: unknown;
+              };
               actual_at?: string | null;
               source_version: {
                 value: string;
@@ -2863,6 +2887,12 @@ export interface operations {
               family?: string;
               reference_month?: string;
               reference_months: string[];
+              value_comparisons?: {
+                [key: string]: unknown;
+              }[];
+              shared_publication?: {
+                [key: string]: unknown;
+              };
               actual_at?: string | null;
               source_version: {
                 value: string;
@@ -3305,6 +3335,12 @@ export interface operations {
               family?: string;
               reference_month?: string;
               reference_months: string[];
+              value_comparisons?: {
+                [key: string]: unknown;
+              }[];
+              shared_publication?: {
+                [key: string]: unknown;
+              };
               actual_at?: string | null;
               source_version: {
                 value: string;

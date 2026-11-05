@@ -204,3 +204,22 @@ it("ignores a previous profile's late release response", async () => {
   );
   expect(screen.queryByRole("alert")).toBeNull();
 });
+
+it("shows material actual and distinct prior/revision roles without requiring continuous association", async () => {
+  const f = fixture();
+  render(
+    <MacroReleaseRecords
+      profile={profile}
+      transport={f.transport}
+      initialEventId="bls:employment-situation:2024-10-04"
+    />,
+  );
+  const panel = await screen.findByRole("region", { name: "发布值与前值对照" });
+  expect(panel.textContent).toContain("123 千岗位");
+  expect(panel.textContent).toContain("官方原前值（2024-08）40");
+  expect(panel.textContent).toContain("本次报告前值（2024-08）38");
+  expect(panel.textContent).toContain("官方前值修订差-2");
+  expect(panel.textContent).toContain("同时涉及 2024-07");
+  expect(panel.textContent).toContain("不要求continuous_version已绑定");
+  expect(f.bridge.effects.source).toBe(0);
+});

@@ -198,6 +198,17 @@
                               "type": "string"
                             }
                           },
+                          "value_comparisons": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          },
+                          "shared_publication": {
+                            "type": "object",
+                            "additionalProperties": true
+                          },
                           "actual_at": {
                             "type": ["string", "null"]
                           },

@@ -346,6 +346,11 @@ def release_openapi():
             "family": string,
             "reference_month": string,
             "reference_months": {"type": "array", "items": string},
+            "value_comparisons": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
+            "shared_publication": {"type": "object", "additionalProperties": True},
             "actual_at": nullable,
             "source_version": source,
             "claims": {"type": "array", "items": claim},

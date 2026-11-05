@@ -1565,6 +1565,9 @@ class ReleaseRecords:
                         evidence_id=other["evidence_id"],
                         event_id=other["event_id"],
                         available_at=other["available_at"],
+                        source_version=copy.deepcopy(other["source_version"]),
+                        source_url=other["source_url"],
+                        locator=copy.deepcopy(c["locator"]),
                         confirmation_state="confirmed",
                     )
                     previous = previous_claims.get(identity)
@@ -1582,6 +1585,11 @@ class ReleaseRecords:
                         continue
                     previous_claims[identity] = candidate
         event["prior_event_values"] = list(previous_claims.values())
+        from market_data_foundation.historical.core_release_consumption import (
+            enrich_core_release,
+        )
+
+        enrich_core_release(event, self.profile.key)
 
     def link_result(self, result):
         with self._read_snapshot():
