@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -15,7 +16,10 @@ from market_data_foundation.historical.financial_daily import (
     day,
     series_ids,
 )
-from market_data_foundation.historical.financial_daily_runtime import build_service
+from market_data_foundation.historical.financial_daily_runtime import (
+    bound_fred_credential,
+    build_service,
+)
 from market_data_foundation.web.cpi_timeseries_api import admitted_job
 from market_data_foundation.web.cpi_timeseries_dispatch import dispatch_job
 from market_data_foundation.web.cpi_timeseries_jobs import WebError
@@ -27,7 +31,9 @@ from market_data_foundation.web.financial_daily_jobs import (
     stamp,
     status,
 )
+from market_data_foundation.web.financial_daily_schedule import FinancialSchedule
 from market_data_foundation.web.gdp_api import body
+from market_data_foundation.web.worker_control import DevWorkerControl
 
 PREFIX = "/api/r5/financial/timeseries"
 
@@ -37,10 +43,13 @@ class FinancialOptions:
     job_directory: Path
     allow_read: bool = False
     allow_collect: bool = False
+    state_directory: Path | None = None
+    window_path: Path | None = None
+    allow_strategy: bool = False
 
 
 def admitted_financial_job(request):
-    if request.url.path == PREFIX + "/jobs/resume":
+    if request.url.path in {PREFIX + "/jobs/resume", PREFIX + "/strategy"}:
         request = Request(dict(request.scope, path=PREFIX + "/jobs"))
     return admitted_job(request, prefix=PREFIX)
 
@@ -49,6 +58,7 @@ HELP = dict(
     dataset_id=DATASET_ID,
     endpoints=dict(
         status=PREFIX + "/status",
+        strategy=PREFIX + "/strategy",
         summary=PREFIX + "/summary",
         query=PREFIX
         + "/query?start=YYYY-MM-DD&end=YYYY-MM-DD&series=DGS10"
@@ -81,6 +91,23 @@ HELP = dict(
 def financial_router(options=None, *, service_factory=build_service, jobs=None):
     router = APIRouter(prefix=PREFIX, tags=["financial-daily"])
     host = jobs or (FinancialJobs(options.job_directory) if options else None)
+    schedule = (
+        FinancialSchedule(options.state_directory)
+        if options and options.state_directory
+        else None
+    )
+    control = (
+        DevWorkerControl(options.window_path, assets=("financial",))
+        if options and options.window_path
+        else None
+    )
+    adapter = SimpleNamespace(
+        auto_strategy=schedule,
+        journal=host.journal if host else None,
+        scheduler=schedule,
+        source=lambda: None,
+        capabilities=lambda _: dict(collect=bool(options and options.allow_collect)),
+    )
 
     def require(write=False):
         if (
@@ -109,7 +136,67 @@ def financial_router(options=None, *, service_factory=build_service, jobs=None):
     def read_status():
         try:
             require()
-            return status()
+            return dict(
+                status(),
+                resident_worker=bool(schedule and control and options.allow_strategy),
+            )
+        except Exception as error:
+            return fail(error)
+
+    def strategy():
+        if not schedule or not control or not options.allow_strategy:
+            raise WebError("financial_strategy_not_enabled", 403)
+        value = schedule.get()
+        try:
+            value["control"] = control.inspect("financial", adapter)
+        except Exception as error:
+            value["control"] = dict(
+                online=False,
+                registered=False,
+                reason=getattr(
+                    error, "classification", "financial_worker_not_verified"
+                ),
+            )
+        return value
+
+    @router.get("/strategy")
+    def read_strategy():
+        try:
+            require()
+            return strategy()
+        except Exception as error:
+            return fail(error)
+
+    @router.post("/strategy")
+    async def write_strategy(request: Request):
+        try:
+            require(True)
+            if not admitted_financial_job(request):
+                raise WebError("operator_not_authorized", 403)
+            command = await body(request)
+            if (
+                type(command) is not dict
+                or set(command) not in ({"enabled"}, {"enabled", "recover"})
+                or type(command.get("enabled")) is not bool
+                or (
+                    "recover" in command
+                    and (command["recover"] is not True or not command["enabled"])
+                )
+            ):
+                raise WebError("financial_strategy_invalid")
+            strategy()  # Require an explicitly configured, bounded DEV control.
+            if command["enabled"]:
+                await run_in_threadpool(bound_fred_credential)
+                result = await run_in_threadpool(
+                    control.act,
+                    "financial",
+                    adapter,
+                    "recover" if command.get("recover") else "start",
+                )
+                if not result["online"]:
+                    raise WebError("financial_worker_awaiting_heartbeat", 503)
+            schedule.enabled(command["enabled"])
+            return strategy()
         except Exception as error:
             return fail(error)
 

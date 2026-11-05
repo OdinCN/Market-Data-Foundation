@@ -75,12 +75,20 @@ def running_work(value):
 
 class DevWorkerControl:
     def __init__(
-        self, window_path, *, run=subprocess.run, clock=lambda: datetime.now(UTC)
+        self,
+        window_path,
+        *,
+        run=subprocess.run,
+        clock=lambda: datetime.now(UTC),
+        assets=ASSETS,
     ):
+        if not assets or any(a not in (*ASSETS, "financial") for a in assets):
+            raise ValueError("worker_asset_registration_invalid")
+        self.assets = tuple(assets)
         self.window_path = Path(window_path)
         self.run = run
         self.clock = clock
-        self.locks = {asset: threading.Lock() for asset in ASSETS}
+        self.locks = {asset: threading.Lock() for asset in self.assets}
 
     def command(self, *args):
         try:
@@ -98,7 +106,7 @@ class DevWorkerControl:
         return result.stdout
 
     def inspect(self, asset, host):
-        if asset not in ASSETS or host is None:
+        if asset not in self.assets or host is None:
             raise WebError("worker_binding_unavailable", 503)
         window = read_window(self.window_path, now=self.clock())
         unit = f"mdf-macro-dev-{asset}.service"
@@ -186,7 +194,7 @@ class DevWorkerControl:
         if (
             type(action) is not str
             or action not in {"start", "recover"}
-            or asset not in ASSETS
+            or asset not in self.assets
         ):
             raise WebError("invalid_worker_action")
         if not self.locks[asset].acquire(blocking=False):
@@ -212,7 +220,11 @@ class DevWorkerControl:
             ):
                 raise WebError("worker_active_collection_in_progress", 409)
             process = before["worker"].get("process") or {}
-            if process.get("pid") and process["pid"] != before["process_id"]:
+            if (
+                process.get("pid")
+                and process["pid"] != before["process_id"]
+                and (asset != "financial" or Path(f"/proc/{process['pid']}").exists())
+            ):
                 raise WebError("worker_unmanaged_process_present", 409)
             self.command(
                 "restart" if action == "recover" else "start",

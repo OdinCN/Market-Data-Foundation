@@ -217,6 +217,8 @@ def main():
     parser.add_argument("--financial-job-directory", type=Path)
     parser.add_argument("--allow-financial-read", action="store_true")
     parser.add_argument("--allow-financial-collect", action="store_true")
+    parser.add_argument("--financial-state-directory", type=Path)
+    parser.add_argument("--allow-financial-strategy", action="store_true")
     args = parser.parse_args()
     if args.enable_claims_timeseries and (
         args.claims_schedule_path is None or args.claims_job_directory is None
@@ -328,6 +330,9 @@ def main():
             args.financial_job_directory,
             args.allow_financial_read,
             args.allow_financial_collect,
+            state_directory=args.financial_state_directory,
+            window_path=args.worker_window_state,
+            allow_strategy=args.allow_financial_strategy,
         )
         if args.financial_job_directory
         else None,

@@ -1,3 +1,4 @@
+import { useFinancialPeriodic } from "./FinancialPeriodic";
 import {
   FINANCIAL,
   FinancialDailyWorkbench,
@@ -396,6 +397,11 @@ export function CollectionWorkbench({
       route.fields.get("job"),
     ],
     readPceRecords,
+  );
+  const financialPeriodic = useFinancialPeriodic(
+    transport,
+    financialRegistered && tab === "periodic",
+    navigate,
   );
   const financialRecords = useVisiblePolling(
     (signal) =>
@@ -1252,13 +1258,11 @@ export function CollectionWorkbench({
               {!assets.some((a) => sameKey(a.key, PCE)) && (
                 <option value={keyOf(PCE)}>{assetTitle(PCE)}</option>
               )}
-              {assets
-                .filter((a) => tab !== "periodic" || !sameKey(a.key, FINANCIAL))
-                .map((a) => (
-                  <option key={keyOf(a.key)} value={keyOf(a.key)}>
-                    {assetTitle(a.key)}
-                  </option>
-                ))}
+              {assets.map((a) => (
+                <option key={keyOf(a.key)} value={keyOf(a.key)}>
+                  {assetTitle(a.key)}
+                </option>
+              ))}
               {filter !== "all" &&
                 !assets.some((a) => keyOf(a.key) === filter) &&
                 filter !== keyOf(GDP) &&
@@ -1705,7 +1709,8 @@ export function CollectionWorkbench({
           </aside>
         </div>
       ) : tab === "periodic" &&
-        (newCpi ||
+        (financialRegistered ||
+          newCpi ||
           newPpi ||
           newPce ||
           newEmployment ||
@@ -1722,6 +1727,13 @@ export function CollectionWorkbench({
           (filter === keyOf(RETAIL) && retailAvailability) ||
           (filter === keyOf(CONSUMPTION) && consumptionAvailability)) ? (
         <CpiStrategyWorkbench
+          supplement={
+            financialRegistered &&
+            !invalidIdentity &&
+            (filter === "all" || filter === keyOf(FINANCIAL))
+              ? financialPeriodic
+              : undefined
+          }
           transport={transport}
           tenthProfile={
             (newM3 || m3Target || filter === keyOf(M3)) && m3Availability

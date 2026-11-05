@@ -23,6 +23,8 @@ import {
   releaseReasonTexts,
   type ReleaseMaterialResult,
 } from "./macroReleaseLinks";
+import type { ReactNode } from "react";
+import type { Row } from "./WorkflowTable";
 import { Fact, WorkflowTable } from "./WorkflowTable";
 import { useAutoCollection } from "./useAutoCollection";
 import { StrategySwitch } from "./StrategySwitch";
@@ -553,10 +555,12 @@ function CpiStrategyWorkbenchContent({
   seventhAvailability,
   seventhVisible = true,
   selectedId,
+  supplement,
   selected: selectedProp,
   onSelect,
 }: {
   transport: Transport;
+  supplement?: { row: Row; detail: ReactNode; refresh: () => void };
   profile?: MacroProfile;
   availability: CpiAvailability;
   generation?: number;
@@ -800,7 +804,8 @@ function CpiStrategyWorkbenchContent({
   const entry =
     entries.find((e) => `${e.profile.id}-auto` === selection) ?? entries[0];
   const { profile, data, resource, uncertain } = entry;
-  const detailVisible = entry.visible;
+  const extraSelected = !!supplement && selection === supplement.row.id;
+  const detailVisible = entry.visible && !extraSelected;
   const calendar = useVisiblePolling(
     async (signal) => {
       const value = await cpiRequest<Schedule>(
@@ -873,6 +878,7 @@ function CpiStrategyWorkbenchContent({
             onClick={() => {
               entries.forEach((e) => e.resource.refresh());
               calendar.refresh();
+              supplement?.refresh();
             }}
           >
             刷新页面
@@ -888,86 +894,93 @@ function CpiStrategyWorkbenchContent({
             ? `正在读取 ${profile.label} 策略…`
             : "此资产暂无可执行的预置策略。"
         }
-        rows={entries
-          .filter((e) => e.visible)
-          .map((e) => ({
-            id: `${e.profile.id}-auto`,
-            search: `${macroAssetLabel(e.profile)} 官方发布自动采集`,
-            cells: [
-              <span className="strategy-target">
-                {macroAssetLabel(e.profile)}
-              </span>,
-              <span key="toggle" className="strategy-control">
-                <span className="auto-control-line">
-                  <span className="small">自动采集</span>
-                  <StrategySwitch
-                    asset={macroAssetLabel(e.profile)}
-                    enabled={e.data?.enabled ?? null}
-                    saving={e.saving}
-                    uncertain={e.uncertain}
-                    disabled={
-                      !e.data ||
-                      e.saving ||
-                      e.uncertain ||
-                      e.resource.stale ||
-                      (!e.data.enabled &&
-                        (!e.availability.data?.web_capabilities.collect ||
-                          (e.profile.id === "gdp" && !!e.availability.failure)))
-                    }
-                    onToggle={() => void e.toggle()}
-                  />
-                </span>
-                <span className="auto-state">
-                  运行情况：{e.diagnosis.state}
-                </span>
-                {e.data?.enabled &&
-                  e.data.control &&
-                  !e.data.control.online &&
-                  e.data.control.registered &&
-                  !e.uncertain && (
-                    <button
-                      className="auto-recover"
-                      disabled={e.saving || e.resource.stale}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void e.recover();
-                      }}
-                    >
-                      恢复自动采集
-                    </button>
+        rows={[
+          ...entries
+            .filter((e) => e.visible)
+            .map((e) => ({
+              id: `${e.profile.id}-auto`,
+              search: `${macroAssetLabel(e.profile)} 官方发布自动采集`,
+              cells: [
+                <span className="strategy-target">
+                  {macroAssetLabel(e.profile)}
+                </span>,
+                <span key="toggle" className="strategy-control">
+                  <span className="auto-control-line">
+                    <span className="small">自动采集</span>
+                    <StrategySwitch
+                      asset={macroAssetLabel(e.profile)}
+                      enabled={e.data?.enabled ?? null}
+                      saving={e.saving}
+                      uncertain={e.uncertain}
+                      disabled={
+                        !e.data ||
+                        e.saving ||
+                        e.uncertain ||
+                        e.resource.stale ||
+                        (!e.data.enabled &&
+                          (!e.availability.data?.web_capabilities.collect ||
+                            (e.profile.id === "gdp" &&
+                              !!e.availability.failure)))
+                      }
+                      onToggle={() => void e.toggle()}
+                    />
+                  </span>
+                  <span className="auto-state">
+                    运行情况：{e.diagnosis.state}
+                  </span>
+                  {e.data?.enabled &&
+                    e.data.control &&
+                    !e.data.control.online &&
+                    e.data.control.registered &&
+                    !e.uncertain && (
+                      <button
+                        className="auto-recover"
+                        disabled={e.saving || e.resource.stale}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void e.recover();
+                        }}
+                      >
+                        恢复自动采集
+                      </button>
+                    )}
+                  {e.notice && (
+                    <span className="strategy-control-note" role="status">
+                      {e.notice}
+                    </span>
                   )}
-                {e.notice && (
-                  <span className="strategy-control-note" role="status">
-                    {e.notice}
+                  {(!e.data ||
+                    e.data.enabled ||
+                    e.diagnosis.issues.length > 0) && (
+                    <span className="strategy-control-note">
+                      {e.diagnosis.listReason}
+                    </span>
+                  )}
+                  {!e.diagnosis.issues.length && e.diagnosis.advisories[0] && (
+                    <span className="small">
+                      远期提示：{e.diagnosis.advisories[0].summary}
+                    </span>
+                  )}
+                </span>,
+                <span className="strategy-data">
+                  <span>
+                    最近成功采集（北京时间）：
+                    <br />
+                    {formatBeijingTime(
+                      e.data?.last_successful_collection_at,
+                      "未记录",
+                    ).replace(" 北京时间", "")}
                   </span>
-                )}
-                {(!e.data ||
-                  e.data.enabled ||
-                  e.diagnosis.issues.length > 0) && (
-                  <span className="strategy-control-note">
-                    {e.diagnosis.listReason}
+                  <span>
+                    最新数据期：{e.data?.latest_data_period ?? "未知"}
                   </span>
-                )}
-                {!e.diagnosis.issues.length && e.diagnosis.advisories[0] && (
-                  <span className="small">
-                    远期提示：{e.diagnosis.advisories[0].summary}
-                  </span>
-                )}
-              </span>,
-              <span className="strategy-data">
-                <span>
-                  最近成功采集（北京时间）：
-                  <br />
-                  {formatBeijingTime(
-                    e.data?.last_successful_collection_at,
-                    "未记录",
-                  ).replace(" 北京时间", "")}
-                </span>
-                <span>最新数据期：{e.data?.latest_data_period ?? "未知"}</span>
-              </span>,
-            ],
-          }))}
+                </span>,
+              ],
+            })),
+          ...(supplement ? [supplement.row] : []),
+        ]}
       >
+        {shown && extraSelected && supplement?.detail}
         {shown && detailVisible && !data && (
           <section aria-label="自动采集问题说明">
             <p role="status">

@@ -16,6 +16,7 @@ from market_data_foundation.historical.financial_daily import (
     instant,
     observation_today,
     registry,
+    series_ids,
 )
 from market_data_foundation.historical.financial_daily_credit import (
     ARCHIVE_END,
@@ -92,7 +93,7 @@ def years(start, end):
         yield max(start, f"{year}-01-01"), min(end, f"{year}-12-31")
 
 
-def plan(command):
+def plan(command, selected=SERIES_IDS):
     start, end = command["start"], command["end"]
     steps = []
 
@@ -102,7 +103,7 @@ def plan(command):
                 dict(series_id=sid, start=a, end=b, source=source, state="pending")
             )
 
-    for sid in SERIES_IDS:
+    for sid in selected:
         if sid.startswith("DFED"):
             add(sid, start, end, "policy")
         elif sid in CREDIT:
@@ -297,12 +298,34 @@ class FinancialJobs:
         self.service_factory = service_factory
         self.fred_factory, self.archive_factory = fred_factory, archive_factory
 
-    def submit(self, command, *, on_started=None, resume=False):
+    def submit(
+        self,
+        command,
+        *,
+        on_started=None,
+        resume=False,
+        selected=SERIES_IDS,
+        origin="manual",
+        schedule_slot=None,
+    ):
         validate(command)
+        series_ids(selected)
+        if (
+            not selected
+            or len(set(selected)) != len(selected)
+            or origin not in {"manual", "periodic"}
+        ):
+            raise WebError("financial_job_selection_invalid")
         with self.journal.execution():
             previous = self.journal.read(command["request_id"])
             if previous:
-                if previous["command"] != command:
+                if (
+                    previous["command"] != command
+                    or tuple(previous.get("selected_series", SERIES_IDS))
+                    != tuple(selected)
+                    or previous.get("origin", "manual") != origin
+                    or previous.get("schedule_slot") != schedule_slot
+                ):
                     raise WebError("financial_request_id_conflict", 409)
                 if not resume or previous["state"] == "complete":
                     return previous
@@ -320,9 +343,13 @@ class FinancialJobs:
                     command=command,
                     created_at=now(),
                     started_at=now(),
-                    origin="manual",
+                    origin=origin,
+                    selected_series=list(selected),
+                    schedule_slot=schedule_slot,
                     state="running",
-                    steps=plan(command),
+                    steps=plan(command)
+                    if tuple(selected) == SERIES_IDS
+                    else plan(command, selected),
                     provider_requests=0,
                     resume_count=0,
                 )
@@ -334,7 +361,7 @@ class FinancialJobs:
                 service = self.service_factory(write=True, live_opt_in=True)
                 # A bounded twenty-year job has an explicit 160-request origin budget;
                 # ordinary small-window callers retain their existing 20-request budget.
-                service.source.max_requests = 160
+                service.source.max_requests = 160 if origin == "manual" else 20
                 archive = fred = None
                 for step in record["steps"]:
                     if step["state"] == "complete":
@@ -494,7 +521,14 @@ class FinancialJobs:
         record = self.journal.read(identifier(request_id))
         if record is None:
             raise WebError("financial_job_not_found", 404)
-        return self.submit(record["command"], on_started=on_started, resume=True)
+        return self.submit(
+            record["command"],
+            on_started=on_started,
+            resume=True,
+            selected=tuple(record.get("selected_series", SERIES_IDS)),
+            origin=record.get("origin", "manual"),
+            schedule_slot=record.get("schedule_slot"),
+        )
 
 
 def status():

@@ -167,3 +167,21 @@ def test_per_asset_fixed_versions_keep_other_workers_on_baseline(tmp_path):
     control.window_path.write_text(json.dumps(window))
     with pytest.raises(WebError, match="worker_version_binding_invalid"):
         control.inspect("m3", host)
+
+
+def test_explicit_financial_registration_does_not_expand_default_assets(tmp_path):
+    control, host, calls, *_ = setup(tmp_path)
+    with pytest.raises(WebError, match="worker_binding_unavailable"):
+        control.inspect("financial", host)
+    assert not calls
+    financial = DevWorkerControl(
+        control.window_path, run=control.run, clock=lambda: AT, assets=("financial",)
+    )
+    assert financial.act("financial", host, "start")["online"]
+    assert any(
+        call[1:] == ["start", "mdf-macro-dev-financial.service"] for call in calls
+    )
+    with pytest.raises(WebError):
+        financial.act("cpi", host, "start")
+    with pytest.raises(ValueError):
+        DevWorkerControl(control.window_path, assets=("arbitrary",))
