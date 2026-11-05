@@ -5,6 +5,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from market_data_foundation.historical.cpi_timeseries import month_at, month_number
+from market_data_foundation.historical.m3_release_acquisition import (
+    capture_m3_material,
+    numeric_ready,
+    recoverable_material,
+)
 from market_data_foundation.historical.m3_schedule import M3AutoStrategy, M3Scheduler
 from market_data_foundation.historical.macro_release_records import ReleaseRecords
 from market_data_foundation.web.cpi_timeseries_api import TimeSeriesHost
@@ -321,7 +326,11 @@ class M3ProductHost(M3QueryHost):
             )
             if any(old.get(k) != v for k, v in command.items()):
                 raise WebError("request_id_conflict", 409)
-            if not resume or old["state"] in {"running", "complete"}:
+            if (
+                not resume
+                or old["state"] == "running"
+                or (old["state"] == "complete" and not recoverable_material(old))
+            ):
                 return old
         elif resume:
             raise WebError("m3_job_not_found", 404)
@@ -343,7 +352,12 @@ class M3ProductHost(M3QueryHost):
 
         with self.journal.execution():
             current = self.journal.read(command["request_id"])
-            if current and (not resume or current["state"] == "complete"):
+            if current and (
+                not resume
+                or (
+                    current["state"] == "complete" and not recoverable_material(current)
+                )
+            ):
                 return current
             now = self.clock().isoformat()
             job = dict(
@@ -355,7 +369,9 @@ class M3ProductHost(M3QueryHost):
                 stage=execution_stage or ("target" if report_stage else "manual"),
                 state="running",
                 created_at=old["created_at"] if old else now,
-                started_at=now,
+                started_at=old["started_at"]
+                if old and old["state"] == "complete"
+                else now,
                 finished_at=None,
                 classification=None,
                 result=None,
@@ -390,7 +406,10 @@ class M3ProductHost(M3QueryHost):
                         }
                         self.journal.save(job)
 
-                    if joint:
+                    if resume and old and numeric_ready(old.get("numeric_result")):
+                        written = old["numeric_result"]
+                        readback = old["numeric_readback"]
+                    elif joint:
                         from market_data_foundation.historical.m3_reports import (
                             collect_reports,
                         )
@@ -422,6 +441,20 @@ class M3ProductHost(M3QueryHost):
                             command["end"],
                             dataset=report_stage or "m3",
                         )
+                    job["numeric_result"] = written
+                    job["numeric_readback"] = readback
+                    job["numeric_finished_at"] = (old or {}).get(
+                        "numeric_finished_at"
+                    ) or self.clock().isoformat()
+                    self.journal.save(job)
+                    material = capture_m3_material(
+                        self,
+                        service,
+                        job["dataset"],
+                        command["start"],
+                        command["end"],
+                        written,
+                    )
                 finally:
                     connection = getattr(service.store, "connection", None)
                     if connection is not None:
@@ -458,6 +491,7 @@ class M3ProductHost(M3QueryHost):
                     else "m3_resume_required",
                     result={
                         **written,
+                        "release_material": material,
                         "coverage_complete": not missing,
                         "coverage": {
                             "expected": readback["coverage"]["expected"],
@@ -484,6 +518,12 @@ class M3ProductHost(M3QueryHost):
                 )
             except Exception:
                 job.update(state="unknown", classification="m3_execution_unknown")
-            job["finished_at"] = self.clock().isoformat()
+            job["finished_at"] = (
+                old["finished_at"]
+                if old and old["state"] == "complete"
+                else self.clock().isoformat()
+            )
+            if old and old["state"] == "complete":
+                job["material_recovered_at"] = self.clock().isoformat()
             self.journal.save(job)
             return job

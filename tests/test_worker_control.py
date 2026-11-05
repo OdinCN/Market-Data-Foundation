@@ -141,3 +141,29 @@ def test_private_route_and_public_read_only_boundary(tmp_path, monkeypatch):
             "requestBody"
         ]["content"]["application/json"]["schema"]
         assert schema["properties"]["action"]["enum"] == ["start", "recover"]
+
+
+def test_per_asset_fixed_versions_keep_other_workers_on_baseline(tmp_path):
+    control, host, _, _, _ = setup(tmp_path)
+    window = json.loads(control.window_path.read_text())
+    commit = "b" * 40
+    window["worker_versions"] = {
+        "m3": {"commit": commit, "snapshot": "/fixed/" + commit}
+    }
+    control.window_path.write_text(json.dumps(window))
+    original = control.run
+
+    def run(args, **kwargs):
+        result = original(args, **kwargs)
+        if args[2] == "mdf-macro-dev-m3.service":
+            result.stdout = result.stdout.replace("/fixed/revision", "/fixed/" + commit)
+        return result
+
+    control.run = run
+    assert control.inspect("m3", host)["registered"]
+    assert control.inspect("m3", host)["code_commit"] == commit
+    assert control.inspect("employment", host)["code_snapshot"] == "/fixed/revision"
+    window["worker_versions"]["m3"]["snapshot"] = "/foreign/" + commit
+    control.window_path.write_text(json.dumps(window))
+    with pytest.raises(WebError, match="worker_version_binding_invalid"):
+        control.inspect("m3", host)

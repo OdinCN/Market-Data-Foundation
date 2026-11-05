@@ -1,6 +1,7 @@
 """Single-project DEV worker control. Client input never selects a unit or command."""
 
 import json
+import re
 import subprocess
 import threading
 import time
@@ -110,9 +111,30 @@ class DevWorkerControl:
         service = dict(
             line.split("=", 1) for line in output.splitlines() if "=" in line
         )
+        versions = window.get("worker_versions", {})
+        if not isinstance(versions, dict):
+            raise WebError("worker_version_binding_invalid", 503)
+        version = versions.get(asset, {})
+        if not isinstance(version, dict):
+            raise WebError("worker_version_binding_invalid", 503)
+        if version:
+            root = Path(version.get("snapshot", ""))
+            if (
+                not isinstance(version.get("commit"), str)
+                or not re.fullmatch(r"[0-9a-f]{40}", version["commit"])
+                or not root.is_absolute()
+                or ".." in root.parts
+                or root.parent != Path(window["snapshot"]).parent
+                or root.name != version["commit"]
+            ):
+                raise WebError("worker_version_binding_invalid", 503)
+        expected_snapshot = version.get("snapshot", window["snapshot"])
+        expected_commit = version.get(
+            "commit", window.get("worker_code_commit", window.get("code_commit"))
+        )
         bound = (
             service.get("LoadState") == "loaded"
-            and service.get("WorkingDirectory") == window["snapshot"]
+            and service.get("WorkingDirectory") == expected_snapshot
         )
         worker = host.auto_strategy.get()["worker"]
         pid = int(service.get("MainPID") or 0)
@@ -156,6 +178,8 @@ class DevWorkerControl:
             "process_id": pid or None,
             "worker": worker,
             "expires_at": window["expires_at"],
+            "code_commit": expected_commit,
+            "code_snapshot": expected_snapshot,
         }
 
     def act(self, asset, host, action):

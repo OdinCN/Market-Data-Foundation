@@ -68,6 +68,16 @@ export const releaseReasonText = (reason: string): string =>
     release_http_403: "官方档案拒绝访问，连续数值采集结果另列",
     release_material_calendar_identity_mismatch:
       "取得的网页与所选发布日期或参考月不一致",
+    m3_report_stage_unproven:
+      "取得的M3报告阶段与本次先行/完整报告任务不一致，未绑定事件",
+    numeric_result_not_confirmed:
+      "该报告数值回读尚未确认，本次未取得材料；数值任务结果另列",
+    m3_material_request_control_unavailable:
+      "M3材料请求未绑定既有限流器，未请求来源",
+    release_retained_scope_unconfirmed:
+      "已有材料的阶段或参考月不能对应当前任务，需核对具名材料",
+    m3_material_acquisition_failed:
+      "M3材料日历或留存状态读取失败，数值结果已独立保留",
     release_material_transport_or_storage_failed:
       "发布材料取得或留存失败，数值结果另列",
   })[reason] ?? "该口径的材料、来源或时间证据尚不充分";

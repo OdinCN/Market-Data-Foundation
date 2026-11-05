@@ -1,0 +1,207 @@
+"""Normal job/worker paths over deterministic numeric and material ports."""
+
+from datetime import timedelta
+from types import SimpleNamespace
+from uuid import uuid4
+
+import pytest
+
+from market_data_foundation.historical.m3_release_acquisition import select_m3_material
+from market_data_foundation.historical.m3_schedule import CALENDAR_URL
+from market_data_foundation.historical.macro_release_records import ReleaseRecords
+from tests.test_m3_jolts_release_material import PDF_TEXT
+from tests.test_m3_segment3 import AT
+from tests.test_m3_segment4 import host
+
+
+def configured(tmp_path, monkeypatch):
+    from market_data_foundation.historical import m3_release_material
+
+    h, s, wire = host(tmp_path)
+    clock = [AT + timedelta(hours=16)]
+    h.clock = lambda: clock[0]
+    s.store.clock = h.clock
+    wire.at = clock[0]
+    snapshot = dict(
+        calendar_status="fresh",
+        calendar={"source": CALENDAR_URL},
+        targets=[
+            dict(
+                key=d + ":2026-09",
+                dataset=d,
+                reference_month="2026-09",
+                source=CALENDAR_URL,
+                release_at=date,
+                status="scheduled",
+            )
+            for d, date in [
+                ("m3", "2026-11-03T15:00:00+00:00"),
+                ("advm3", "2026-10-27T12:30:00+00:00"),
+            ]
+        ],
+    )
+    h.scheduler.status = lambda: snapshot
+    text = [PDF_TEXT]
+    calls = []
+    monkeypatch.setattr(
+        m3_release_material,
+        "PdfReader",
+        lambda _: SimpleNamespace(
+            pages=[SimpleNamespace(extract_text=lambda **_: text[0])]
+        ),
+    )
+
+    def fetch(url, family):
+        calls.append((url, family))
+        return b"synthetic bounded PDF transport"
+
+    h.material_fetcher = fetch
+    ReleaseRecords(s.store).prepare()
+    return h, s, wire, clock, snapshot, text, calls
+
+
+def command():
+    return dict(
+        request_id=str(uuid4()), action="update", start="2026-09", end="2026-09"
+    )
+
+
+def test_normal_m3_job_material_and_event_repeat_without_extra_source(
+    tmp_path, monkeypatch
+):
+    h, s, wire, _, _, _, calls = configured(tmp_path, monkeypatch)
+    cmd = command()
+    done = h.submit_report("m3", cmd)
+    assert done["state"] == "complete" and done["result"]["readback"]["verified"]
+    material = done["result"]["release_material"]
+    assert material["state"] == "retained" and material["event_ids"] == [
+        "census:m3:full:2026-11-03"
+    ]
+    assert material["reports"]["m3"]["selection"]["report_stage"] == "full"
+    assert ReleaseRecords(s.store).read(event_id=material["event_ids"][0])["events"]
+    before = len(wire.calls)
+    assert h.submit_report("m3", cmd, resume=True) == done
+    assert len(wire.calls) == before and len(calls) == 1
+
+
+def test_rolling_wrong_month_failure_and_material_only_recovery(tmp_path, monkeypatch):
+    h, s, wire, clock, _, text, calls = configured(tmp_path, monkeypatch)
+    cmd = command()
+    text[0] = PDF_TEXT.replace("SEPTEMBER 2026", "OCTOBER 2026")
+    first = h.submit_report("m3", cmd)
+    before = len(wire.calls)
+    assert first["state"] == "complete" and first["numeric_result"]["persisted"]
+    assert first["result"]["release_material"]["reports"]["m3"]["reasons"] == [
+        "release_material_calendar_identity_mismatch"
+    ]
+    assert ReleaseRecords(s.store).read()["events"] == []
+    assert h.submit_report("m3", cmd) == first
+    clock[0] += timedelta(hours=1, seconds=1)
+    text[0] = PDF_TEXT
+    recovered = h.submit_report("m3", cmd, resume=True)
+    assert (
+        recovered["state"] == "complete"
+        and recovered["result"]["release_material"]["state"] == "retained"
+    )
+    assert recovered["numeric_result"] == first["numeric_result"]
+    assert (
+        recovered["finished_at"] == first["finished_at"]
+        and recovered["started_at"] == first["started_at"]
+    )
+    assert len(wire.calls) == before and len(calls) == 2
+
+
+def test_joint_material_stage_failure_does_not_erase_numeric_or_other_stage(
+    tmp_path, monkeypatch
+):
+    h, s, wire, _, _, _, calls = configured(tmp_path, monkeypatch)
+    h.joint_collections = True
+    done = h.submit(command())
+    material = done["result"]["release_material"]
+    assert done["state"] == "complete" and all(
+        r["readback_verified"] for r in done["result"]["reports"].values()
+    )
+    assert (
+        material["state"] == "partial"
+        and material["reports"]["m3"]["state"] == "retained"
+    )
+    assert material["reports"]["advm3"]["reasons"] == ["m3_report_stage_unproven"]
+    assert material["event_ids"] == ["census:m3:full:2026-11-03"]
+    assert len(ReleaseRecords(s.store).read()["events"]) == 1 and len(calls) == 2
+
+
+def test_interruption_after_numeric_save_resumes_material_without_numeric_repeat(
+    tmp_path, monkeypatch
+):
+    from market_data_foundation.web import m3_product_host as module
+
+    h, s, wire, *_ = configured(tmp_path, monkeypatch)
+    cmd = command()
+    capture = module.capture_m3_material
+
+    def interrupt(*_):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(module, "capture_m3_material", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        h.submit_report("m3", cmd)
+    before = len(wire.calls)
+    assert h.journal.read(cmd["request_id"])["numeric_result"]["persisted"]
+    monkeypatch.setattr(module, "capture_m3_material", capture)
+    resumed = h.submit_report("m3", cmd, resume=True)
+    assert (
+        resumed["state"] == "complete"
+        and resumed["result"]["release_material"]["state"] == "retained"
+    )
+    assert len(wire.calls) == before
+
+
+def test_material_calendar_read_failure_keeps_numeric_success(tmp_path, monkeypatch):
+    h, _, _, _, _, _, _ = configured(tmp_path, monkeypatch)
+
+    def fail():
+        raise ValueError("synthetic state error")
+
+    h.scheduler.status = fail
+    result = h.submit_report("m3", command())
+    assert result["state"] == "complete" and result["result"]["readback"]["verified"]
+    assert result["result"]["release_material"]["reasons"] == [
+        "m3_material_acquisition_failed"
+    ]
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"calendar_status": "expired"},
+        {"dataset": "advm3"},
+        {"reference_month": "2026-10"},
+        {"status": "TBA"},
+    ],
+)
+def test_m3_selector_requires_calendar_stage_period_and_due_time(change):
+    from datetime import UTC, datetime
+
+    snapshot = dict(
+        calendar_status="fresh",
+        calendar={"source": CALENDAR_URL},
+        targets=[
+            dict(
+                dataset="m3",
+                reference_month="2026-09",
+                status="scheduled",
+                source=CALENDAR_URL,
+                release_at="2026-11-03T15:00:00+00:00",
+            )
+        ],
+    )
+    if "calendar_status" in change:
+        snapshot.update(change)
+    else:
+        snapshot["targets"][0].update(change)
+    assert (
+        select_m3_material(
+            snapshot, "m3", "2026-09", "2026-09", datetime(2026, 11, 3, 16, tzinfo=UTC)
+        )
+        is None
+    )
