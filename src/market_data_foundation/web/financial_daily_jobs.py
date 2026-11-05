@@ -2,9 +2,9 @@
 
 import json
 from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo
 from types import SimpleNamespace
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from market_data_foundation.historical.financial_daily import (
     SERIES_IDS,

@@ -289,7 +289,7 @@ def test_partial_job_continues_other_series_and_resumes_only_failed_step(
     assert requested == ["DGS2", "DGS10", "DGS2"]
 
 
-def test_default_window_uses_new_york_observation_day_across_beijing_and_utc_midnights():
+def test_default_day_ignores_beijing_and_utc_midnight():
     from datetime import UTC, datetime
 
     for at in [
