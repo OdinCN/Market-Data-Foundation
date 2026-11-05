@@ -4,6 +4,7 @@ import {
   financialJobTitle,
   financialJobSearch,
   financialJobSources,
+  financialJobResult,
 } from "./financialJobPresentation";
 import { DateField } from "./DateField";
 import { CompactTable, CodeBlock } from "./CpiQueryDetails";
@@ -509,7 +510,7 @@ export function FinancialDailyWorkbench({
                   <div>
                     <dt>结果</dt>
                     <dd>
-                      {label(j.state)} ·{" "}
+                      {financialJobResult(j)} ·{" "}
                       {j.steps.filter((s) => s.state === "complete").length}/
                       {j.steps.length}
                     </dd>
@@ -845,7 +846,7 @@ function FinancialJobList({
           financialJobTitle(j),
           formatBeijingTime(j.created_at),
           `${j.command.start} 至 ${j.command.end}`,
-          label(j.state),
+          financialJobResult(j),
         ],
       }))}
       selected={selected}
@@ -872,8 +873,7 @@ function FinancialExecutionDetail({
   const pending = j.steps.filter((s) => s.state === "pending");
   const running = j.steps.filter((s) => s.state === "running");
   const waiting = j.steps.filter((s) => s.state === "waiting_publication");
-  const jobProblem =
-    ["failed", "unknown"].includes(j.state) || !!j.classification;
+  const jobProblem = ["failed", "unknown", "outcome_unknown"].includes(j.state);
   const resumable =
     ["partial", "unknown", "failed"].includes(j.state) &&
     (failed.length > 0 || jobProblem);
@@ -894,9 +894,9 @@ function FinancialExecutionDetail({
             ? null
             : (j.finished_at ?? (j.state === "complete" ? j.updated_at : null))
         }
-        result={label(j.state)}
+        result={financialJobResult(j)}
         classification={
-          j.classification
+          jobProblem && j.classification
             ? financialReason({ classification: j.classification })
             : null
         }
@@ -952,6 +952,15 @@ function FinancialExecutionDetail({
             </button>
           )}
         </section>
+      )}
+      {j.classification && !jobProblem && (
+        <details>
+          <summary>保留的异常分类</summary>
+          <p>
+            先前记录：{j.classification}
+            。该分类独立保留，不代表当前作业失败；当前状态以本次回读为准。
+          </p>
+        </details>
       )}
       <button onClick={() => go("assets", "local")}>查看关联资产 →</button>
       <button onClick={() => go("collection", "executions")}>

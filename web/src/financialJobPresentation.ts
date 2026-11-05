@@ -26,6 +26,20 @@ const states: Record<string, string> = {
 };
 export const financialStateText = (state: string) =>
   states[state] ?? "状态待核实";
+export function financialJobResult(job: FinancialJob) {
+  if (job.state !== "partial") return financialStateText(job.state);
+  if (
+    job.steps.some((s) =>
+      ["failed", "unknown", "outcome_unknown", "cooling_down"].includes(
+        s.state,
+      ),
+    )
+  )
+    return "部分完成，可续跑";
+  if (job.steps.some((s) => s.state === "waiting_publication"))
+    return "部分完成，等待来源公布";
+  return "部分完成，未执行步骤待核实";
+}
 export const financialJobOrigin = (job: Pick<FinancialJob, "origin">) =>
   job.origin === "periodic"
     ? "自动策略"
@@ -60,4 +74,4 @@ export function financialJobSources(job: FinancialJob) {
   ];
 }
 export const financialJobSearch = (job: FinancialJob) =>
-  `金融条件日频 ${job.request_id} ${financialJobTitle(job)} ${financialJobSources(job).join(" ")} ${financialStateText(job.state)} ${job.command.start} ${job.command.end}`;
+  `金融条件日频 ${job.request_id} ${financialJobTitle(job)} ${financialJobSources(job).join(" ")} ${financialJobResult(job)} ${job.command.start} ${job.command.end}`;

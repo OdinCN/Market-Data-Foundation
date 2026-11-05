@@ -282,3 +282,29 @@ it("new-collection briefs distinguish persisted automatic and manual triggers wi
   ).toBeTruthy();
   expect(calls.every((m) => m === "GET")).toBe(true);
 });
+
+it.each(["complete", "running", "partial"])(
+  "%s does not turn a retained previous classification into a current failure",
+  async (state) => {
+    detail(
+      job({
+        state,
+        classification: "financial_storage_outcome_unknown",
+        steps: [step(state === "complete" ? "complete" : "pending")],
+      }),
+    );
+    await screen.findByRole("heading", { name: "执行详情" });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button", { name: "续跑此作业" })).toBeNull();
+    expect(
+      screen.getByText("执行结果").closest(".fact")?.textContent,
+    ).toContain(
+      state === "complete"
+        ? "已完成"
+        : state === "running"
+          ? "采集中"
+          : "部分完成，未执行步骤待核实",
+    );
+    expect(screen.getByText("保留的异常分类")).toBeTruthy();
+  },
+);

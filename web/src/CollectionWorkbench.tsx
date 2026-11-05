@@ -2,7 +2,7 @@ import { executionCreatedOrder } from "./executionOrder";
 import {
   financialJobTitle,
   financialJobSearch,
-  financialStateText,
+  financialJobResult,
 } from "./financialJobPresentation";
 import { useFinancialPeriodic } from "./FinancialPeriodic";
 import {
@@ -1998,7 +1998,7 @@ export function CollectionWorkbench({
                       <span>至</span>
                       <span>{j.command.end}</span>
                     </span>,
-                    `${financialStateText(j.state)} · ${j.steps.filter((s) => s.state === "complete").length}/${j.steps.length}`,
+                    `${financialJobResult(j)} · ${j.steps.filter((s) => s.state === "complete").length}/${j.steps.length}`,
                   ],
                 })),
               ...rows.map((e) => ({
