@@ -205,3 +205,213 @@ def test_m3_selector_requires_calendar_stage_period_and_due_time(change):
         )
         is None
     )
+
+
+def scheduler_host(tmp_path, monkeypatch):
+    from market_data_foundation.historical.m3_schedule import M3Scheduler
+    from tests.test_m3_segment6 import CALENDAR
+
+    h, s, wire, clock, _, _, calls = configured(tmp_path, monkeypatch)
+    h.scheduler.clock = h.clock
+    h.scheduler.status = M3Scheduler.status.__get__(h.scheduler)
+    h.scheduler.maintain_history = None
+    h.scheduler.import_calendar(
+        CALENDAR.replace(b"10/27/2026", b"TBA"), acquired_at=clock[0]
+    )
+    return h, s, wire, clock, calls
+
+
+def test_due_check_automatically_recovers_same_numeric_job_after_material_cooldown(
+    tmp_path, monkeypatch
+):
+    from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
+    from market_data_foundation.historical.m3_schedule import M3Scheduler
+
+    h, s, wire, clock, calls = scheduler_host(tmp_path, monkeypatch)
+    real_fetch = h.material_fetcher
+    failures = [True]
+
+    def fetch(url, family):
+        if failures.pop() if failures else False:
+            calls.append((url, family))
+            raise CpiTimeSeriesError("release_http_503")
+        return real_fetch(url, family)
+
+    h.material_fetcher = fetch
+    first = h.scheduler.due_check()
+    job = h.journal.read(first["request_id"])
+    numeric_calls = len(wire.calls)
+    assert (
+        job["state"] == "complete"
+        and job["result"]["release_material"]["state"] == "partial"
+    )
+    assert h.scheduler.status()["targets"][1]["target"]["material_retry"][
+        "reasons"
+    ] == ["release_http_503"]
+    clock[0] += timedelta(minutes=5)
+    assert h.scheduler.due_check()["action"] == "material_cooldown_wait"
+    assert len(calls) == 1
+    # A new scheduler instance reads the persisted cooldown and original task.
+    restored = M3Scheduler(
+        h.scheduler.state_path,
+        history_start=h.scheduler.history_start,
+        clock=h.clock,
+        submit_report=h.submit_report,
+    )
+    clock[0] += timedelta(minutes=56)
+    tick = restored.due_check()
+    assert (
+        tick["action"] == "material_retry" and tick["request_id"] == first["request_id"]
+    )
+    recovered = h.journal.read(first["request_id"])
+    assert recovered["result"]["release_material"]["state"] == "retained"
+    assert recovered["numeric_result"] == job["numeric_result"]
+    assert recovered["finished_at"] == job["finished_at"]
+    assert recovered["numeric_finished_at"] == job["numeric_finished_at"]
+    assert len(wire.calls) == numeric_calls and len(calls) == 2
+    assert len(h.executions()["executions"]) == 1
+    assert restored.due_check()["action"] == "already_checked"
+    assert ReleaseRecords(s.store).read(event_id="census:m3:full:2026-11-03")["events"]
+
+
+@pytest.mark.parametrize(
+    "reason,delay",
+    [("release_http_503", timedelta(hours=1)), ("release_http_403", timedelta(days=1))],
+)
+def test_material_retry_failure_is_bounded_and_respects_provider_cooldown(
+    tmp_path, monkeypatch, reason, delay
+):
+    from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
+    from tests.test_m3_segment6 import CALENDAR
+
+    h, _, wire, clock, calls = scheduler_host(tmp_path, monkeypatch)
+
+    def fail(url, family):
+        calls.append((url, family))
+        raise CpiTimeSeriesError(reason)
+
+    h.material_fetcher = fail
+    first = h.scheduler.due_check()
+    before = len(wire.calls)
+    for attempt in (2, 3):
+        clock[0] += delay - timedelta(seconds=1)
+        h.scheduler.import_calendar(
+            CALENDAR.replace(b"10/27/2026", b"TBA"), acquired_at=clock[0]
+        )
+        assert h.scheduler.due_check()["action"] == "material_cooldown_wait"
+        clock[0] += timedelta(seconds=1)
+        tick = h.scheduler.due_check()
+        assert tick["action"] == "material_retry"
+        assert tick["material_retry"]["attempts"] == attempt
+        assert tick["request_id"] == first["request_id"]
+    for _ in range(3):
+        assert h.scheduler.due_check()["action"] == "already_checked"
+    work = h.scheduler.status()["targets"][1]["target"]
+    assert work["state"] == "complete"
+    assert work["material_retry"]["state"] == "pending_exhausted"
+    assert work["material_retry"]["reasons"] == [reason]
+    assert len(calls) == 3 and len(wire.calls) == before
+    assert "material_recovered_at" not in h.journal.read(first["request_id"])
+
+
+def test_completed_legacy_and_older_material_failures_are_not_backfilled(
+    tmp_path, monkeypatch
+):
+    h, _, _, clock, calls = scheduler_host(tmp_path, monkeypatch)
+    from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
+
+    def fail(*_):
+        calls.append("failure")
+        raise CpiTimeSeriesError("release_http_503")
+
+    h.material_fetcher = fail
+    h.scheduler.due_check()
+    with h.scheduler._locked():
+        state = h.scheduler._load()
+        # Add a newer, already complete legacy stage; old partial material stays.
+        state["events"].append(
+            dict(
+                state["events"][1],
+                key="m3:2026-10",
+                reference_month="2026-10",
+                release_at=clock[0].isoformat(),
+            )
+        )
+        state["work"]["m3:2026-10"] = dict(
+            state="complete",
+            attempts=1,
+            result={"state": "complete", "result": {"coverage_complete": True}},
+        )
+        h.scheduler._save(state)
+    clock[0] += timedelta(hours=2)
+    assert h.scheduler.due_check()["action"] == "already_checked"
+    assert len(calls) == 1
+
+
+def test_material_retry_does_not_rebind_changed_calendar_identity(
+    tmp_path, monkeypatch
+):
+    from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
+
+    h, _, wire, clock, calls = scheduler_host(tmp_path, monkeypatch)
+
+    def fail(*_):
+        calls.append("503")
+        raise CpiTimeSeriesError("release_http_503")
+
+    h.material_fetcher = fail
+    h.scheduler.due_check()
+    before = len(wire.calls)
+    with h.scheduler._locked():
+        state = h.scheduler._load()
+        # Date must actually differ to change the report identity.
+        state["events"][1]["release_at"] = "2026-11-02T15:00:00+00:00"
+        h.scheduler._save(state)
+    clock[0] += timedelta(hours=2)
+    assert h.scheduler.due_check()["action"] == "already_checked"
+    assert (
+        h.scheduler.status()["targets"][1]["target"]["material_retry"]["state"]
+        == "calendar_changed"
+    )
+    assert len(calls) == 1 and len(wire.calls) == before
+
+
+def test_interrupted_automatic_material_attempt_respects_reservation_and_recovers(
+    tmp_path, monkeypatch
+):
+    from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
+
+    h, _, wire, clock, calls = scheduler_host(tmp_path, monkeypatch)
+    original = h.material_fetcher
+
+    def fail_once(*_):
+        calls.append("503")
+        raise CpiTimeSeriesError("release_http_503")
+
+    h.material_fetcher = fail_once
+    tick = h.scheduler.due_check()
+    numeric_calls = len(wire.calls)
+    clock[0] += timedelta(minutes=61)
+    original_submit = h.scheduler.submit_report
+
+    def interrupt(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    h.scheduler.submit_report = interrupt
+    with pytest.raises(KeyboardInterrupt):
+        h.scheduler.due_check()
+    assert (
+        h.scheduler.status()["targets"][1]["target"]["material_retry"]["state"]
+        == "running"
+    )
+    assert h.scheduler.due_check()["action"] == "already_checked"
+    clock[0] += timedelta(minutes=61)
+    h.scheduler.submit_report = original_submit
+    h.material_fetcher = original
+    recovered = h.scheduler.due_check()
+    assert (
+        recovered["action"] == "material_retry"
+        and recovered["request_id"] == tick["request_id"]
+    )
+    assert recovered["material_retry"]["state"] == "retained"
+    assert len(wire.calls) == numeric_calls

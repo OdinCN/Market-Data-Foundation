@@ -524,6 +524,10 @@ class M3ProductHost(M3QueryHost):
                 else self.clock().isoformat()
             )
             if old and old["state"] == "complete":
-                job["material_recovered_at"] = self.clock().isoformat()
+                job["material_last_attempt_at"] = self.clock().isoformat()
+                if (job.get("result") or {}).get("release_material", {}).get(
+                    "state"
+                ) == "retained":
+                    job["material_recovered_at"] = self.clock().isoformat()
             self.journal.save(job)
             return job
