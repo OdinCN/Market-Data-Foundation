@@ -6,6 +6,12 @@ import type { Packages, RuntimeRevision } from "./packageApi";
 import type { Navigate, Route } from "./workflowRoute";
 import { Fact, WorkflowTable } from "./WorkflowTable";
 import { assetTitle, sameKey } from "./workflowModel";
+const connected = (value?: RuntimeRevision["plan"]) =>
+  value?.allowed === true
+    ? "已接入"
+    : value?.allowed === false
+      ? "未接入"
+      : "待核实";
 const eligible = (value: RuntimeRevision["local_read"]) =>
   value.allowed === true
     ? "允许"
@@ -178,13 +184,25 @@ export function RuntimeAssets({
               cells: [
                 r.title,
                 r.owners.map((p) => p.name).join(" / "),
-                r.revisions.some((v) =>
-                  v.visibility_basis?.includes("REGISTERED_MANUAL"),
-                )
-                  ? "已登记人工通路"
-                  : r.revisions.some((v) => v.capability_enabled)
-                    ? "能力已启用"
-                    : "保留历史",
+                r.identity === FINANCIAL.identity
+                  ? r.revisions.some((v) => v.plan.allowed === true)
+                    ? "已登记 · 人工与周期采集已接入"
+                    : r.revisions.some((v) => v.collect.allowed === true)
+                      ? "已登记 · 人工采集已接入"
+                      : r.revisions.every(
+                            (v) =>
+                              v.collect.allowed === false &&
+                              v.plan.allowed === false,
+                          )
+                        ? "已登记 · 采集能力未接入"
+                        : "已登记 · 采集能力待核实"
+                  : r.revisions.some((v) =>
+                        v.visibility_basis?.includes("REGISTERED_MANUAL"),
+                      )
+                    ? "已登记人工通路"
+                    : r.revisions.some((v) => v.capability_enabled)
+                      ? "能力已启用"
+                      : "保留历史",
               ],
             }))}
             selected={selected?.identity}
@@ -224,7 +242,16 @@ export function RuntimeAssets({
                   )}
                 </div>
                 {cpiSelected && cpi}
-                {financialSelected && financial}
+                {financialSelected && (
+                  <>
+                    <p className="small">
+                      可用能力：人工采集{connected(revision?.collect)}；周期采集
+                      {connected(revision?.plan)}
+                      。能力不代表策略已开启或执行器在线，实际自动采集状态见周期任务。
+                    </p>
+                    {financial}
+                  </>
+                )}
                 {!cpiSelected &&
                   !financialSelected &&
                   selected.revisions.length > 1 && (

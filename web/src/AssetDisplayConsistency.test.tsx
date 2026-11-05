@@ -217,3 +217,57 @@ it("uses the same seven asset names across collection options, strategy rows, ex
     }),
   ).not.toContain("美国");
 });
+
+it("financial directory reports host capability independently of package intent or worker state", () => {
+  const identity = "mdf.macro.financial-conditions.daily";
+  const packages = {
+    status: "OK",
+    packages: [
+      {
+        package_id: "macro",
+        name: "宏观",
+        capabilities: [
+          {
+            definition_ref: { identity, revision: "r1" },
+            title: "金融条件日频",
+          },
+        ],
+        assets: [
+          {
+            identity,
+            revisions: [
+              {
+                definition_ref: { identity, revision: "r1" },
+                capability_enabled: false,
+                source_entries: [],
+                visibility_basis: ["REGISTERED_MANUAL"],
+                collect: { allowed: true, reasons: ["host"] },
+                plan: { allowed: true, reasons: ["host"] },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  } as unknown as Packages;
+  render(
+    <RuntimeAssets
+      data={packages}
+      busy={false}
+      failure={null}
+      route={{
+        view: "assets",
+        invalid: false,
+        fields: new URLSearchParams({ asset: identity, asset_revision: "r1" }),
+      }}
+      navigate={vi.fn()}
+      reader={null}
+      ordinary={null}
+      reference={null}
+      financial={<p>日频查询</p>}
+    />,
+  );
+  expect(screen.getByText("已登记 · 人工与周期采集已接入")).toBeTruthy();
+  expect(screen.getByText(/能力不代表策略已开启或执行器在线/)).toBeTruthy();
+  expect(screen.queryByText("能力已启用")).toBeNull();
+});

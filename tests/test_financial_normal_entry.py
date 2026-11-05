@@ -90,3 +90,47 @@ def test_financial_catalog_history_is_readonly_and_storage_failure_stays_unknown
     assert not runtime._history(
         "financial_daily", ref(DEFINITION), AT
     ).manual_registered
+
+
+@pytest.mark.parametrize(
+    "periodic,paths,collect,expected",
+    [
+        (False, True, True, False),
+        (True, False, True, False),
+        (True, True, False, False),
+        (True, True, True, True),
+    ],
+)
+def test_directory_reports_configured_periodic_capability_without_changing_intent(
+    tmp_path, monkeypatch, periodic, paths, collect, expected
+):
+    from market_data_foundation.web.cpi_timeseries_host import TimeSeriesPackages
+    from market_data_foundation.web.packages import PackageHost
+
+    host = fixture_host(tmp_path / "config", scenario="financial_manual")
+    access = PackageAccess(metadata_view_permission="allowed")
+    view = host.project("macro", None, access)
+    raw_before = host.store.path.read_bytes()
+    monkeypatch.setattr(PackageHost, "project", lambda *a: view)
+    runtime = TimeSeriesPackages.__new__(TimeSeriesPackages)
+    runtime.timeseries_hosts = {}
+    runtime.financial_options = FinancialOptions(
+        tmp_path / "jobs",
+        True,
+        collect,
+        tmp_path / "state" if paths else None,
+        tmp_path / "window" if paths else None,
+        periodic,
+    )
+    result = runtime.project("macro", None, access)
+    revision = next(
+        a for a in result.assets if a.identity == DEFINITION.identity
+    ).revisions[0]
+    assert revision.plan.allowed is expected
+    assert not revision.capability_enabled  # package intent is independent
+    assert revision.visibility_basis == [
+        "REGISTERED_MANUAL",
+        "RETAINED_HISTORY",
+    ] or set(revision.visibility_basis) == {"REGISTERED_MANUAL", "RETAINED_HISTORY"}
+    assert host.store.path.read_bytes() == raw_before
+    assert not (tmp_path / "jobs").exists() and not (tmp_path / "state").exists()

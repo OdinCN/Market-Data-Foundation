@@ -150,6 +150,14 @@ class TimeSeriesPackages(PackageHost):
                     == "mdf.macro.financial-conditions.daily"
                 ):
                     financial = getattr(self, "financial_options", None)
+                    periodic_available = bool(
+                        financial
+                        and financial.allow_read
+                        and financial.allow_collect
+                        and financial.allow_strategy
+                        and financial.state_directory
+                        and financial.window_path
+                    )
                     revision = revision.model_copy(
                         update={
                             "collect": Eligibility(
@@ -163,8 +171,12 @@ class TimeSeriesPackages(PackageHost):
                                 ],
                             ),
                             "plan": Eligibility(
-                                allowed=False,
-                                reasons=["financial_resident_worker_not_installed"],
+                                allowed=periodic_available,
+                                reasons=[
+                                    "financial_periodic_host_opt_in"
+                                    if periodic_available
+                                    else "financial_periodic_host_not_enabled"
+                                ],
                             ),
                         }
                     )

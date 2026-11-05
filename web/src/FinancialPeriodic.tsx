@@ -1,3 +1,4 @@
+import { financialSeriesSource } from "./financialJobPresentation";
 import { useRef, useState } from "react";
 import type { Transport } from "./api";
 import type { Navigate } from "./workflowRoute";
@@ -101,6 +102,17 @@ export function useFinancialPeriodic(
     .filter((s) => s.last)
     .map((s) => s.last!)
     .sort();
+  const latestText = !summary.data
+    ? summary.failure
+      ? "读取失败，待核实"
+      : summary.busy
+        ? "正在读取本地覆盖…"
+        : "尚未读取本地覆盖"
+    : latest?.length
+      ? latest[0] === latest.at(-1)
+        ? latest[0]
+        : `${latest[0]} 至 ${latest.at(-1)}（指标不同）`
+      : "本地尚无已确认的有效观测";
   const [saving, setSaving] = useState(false),
     [pending, setPending] = useState<{ enabled: boolean } | null>(null),
     [notice, setNotice] = useState("");
@@ -254,12 +266,10 @@ export function useFinancialPeriodic(
           {formatBeijingTime(data?.last_successful_collection_at, "未记录")}
         </span>
         <span>
-          最新数据期：
-          {latest?.length
-            ? latest[0] === latest.at(-1)
-              ? latest[0]
-              : `${latest[0]} 至 ${latest.at(-1)}（指标不同）`
-            : "尚未核实"}
+          最新数据期：{latestText}
+          {summary.data && summary.failure
+            ? "（保留上次回读，当前读取失败）"
+            : ""}
         </span>
       </span>,
     ],
@@ -298,13 +308,18 @@ export function useFinancialPeriodic(
       </button>
       <details>
         <summary>各指标最新本地数据期</summary>
+        {!summary.data && <p role="status">{latestText}</p>}
         <ul>
           {summary.data?.series.map((s) => (
             <li key={s.series_id}>
-              {s.series_id}：{s.last ?? "未取得"}
+              {s.series_id} · {financialSeriesSource(s.series_id)}：
+              {s.last ?? "本地尚无有效观测"}
             </li>
           ))}
         </ul>
+        <p>
+          来源按已登记口径列示；信用可来自归档或FRED，逐点版本与实际分发者见本地查询，不由汇总日期推断。
+        </p>
         <p>族级最新日期不能证明全部指标齐全；范围缺口以本地查询为准。</p>
       </details>
       <h4>分组检查与执行</h4>

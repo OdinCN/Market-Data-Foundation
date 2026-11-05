@@ -147,3 +147,53 @@ it("request in progress prevents duplicate actions and never claims collection s
   );
   await screen.findAllByText(/采集成功以实际作业回读为准/);
 });
+
+it("separates summary loading from no observations, retains known dates through refresh and labels source basis", async () => {
+  let complete: (r: Response) => void = () => {};
+  let summary: unknown = null;
+  const transport: Transport = async (u) =>
+    String(u).endsWith("/summary")
+      ? summary
+        ? Response.json({ status: "OK", series: summary })
+        : new Promise((r) => {
+            complete = r;
+          })
+      : Response.json(base);
+  render(<Page transport={transport} />);
+  await screen.findByText(/最新数据期：正在读取本地覆盖/);
+  summary = [
+    { series_id: "DFEDTARL", last: "2026-11-05" },
+    { series_id: "DGS10", last: "2026-11-04" },
+  ];
+  complete(Response.json({ status: "OK", series: summary }));
+  await screen.findByText(/最新数据期：2026-11-04 至 2026-11-05/);
+  fireEvent.click(screen.getByText("各指标最新本地数据期"));
+  expect(
+    screen.getByText("DFEDTARL · 联储理事会（政策投影）：2026-11-05"),
+  ).toBeTruthy();
+  expect(
+    screen.getByText("DGS10 · 美国财政部（原始）：2026-11-04"),
+  ).toBeTruthy();
+  expect(screen.queryByText(/本地尚无已确认的有效观测/)).toBeNull();
+});
+it("an observed empty summary is different from a failed summary", async () => {
+  const empty: Transport = async (u) =>
+    Response.json(
+      String(u).endsWith("/summary")
+        ? { status: "OK", series: [{ series_id: "DGS2", last: null }] }
+        : base,
+    );
+  const view = render(<Page transport={empty} />);
+  await screen.findByText(/最新数据期：本地尚无已确认的有效观测/);
+  view.unmount();
+  const failed: Transport = async (u) =>
+    String(u).endsWith("/summary")
+      ? Response.json(
+          { status: "UNKNOWN", classification: "financial_local_unavailable" },
+          { status: 503 },
+        )
+      : Response.json(base);
+  render(<Page transport={failed} />);
+  await screen.findByText(/最新数据期：读取失败，待核实/);
+  expect(screen.queryByText(/本地尚无已确认的有效观测/)).toBeNull();
+});

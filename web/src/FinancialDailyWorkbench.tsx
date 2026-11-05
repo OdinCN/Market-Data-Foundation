@@ -1,3 +1,10 @@
+import {
+  financialStateText as label,
+  financialJobOrigin,
+  financialJobTitle,
+  financialJobSearch,
+  financialJobSources,
+} from "./financialJobPresentation";
 import { DateField } from "./DateField";
 import { CompactTable, CodeBlock } from "./CpiQueryDetails";
 import { ExecutionFacts } from "./ExecutionFacts";
@@ -52,7 +59,7 @@ export type FinancialJob = {
   started_at?: string | null;
   finished_at?: string | null;
   updated_at?: string | null;
-  origin?: string;
+  origin?: string | null;
   provider_requests: number;
   command: { action: string; start: string; end: string };
   steps: Step[];
@@ -110,29 +117,6 @@ const names: Record<string, string> = {
   BAMLC0A0CM: "投资级 OAS",
   BAMLH0A0HYM2: "高收益 OAS",
 };
-const states: Record<string, string> = {
-  pending: "等待",
-  running: "进行中",
-  complete: "完成",
-  partial: "部分完成，可续跑",
-  failed: "失败",
-  unknown: "结果待核实",
-  cooling_down: "来源冷却中",
-  waiting_publication: "等待来源提供",
-  observed: "有值",
-  provider_missing: "来源明确缺值",
-  provider_field_absent: "原文未提供该期限字段",
-  non_observation_day: "非观测日",
-  not_collected: "未采集",
-  not_known_at_cutoff: "截止前尚未知",
-  outside_provider_range: "来源范围之外",
-  not_yet_available_from_provider: "来源尚未提供",
-  derived_inputs_unavailable: "派生输入缺失",
-  not_returned_calendar_unconfirmed: "未返回，日历待核实",
-  request_failed: "请求失败",
-  commit_pending: "持久确认待恢复",
-};
-const label = (s: string) => states[s] ?? s;
 class FinancialRequestError extends Error {
   constructor(
     message: string,
@@ -506,10 +490,7 @@ export function FinancialDailyWorkbench({
             )}
             {(jobs.data?.jobs ?? []).slice(0, 5).map((j) => (
               <section key={j.request_id} className="execution-brief-card">
-                <strong>
-                  金融日频 ·{" "}
-                  {j.command.action === "init" ? "初始化采集" : "更新指定范围"}
-                </strong>
+                <strong>{financialJobTitle(j)}</strong>
                 <dl>
                   <div>
                     <dt>请求编号</dt>
@@ -859,9 +840,9 @@ function FinancialJobList({
       columns={["任务名称", "创建时间（北京时间）", "采集范围", "结果"]}
       rows={jobs.map((j) => ({
         id: j.request_id,
-        search: `金融条件日频 ${j.request_id}`,
+        search: financialJobSearch(j),
         cells: [
-          `金融日频 · ${j.command.action === "init" ? "初始化采集" : "更新指定范围"}`,
+          financialJobTitle(j),
           formatBeijingTime(j.created_at),
           `${j.command.start} 至 ${j.command.end}`,
           label(j.state),
@@ -885,40 +866,87 @@ function FinancialExecutionDetail({
   resume: () => void;
   go: (view: "assets" | "collection", tab: string, id?: string | null) => void;
 }) {
-  const failed = j.steps.filter((s) => s.state !== "complete");
+  const failed = j.steps.filter((s) =>
+    ["failed", "unknown", "outcome_unknown", "cooling_down"].includes(s.state),
+  );
+  const pending = j.steps.filter((s) => s.state === "pending");
+  const running = j.steps.filter((s) => s.state === "running");
+  const waiting = j.steps.filter((s) => s.state === "waiting_publication");
+  const jobProblem =
+    ["failed", "unknown"].includes(j.state) || !!j.classification;
+  const resumable =
+    ["partial", "unknown", "failed"].includes(j.state) &&
+    (failed.length > 0 || jobProblem);
   return (
     <section aria-label="日频作业详情">
       <h3>执行详情</h3>
       <ExecutionFacts
         id={j.request_id}
         asset="金融条件日频（十项）"
-        source={j.origin === "periodic" ? "自动策略" : "手动采集"}
+        source={financialJobOrigin(j)}
         action={j.command.action === "init" ? "初始化采集" : "更新指定范围"}
         start={j.command.start}
         end={j.command.end}
         createdAt={j.created_at}
         startedAt={j.started_at}
         finishedAt={
-          j.finished_at ?? (j.state !== "running" ? j.updated_at : null)
+          ["running", "pending"].includes(j.state)
+            ? null
+            : (j.finished_at ?? (j.state === "complete" ? j.updated_at : null))
         }
         result={label(j.state)}
-        classification={j.classification}
+        classification={
+          j.classification
+            ? financialReason({ classification: j.classification })
+            : null
+        }
       />
+      <dl>
+        <Fact name="数据来源（步骤绑定）">
+          {financialJobSources(j).join("、") || "未记录"}
+        </Fact>
+      </dl>
       <p>
         已确认 {j.steps.filter((s) => s.state === "complete").length}/
         {j.steps.length} 段；本作业累计来源请求 {j.provider_requests}
         。执行段完成不表示所有日历日都有公布值；来源尾部、非观测日和短历史独立留缺。
       </p>
-      {failed.length > 0 && (
+      {(pending.length > 0 || running.length > 0) && (
+        <section aria-label="执行进度">
+          <p>
+            采集中 {running.length} 段；等待执行 {pending.length}{" "}
+            段。待执行步骤尚无失败事实。
+          </p>
+        </section>
+      )}
+      {waiting.length > 0 && (
+        <section aria-label="等待来源公布">
+          <h4>等待来源公布</h4>
+          {waiting.map((s, i) => (
+            <p key={i}>
+              {names[s.series_id]} · {s.start} 至 {s.end}
+              ：等待来源日期或公布；保留已确认历史，由后续更新补齐。
+            </p>
+          ))}
+        </section>
+      )}
+      {(failed.length > 0 || jobProblem) && (
         <section aria-label="失败与恢复">
           <h4>失败与恢复</h4>
+          {jobProblem && (
+            <p role="alert">
+              {j.classification
+                ? financialReason({ classification: j.classification })
+                : "作业结果未核实或失败原因未记录；请刷新同一记录核对后恢复。"}
+            </p>
+          )}
           {failed.map((s, i) => (
             <p key={i} role="alert">
               {names[s.series_id]} · {s.start} 至 {s.end}：{label(s.state)}。
               {financialReason(s)}
             </p>
           ))}
-          {["partial", "unknown"].includes(j.state) && (
+          {resumable && (
             <button disabled={busy} onClick={resume}>
               续跑此作业
             </button>

@@ -1,3 +1,9 @@
+import { executionCreatedOrder } from "./executionOrder";
+import {
+  financialJobTitle,
+  financialJobSearch,
+  financialStateText,
+} from "./financialJobPresentation";
 import { useFinancialPeriodic } from "./FinancialPeriodic";
 import {
   FINANCIAL,
@@ -1982,20 +1988,22 @@ export function CollectionWorkbench({
                 .filter(() => executionSchedule === "all")
                 .map((j) => ({
                   id: `financial:${j.request_id}`,
-                  search: `金融条件日频 ${j.request_id} ${j.state} ${j.command.start} ${j.command.end}`,
+                  createdAt: j.created_at,
+                  search: financialJobSearch(j),
                   cells: [
-                    `金融日频 · ${j.command.action === "init" ? "初始化" : "增量更新"}`,
+                    financialJobTitle(j),
                     <ExecutionCreatedAt value={j.created_at} />,
                     <span className="execution-range">
                       <span>{j.command.start}</span>
                       <span>至</span>
                       <span>{j.command.end}</span>
                     </span>,
-                    `${j.state === "complete" ? "完成" : j.state === "partial" ? "部分完成，可续跑" : j.state} · ${j.steps.filter((s) => s.state === "complete").length}/${j.steps.length}`,
+                    `${financialStateText(j.state)} · ${j.steps.filter((s) => s.state === "complete").length}/${j.steps.length}`,
                   ],
                 })),
               ...rows.map((e) => ({
                 id: e.id,
+                createdAt: e.dto?.created_at,
                 search: `${e.id} ${e.attempt ?? ""} ${assetTitle(e.asset)} ${stateLabel(e.state)}`,
                 cells: [
                   `${sameKey(e.asset, PCE) ? "PCE" : "CPI"} · ${e.schedule ? "自动阶段" : (e.pce?.parent_job_id ?? e.dto?.parent_job_id) ? "范围回补" : "初始化采集"}`,
@@ -2008,6 +2016,7 @@ export function CollectionWorkbench({
               })),
               ...macroRecords.map((e) => ({
                 id: e.rowId,
+                createdAt: e.created_at,
                 search: `${e.id} ${macroAssetLabel(e.profile)} ${e.origin !== "manual" ? "自动策略" : "手动采集"} ${cpiActionText(e.origin !== "manual" ? (e.stage ?? e.action) : e.action)} ${e.start ?? ""} ${e.end ?? ""} ${cpiExecutionStateText(e.state, e.result, e.profile, e)}`,
                 cells: [
                   `${e.profile.label} · ${e.origin !== "manual" ? "自动阶段 · " : ""}${cpiActionText(e.origin !== "manual" ? (e.stage ?? e.action) : e.action)}`,
@@ -2022,7 +2031,7 @@ export function CollectionWorkbench({
                   </span>,
                 ],
               })),
-            ]}
+            ].sort(executionCreatedOrder)}
           >
             {financialTarget && jobId ? (
               <FinancialDailyWorkbench
