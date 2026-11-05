@@ -320,7 +320,12 @@ export function useFinancialPeriodic(
         ))}
       </ul>
       {data?.tasks.slice(0, 12).map((t) => (
-        <article className="auto-issue" key={t.request_id}>
+        <article
+          className={
+            t.state === "failed" ? "auto-issue" : "execution-brief-card"
+          }
+          key={t.request_id}
+        >
           <strong>
             {groups[t.group]} · {formatBeijingTime(t.slot)}
           </strong>

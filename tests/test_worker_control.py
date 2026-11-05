@@ -185,3 +185,12 @@ def test_explicit_financial_registration_does_not_expand_default_assets(tmp_path
         financial.act("cpi", host, "start")
     with pytest.raises(ValueError):
         DevWorkerControl(control.window_path, assets=("arbitrary",))
+
+
+def test_inactive_service_with_recorded_heartbeat_is_stopped_not_never_started(
+    tmp_path,
+):
+    control, host, _, _, worker = setup(tmp_path)
+    assert control.inspect("cpi", host)["reason"] == "worker_service_stopped"
+    worker["last_heartbeat_at"] = None
+    assert control.inspect("cpi", host)["reason"] == "worker_service_not_started"

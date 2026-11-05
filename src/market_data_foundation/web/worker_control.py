@@ -169,6 +169,7 @@ class DevWorkerControl:
             else "worker_service_not_started"
             if service.get("ActiveState") != "active"
             and not service.get("ActiveEnterTimestamp")
+            and not heartbeat
             else "worker_service_stopped"
             if service.get("ActiveState") != "active"
             else "worker_heartbeat_stale"
