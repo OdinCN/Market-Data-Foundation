@@ -138,6 +138,56 @@ def test_treasury_native_fields_null_zero_negative_and_scope_are_not_fred():
     assert "observation_end" not in m
 
 
+@pytest.mark.parametrize("sid", ["DGS2", "DGS10"])
+def test_annual_treasury_retains_reliable_dates_when_one_date_has_no_maturity(sid):
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(treasury_raw(date="2010-10-08"))
+    absent = ET.fromstring(treasury_raw(date="2010-10-11")).find("{*}entry")
+    properties = absent.find(".//{*}properties")
+    for cell in list(properties):
+        if cell.tag.split("}")[-1] != "NEW_DATE":
+            properties.remove(cell)
+    root.append(absent)
+    root.append(ET.fromstring(treasury_raw(date="2010-10-12")).find("{*}entry"))
+    raw = ET.tostring(root)
+    source = OriginSource(
+        controls={"home.treasury.gov": Control()},
+        transport=lambda r: ClaimsResponse(200, raw),
+        clock=lambda: AT,
+    )
+    batch = source.fetch(sid, "2010-01-01", "2010-12-31", period="year")
+    validate(batch)
+    assert [p.observation_date for p in batch.points] == ["2010-10-08", "2010-10-12"]
+    assert batch.metadata["native_field_absent_dates"] == ["2010-10-11"]
+    assert batch.request["parameters"]["field_tdr_date_value"] == "2010"
+    snap = dict(
+        values=[],
+        batches=[
+            (
+                sid,
+                batch.batch_id,
+                batch.metadata,
+                AT,
+                AT,
+                day(batch.start),
+                day(batch.end),
+                batch.origin,
+                "raw",
+                "metadata",
+            )
+        ],
+        attempts=[],
+        ranges=[(sid, day(batch.start), day(batch.end))],
+        pending=[],
+        cutoff=AT,
+        basis="available",
+    )
+    row = project(snap, (sid,), "2010-10-11", "2010-10-11")["rows"][0]
+    assert row["state"] == "provider_field_absent" and row["value"] is None
+    assert row["coverage_evidence"]["raw_locator"] == "raw"
+
+
 def test_origin_caches_shared_raw_and_retains_html_before_parse_with_strict_optin(
     tmp_path,
 ):

@@ -456,7 +456,8 @@ class PostgresDailyStore:
             batches = self.connection.execute(
                 f"""
                 SELECT series_id, batch_id, metadata,
-                observed_at, available_at, start_date, end_date, origin FROM
+                observed_at, available_at, start_date, end_date, origin,
+                raw_locator, metadata_locator FROM
                 {s}.batches
                 WHERE series_id=ANY(%s) AND available_at IS NOT NULL AND
                 {basis}_at<=%s AND start_date<=%s AND end_date>=%s

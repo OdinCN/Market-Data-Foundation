@@ -104,6 +104,7 @@ const states: Record<string, string> = {
   cooling_down: "来源冷却中",
   observed: "有值",
   provider_missing: "来源明确缺值",
+  provider_field_absent: "原文未提供该期限字段",
   non_observation_day: "非观测日",
   not_collected: "未采集",
   not_known_at_cutoff: "截止前尚未知",
@@ -354,7 +355,11 @@ export function FinancialDailyWorkbench({
           </label>
           <label>
             执行方式
-            <select value={action} onChange={(e) => setAction(e.target.value)}>
+            <select
+              aria-label="执行方式"
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+            >
               <option value="init">初始化（默认 20 日历年）</option>
               <option value="update">增量更新（所选区间，覆盖近期修订）</option>
             </select>
@@ -395,6 +400,7 @@ export function FinancialDailyWorkbench({
       {collecting && tab === "executions" && (
         <>
           <WorkflowTable
+            className="financial-table"
             label="日频执行记录"
             columns={["作业", "窗口", "进度", "上游请求"]}
             rows={(jobs.data?.jobs ?? []).map((j) => ({
@@ -493,7 +499,11 @@ export function FinancialDailyWorkbench({
             <div className="field-grid">
               <label>
                 指标
-                <select value={sid} onChange={(e) => setSid(e.target.value)}>
+                <select
+                  aria-label="指标"
+                  value={sid}
+                  onChange={(e) => setSid(e.target.value)}
+                >
                   {Object.entries(names).map(([key, name]) => (
                     <option key={key} value={key}>
                       {key} · {name}
@@ -542,6 +552,7 @@ export function FinancialDailyWorkbench({
                 刷新本地结果
               </button>
               <WorkflowTable
+                className="financial-table"
                 label="日频观测结果"
                 columns={["观测日", "值（%） / 信用 bp", "状态", "版本"]}
                 rows={query.rows.map((r) => ({
@@ -619,6 +630,7 @@ export function FinancialDailyWorkbench({
 function CoverageTable({ rows }: { rows: Coverage[] }) {
   return (
     <WorkflowTable
+      className="financial-table"
       label="逐项覆盖与缺口"
       columns={["指标", "有效 / 缺值", "实际有效范围", "未返回日历日"]}
       rows={rows.map((r) => ({

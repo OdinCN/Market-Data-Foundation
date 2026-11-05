@@ -305,6 +305,11 @@ def points(raw, sid, start, end, *, period="month"):
                     raise ValueError
                 if not start <= at <= end:
                     continue
+                # Some official historical entries have only a date/display
+                # field. An absent maturity is not zero or an explicit null;
+                # retain the other dates and describe this gap in metadata.
+                if key not in row:
+                    continue
                 cell = row[key]
                 null = (
                     cell.attrib.get(
@@ -360,7 +365,7 @@ def request_for(sid, start, end, *, period="month"):
     raise FinancialError("financial_origin_not_direct")
 
 
-def metadata(sid, parsed):
+def metadata(sid, parsed, *, raw=None, start=None, end=None):
     result = dict(
         binding(sid),
         id=sid,
@@ -371,6 +376,20 @@ def metadata(sid, parsed):
         response_last_observation=parsed[-1].observation_date if parsed else None,
         range_basis="response coverage only; not full provider history",
     )
+    if raw is not None and sid in {"DGS2", "DGS10", "DFII10"}:
+        key = {"DGS2": "BC_2YEAR", "DGS10": "BC_10YEAR", "DFII10": "TC_10YEAR"}[sid]
+        absent = []
+        for node in ET.fromstring(raw).findall(
+            ".//{http://schemas.microsoft.com/ado/2007/08/"
+            "dataservices/metadata}properties"
+        ):
+            row = {child.tag.split("}")[-1]: child for child in node}
+            at = (row["NEW_DATE"].text or "")[:10]
+            if key not in row and (start is None or start <= at <= end):
+                absent.append(at)
+        if absent:
+            result["native_field_absent_dates"] = sorted(set(absent))
+            result["absent_native_field"] = key
     return result
 
 
@@ -401,7 +420,9 @@ def validate(batch):
         expected_request = request_for(
             batch.series_id, batch.start, batch.end, period=period
         )
-    expected_meta = metadata(batch.series_id, parsed)
+    expected_meta = metadata(
+        batch.series_id, parsed, raw=batch.raw, start=batch.start, end=batch.end
+    )
     if (
         not binding(batch.series_id)["storage_permitted"]
         or batch.origin != binding(batch.series_id)["origin"]
@@ -499,7 +520,7 @@ class OriginSource(DailyFredSource):
             self.cache[key] = self._read(SimpleNamespace(**req))
         raw, at, attempts = self.cache[key]
         parsed = points(raw, sid, start, end, period=period)
-        meta = metadata(sid, parsed)
+        meta = metadata(sid, parsed, raw=raw, start=start, end=end)
         return DailyBatch(
             sid,
             start,

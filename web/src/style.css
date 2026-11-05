@@ -1993,3 +1993,10 @@ button.strategy-switch::before {
   margin-block: 0.5rem;
   overflow-wrap: anywhere;
 }
+
+.workbench.financial-table {
+  grid-template-columns: minmax(0, 1fr);
+}
+.financial-table > .detail-pane {
+  display: none;
+}

@@ -57,6 +57,8 @@ def project(snapshot, selected, start, end):
                 state = "commit_pending"
             elif row:
                 state = "observed" if row[3] is not None else "provider_missing"
+            elif at in metadata.get("native_field_absent_dates", []):
+                state = "provider_field_absent"
             elif (
                 not spec["storage_permitted"]
                 and attempt
@@ -163,6 +165,14 @@ def project(snapshot, selected, start, end):
                     batch_id=row[5] if row else None,
                     raw_locator=row[8] if row else None,
                     metadata_locator=row[9] if row else None,
+                    coverage_evidence=dict(
+                        batch_id=batch[1],
+                        raw_locator=batch[8],
+                        metadata_locator=batch[9],
+                        missing_native_field=metadata.get("absent_native_field"),
+                    )
+                    if not row and batch and len(batch) > 9
+                    else None,
                     origin=origin,
                     provider_extra=row[4] if row else None,
                     latest_request_state=attempt[1] if attempt else None,
