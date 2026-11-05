@@ -114,6 +114,14 @@ const states: Record<string, string> = {
   commit_pending: "持久确认待恢复",
 };
 const label = (s: string) => states[s] ?? s;
+class FinancialRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
 async function call<T>(
   transport: Transport,
   path: string,
@@ -132,10 +140,11 @@ async function call<T>(
   );
   const result = await response.json();
   if (!response.ok || result.status !== "OK")
-    throw new Error(
+    throw new FinancialRequestError(
       /^[a-z_]{1,100}$/.test(result.classification)
         ? result.classification
         : "financial_request_outcome_unknown",
+      response.status,
     );
   return result;
 }
@@ -230,7 +239,14 @@ export function FinancialDailyWorkbench({
           : "financial_request_outcome_unknown",
       );
       // Keep the same identity after uncertain transport; never auto-submit again.
-      setUncertain(request_id);
+      if (
+        !(
+          error instanceof FinancialRequestError &&
+          error.status >= 400 &&
+          error.status < 500
+        )
+      )
+        setUncertain(request_id);
     } finally {
       setBusy(false);
     }

@@ -12,6 +12,34 @@ import type { Transport } from "./api";
 import type { Route } from "./workflowRoute";
 
 afterEach(cleanup);
+it("keeps an explicit admission rejection distinct from an unknown network result", async () => {
+  const { transport } = fixture(async () =>
+    Response.json(
+      { status: "UNKNOWN", classification: "financial_job_range_invalid" },
+      { status: 400 },
+    ),
+  );
+  render(
+    <FinancialDailyWorkbench
+      route={route("collection", "new")}
+      navigate={vi.fn()}
+      transport={transport}
+      generation={0}
+    />,
+  );
+  await waitFor(() =>
+    expect(
+      (screen.getByLabelText("起始观测日") as HTMLInputElement).value,
+    ).toBeTruthy(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "提交日频作业" }));
+  await screen.findByRole("alert");
+  expect(screen.queryByRole("button", { name: "核实原请求" })).toBeNull();
+  expect(
+    (screen.getByRole("button", { name: "提交日频作业" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(false);
+});
 const route = (view: "assets" | "collection", tab: string): Route => ({
   view,
   invalid: false,
