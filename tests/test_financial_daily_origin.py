@@ -54,9 +54,15 @@ def test_bindings_are_named_and_no_fred_source_permission_is_implied():
     rows = registry()
     assert len(rows) == 10
     assert len(APPROVED) == 8
-    assert all(not r["source_use"]["storage_permitted"] for r in rows)
+    assert all(
+        not r["source_use"]["storage_permitted"]
+        for r in rows
+        if r["series_id"] in APPROVED
+    )
     assert all(binding(s)["storage_permitted"] for s in APPROVED)
-    assert not binding("BAMLC0A0CM")["storage_permitted"]
+    assert binding("BAMLC0A0CM")["authorized_scope"].startswith(
+        "personal noncommercial"
+    )
     assert binding("T10YIE")["identity"] == "MDF_derived_not_FRED_T10YIE"
     assert binding("DGS10")["original_agency"] == "U.S. Department of the Treasury"
     for sid in ("EFFR", "SOFR"):

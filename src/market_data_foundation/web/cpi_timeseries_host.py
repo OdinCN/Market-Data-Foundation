@@ -1234,7 +1234,13 @@ class TimeSeriesRuntime(ReadonlyRuntime):
 
 
 def create_timeseries_preview(
-    settings, *, enabled=False, ui_directory=None, worker_control=None, **options
+    settings,
+    *,
+    enabled=False,
+    ui_directory=None,
+    worker_control=None,
+    financial_options=None,
+    **options,
 ):
     if enabled is not True:
         raise ValueError("cpi_timeseries_web_opt_in_required")
@@ -1309,6 +1315,9 @@ def create_timeseries_preview(
     )
 
     install_worker_control(app, runtime, worker_control)
+    from market_data_foundation.web.financial_daily_api import financial_router
+
+    app.include_router(financial_router(financial_options))
     app.state.timeseries_runtime = runtime
 
     @app.middleware("http")
@@ -1324,11 +1333,16 @@ def create_timeseries_preview(
             "/api/r5/claims/timeseries",
             "/api/r5/jolts/timeseries",
             "/api/r5/m3/timeseries",
+            "/api/r5/financial/timeseries",
         )
         job_post = admitted_worker(request) or any(
             admitted_job(request, prefix=prefix) for prefix in prefixes
         )
-        job_post = job_post or admitted_job(request, prefix="/api/r5/m3/timeseries")
+        from market_data_foundation.web.financial_daily_api import (
+            admitted_financial_job,
+        )
+
+        job_post = job_post or admitted_financial_job(request)
         if request.url.path == "/api/r5/m3/timeseries/jobs/resume":
             job_post = admitted_job(
                 Request(dict(request.scope, path="/api/r5/m3/timeseries/jobs")),

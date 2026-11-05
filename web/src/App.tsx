@@ -1,3 +1,4 @@
+import { FINANCIAL, FinancialDailyWorkbench } from "./FinancialDailyWorkbench";
 import {
   M3_PROFILE,
   JOLTS_PROFILE,
@@ -496,6 +497,10 @@ export default function App({
   );
   const source = model.interfaces.find((i) => i.id === operation);
   const asset = model.assets.find((a) => sameKey(a.key, key));
+  const financialExact =
+    identity === FINANCIAL.identity &&
+    revision === FINANCIAL.revision &&
+    !operation;
   const invalidIdentity = !!(
     directory.data &&
     ((operation && !source) ||
@@ -510,7 +515,8 @@ export default function App({
           !sameKey(key, GDP) &&
           !sameKey(key, M3) &&
           !sameKey(key, JOLTS) &&
-          !sameKey(key, CLAIMS)) ||
+          !sameKey(key, CLAIMS) &&
+          !sameKey(key, FINANCIAL)) ||
           (!revision &&
             (page.view !== "assets" ||
               !!operation ||
@@ -727,6 +733,34 @@ export default function App({
               )}
               {page.view !== "overview" && (
                 <section className="content-panel">
+                  {["assets", "collection"].includes(page.view) &&
+                    !financialExact && (
+                      <div className="toolbar">
+                        <button
+                          onClick={() =>
+                            navigate(page.view, {
+                              asset: FINANCIAL.identity,
+                              asset_revision: "r1",
+                              operation: null,
+                              tab: page.view === "collection" ? "new" : "local",
+                              job: null,
+                            })
+                          }
+                        >
+                          金融条件日频（十项）
+                        </button>
+                      </div>
+                    )}
+                  {["assets", "collection"].includes(page.view) &&
+                    financialExact &&
+                    !invalidIdentity && (
+                      <FinancialDailyWorkbench
+                        route={page}
+                        navigate={navigate}
+                        transport={transport}
+                        generation={generation}
+                      />
+                    )}
                   {page.view === "access" && (
                     <PackageSources
                       data={packages.data}
@@ -738,7 +772,7 @@ export default function App({
                       changed={() => setGeneration((g) => g + 1)}
                     />
                   )}
-                  {page.view === "assets" && (
+                  {page.view === "assets" && !financialExact && (
                     <RuntimeAssets
                       profile={macroProfile}
                       data={packages.data}
@@ -853,7 +887,7 @@ export default function App({
                       ordinary={ordinaryQuery}
                     />
                   )}
-                  {page.view === "collection" && (
+                  {page.view === "collection" && !financialExact && (
                     <CollectionWorkbench
                       key={`${identity}:${revision}:${operation}`}
                       assets={model.assets}

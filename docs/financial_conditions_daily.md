@@ -1,8 +1,8 @@
 # 金融条件日频数据层 r1
 
-仅提供数据链；工作台、正常产品作业、常驻执行器和二十年初始化在后续段接入。
+提供日频数据链及显式准入的人工工作台/作业。常驻日频执行器另段交付，本模块不会自动启动。
 稳定数据集为 `mdf.macro.financial-conditions.daily@r1`。run/attempt 不构成数据集身份。
-数据库物理版本 r2 可从已存在 r1 增量升级，不重建或删除原数据；查询不迁移。
+数据库物理版本 r3 可从已存在 r1/r2 增量升级，不重建或删除原数据；查询不迁移。
 
 ## 明确来源绑定
 
@@ -18,7 +18,7 @@ CLI 默认使用此绑定，不是 FRED 失败后的自动替代。十条代码�
 | DGS2 / DGS10 | 美国财政部 XML 名义 par curve 的 BC_2YEAR / BC_10YEAR | Percent；NEW_DATE；不是逐券盘中报价 |
 | DFII10 | 财政部 XML 实际 par curve 的 TC_10YEAR | Percent；NEW_DATE；允许负值 |
 | T10YIE | MDF：同日财政部名义 10Y 减实际 10Y；非 FRED 实采 | 百分点；同一 MDF 截止的两腿值、修订、batch、原件与时间均保留 |
-| BAMLC0A0CM / BAMLH0A0HYM2 | 原 FRED/ICE 未准入 | 未请求；不得替换指数；Percent 原值与 bp=Percent×100 保留定义 |
+| BAMLC0A0CM / BAMLH0A0HYM2 | Owner 指定 GitHub 固定归档初始化 + 显式 FRED v1 尾段/增量；指数提供者 ICE | Percent 原值；bp=Percent×100；保留月末周末值 |
 
 [理事会政策表](https://www.federalreserve.gov/monetarypolicy/openmarket.htm) 和
 [出处规则](https://www.federalreserve.gov/disclaimer.htm)；政策单一目标不能伪装成上下限，
@@ -30,9 +30,34 @@ CLI 默认使用此绑定，不是 FRED 失败后的自动替代。十条代码�
 [实际](https://catalog.data.gov/dataset/daily-treasury-real-yield-curve-rates)标注 CC0。
 本绑定仅为已授权内部 DEV，不推导新的第三方分发能力。
 
-原 `mdf.binding.fred.financial-conditions.daily@r1` 的存储许可未确认；显式选择
-`--source-binding fred-r1` 仍在读取凭据、HTTP 和写入前拒绝，无客户端绕过开关。
-ICE 两项继续保留许可/可取范围缺口，不宣称二十年历史；无来源间静默回退。
+信用两条的新增取源决定仅授权个人非商业内部 DEV，不代表 ICE 商业服务、付费订阅或对外分发许可。
+历史归档固定为 `PStoclet/BBA_TFG_CODE_PABLO_STOCLET` 提交
+`5f63f9ad367be0e9d28aac6a7b982500c23ffaa6` 的 `data/05_Credit_Spreads/` 下
+`IG_OAS_spread_daily_1990_2024.csv`、`HY_OAS_spread_daily_1990_2024.csv`。
+实际归档范围均为 1996-12-31 至 2026-03-17，不以文件名年份推定范围。
+初始化只导入选定窗口，再显式以 FRED v1 同名系列接尾段；增量只请求选定区间。
+信用 `is_copyrighted` 由 FRED series notes 大小写无关识别 copyright，未取到 metadata 则 null；
+归档原件自身未提供该元数据时保持未知。其他八条的 FRED 原系列仍未获存储准入，不静默替换原机构。
+
+## 正常工作台和人工任务
+
+18761「采集任务/数据资产」内选择「金融条件日频（十项）」，分别提供采集数据、查询数据、
+执行详情及真实 API 说明。默认当天往前 20 日历年，起止观测日可编辑；init 按来源年度分块，
+update 独立刷新用户区间，确认的变化保留版本；无值不补零。SOFR 真实起点短于默认窗口，
+双边政策范围出现之前无上下限证据，明确保留覆盖缺口。
+
+- `GET /api/r5/financial/timeseries/status`：默认窗口及十项明确绑定。
+- `GET /api/r5/financial/timeseries/query`：start/end/series/as_of/offset/limit，本地分页，固定截止。
+- `GET /api/r5/financial/timeseries/jobs`、`/jobs/{request_id}`：任务进度、逐段请求、批次及原件身份。
+- `POST /api/r5/financial/timeseries/jobs`：规范 UUID request_id、action=init/update、start/end。
+- `POST /api/r5/financial/timeseries/jobs/resume`：已有 request_id，复用同一任务，只续未完成段。
+- `GET /api/r5/financial/timeseries/api-help`：入口、字段及语义说明。
+
+所有 GET 不创建来源、不取凭据、不发来源请求、不自动恢复作业。写入需独立显式 Web 参数，
+复用私网 Host/Origin/JSON 准入；公开只读 Host 仍拒绝 POST。没有日频策略或常驻 worker。
+每个已取得分段先将原始/metadata 字节写入校验内容地址，再记录持久恢复种子，之后确认 PG 数值；
+确认不确定时续跑原件而不是再次请求。已完成段与重复 request_id 不重复采集。失败段保留分类和
+冷却时间，其他段独立结算；中断不构成自动成功，用户明确续跑后按原作业继续。
 
 ## 正常数据层 CLI
 
@@ -45,9 +70,9 @@ uv run --no-sync python scripts/mdf_financial_conditions.py query \
   --start 2026-10-23 --end 2026-10-30 --series DFEDTARL EFFR DGS10 DFII10 T10YIE
 ```
 
-同包 collect 按项结算八条准入项和两条受限项，整体 `partial` 是准确结果。
+底层 origin collect 用于八条原机构/派生小窗；信用历史与 FRED 尾段由正常人工任务显式编排。
 本段实采入口限 31 天；财政部每次窗口须在同一月份，跨月请求明确失败，不默截断。
-长历史作业及分块编排留后续段。只重试失败系列可指定 `--series`；单独请求 T10YIE
+二十年人工任务使用上述 jobs 入口分块编排。只重试失败系列可指定 `--series`；单独请求 T10YIE
 复用同一存储截止下已有的两腿，不隐式采集缺腿。查询不触发来源 HTTP 或 DDL。
 共享政策表/名义曲线在同次 collect 中复用原件，实际请求次数独立于八条指标数。
 
@@ -90,4 +115,4 @@ MDF_FINANCIAL_DAILY_DEV_OPT_IN=1 uv run --no-sync pytest -q \
 ```
 
 测试字节/受控修订只能写独立 `test_financial_daily_*` 命名空间；与产品实际官方样本分开。
-本段不改变旧十族策略、进程、配置或 DEV 绝对截止，不交付自然发布或二十年初始化验收。
+本段不改变旧十族策略、进程、配置或 DEV 绝对截止，不以历史初始化冒称自然发布验收。

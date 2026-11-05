@@ -198,11 +198,16 @@ def source_policy(sid):
     m = BY_ID[sid]
     return dict(
         series_id=sid,
-        status="permission_required",
-        classification="fred_retention_permission_unconfirmed",
+        status="owner_authorized_dev" if m.credit_bp else "permission_required",
+        classification="owner_credit_dev_scope"
+        if m.credit_bp
+        else "fred_retention_permission_unconfirmed",
         review=SOURCE_REVIEW,
         terms_url=TERMS_URL,
-        storage_permitted=False,
+        storage_permitted=m.credit_bp,
+        authorized_scope="personal noncommercial MDF DEV research only"
+        if m.credit_bp
+        else None,
         third_party_permission_required=m.credit_bp,
         range_limit="FRED three-year limit since April 2026; API range unmeasured"
         if m.credit_bp

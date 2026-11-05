@@ -22,6 +22,10 @@ from market_data_foundation.web.cpi_timeseries_api import (
     admitted_strategy,
 )
 from market_data_foundation.web.cpi_timeseries_host import create_timeseries_preview
+from market_data_foundation.web.financial_daily_api import (
+    FinancialOptions,
+    admitted_financial_job,
+)
 from market_data_foundation.web.gdp_runtime import GdpOptions
 from market_data_foundation.web.jolts_runtime import JoltsOptions
 from market_data_foundation.web.m3_runtime import M3Options
@@ -71,6 +75,7 @@ class TimeSeriesHandler(CandidateHandler):
 
             return (
                 admitted_worker(request)
+                or admitted_financial_job(request)
                 or admitted_package_verify(request)
                 or admitted_job(request, prefix="/api/r5/cpi/timeseries")
                 or admitted_job(request, prefix="/api/r5/ppi/timeseries")
@@ -209,6 +214,9 @@ def main():
     parser.add_argument("--allow-m3-source-query", action="store_true")
     parser.add_argument("--m3-job-directory", type=Path)
     parser.add_argument("--m3-request-control-path", type=Path)
+    parser.add_argument("--financial-job-directory", type=Path)
+    parser.add_argument("--allow-financial-read", action="store_true")
+    parser.add_argument("--allow-financial-collect", action="store_true")
     args = parser.parse_args()
     if args.enable_claims_timeseries and (
         args.claims_schedule_path is None or args.claims_job_directory is None
@@ -316,6 +324,13 @@ def main():
         if args.enable_gdp_timeseries
         else None,
         ui_directory=ui,
+        financial_options=FinancialOptions(
+            args.financial_job_directory,
+            args.allow_financial_read,
+            args.allow_financial_collect,
+        )
+        if args.financial_job_directory
+        else None,
         schedule_path=args.schedule_path,
         history_start=args.history_start,
         job_directory=args.job_directory,

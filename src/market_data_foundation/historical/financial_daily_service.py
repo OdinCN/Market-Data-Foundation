@@ -123,6 +123,12 @@ def project(snapshot, selected, start, end):
                 provenance["attribution"] = (
                     "Controlled fixture; no official numeric acquisition"
                 )
+            if metric.credit_bp and origin in {"fred", "credit_archive"}:
+                from market_data_foundation.historical.financial_daily_credit import (
+                    credit_binding,
+                )
+
+                provenance = credit_binding(sid, origin=origin)
             extra = row[4] if row else {}
             rows.append(
                 dict(
@@ -143,6 +149,7 @@ def project(snapshot, selected, start, end):
                     attribution=provenance["attribution"],
                     source_binding=provenance,
                     source_request=row[11] if row and len(row) > 11 else None,
+                    is_copyrighted=row[12] if row and len(row) > 12 else None,
                     identity=provenance.get("identity"),
                     source_publication_at=None,
                     source_available_at=None,

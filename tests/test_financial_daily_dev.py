@@ -183,7 +183,50 @@ def test_financial_daily_existing_r1_upgrade_preserves_content():
             )
         at = datetime.now(UTC)
         batch = replace(payload(at=at), metadata_observed_at=at)
-        saved = service.store.save(batch)
+        # Seed the actual old r1 layout, before upgrading it with current code.
+        from psycopg.types.json import Jsonb
+
+        from market_data_foundation.historical.financial_daily import day, digest
+
+        raw_locator = service.store.raw_store.put_verified(batch.raw)
+        meta_locator = service.store.raw_store.put_verified(batch.metadata_raw)
+        c.execute(
+            f"INSERT INTO {schema}.batches VALUES "
+            "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (
+                batch.batch_id,
+                batch.series_id,
+                day(batch.start),
+                day(batch.end),
+                digest(batch.raw),
+                raw_locator,
+                len(batch.raw),
+                digest(batch.metadata_raw),
+                meta_locator,
+                len(batch.metadata_raw),
+                Jsonb(batch.metadata),
+                batch.metadata_observed_at,
+                batch.observed_at,
+                batch.observed_at,
+                Jsonb(batch.request),
+                batch.origin,
+                batch.attempts,
+            ),
+        )
+        for point in batch.points:
+            c.execute(
+                f"INSERT INTO {schema}.revisions VALUES(%s,%s,1,%s,%s,%s,%s,%s)",
+                (
+                    point.series_id,
+                    day(point.observation_date),
+                    point.value,
+                    Jsonb(point.provider_extra),
+                    batch.batch_id,
+                    batch.observed_at,
+                    batch.observed_at,
+                ),
+            )
+        saved = dict(batch_id=batch.batch_id)
         assert service.store.migrate()["state"] == "upgraded"
         assert service.store.migrate()["state"] == "already_prepared"
         assert (

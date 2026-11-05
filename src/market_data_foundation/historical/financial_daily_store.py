@@ -29,7 +29,8 @@ from market_data_foundation.historical.financial_daily_source import (
 from market_data_foundation.historical.verified_garage_raw import VerifiedGarageRawStore
 
 SCHEMA = "mdf_financial_conditions_daily_dev_r1"
-REVISION = "financial.daily.physical.r2"
+REVISION = "financial.daily.physical.r3"
+SECOND_REVISION = "financial.daily.physical.r2"
 PREVIOUS_REVISION = "financial.daily.physical.r1"
 LOCK_ID = 7312026110503
 DDL = Path(__file__).resolve().parents[3] / "db/financial_daily/001_daily.sql"
@@ -120,13 +121,16 @@ class PostgresDailyStore:
                     {s}.schema_metadata
                     """
                 ).fetchall()
-                if versions == [(PREVIOUS_REVISION, DATASET_ID, DEFINITION_REVISION)]:
-                    self._upgrade()
+                if versions in (
+                    [(PREVIOUS_REVISION, DATASET_ID, DEFINITION_REVISION)],
+                    [(SECOND_REVISION, DATASET_ID, DEFINITION_REVISION)],
+                ):
+                    self._upgrade(versions[0][0])
                     return dict(
                         state="upgraded",
                         schema=s,
                         schema_revision=REVISION,
-                        previous_revision=PREVIOUS_REVISION,
+                        previous_revision=versions[0][0],
                     )
                 if versions != [(REVISION, DATASET_ID, DEFINITION_REVISION)]:
                     raise FinancialError("financial_schema_revision_mismatch")
@@ -155,10 +159,14 @@ class PostgresDailyStore:
                 )
         return dict(state="prepared", schema=s, schema_revision=REVISION)
 
-    def _upgrade(self):
-        for sql in UPGRADE.read_text().split(";"):
-            if sql.strip():
-                self.connection.execute(sql.replace("{s}", self.schema))
+    def _upgrade(self, previous=PREVIOUS_REVISION):
+        scripts = ([UPGRADE] if previous == PREVIOUS_REVISION else []) + [
+            DDL.with_name("003_credit.sql")
+        ]
+        for script in scripts:
+            for sql in script.read_text().split(";"):
+                if sql.strip():
+                    self.connection.execute(sql.replace("{s}", self.schema))
         self.connection.execute(
             f"UPDATE {self.schema}.schema_metadata SET schema_revision=%s",
             (REVISION,),
@@ -241,9 +249,14 @@ class PostgresDailyStore:
                 if old is None:
                     self.connection.execute(
                         f"""
-                        INSERT INTO {self.schema}.batches VALUES(%s, %s, %s, %s, %s,
+                        INSERT INTO {self.schema}.batches
+                        (batch_id,series_id,start_date,
+                        end_date,raw_sha256,raw_locator,raw_bytes,metadata_sha256,
+                        metadata_locator,metadata_bytes,metadata,metadata_observed_at,
+                        observed_at,available_at,request,origin,provider_attempts,
+                        is_copyrighted) VALUES(%s, %s, %s, %s, %s,
                         %s, %s, %s,
-                        %s, %s, %s, %s, %s, NULL, %s, %s, %s)
+                        %s, %s, %s, %s, %s, NULL, %s, %s, %s, %s)
                         """,
                         (
                             bid,
@@ -262,18 +275,21 @@ class PostgresDailyStore:
                             Jsonb(batch.request),
                             batch.origin,
                             batch.attempts,
+                            batch.metadata.get("is_copyrighted"),
                         ),
                     )
+                    prior_rows = self.connection.execute(
+                        f"""SELECT DISTINCT ON(observation_date) observation_date,
+                        revision,value,observed_at,provider_extra
+                        FROM {self.schema}.revisions WHERE series_id=%s
+                        AND observation_date BETWEEN %s AND %s
+                        ORDER BY observation_date,revision DESC""",
+                        (batch.series_id, day(batch.start), day(batch.end)),
+                    ).fetchall()
+                    prior_by_date = {r[0]: r[1:] for r in prior_rows}
+                    pending_rows = []
                     for point in batch.points:
-                        prior = self.connection.execute(
-                            f"""
-                            SELECT revision, value, observed_at, provider_extra FROM
-                            {self.schema}.revisions WHERE
-                            series_id=%s AND observation_date=%s ORDER BY revision
-                            DESC LIMIT 1
-                            """,
-                            (point.series_id, day(point.observation_date)),
-                        ).fetchone()
+                        prior = prior_by_date.get(day(point.observation_date))
                         if (
                             prior
                             and prior[1] == point.value
@@ -284,12 +300,7 @@ class PostgresDailyStore:
                         if prior and batch.observed_at <= prior[2]:
                             raise FinancialError("financial_observation_order_conflict")
                         version = prior[0] + 1 if prior else 1
-                        self.connection.execute(
-                            f"""
-                            INSERT INTO {self.schema}.revisions VALUES(%s, %s, %s,
-                            %s, %s, %s, %s,
-                            NULL)
-                            """,
+                        pending_rows.append(
                             (
                                 point.series_id,
                                 day(point.observation_date),
@@ -298,9 +309,16 @@ class PostgresDailyStore:
                                 Jsonb(point.provider_extra),
                                 bid,
                                 batch.observed_at,
-                            ),
+                            )
                         )
                         inserted.append(version)
+                    if pending_rows:
+                        with self.connection.cursor() as cursor:
+                            cursor.executemany(
+                                f"INSERT INTO {self.schema}.revisions "
+                                "VALUES(%s,%s,%s,%s,%s,%s,%s,NULL)",
+                                pending_rows,
+                            )
             # Confirmation follows the returned data commit. An interrupted
             # confirmation is recovered from the same retained batch, not FRED.
             if before_confirm:
@@ -348,7 +366,14 @@ class PostgresDailyStore:
         ) = row
         raw = self.raw_store.read_verified(sha, length)
         metadata_raw = self.raw_store.read_verified(msha, mlength)
-        if origin not in {"fred", "controlled_fixture"}:
+        if origin == "credit_archive":
+            from market_data_foundation.historical.financial_daily_credit import (
+                archive_points,
+            )
+
+            parsed = archive_points(raw, sid, start.isoformat(), end.isoformat())
+            parsed_meta = __import__("json").loads(metadata_raw)
+        elif origin not in {"fred", "controlled_fixture"}:
             from market_data_foundation.historical.financial_daily_origin import (
                 derived_points,
                 points,
@@ -357,7 +382,15 @@ class PostgresDailyStore:
             parsed = (
                 derived_points(raw, start.isoformat(), end.isoformat())
                 if origin == "mdf_derived"
-                else points(raw, sid, start.isoformat(), end.isoformat())
+                else points(
+                    raw,
+                    sid,
+                    start.isoformat(),
+                    end.isoformat(),
+                    period="year"
+                    if "field_tdr_date_value" in request.get("parameters", {})
+                    else "month",
+                )
             )
             parsed_meta = __import__("json").loads(metadata_raw)
         else:
@@ -412,7 +445,7 @@ class PostgresDailyStore:
                 SELECT DISTINCT ON(r.series_id, r.observation_date) r.series_id,
                 r.observation_date, r.revision, r.value, r.provider_extra, r.batch_id,
                 r.observed_at, r.available_at, b.raw_locator, b.metadata_locator,
-                b.origin, b.request FROM {s}.revisions r
+                b.origin, b.request, b.is_copyrighted FROM {s}.revisions r
                 JOIN {s}.batches b USING(batch_id) WHERE
                 r.series_id=ANY(%s) AND r.observation_date BETWEEN %s AND %s AND
                 r.available_at IS NOT NULL AND r.{basis}_at<=%s ORDER BY r.series_id,

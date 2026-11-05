@@ -64,7 +64,12 @@ def parse_metadata(raw, sid):
         raise FinancialError("financial_metadata_mapping_invalid")
     if day(row.get("observation_start")) > day(row.get("observation_end")):
         raise FinancialError("financial_metadata_range_invalid")
-    return row
+    return dict(
+        row,
+        is_copyrighted=("copyright" in row["notes"].lower())
+        if isinstance(row.get("notes"), str)
+        else None,
+    )
 
 
 def parameters(sid, start, end):
@@ -137,6 +142,12 @@ def parse_observations(raw, sid, start, end):
 
 
 def validate_batch(batch):
+    if isinstance(batch, DailyBatch) and batch.origin == "credit_archive":
+        from market_data_foundation.historical.financial_daily_credit import (
+            validate_archive,
+        )
+
+        return validate_archive(batch)
     if isinstance(batch, DailyBatch) and batch.origin in {
         "federal_reserve_board",
         "new_york_fed",

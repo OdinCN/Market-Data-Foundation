@@ -152,7 +152,9 @@ def snapshot(batch, *, version=1):
 
 def test_registry_native_units_calendars_and_default_source_permission():
     assert len(registry()) == 10 and len(set(SERIES_IDS)) == 10
-    assert all(r["source_use"]["storage_permitted"] is False for r in registry())
+    assert {
+        r["series_id"] for r in registry() if r["source_use"]["storage_permitted"]
+    } == {"BAMLC0A0CM", "BAMLH0A0HYM2"}
     assert DATASET_ID == "mdf.macro.financial-conditions.daily"
     assert non_observation_day(BY_ID["DGS2"], "2026-10-31")
     assert not non_observation_day(BY_ID["DFEDTARL"], "2026-10-31")
@@ -164,7 +166,7 @@ def test_live_permission_blocks_before_credential_and_network(tmp_path):
     def forbidden():
         raise AssertionError("credential_was_loaded")
 
-    for sid in SERIES_IDS:
+    for sid in tuple(s for s in SERIES_IDS if not BY_ID[s].credit_bp):
         with pytest.raises(
             FinancialError, match="fred_retention_permission_unconfirmed"
         ):

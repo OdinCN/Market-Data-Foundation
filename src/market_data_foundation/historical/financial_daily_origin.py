@@ -47,6 +47,12 @@ NY_AFFILIATION = (
 
 def binding(sid):
     series_ids((sid,))
+    if sid in {"BAMLC0A0CM", "BAMLH0A0HYM2"}:
+        from market_data_foundation.historical.financial_daily_credit import (
+            credit_binding,
+        )
+
+        return credit_binding(sid)
     common = dict(
         binding_id=BINDING_ID,
         fred_code_role="metric_mapping_only",
@@ -229,7 +235,7 @@ def policies(raw):
         raise FinancialError("financial_policy_table_invalid") from None
 
 
-def points(raw, sid, start, end):
+def points(raw, sid, start, end, *, period="month"):
     selected_dates = dates(start, end)
     extra = dict(
         source_publication_at=None, source_available_at=None, binding_id=BINDING_ID
@@ -295,7 +301,7 @@ def points(raw, sid, start, end):
                 row = {child.tag.split("}")[-1]: child for child in node}
                 at = (row["NEW_DATE"].text or "")[:10]
                 day(at)
-                if at[:7] != start[:7]:
+                if at[:4] != start[:4] if period == "year" else at[:7] != start[:7]:
                     raise ValueError
                 if not start <= at <= end:
                     continue
@@ -324,7 +330,7 @@ def points(raw, sid, start, end):
         raise FinancialError("financial_origin_response_invalid") from None
 
 
-def request_for(sid, start, end):
+def request_for(sid, start, end, *, period="month"):
     series_ids((sid,))
     dates(start, end)
     if sid.startswith("DFED"):
@@ -336,7 +342,7 @@ def request_for(sid, start, end):
             parameters=dict(startDate=start, endDate=end),
         )
     if sid in {"DGS2", "DGS10", "DFII10"}:
-        if start[:7] != end[:7]:
+        if start[:4] != end[:4] if period == "year" else start[:7] != end[:7]:
             raise FinancialError("financial_origin_one_month_window_required")
         return dict(
             url=TREASURY,
@@ -344,7 +350,11 @@ def request_for(sid, start, end):
                 data="daily_treasury_real_yield_curve"
                 if sid == "DFII10"
                 else "daily_treasury_yield_curve",
-                field_tdr_date_value_month=start[:7].replace("-", ""),
+                **(
+                    {"field_tdr_date_value": start[:4]}
+                    if period == "year"
+                    else {"field_tdr_date_value_month": start[:7].replace("-", "")}
+                ),
             ),
         )
     raise FinancialError("financial_origin_not_direct")
@@ -380,8 +390,17 @@ def validate(batch):
             url=DERIVED, parameters=dict(start=batch.start, end=batch.end)
         )
     else:
-        parsed = points(batch.raw, batch.series_id, batch.start, batch.end)
-        expected_request = request_for(batch.series_id, batch.start, batch.end)
+        period = (
+            "year"
+            if "field_tdr_date_value" in batch.request.get("parameters", {})
+            else "month"
+        )
+        parsed = points(
+            batch.raw, batch.series_id, batch.start, batch.end, period=period
+        )
+        expected_request = request_for(
+            batch.series_id, batch.start, batch.end, period=period
+        )
     expected_meta = metadata(batch.series_id, parsed)
     if (
         not binding(batch.series_id)["storage_permitted"]
@@ -439,6 +458,7 @@ class OriginSource(DailyFredSource):
         raw_sink=None,
         clock=lambda: datetime.now(UTC),
         sleep=time.sleep,
+        max_requests=20,
     ):
         super().__init__(
             transport=transport,
@@ -449,16 +469,26 @@ class OriginSource(DailyFredSource):
             max_requests=20,
         )
         self.controls, self.cache = controls, {}
+        if type(max_requests) is not int or not 1 <= max_requests <= 160:
+            raise FinancialError("financial_request_budget_invalid")
+        self.max_requests = max_requests
 
-    def fetch(self, sid, start, end):
-        if len(dates(start, end)) > 31:
+    def fetch(self, sid, start, end, *, period="month", policy_span=False):
+        limit = (
+            366 * 31
+            if policy_span and sid.startswith("DFED")
+            else 366
+            if period == "year"
+            else 31
+        )
+        if period not in {"month", "year"} or len(dates(start, end)) > limit:
             raise FinancialError("financial_origin_bounded_window_exceeded")
         if day(end) > instant(self.clock()).date():
             raise FinancialError("financial_origin_future_window_not_acquired")
         spec = binding(sid)
         if not spec["storage_permitted"]:
             raise FinancialError(spec["classification"])
-        req = request_for(sid, start, end)
+        req = request_for(sid, start, end, period=period)
         key = canonical(req)
         if key not in self.cache:
             from types import SimpleNamespace
@@ -468,7 +498,7 @@ class OriginSource(DailyFredSource):
             # FRED, original publishers also return HTML/XML, not only JSON.
             self.cache[key] = self._read(SimpleNamespace(**req))
         raw, at, attempts = self.cache[key]
-        parsed = points(raw, sid, start, end)
+        parsed = points(raw, sid, start, end, period=period)
         meta = metadata(sid, parsed)
         return DailyBatch(
             sid,
