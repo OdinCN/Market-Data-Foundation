@@ -11,6 +11,7 @@ from market_data_foundation.historical.financial_daily import (
     FinancialError,
     dates,
     non_observation_day,
+    observation_today,
     series_ids,
 )
 
@@ -65,6 +66,17 @@ def project(snapshot, selected, start, end):
                 and attempt[2] == "fred_ice_permission_required"
             ):
                 state = "source_permission_required"
+            elif (
+                spec.get("origin")
+                in {
+                    "federal_reserve_board",
+                    "new_york_fed",
+                    "us_treasury",
+                    "mdf_derived",
+                }
+                and at > observation_today(snapshot["cutoff"]).isoformat()
+            ):
+                state = "not_yet_available_from_provider"
             elif attempt and attempt[1] in {"failed", "unknown"}:
                 state = (
                     "request_failed"
@@ -85,6 +97,14 @@ def project(snapshot, selected, start, end):
             elif non_observation_day(metric, at):
                 state = "non_observation_day"
             elif metadata.get("observation_end") and at > metadata["observation_end"]:
+                state = "not_yet_available_from_provider"
+            elif (
+                batch
+                and batch[6].isoformat()
+                >= observation_today(snapshot["cutoff"]).isoformat()
+                and metadata.get("response_last_observation")
+                and at > metadata["response_last_observation"]
+            ):
                 state = "not_yet_available_from_provider"
             elif sid == "T10YIE" and metadata.get("origin") == "mdf_derived":
                 state = "derived_inputs_unavailable"

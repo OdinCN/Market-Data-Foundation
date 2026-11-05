@@ -1,7 +1,8 @@
 """Durable, explicitly submitted daily jobs; no worker or read-side acquisition."""
 
 import json
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from market_data_foundation.historical.financial_daily import (
     day,
     digest,
     instant,
+    observation_today,
     registry,
 )
 from market_data_foundation.historical.financial_daily_credit import (
@@ -48,8 +50,8 @@ def now():
     return datetime.now(UTC).isoformat()
 
 
-def defaults(today=None):
-    end = today or date.today()
+def defaults(today=None, *, at=None):
+    end = today or observation_today(at)
     try:
         start = end.replace(year=end.year - 20)
     except ValueError:
@@ -78,7 +80,10 @@ def validate(command):
     if command["action"] not in {"init", "update"}:
         raise WebError("financial_invalid_job_action")
     days = dates(command["start"], command["end"])
-    if len(days) > 366 * 30 or day(command["end"]) > date.today():
+    if (
+        len(days) > 366 * 30
+        or day(command["end"]) > datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    ):
         raise WebError("financial_job_range_invalid")
 
 
@@ -370,6 +375,15 @@ class FinancialJobs:
                             observed_at=batch.observed_at.isoformat(),
                             raw_locator=step["retained"]["raw_sha"],
                             origin=batch.origin,
+                            acquired_start=batch.start,
+                            acquired_end=batch.end,
+                            latest_source_observation=batch.metadata.get(
+                                "response_last_observation"
+                            ),
+                            deferred_after=batch.end if batch.end < end else None,
+                            deferred_reason="source_observation_day_not_yet_available"
+                            if batch.end < end
+                            else None,
                         )
                         step.pop("classification", None)
                         step.pop("retry_at", None)
@@ -379,7 +393,13 @@ class FinancialJobs:
                             if isinstance(error, FinancialError)
                             else "financial_storage_outcome_unknown"
                         )
-                        state = "unknown" if "unknown" in code else "failed"
+                        state = (
+                            "waiting_publication"
+                            if code == "financial_origin_future_window_not_acquired"
+                            else "unknown"
+                            if "unknown" in code
+                            else "failed"
+                        )
                         step.update(
                             state=state,
                             classification=code,
@@ -437,5 +457,7 @@ def status():
         series=registry(),
         resident_worker=False,
         source_requests_on_read=0,
+        observation_timezone="America/New_York",
+        default_date_basis="美国东部当前观测日；并不保证当日已公布，实际可得以来源响应为准。",
         cutoff_semantics="MDF 首次观察/确认可用截止；历史首发与历史初值无证据则未知。",
     )

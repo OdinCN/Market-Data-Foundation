@@ -348,3 +348,51 @@ def test_future_policy_days_and_future_derivation_cutoff_are_not_captured():
     )
     with pytest.raises(FinancialError, match="future_cutoff_rejected"):
         validate(b)
+
+
+@pytest.mark.parametrize(
+    "sid", ["DFEDTARL", "DFEDTARU", "EFFR", "SOFR", "DGS2", "DGS10", "DFII10"]
+)
+def test_beijing_next_day_retains_historical_subwindow_without_future_capture(sid):
+    from datetime import UTC, datetime
+
+    at = datetime(2026, 11, 5, 17, tzinfo=UTC)  # Beijing Nov 6, New York Nov 5
+    raw = (
+        POLICY
+        if sid.startswith("DFED")
+        else json.dumps(
+            {
+                "refRates": [
+                    dict(effectiveDate="2026-11-04", type=sid, percentRate="3.8")
+                ]
+            }
+        ).encode()
+        if sid in {"EFFR", "SOFR"}
+        else treasury_raw(date="2026-11-04")
+    )
+    requests = []
+
+    def transport(request):
+        requests.append(request)
+        return ClaimsResponse(200, raw)
+
+    source = OriginSource(
+        controls={
+            h: Control()
+            for h in [
+                "www.federalreserve.gov",
+                "markets.newyorkfed.org",
+                "home.treasury.gov",
+            ]
+        },
+        transport=transport,
+        clock=lambda: at,
+    )
+    batch = source.fetch(
+        sid, "2026-11-01", "2026-11-06", period="year", policy_span=True
+    )
+    validate(batch)
+    assert batch.end == "2026-11-05" and requests and batch.points
+    assert all(p.observation_date <= "2026-11-05" for p in batch.points)
+    if sid in {"EFFR", "SOFR"}:
+        assert requests[0].parameters["endDate"] == "2026-11-05"

@@ -6,6 +6,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from market_data_foundation.canonical.model import (
     DatasetDefinition,
@@ -148,6 +149,13 @@ BINDING = SourceBindingRevision(
     ),
     silent_fallback=False,
 )
+
+
+def observation_today(at=None):
+    """US source observation calendar, independent of host/Beijing calendar day."""
+    return (
+        instant(at or datetime.now(UTC)).astimezone(ZoneInfo("America/New_York")).date()
+    )
 
 
 def day(value):

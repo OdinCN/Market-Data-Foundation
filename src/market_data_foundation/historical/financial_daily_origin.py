@@ -21,6 +21,7 @@ from market_data_foundation.historical.financial_daily import (
     day,
     digest,
     instant,
+    observation_today,
     series_ids,
 )
 from market_data_foundation.historical.financial_daily_source import DailyFredSource
@@ -504,8 +505,11 @@ class OriginSource(DailyFredSource):
         )
         if period not in {"month", "year"} or len(dates(start, end)) > limit:
             raise FinancialError("financial_origin_bounded_window_exceeded")
-        if day(end) > instant(self.clock()).date():
+        source_day = observation_today(self.clock())
+        if day(start) > source_day:
+            # No historical subwindow exists yet; never manufacture future raw bytes.
             raise FinancialError("financial_origin_future_window_not_acquired")
+        end = min(day(end), source_day).isoformat()
         spec = binding(sid)
         if not spec["storage_permitted"]:
             raise FinancialError(spec["classification"])

@@ -287,3 +287,13 @@ def test_partial_job_continues_other_series_and_resumes_only_failed_step(
     complete = host.resume(c["request_id"])
     assert complete["state"] == "complete"
     assert requested == ["DGS2", "DGS10", "DGS2"]
+
+
+def test_default_window_uses_new_york_observation_day_across_beijing_and_utc_midnights():
+    from datetime import UTC, datetime
+
+    for at in [
+        datetime(2026, 11, 5, 17, tzinfo=UTC),
+        datetime(2026, 11, 6, 1, tzinfo=UTC),
+    ]:
+        assert defaults(at=at) == {"start": "2006-11-05", "end": "2026-11-05"}
