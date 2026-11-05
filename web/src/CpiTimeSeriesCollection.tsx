@@ -50,7 +50,7 @@ function MonthField(props: Parameters<typeof QuarterField>[0]) {
 }
 const profileIntentKey = (profile: MacroProfile) =>
   `mdf.${profile.id}.timeseries.pending.v1`;
-function requestId() {
+export function requestId() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   // HTTP LAN origins still expose getRandomValues outside a secure context.
   const bytes = crypto.getRandomValues(new Uint8Array(16));

@@ -11,7 +11,39 @@ import { FINANCIAL, FinancialDailyWorkbench } from "./FinancialDailyWorkbench";
 import type { Transport } from "./api";
 import type { Route } from "./workflowRoute";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+it("submits from HTTP LAN using the existing secure-random fallback", async () => {
+  const random = vi.fn(crypto.getRandomValues.bind(crypto));
+  vi.stubGlobal("crypto", { getRandomValues: random });
+  const { transport, calls } = fixture();
+  render(
+    <FinancialDailyWorkbench
+      route={route("collection", "new")}
+      navigate={vi.fn()}
+      transport={transport}
+      generation={0}
+    />,
+  );
+  await waitFor(() =>
+    expect(
+      (screen.getByLabelText("起始观测日") as HTMLInputElement).value,
+    ).toBeTruthy(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "提交日频作业" }));
+  await waitFor(() =>
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1),
+  );
+  expect(random).toHaveBeenCalledOnce();
+  expect(
+    (calls.find((c) => c.method === "POST")!.body as { request_id: string })
+      .request_id,
+  ).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
+});
 it("keeps an explicit admission rejection distinct from an unknown network result", async () => {
   const { transport } = fixture(async () =>
     Response.json(

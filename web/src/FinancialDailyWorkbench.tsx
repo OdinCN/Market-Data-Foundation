@@ -3,6 +3,7 @@ import type { Navigate, Route } from "./workflowRoute";
 import type { Transport } from "./api";
 import { useVisiblePolling } from "./useVisiblePolling";
 import { WorkflowTable } from "./WorkflowTable";
+import { requestId } from "./CpiTimeSeriesCollection";
 
 export const FINANCIAL = {
   identity: "mdf.macro.financial-conditions.daily",
@@ -216,7 +217,7 @@ export function FinancialDailyWorkbench({
     if (busy || uncertain) return;
     setBusy(true);
     setFailure(null);
-    const request_id = resume ?? crypto.randomUUID();
+    const request_id = resume ?? requestId();
     try {
       const result = await call<{ job: Job }>(
         transport,
