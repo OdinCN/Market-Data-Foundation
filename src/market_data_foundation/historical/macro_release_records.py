@@ -1235,6 +1235,10 @@ class ReleaseRecords:
 
     def _versions(self, series, reference, cutoff):
         """All locally captured numeric revisions at the SAME consumable cutoff."""
+        if self.profile.key == "m3":
+            # Its independent dataset/stage snapshots do not establish an
+            # official event binding or a comparable pre-event version.
+            return []
         snapshot = self._version_snapshot
         if (
             snapshot

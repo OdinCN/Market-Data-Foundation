@@ -294,6 +294,8 @@ class MaterialAcquirer:
         family = repo.profile.key
         official_url(family, selection["source_url"])
         prefix = {
+            "m3": "census:m3:"
+            + ("full" if "/prel/" in selection["source_url"] else "advance"),
             "employment": "bls:employment-situation",
             "cpi": "bls:cpi",
             "ppi": "bls:ppi",

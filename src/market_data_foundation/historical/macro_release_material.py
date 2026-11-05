@@ -155,6 +155,10 @@ def official_url(family, url):
             r"/news/\d{4}/personal-income-and-outlays-[a-z-]+-\d{4}",
         ),
         "retail": ("www.census.gov", r"/retail/sales.html"),
+        "m3": (
+            "www.census.gov",
+            r"/manufacturing/m3/(?:prel/pdf/s-i-o|adv/pdf/durgd)\.pdf",
+        ),
     }
     host, path = patterns["pce" if family == "consumption" else family]
     if (
@@ -170,6 +174,14 @@ def official_url(family, url):
 
 def parse_material(raw, url, family):
     p = official_url(family, url)
+    if family == "m3":
+        from market_data_foundation.historical.m3_release_material import (
+            parse_m3_material,
+        )
+
+        doc = parse_m3_material(raw, url)
+        _scope_absence(doc, family)
+        return doc
     if family == "jolts":
         from market_data_foundation.historical.jolts_release_material import (
             parse_jolts_material,
@@ -778,7 +790,20 @@ def _scope_absence(doc, family):
     }
     expected = []
     for ref in doc["reference_months"]:
-        if family == "retail":
+        if family == "m3":
+            from market_data_foundation.historical.m3_release_material import SERIES
+
+            expected.extend(
+                dict(
+                    series_id=series,
+                    reference_month=ref,
+                    statistic="level",
+                    unit="million_USD",
+                    adjustment="sa",
+                )
+                for series in SERIES
+            )
+        elif family == "retail":
             for series in ("44X72:SM", "441:SM", "444:SM", "447:SM", "722:SM"):
                 expected.append(
                     dict(

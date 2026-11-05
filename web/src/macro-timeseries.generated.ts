@@ -1267,6 +1267,9 @@ export interface operations {
             events: {
               event_id: string;
               family?: string;
+              /** @enum {string} */
+              report_stage?: "advance" | "full";
+              report_number?: string;
               reference_month?: string;
               reference_months: string[];
               value_comparisons?: {
@@ -1673,6 +1676,9 @@ export interface operations {
             events: {
               event_id: string;
               family?: string;
+              /** @enum {string} */
+              report_stage?: "advance" | "full";
+              report_number?: string;
               reference_month?: string;
               reference_months: string[];
               value_comparisons?: {
@@ -2077,6 +2083,9 @@ export interface operations {
             events: {
               event_id: string;
               family?: string;
+              /** @enum {string} */
+              report_stage?: "advance" | "full";
+              report_number?: string;
               reference_month?: string;
               reference_months: string[];
               value_comparisons?: {
@@ -2481,6 +2490,9 @@ export interface operations {
             events: {
               event_id: string;
               family?: string;
+              /** @enum {string} */
+              report_stage?: "advance" | "full";
+              report_number?: string;
               reference_month?: string;
               reference_months: string[];
               value_comparisons?: {
@@ -2885,6 +2897,9 @@ export interface operations {
             events: {
               event_id: string;
               family?: string;
+              /** @enum {string} */
+              report_stage?: "advance" | "full";
+              report_number?: string;
               reference_month?: string;
               reference_months: string[];
               value_comparisons?: {
@@ -3333,6 +3348,9 @@ export interface operations {
             events: {
               event_id: string;
               family?: string;
+              /** @enum {string} */
+              report_stage?: "advance" | "full";
+              report_number?: string;
               reference_month?: string;
               reference_months: string[];
               value_comparisons?: {

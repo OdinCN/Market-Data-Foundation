@@ -333,6 +333,13 @@
                           "family": {
                             "type": "string"
                           },
+                          "report_stage": {
+                            "type": "string",
+                            "enum": ["advance", "full"]
+                          },
+                          "report_number": {
+                            "type": "string"
+                          },
                           "reference_month": {
                             "type": "string"
                           },
@@ -1124,6 +1131,13 @@
                           "family": {
                             "type": "string"
                           },
+                          "report_stage": {
+                            "type": "string",
+                            "enum": ["advance", "full"]
+                          },
+                          "report_number": {
+                            "type": "string"
+                          },
                           "reference_month": {
                             "type": "string"
                           },
@@ -1911,6 +1925,13 @@
                           "family": {
                             "type": "string"
                           },
+                          "report_stage": {
+                            "type": "string",
+                            "enum": ["advance", "full"]
+                          },
+                          "report_number": {
+                            "type": "string"
+                          },
                           "reference_month": {
                             "type": "string"
                           },
@@ -2693,6 +2714,13 @@
                           "family": {
                             "type": "string"
                           },
+                          "report_stage": {
+                            "type": "string",
+                            "enum": ["advance", "full"]
+                          },
+                          "report_number": {
+                            "type": "string"
+                          },
                           "reference_month": {
                             "type": "string"
                           },
@@ -3473,6 +3501,13 @@
                             "type": "string"
                           },
                           "family": {
+                            "type": "string"
+                          },
+                          "report_stage": {
+                            "type": "string",
+                            "enum": ["advance", "full"]
+                          },
+                          "report_number": {
                             "type": "string"
                           },
                           "reference_month": {
@@ -4361,6 +4396,13 @@
                             "type": "string"
                           },
                           "family": {
+                            "type": "string"
+                          },
+                          "report_stage": {
+                            "type": "string",
+                            "enum": ["advance", "full"]
+                          },
+                          "report_number": {
                             "type": "string"
                           },
                           "reference_month": {

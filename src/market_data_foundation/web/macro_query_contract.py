@@ -344,6 +344,8 @@ def release_openapi():
         "properties": {
             "event_id": string,
             "family": string,
+            "report_stage": {"type": "string", "enum": ["advance", "full"]},
+            "report_number": string,
             "reference_month": string,
             "reference_months": {"type": "array", "items": string},
             "value_comparisons": {

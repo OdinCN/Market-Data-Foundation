@@ -115,6 +115,8 @@ type ValueComparison = {
 };
 export type Release = Evidence & {
   event_id: string;
+  report_stage?: "advance" | "full";
+  report_number?: string;
   reference_week?: string;
   reference_month?: string;
   reference_quarter?: string;
@@ -504,6 +506,13 @@ export function MacroReleaseRecords({
           {event && (
             <section aria-label="发布事件详情">
               <h4>{event.event_id}</h4>
+              {event.report_stage && (
+                <p>
+                  报告阶段：
+                  {event.report_stage === "full" ? "完整报告" : "先行报告"} ·
+                  期次：{referenceText(event)} · {event.report_number}
+                </p>
+              )}
               {gdp && (
                 <p>
                   季度：{referenceText(event)} · 估计：{event.estimate_kind}
