@@ -146,6 +146,48 @@ it.each([320, 390, 960, 1440])(
     ).toBe(true);
   },
 );
+it("groups the six registered financial paths without claiming qualification or acquiring data", async () => {
+  const { api, transport } = bridge();
+  const onSelect = vi.fn();
+  render(
+    <ManagementConsole
+      transport={transport}
+      generation={0}
+      selectedIdentity={null}
+      onSelect={onSelect}
+    />,
+  );
+  const family = await screen.findByRole("button", {
+    name: /金融条件日频（十项）/,
+  });
+  expect(family.textContent).toContain("6 合同 · UNKNOWN");
+  fireEvent.click(family);
+  const select = screen.getByLabelText("选择来源与能力");
+  const identities = [
+    "archive",
+    "board",
+    "derived",
+    "fred",
+    "nyfed",
+    "treasury",
+  ].map((path) => `mdf.source.financial-conditions.manual.${path}@r1`);
+  expect(
+    within(select)
+      .getAllByRole("option")
+      .map((option) => (option as HTMLOptionElement).value)
+      .filter(Boolean)
+      .sort(),
+  ).toEqual(identities);
+  fireEvent.change(select, { target: { value: identities[1] } });
+  expect(onSelect).toHaveBeenCalledOnce();
+  expect(onSelect.mock.calls[0][0]).toMatchObject({
+    identity: identities[1],
+    source_name: "Federal Reserve Board",
+    source_qualification: "UNKNOWN",
+    current_binding: "UNKNOWN",
+  });
+  expect(api.requests).toEqual(["/api/r3/management?"]);
+});
 it("normalizes the legacy code directory page into platform diagnostics without an extra menu", async () => {
   location.hash = "page=8";
   const { api, transport } = bridge();

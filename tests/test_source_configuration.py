@@ -253,12 +253,53 @@ def test_actual_preview_rejects_cross_origin_verification(
 
 
 def test_ten_canonical_relationships_include_disabled_claims(tmp_path):
+    """The original ten relationships remain alongside the registered daily bundle."""
     host = fixture_host(tmp_path / "config")
     with TestClient(create_package_app(host)) as http:
         body = http.get(PATH).json()
-    assert len(body["capabilities"]) == 10
+    capabilities = {c["capability_id"]: c for c in body["capabilities"]}
+    assert set(capabilities) == {
+        "cpi",
+        "ppi",
+        "jolts",
+        "employment",
+        "m3",
+        "retail",
+        "consumption",
+        "claims",
+        "gdp",
+        "pce",
+        "financial_daily",
+    }
+    assert len(body["capabilities"]) == 11
     assert body["enabled_capability_ids"] == []
-    assert all(c["title"].startswith("美国") for c in body["capabilities"])
+    assert all(
+        c["title"].startswith("美国")
+        for key, c in capabilities.items()
+        if key != "financial_daily"
+    )
+    financial = capabilities["financial_daily"]
+    assert financial["title"] == "金融条件日频（十项）"
+    assert financial["definition_ref"] == {
+        "identity": "mdf.macro.financial-conditions.daily",
+        "revision": "r1",
+    }
+    financial_sources = {
+        "Federal Reserve Board",
+        "New York Fed",
+        "US Treasury",
+        "MDF",
+        "Credit archive",
+        "FRED",
+    }
+    assert set(financial["required_sources"]) == financial_sources
+    relations = {r["source_id"]: r for r in financial["source_relations"]}
+    assert set(relations) == financial_sources
+    assert all(
+        relations[s]["original_institution"] == "ICE Data Indices, LLC"
+        for s in ("FRED", "Credit archive")
+    )
+    assert relations["MDF"]["original_institution"] == "MDF"
     claims = next(c for c in body["capabilities"] if c["capability_id"] == "claims")
     relation = claims["source_relations"][0]
     assert relation["source_id"] == "FRED"

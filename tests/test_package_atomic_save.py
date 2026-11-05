@@ -118,6 +118,11 @@ def test_one_snapshot_publishes_capabilities_and_private_reference_and_reopens(
             "BEA": "configured",
             "Census": "unknown",
             "FRED": "unknown",
+            "Credit archive": "unknown",
+            "Federal Reserve Board": "unknown",
+            "MDF": "unknown",
+            "New York Fed": "unknown",
+            "US Treasury": "unknown",
         }
         assert all(
             s["authentication"] == "unknown"
