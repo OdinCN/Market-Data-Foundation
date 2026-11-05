@@ -1150,6 +1150,7 @@ export function CollectionWorkbench({
     <label>
       采集目标
       <select
+        aria-label="采集目标"
         value={selectedTarget}
         onChange={(e) => {
           const key =
@@ -1181,7 +1182,13 @@ export function CollectionWorkbench({
         <option value="">选择一个已登记资产</option>
         {[
           ...assets,
-          ...[CPI, PPI, PCE, EMPLOYMENT, CLAIMS, GDP]
+          ...[
+            ...new Map(
+              [CPI, PPI, PCE, EMPLOYMENT, CLAIMS, GDP, macroProfile.asset].map(
+                (key) => [keyOf(key), key],
+              ),
+            ).values(),
+          ]
             .filter((k) => !assets.some((a) => sameKey(a.key, k)))
             .map((key) => ({ key })),
         ].map((a) => (
@@ -1205,6 +1212,7 @@ export function CollectionWorkbench({
           <label>
             {tab === "periodic" ? "周期资产筛选" : "执行资产筛选"}
             <select
+              aria-label={tab === "periodic" ? "周期资产筛选" : "执行资产筛选"}
               value={filter}
               onChange={(e) =>
                 navigate(
