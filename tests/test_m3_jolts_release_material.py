@@ -21,11 +21,14 @@ PDF_TEXT = """FOR RELEASE AT 10:00 AM EST, TUESDAY, NOVEMBER 3, 2026
 MONTHLY FULL REPORT ON MANUFACTURERS’ SHIPMENTS, INVENTORIES AND ORDERS
 SEPTEMBER 2026 Release Number: CB 26-170 M3-2 (26)-09
 Table 2.  Value of Manufacturers' New Orders for Industry Groups
-Estimates are shown in millions of dollars. Seasonally Adjusted
-Sep.   Aug.   July  Aug. - July -
-2026p  2026r  2026
-Durable goods industries2....  345,672  339,185  338,700  1.9
-"""
+Estimates are shown in millions of dollars.
+Seasonally Adjusted   Not Seasonally Adjusted
+Sep.   Aug.   July  Aug. - July - June - Sep. Aug. July Sep.
+2026p  2026r  2026 Sep. Aug. July 2026p 2026r 2026 2025 2026p 2025 2025
+""" + (
+    "Durable goods industries2....  345,672  339,185  338,700  1.9 0.1 0.9 "
+    "368,950 337,424 321,721 334,949 3,007,591 2,784,653 8.0\n"
+)
 
 
 def m3_repo(monkeypatch, text=PDF_TEXT):
@@ -162,3 +165,34 @@ def test_jolts_legacy_bytes_exact_national_sa_columns_and_cutoff():
 def test_jolts_scope_mismatch_is_not_substituted(old, new):
     doc = parse_material(jolts_body().replace(old, new), JOLTS_URL, "jolts")
     assert doc["claims"] == [] and len(doc["missing_scopes"]) == 8
+
+
+@pytest.mark.parametrize(
+    "before,after",
+    [
+        ("345,672", "       "),
+        ("339,185", "       "),
+        ("345,672", "345,67 2"),
+        ("339,185", "339,18 5"),
+        ("337,424", "       "),
+        ("1.9 0.1", "0.1"),
+        ("Seasonally Adjusted   Not Seasonally Adjusted", "Not Seasonally Adjusted"),
+        (
+            "Seasonally Adjusted   Not Seasonally Adjusted",
+            "Not Seasonally Adjusted   Seasonally Adjusted",
+        ),
+        ("Sep.   Aug.   July", "Aug.   Sep.   July"),
+        ("Sep.   Aug.   July", "Sep.         July"),
+        ("Sep.   Aug.   July", "Sep.   Aug.   June"),
+        ("2026p  2026r", "2026p  2025r"),
+    ],
+)
+def test_m3_incomplete_or_unverified_columns_leave_whole_row_missing(
+    monkeypatch, before, after
+):
+    repo = m3_repo(monkeypatch, PDF_TEXT.replace(before, after))
+    repo.import_material(b"synthetic damaged column PDF", M3_URL)
+    event = repo.read()["events"][0]
+    assert event["claims"] == []
+    assert len(event["missing_scopes"]) == 3
+    assert event["state"] == "unknown"

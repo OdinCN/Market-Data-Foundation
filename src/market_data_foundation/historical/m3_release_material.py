@@ -23,6 +23,66 @@ SERIES = (
 )
 
 
+def _columns_verified(page, ref):
+    """Only the known full-report SA then NSA column layout is qualified."""
+    lines = page.splitlines()
+    if not any(
+        [
+            " ".join(m.group().split())
+            for m in re.finditer(r"(?:Not\s+)?Seasonally\s+Adjusted", line)
+        ]
+        == ["Seasonally Adjusted", "Not Seasonally Adjusted"]
+        for line in lines
+    ):
+        return False
+    periods = [month_at(month_number(ref) - i) for i in range(4)]
+    expected_months = [int(periods[i][5:]) for i in [0, 1, 2, 1, 2, 3, 0, 1, 2, 0]]
+    years = [int(period[:4]) for period in periods]
+    expected_years = [
+        (str(years[0]), "p"),
+        (str(years[1]), "r"),
+        (str(years[2]), ""),
+        (str(years[0]), "p"),
+        (str(years[1]), "r"),
+        (str(years[2]), ""),
+        (str(years[0] - 1), ""),
+        (str(years[0]), "p"),
+        (str(years[0] - 1), ""),
+        (str(years[0] - 1), ""),
+    ]
+    for index, line in enumerate(lines[:-1]):
+        tokens = re.findall(r"\b([A-Z][a-z]+)\.?", line)
+        try:
+            months = [int(month(t, 2000)[5:]) for t in tokens]
+        except CpiTimeSeriesError:
+            continue
+        if months != expected_months:
+            continue
+        dates = re.findall(r"(?<!\d)(\d{4})([pr]?)(?!\d)", lines[index + 1])
+        if dates == expected_years:
+            return True
+    return False
+
+
+def _row_cells(line):
+    """Never squeeze out a missing cell: require every known column's type."""
+    label = re.match(
+        r"\s*(?:Durable goods industries\d*|Excluding aircraft)[^A-Za-z0-9\s]*",
+        line,
+    )
+    if not label:
+        return None
+    cells = line[label.end() :].split()
+    if len(cells) != 13:
+        return None
+    level = r"(?:\d{1,3}(?:,\d{3})+|[—–-]|\(X\)|\(NA\))"
+    change = r"(?:[+-]?\d+(?:\.\d+)?|[—–-]|\(X\)|\(NA\))"
+    for index, value in enumerate(cells):
+        if not re.fullmatch(change if index in {3, 4, 5, 12} else level, value):
+            return None
+    return cells
+
+
 def parse_m3_material(raw, url):
     if type(raw) is not bytes or not 0 < len(raw) <= 2_000_000:
         raise CpiTimeSeriesError("release_material_size_invalid")
@@ -57,21 +117,9 @@ def parse_m3_material(raw, url):
     claims = []
     if full:
         for page_number, page in enumerate(pages, 1):
-            if not (
-                "Estimates are shown in millions of dollars" in page
-                and "Seasonally Adjusted" in page
-            ):
-                continue
-            # Validate date columns before taking the leftmost SA values.
-            header = re.search(
-                r"\b([A-Z][a-z]+\.)\s+([A-Z][a-z]+\.)\s+([A-Z][a-z]+\.?)\s+", page
-            )
-            years = re.search(r"\b(\d{4})p\s+(\d{4})r\s+(\d{4})\b", page)
             if (
-                not header
-                or not years
-                or month(header[1], int(years[1])) != ref
-                or month(header[2], int(years[2])) != prior
+                "Estimates are shown in millions of dollars" not in page
+                or not _columns_verified(page, ref)
             ):
                 continue
             candidates = []
@@ -107,19 +155,14 @@ def parse_m3_material(raw, url):
                             )
                         )
             for series, line, table in candidates:
-                # Missing first cells cannot shift later columns into actual.
-                cells = re.match(
-                    r"\s*(?:Durable goods industries\d*|Excluding aircraft)"
-                    r"[^A-Za-z0-9]*?\s+(\S+)\s+(\S+)\s+(\S+)\s",
-                    line,
-                )
-                if not cells:
+                cells = _row_cells(line)
+                if cells is None:
                     continue
                 for index, period, role in [
                     (0, ref, "actual"),
                     (1, prior, "prior_as_reported_in_this_event"),
                 ]:
-                    value = cells[index + 1]
+                    value = cells[index]
                     if not re.fullmatch(r"\d{1,3}(?:,\d{3})+", value):
                         continue
                     claims.append(
@@ -165,7 +208,7 @@ def parse_m3_material(raw, url):
             "continuous_version_not_bound_to_material",
             "consensus_source_unavailable",
         ],
-        parser_revision="census-m3-named-pdf-v1",
+        parser_revision="census-m3-named-pdf-v2",
         consensus=None,
         surprise=None,
     )
