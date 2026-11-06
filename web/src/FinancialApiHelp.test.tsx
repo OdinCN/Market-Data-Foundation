@@ -357,3 +357,32 @@ it("preserves explicit old financial as_of deep links as historical reads", asyn
   expect(request.searchParams.get("as_of")).toBe("2026-10-01T00:00:00.000Z");
   expect(request.searchParams.get("local_only")).toBe("true");
 });
+
+it.each([true, false])(
+  "keeps parameters and every explanatory section before the final request/invalid notice: valid=%s",
+  (valid) => {
+    render(
+      <FinancialApiHelp
+        help={null}
+        start="2026-10-20"
+        end="2026-10-30"
+        series="DGS10"
+        cutoff={valid ? "" : "invalid"}
+        offset={0}
+      />,
+    );
+    const help = screen.getByRole("region", { name: "金融日频 API说明" });
+    const tail = valid
+      ? within(help).getByRole("region", { name: "请求预览" })
+      : within(help).getByRole("status");
+    for (const section of [
+      within(help).getByRole("table", { name: "查询参数" }),
+      ...help.querySelectorAll(":scope > details"),
+    ])
+      expect(
+        section.compareDocumentPosition(tail) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    expect(help.lastElementChild).toBe(tail);
+  },
+);

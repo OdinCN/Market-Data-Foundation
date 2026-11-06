@@ -70,13 +70,6 @@ export function FinancialApiHelp({
       <p>
         普通查询优先本地，仅实际缺口临时向具名来源补足。GET不写PG/Garage、不创建采集作业；临时值标为upstream及未保存。历史截止和local_only=true严格只读，已覆盖零上游。请求预览与当前查询表单共用生成器。
       </p>
-      {path ? (
-        <RequestPreview request={{ method: "GET", path }} />
-      ) : (
-        <p role="status">
-          当前日期、指标或历史截止未完成或格式无效，请回到查询数据核对；未生成或执行请求。
-        </p>
-      )}
       <CompactTable
         label="查询参数"
         headers={["参数", "必填 / 默认", "类型、含义与边界"]}
@@ -431,6 +424,13 @@ export function FinancialApiHelp({
           copyLabel="复制周期恢复请求体示例"
         />
       </details>
+      {path ? (
+        <RequestPreview request={{ method: "GET", path }} />
+      ) : (
+        <p role="status">
+          当前日期、指标或历史截止未完成或格式无效，请回到查询数据核对；未生成或执行请求。
+        </p>
+      )}
     </section>
   );
 }
