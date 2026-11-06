@@ -184,25 +184,17 @@ export function RuntimeAssets({
               cells: [
                 r.title,
                 r.owners.map((p) => p.name).join(" / "),
-                r.identity === FINANCIAL.identity
-                  ? r.revisions.some((v) => v.plan.allowed === true)
-                    ? "已登记 · 人工与周期采集已接入"
-                    : r.revisions.some((v) => v.collect.allowed === true)
-                      ? "已登记 · 人工采集已接入"
-                      : r.revisions.every(
-                            (v) =>
-                              v.collect.allowed === false &&
-                              v.plan.allowed === false,
-                          )
-                        ? "已登记 · 采集能力未接入"
-                        : "已登记 · 采集能力待核实"
+                r.revisions.some((v) => v.capability_enabled)
+                  ? "能力已启用"
                   : r.revisions.some((v) =>
-                        v.visibility_basis?.includes("REGISTERED_MANUAL"),
+                        v.visibility_basis?.includes("RETAINED_HISTORY"),
                       )
-                    ? "已登记人工通路"
-                    : r.revisions.some((v) => v.capability_enabled)
-                      ? "能力已启用"
-                      : "保留历史",
+                    ? "保留历史"
+                    : r.revisions.some((v) =>
+                          v.visibility_basis?.includes("REGISTERED_MANUAL"),
+                        )
+                      ? "已登记人工通路"
+                      : "可见依据待核实",
               ],
             }))}
             selected={selected?.identity}

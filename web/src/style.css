@@ -1438,6 +1438,20 @@ footer {
   min-width: 200px;
 }
 
+.financial-api-help .table-wrap table {
+  min-width: 0;
+  width: 100%;
+  table-layout: fixed;
+}
+.financial-api-help th,
+.financial-api-help td,
+.financial-api-help th:first-child,
+.financial-api-help td:first-child {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .cpi-timeseries .cpi-multiselect > button {
   white-space: normal;
 }

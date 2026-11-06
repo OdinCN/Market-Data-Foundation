@@ -218,56 +218,74 @@ it("uses the same seven asset names across collection options, strategy rows, ex
   ).not.toContain("美国");
 });
 
-it("financial directory reports host capability independently of package intent or worker state", () => {
-  const identity = "mdf.macro.financial-conditions.daily";
-  const packages = {
-    status: "OK",
-    packages: [
-      {
-        package_id: "macro",
-        name: "宏观",
-        capabilities: [
-          {
-            definition_ref: { identity, revision: "r1" },
-            title: "金融条件日频",
-          },
-        ],
-        assets: [
-          {
-            identity,
-            revisions: [
-              {
-                definition_ref: { identity, revision: "r1" },
-                capability_enabled: false,
-                source_entries: [],
-                visibility_basis: ["REGISTERED_MANUAL"],
-                collect: { allowed: true, reasons: ["host"] },
-                plan: { allowed: true, reasons: ["host"] },
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  } as unknown as Packages;
-  render(
-    <RuntimeAssets
-      data={packages}
-      busy={false}
-      failure={null}
-      route={{
-        view: "assets",
-        invalid: false,
-        fields: new URLSearchParams({ asset: identity, asset_revision: "r1" }),
-      }}
-      navigate={vi.fn()}
-      reader={null}
-      ordinary={null}
-      reference={null}
-      financial={<p>日频查询</p>}
-    />,
-  );
-  expect(screen.getByText("已登记 · 人工与周期采集已接入")).toBeTruthy();
-  expect(screen.getByText(/能力不代表策略已开启或执行器在线/)).toBeTruthy();
-  expect(screen.queryByText("能力已启用")).toBeNull();
-});
+it.each([
+  [
+    true,
+    ["ENABLED_MAPPING", "RETAINED_HISTORY", "REGISTERED_MANUAL"],
+    true,
+    "能力已启用",
+  ],
+  [true, ["REGISTERED_MANUAL"], false, "能力已启用"],
+  [false, ["RETAINED_HISTORY", "REGISTERED_MANUAL"], true, "保留历史"],
+  [false, ["RETAINED_HISTORY"], false, "保留历史"],
+  [false, ["REGISTERED_MANUAL"], true, "已登记人工通路"],
+  [false, [], true, "可见依据待核实"],
+] as const)(
+  "financial visibility follows enabled=%s and evidence=%s independently of runnable=%s",
+  (enabled, basis, runnable, expected) => {
+    const identity = "mdf.macro.financial-conditions.daily";
+    const packages = {
+      status: "OK",
+      packages: [
+        {
+          package_id: "macro",
+          name: "宏观",
+          capabilities: [
+            {
+              definition_ref: { identity, revision: "r1" },
+              title: "金融条件日频",
+            },
+          ],
+          assets: [
+            {
+              identity,
+              revisions: [
+                {
+                  definition_ref: { identity, revision: "r1" },
+                  capability_enabled: enabled,
+                  source_entries: [],
+                  visibility_basis: [...basis],
+                  collect: { allowed: runnable, reasons: ["host"] },
+                  plan: { allowed: runnable, reasons: ["host"] },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    } as unknown as Packages;
+    render(
+      <RuntimeAssets
+        data={packages}
+        busy={false}
+        failure={null}
+        route={{
+          view: "assets",
+          invalid: false,
+          fields: new URLSearchParams({
+            asset: identity,
+            asset_revision: "r1",
+          }),
+        }}
+        navigate={vi.fn()}
+        reader={null}
+        ordinary={null}
+        reference={null}
+        financial={<p>日频查询</p>}
+      />,
+    );
+    expect(screen.getByText(expected)).toBeTruthy();
+    expect(screen.getByText(/能力不代表策略已开启或执行器在线/)).toBeTruthy();
+    expect(screen.queryByText("已登记 · 人工与周期采集已接入")).toBeNull();
+  },
+);

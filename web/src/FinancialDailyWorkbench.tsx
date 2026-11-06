@@ -7,7 +7,11 @@ import {
   financialJobResult,
 } from "./financialJobPresentation";
 import { DateField } from "./DateField";
-import { CompactTable, CodeBlock } from "./CpiQueryDetails";
+import { FinancialApiHelp, type FinancialHelp } from "./FinancialApiHelp";
+import {
+  FINANCIAL_PREFIX as prefix,
+  financialQuerySuffix,
+} from "./financialQuery";
 import { ExecutionFacts } from "./ExecutionFacts";
 import {
   formatBeijingTime,
@@ -25,7 +29,6 @@ export const FINANCIAL = {
   identity: "mdf.macro.financial-conditions.daily",
   revision: "r1",
 };
-const prefix = "/api/r5/financial/timeseries";
 type Coverage = {
   series_id: string;
   valid_rows: number;
@@ -208,6 +211,7 @@ export function FinancialDailyWorkbench({
     [queryEnd, setQueryEnd] = useState(new Date().toISOString().slice(0, 10));
   const [cutoff, setCutoff] = useState(route.fields.get("as_of") ?? ""),
     [sid, setSid] = useState("DGS10"),
+    [queryOffset, setQueryOffset] = useState(0),
     [query, setQuery] = useState<Query | null>(null),
     [point, setPoint] = useState<Point | null>(null);
   const status = useVisiblePolling(
@@ -237,12 +241,7 @@ export function FinancialDailyWorkbench({
   );
   const job = detail.data?.job;
   const help = useVisiblePolling(
-    (signal) =>
-      financialCall<{ endpoints: Record<string, string>; notes: string[] }>(
-        transport,
-        "/api-help",
-        signal,
-      ),
+    (signal) => financialCall<FinancialHelp>(transport, "/api-help", signal),
     [transport, generation],
     consumerTab === "api" && !collecting,
     undefined,
@@ -331,16 +330,18 @@ export function FinancialDailyWorkbench({
   async function read(offset = 0) {
     setBusy(true);
     setFailure(null);
+    setQueryOffset(offset);
     try {
-      const p = new URLSearchParams({
-        start: queryStart,
-        end: queryEnd,
-        series: sid,
-        offset: String(offset),
-        limit: "200",
-      });
-      if (cutoff) p.set("as_of", new Date(cutoff).toISOString());
-      const r = await financialCall<Query>(transport, `/query?${p}`);
+      const r = await financialCall<Query>(
+        transport,
+        financialQuerySuffix({
+          start: queryStart,
+          end: queryEnd,
+          series: sid,
+          cutoff,
+          offset,
+        }),
+      );
       setQuery(r);
       setPoint(null);
     } catch (error) {
@@ -551,9 +552,11 @@ export function FinancialDailyWorkbench({
           <div hidden={consumerTab !== "api"}>
             <FinancialApiHelp
               help={help.data}
-              queryStart={queryStart}
-              queryEnd={queryEnd}
-              sid={sid}
+              start={queryStart}
+              end={queryEnd}
+              series={sid}
+              cutoff={cutoff}
+              offset={queryOffset}
             />
           </div>
           <div hidden={consumerTab !== "updates"}>
@@ -609,7 +612,10 @@ export function FinancialDailyWorkbench({
                   <select
                     aria-label="显示指标"
                     value={sid}
-                    onChange={(e) => setSid(e.target.value)}
+                    onChange={(e) => {
+                      setSid(e.target.value);
+                      setQueryOffset(0);
+                    }}
                   >
                     {Object.entries(names).map(([id, name]) => (
                       <option key={id} value={id}>
@@ -622,21 +628,30 @@ export function FinancialDailyWorkbench({
                   label="开始日期"
                   type="date"
                   value={queryStart}
-                  onChange={setQueryStart}
+                  onChange={(v) => {
+                    setQueryStart(v);
+                    setQueryOffset(0);
+                  }}
                   required
                 />
                 <DateField
                   label="结束日期"
                   type="date"
                   value={queryEnd}
-                  onChange={setQueryEnd}
+                  onChange={(v) => {
+                    setQueryEnd(v);
+                    setQueryOffset(0);
+                  }}
                   required
                 />
                 <DateField
                   label="截止时间（北京时间，可空）"
                   type="datetime-local"
                   value={cutoff ? toBeijingInput(cutoff) : ""}
-                  onChange={(v) => setCutoff(v ? beijingInputToIso(v) : "")}
+                  onChange={(v) => {
+                    setCutoff(v ? beijingInputToIso(v) : "");
+                    setQueryOffset(0);
+                  }}
                 />
               </div>
               <button disabled={busy}>查询本地数据</button>
@@ -764,63 +779,6 @@ function FinancialSources({ status }: { status: Status | null }) {
         </section>
       ))}
     </>
-  );
-}
-function FinancialApiHelp({
-  help,
-  queryStart,
-  queryEnd,
-  sid,
-}: {
-  help: { endpoints: Record<string, string>; notes: string[] } | null;
-  queryStart: string;
-  queryEnd: string;
-  sid: string;
-}) {
-  return (
-    <section aria-label="金融日频 API说明" className="cpi-api-help">
-      <h4>GET {prefix}/query</h4>
-      <p>
-        日频观测按日期及 MDF 可用截止本地读取。无参数会拒绝请求，GET
-        不采集、不写库、不建表。
-      </p>
-      <CompactTable
-        label="日频查询参数"
-        headers={["参数", "必填 / 默认", "类型与取值"]}
-        rows={[
-          ["start / end", "是", "YYYY-MM-DD，观测日区间"],
-          ["series", "否 / 十项", "逗号分隔具名指标代码"],
-          ["as_of", "否 / 当前确认可用", "带时区ISO；缺历史官方可得时刻不推造"],
-          ["offset / limit", "否 / 0、200", "本地分页，limit 1..1000"],
-        ]}
-      />
-      <CodeBlock
-        text={`GET ${prefix}/query?${new URLSearchParams({ start: queryStart, end: queryEnd, series: sid, limit: "200" })}`}
-        copyLabel="复制日频查询请求"
-      />
-      <h4>POST {prefix}/jobs</h4>
-      <p>
-        人工初始化或增量，原请求编号幂等；必须经正常私有写入口和既有来源准入。
-      </p>
-      <CompactTable
-        label="日频作业字段"
-        headers={["字段", "说明"]}
-        rows={[
-          ["request_id", "UUID，同编号重复返回原任务"],
-          ["action", "init / update"],
-          ["start / end", "可编辑日区间；初始化默认20日历年"],
-          ["POST jobs/resume", "request_id：仅恢复同一任务未完成段"],
-        ]}
-      />
-      <h4>本地状态与执行回读</h4>
-      <p>
-        GET {help?.endpoints.summary ?? prefix + "/summary"}、GET {prefix}
-        /jobs、GET {prefix}/jobs/请求编号。
-      </p>
-      <p>
-        当期尚未公布、非观测日、点号缺值、请求失败与持久确认未知分别返回；原机构与信用来源、MDF派生和历史截止不可混用。
-      </p>
-    </section>
   );
 }
 function FinancialJobList({
