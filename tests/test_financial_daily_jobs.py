@@ -1,6 +1,7 @@
 """Manual daily job, credit identity and local-only API regressions (no network)."""
 
 import json
+from contextlib import contextmanager
 from datetime import date
 from types import SimpleNamespace
 from uuid import uuid4
@@ -8,6 +9,7 @@ from uuid import uuid4
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from psycopg.pq import TransactionStatus
 
 from market_data_foundation.historical.financial_daily import FinancialError, digest
 from market_data_foundation.historical.financial_daily_credit import (
@@ -18,6 +20,7 @@ from market_data_foundation.historical.financial_daily_credit import (
     credit_binding,
 )
 from market_data_foundation.historical.financial_daily_source import parse_metadata
+from market_data_foundation.historical.financial_daily_store import PostgresDailyStore
 from market_data_foundation.web import financial_daily_jobs as jobs_module
 from market_data_foundation.web.financial_daily_api import (
     PREFIX,
@@ -112,6 +115,127 @@ class Raw:
         return value
 
 
+class AttemptConnection:
+    """Isolated SQL boundary; the real store validates and inserts attempt states."""
+
+    autocommit = True
+    info = SimpleNamespace(transaction_status=TransactionStatus.IDLE)
+
+    def __init__(self, *, commit_unknown=False):
+        self.attempts = []
+        self.commit_unknown = commit_unknown
+
+    @contextmanager
+    def transaction(self):
+        yield
+        if self.commit_unknown:
+            raise FinancialError("financial_storage_outcome_unknown")
+
+    def execute(self, sql, parameters):
+        assert ".attempts(" in sql
+        # This is the existing SQL CHECK contract, not an expanded job-state model.
+        assert parameters[4] in {"complete", "failed", "unknown"}
+        self.attempts.append(parameters)
+
+    def close(self):
+        pass
+
+
+def attempt_store(*, save=None, commit_unknown=False):
+    store = PostgresDailyStore(AttemptConnection(commit_unknown=commit_unknown), Raw())
+    if save is not None:
+        store.save = save
+    return store
+
+
+def test_waiting_publication_uses_real_attempt_contract_and_resumes_same_job(
+    tmp_path, monkeypatch
+):
+    ready = [False]
+    fetched = []
+    batch = payload("DGS2")
+
+    class Source:
+        request_count = 0
+
+        def fetch(self, sid, *_args, **_kwargs):
+            fetched.append(sid)
+            if not ready[0]:
+                raise FinancialError("financial_origin_future_window_not_acquired")
+            self.request_count += 1
+            return batch
+
+    saved = []
+
+    def save(value):
+        saved.append(value)
+        return dict(batch_id=value.batch_id, saved_points=3, saved_revisions=0)
+
+    store = attempt_store(save=save)
+    monkeypatch.setattr(jobs_module, "coverage", lambda *a, **k: dict(series=[]))
+    host = FinancialJobs(
+        tmp_path,
+        service_factory=lambda **k: SimpleNamespace(source=Source(), store=store),
+    )
+    c = command()
+    first = host.submit(c, selected=("DGS2",))
+    assert first["state"] == "partial" and first.get("classification") is None
+    assert first["steps"][0]["state"] == "waiting_publication"
+    assert first["steps"][0]["classification"] == (
+        "financial_origin_future_window_not_acquired"
+    )
+    assert first["provider_requests"] == 0 and not saved
+    assert store.connection.attempts[0][4:7] == (
+        "failed",
+        "financial_origin_future_window_not_acquired",
+        None,
+    )
+    assert host.submit(c, selected=("DGS2",)) == first
+    assert fetched == ["DGS2"]  # A repeated submit does not replay the intent.
+    ready[0] = True
+    complete = host.resume(c["request_id"])
+    assert complete["state"] == "complete" and complete["resume_count"] == 1
+    assert complete["request_id"] == first["request_id"]
+    assert complete["created_at"] == first["created_at"]
+    assert complete["started_at"] == first["started_at"]
+    assert "classification" not in complete["steps"][0]
+    assert store.connection.attempts[1][4:7] == ("complete", None, batch.batch_id)
+    assert fetched == ["DGS2", "DGS2"] and saved == [batch]
+
+
+def test_attempt_commit_unknown_is_not_downgraded_to_publication_waiting(
+    tmp_path, monkeypatch
+):
+    class Source:
+        request_count = 0
+
+        def fetch(self, *_args, **_kwargs):
+            raise FinancialError("financial_origin_future_window_not_acquired")
+
+    store = attempt_store(commit_unknown=True)
+    monkeypatch.setattr(jobs_module, "coverage", lambda *a, **k: dict(series=[]))
+    host = FinancialJobs(
+        tmp_path,
+        service_factory=lambda **k: SimpleNamespace(source=Source(), store=store),
+    )
+    c = command()
+    result = host.submit(c, selected=("DGS2",))
+    assert result["state"] == "unknown"
+    assert result["classification"] == "financial_storage_outcome_unknown"
+    assert result["steps"][0]["classification"] == (
+        "financial_origin_future_window_not_acquired"
+    )
+    assert host.submit(c, selected=("DGS2",)) == result
+    assert len(store.connection.attempts) == 1  # No blind write replay.
+
+
+def test_store_still_rejects_job_only_publication_state():
+    store = attempt_store()
+    with pytest.raises(FinancialError, match="financial_attempt_state_invalid"):
+        store.record_attempt("DGS2", START, END, "waiting_publication")
+    assert not store.connection.attempts
+
+
 def test_same_job_resume_uses_retained_bytes_without_source_or_first_time_reset(
     tmp_path, monkeypatch
 ):
@@ -135,12 +259,8 @@ def test_same_job_resume_uses_retained_bytes_without_source_or_first_time_reset(
         saved.append(batch)
         return dict(batch_id=batch.batch_id, saved_points=3, saved_revisions=0)
 
-    store = SimpleNamespace(
-        raw_store=raw,
-        save=save,
-        record_attempt=lambda *a, **k: None,
-        close=lambda: None,
-    )
+    store = attempt_store(save=save)
+    store.raw_store = raw
     source = Source()
     service = SimpleNamespace(store=store, source=source)
     monkeypatch.setattr(
@@ -167,6 +287,7 @@ def test_same_job_resume_uses_retained_bytes_without_source_or_first_time_reset(
     assert host.submit(c) == completed
     assert host.resume(c["request_id"]) == completed
     assert len(calls) == 1
+    assert [a[4] for a in store.connection.attempts] == ["unknown", "complete"]
 
 
 def test_journal_get_only_reads_and_unknown_interrupted_jobs_are_not_auto_resumed(

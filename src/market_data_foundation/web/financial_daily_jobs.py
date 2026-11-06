@@ -481,7 +481,16 @@ class FinancialJobs:
                             if isinstance(error, FinancialError) and error.retry_at
                             else None,
                         )
-                        service.store.record_attempt(sid, start, end, state, code)
+                        # Publication waiting is a resumable job-step state, not
+                        # an ambiguous storage outcome. The attempt ledger records
+                        # the known unsuccessful acquisition with its source reason;
+                        # genuine unknown outcomes retain their existing state.
+                        attempt_state = (
+                            "failed" if state == "waiting_publication" else state
+                        )
+                        service.store.record_attempt(
+                            sid, start, end, attempt_state, code
+                        )
                     finally:
                         count = (
                             active_source.request_count - requests_before

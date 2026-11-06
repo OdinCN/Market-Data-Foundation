@@ -295,6 +295,48 @@ def test_scheduler_retries_normal_job_retained_commit_without_refetch(
     assert len(fetched) == 1 and committed == [batch.batch_id]
 
 
+def test_publication_waiting_through_real_job_and_store_is_not_storage_unknown(
+    tmp_path, monkeypatch
+):
+    from market_data_foundation.historical.financial_daily import FinancialError
+    from market_data_foundation.web import financial_daily_jobs as module
+    from tests.test_financial_daily_jobs import attempt_store
+
+    at = AT.replace(minute=11)  # Only the policy slot has become due.
+    schedule = FinancialSchedule(tmp_path / "state", clock=lambda: at)
+    store = attempt_store()
+    calls = []
+
+    class Source:
+        request_count = 0
+
+        def fetch(self, *args, **kwargs):
+            calls.append(args)
+            raise FinancialError("financial_origin_future_window_not_acquired")
+
+    monkeypatch.setattr(module, "coverage", lambda *a, **k: dict(series=[]))
+    monkeypatch.setitem(GROUPS, "policy", (("DFEDTARL",), ("09:10",), False))
+    jobs = FinancialJobs(
+        tmp_path / "jobs",
+        service_factory=lambda **k: SimpleNamespace(source=Source(), store=store),
+    )
+    schedule.enabled(True)
+    task = schedule.tick(jobs)
+    receipt = jobs.journal.read(task["request_id"])
+    assert receipt["state"] == "partial" and task["job_state"] == "partial"
+    assert task["provider_requests"] == 0
+    assert task["failures"][0]["state"] == "waiting_publication"
+    assert task["failures"][0]["classification"] == (
+        "financial_origin_future_window_not_acquired"
+    )
+    assert store.connection.attempts[0][4:6] == (
+        "failed",
+        "financial_origin_future_window_not_acquired",
+    )
+    assert schedule.tick(jobs)["state"] == "not_due"
+    assert len(calls) == 1 and schedule.get()["last_successful_collection_at"] is None
+
+
 def test_financial_write_admission_is_applied_in_composed_web(tmp_path, monkeypatch):
     from tests.test_cpi_timeseries_web_host import client, setup
 
