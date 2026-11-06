@@ -147,6 +147,7 @@ class FinancialSchedule:
             status="OK",
             enabled=state["enabled"],
             revision=state["revision"],
+            updated_at=state.get("updated_at"),
             worker=self._read(
                 self.directory / "worker.json", dict(state="stopped", process=None)
             ),
@@ -159,6 +160,10 @@ class FinancialSchedule:
             max_attempts=MAX_ATTEMPTS,
             timezone="America/New_York",
             maintenance_times={k: list(v[1]) for k, v in GROUPS.items()},
+            next_group_checks=[
+                dict(group=name, at=at.isoformat())
+                for name, at in slots(now, future=True)
+            ],
             schedule_semantics=(
                 "MDF 来源维护检查时间，非官方公布承诺；回看近14日，周末不虚构观测。"
             ),

@@ -336,3 +336,28 @@ def test_local_summary_reads_confirmed_daily_versions_without_source_or_schema_w
         and len(out["series"]) == 10
         and len(seen) == 1
     )
+
+
+def test_status_distinguishes_init_update_defaults_and_existing_collection_limits(
+    monkeypatch,
+):
+    from datetime import timedelta
+
+    monkeypatch.setattr(
+        jobs_module, "defaults", lambda: dict(start="2006-11-06", end="2026-11-06")
+    )
+    status = jobs_module.status()
+    assert status["defaults"]["start"] == "2006-11-06"
+    assert status["update_defaults"] == dict(start="2026-10-24", end="2026-11-06")
+    assert (
+        jobs_module.day(status["update_defaults"]["end"])
+        - jobs_module.day(status["update_defaults"]["start"])
+    ) == timedelta(days=13)
+    assert status["collection_limits"]["max_calendar_days"] == 366 * 30
+    # The UI uses the same future boundary as validate(), without altering it.
+    assert (
+        status["collection_limits"]["latest_end"]
+        == jobs_module.datetime.now(jobs_module.ZoneInfo("Asia/Shanghai"))
+        .date()
+        .isoformat()
+    )

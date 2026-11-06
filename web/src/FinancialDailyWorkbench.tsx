@@ -6,18 +6,20 @@ import {
   financialJobSources,
   financialJobResult,
 } from "./financialJobPresentation";
-import { DateField } from "./DateField";
+import { FinancialCollection } from "./FinancialCollection";
+import { FinancialResultFacts } from "./FinancialResultFacts";
+import { useFinancialSubmission } from "./useFinancialSubmission";
+import { CompactTable } from "./CpiQueryDetails";
 import type { FinancialHelp } from "./FinancialApiHelp";
 import { FinancialDailyQuery } from "./FinancialDailyQuery";
 import { FINANCIAL_PREFIX as prefix } from "./financialQuery";
 import { ExecutionFacts } from "./ExecutionFacts";
 import { formatBeijingTime } from "./beijingTime";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { Navigate, Route } from "./workflowRoute";
 import type { Transport } from "./api";
 import { useVisiblePolling } from "./useVisiblePolling";
 import { Fact, Tabs, Technical, WorkflowTable } from "./WorkflowTable";
-import { requestId } from "./CpiTimeSeriesCollection";
 
 export const FINANCIAL = {
   identity: "mdf.macro.financial-conditions.daily",
@@ -45,9 +47,18 @@ type Step = {
   provider_requests?: number;
   classification?: string;
   retry_at?: string;
-  result?: { batch_id: string; inserted_versions: number };
+  result?: {
+    batch_id: string;
+    saved_points?: number;
+    saved_revisions?: number;
+  };
   valid_rows?: number;
-  retained?: { raw_sha: string; metadata_sha: string; observed_at: string };
+  retained?: {
+    raw_sha: string;
+    metadata_sha: string;
+    observed_at: string;
+    attempts?: number;
+  };
 };
 export type FinancialJob = {
   request_id: string;
@@ -74,8 +85,11 @@ type Metric = {
     source_url: string;
   };
 };
-type Status = {
+export type FinancialStatus = {
   defaults: { start: string; end: string };
+  update_defaults?: { start: string; end: string };
+  update_default_basis?: string;
+  collection_limits?: { max_calendar_days: number; latest_end: string };
   series: Metric[];
   cutoff_semantics: string;
 };
@@ -91,7 +105,7 @@ const names: Record<string, string> = {
   BAMLC0A0CM: "投资级 OAS",
   BAMLH0A0HYM2: "高收益 OAS",
 };
-class FinancialRequestError extends Error {
+export class FinancialRequestError extends Error {
   constructor(
     message: string,
     readonly status: number,
@@ -167,16 +181,9 @@ export function FinancialDailyWorkbench({
 }) {
   const collecting = route.view === "collection",
     tab = route.fields.get("tab") ?? (collecting ? "new" : "local");
-  const [consumerTab, setConsumerTab] = useState("query"),
-    [start, setStart] = useState(""),
-    [end, setEnd] = useState(""),
-    [action, setAction] = useState("init"),
-    [confirmed, setConfirmed] = useState(false);
-  const [busy, setBusy] = useState(false),
-    [failure, setFailure] = useState<string | null>(null),
-    [uncertain, setUncertain] = useState<string | null>(null);
+  const [consumerTab, setConsumerTab] = useState("query");
   const status = useVisiblePolling(
-    (signal) => financialCall<Status>(transport, "/status", signal),
+    (signal) => financialCall<FinancialStatus>(transport, "/status", signal),
     [transport, generation],
     !detailOnly,
     undefined,
@@ -191,12 +198,20 @@ export function FinancialDailyWorkbench({
     (signal) =>
       financialCall<{ jobs: FinancialJob[] }>(transport, "/jobs", signal),
     [transport, generation],
-    !detailOnly,
+    !detailOnly && !(collecting && tab === "new"),
   );
   const jobId = route.fields.get("job");
   const detail = useVisiblePolling(
-    (signal) =>
-      financialCall<{ job: FinancialJob }>(transport, `/jobs/${jobId}`, signal),
+    async (signal) => {
+      const receipt = await financialCall<{ job: FinancialJob }>(
+        transport,
+        `/jobs/${jobId}`,
+        signal,
+      );
+      if (receipt.job?.request_id !== jobId)
+        throw Error("financial_job_identity_unknown");
+      return receipt;
+    },
     [transport, jobId, generation],
     !!jobId,
   );
@@ -208,13 +223,6 @@ export function FinancialDailyWorkbench({
     undefined,
     false,
   );
-  useEffect(() => {
-    if (status.data && !start) {
-      setConfirmed(false);
-      setStart(status.data.defaults.start);
-      setEnd(status.data.defaults.end);
-    }
-  }, [status.data, start]);
   function go(
     view: "assets" | "collection",
     nextTab: string,
@@ -236,81 +244,20 @@ export function FinancialDailyWorkbench({
       view === route.view,
     );
   }
-  async function submit(resume?: string) {
-    if (busy || uncertain || (!resume && !confirmed)) return;
-    setBusy(true);
-    setFailure(null);
-    const request_id = resume ?? requestId();
-    try {
-      const r = await financialCall<{ job: FinancialJob }>(
-        transport,
-        resume ? "/jobs/resume" : "/jobs",
-        undefined,
-        resume ? { request_id } : { request_id, action, start, end },
-      );
-      go("collection", "executions", r.job.request_id);
+  const submission = useFinancialSubmission(
+    transport,
+    `${route.view}:${tab}:${jobId ?? ""}`,
+    (j) => {
+      go("collection", "executions", j.request_id);
       jobs.refresh();
       detail.refresh();
-    } catch (error) {
-      setFailure(
-        error instanceof Error
-          ? error.message
-          : "financial_request_outcome_unknown",
-      );
-      if (
-        !(
-          error instanceof FinancialRequestError &&
-          error.status >= 400 &&
-          error.status < 500
-        )
-      )
-        setUncertain(request_id);
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function verify() {
-    if (!uncertain) return;
-    setBusy(true);
-    try {
-      const r = await financialCall<{ job: FinancialJob }>(
-        transport,
-        `/jobs/${uncertain}`,
-      );
-      setUncertain(null);
-      setFailure(null);
-      go("collection", "executions", r.job.request_id);
-    } catch (error) {
-      setFailure(
-        error instanceof Error ? error.message : "financial_read_failed",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  const failureNotice = (failure ||
-    status.failure ||
+    },
+  );
+  const failureNotice = (status.failure ||
     jobs.failure ||
     detail.failure ||
     summary.failure) && (
-    <p role="alert">
-      {failure
-        ? failure === "financial_job_range_invalid"
-          ? "日期区间无效或超过可采范围，请核对日期后再提交。"
-          : uncertain
-            ? "提交结果尚未确认，请先核实原请求。"
-            : `请求未完成（${failure}），请核对当前来源或本地服务后重试。`
-        : "本地读取暂不可用，请刷新核实，已有持有不据此判为空。"}
-      {uncertain && (
-        <>
-          {" "}
-          请求身份：{uncertain}。结果未确认，不会自动重复提交。
-          <button disabled={busy} onClick={verify}>
-            核实原请求
-          </button>
-        </>
-      )}
-    </p>
+    <p role="alert">本地读取暂不可用，请刷新核实，已有持有不据此判为空。</p>
   );
   const detailPanel = (
     <>
@@ -322,11 +269,32 @@ export function FinancialDailyWorkbench({
             : "请求的日频作业暂不可核实，未改选其他任务。"}
         </p>
       )}
+      {submission.failure && <p role="alert">{submission.failure}</p>}
+      {submission.pending && (
+        <div className="actions">
+          <button
+            disabled={submission.busy}
+            onClick={() => void submission.verify()}
+          >
+            核实原请求
+          </button>
+          <span>
+            请求编号：{submission.pending.request_id}；不自动重复提交。
+          </span>
+        </div>
+      )}
+      <div className="actions">
+        <button disabled={detail.busy} onClick={() => detail.refresh()}>
+          回查此执行记录
+        </button>
+      </div>
       {job && (
         <FinancialExecutionDetail
           job={job}
-          busy={busy || !!uncertain}
-          resume={() => void submit(job.request_id)}
+          busy={
+            submission.busy || !!submission.pending || submission.storageFailed
+          }
+          resume={() => void submission.submit({ resume: job.request_id })}
           go={go}
         />
       )}
@@ -348,120 +316,12 @@ export function FinancialDailyWorkbench({
           <FinancialSources status={status.data} />
         </details>
         {failureNotice}
-        <div className="workbench">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (e.currentTarget.checkValidity()) void submit();
-            }}
-          >
-            {!embedded && (
-              <label>
-                采集目标
-                <input readOnly value="金融条件日频（十项）" />
-              </label>
-            )}
-            <label>
-              采集方式
-              <select
-                aria-label="采集方式"
-                value={action}
-                onChange={(e) => {
-                  setConfirmed(false);
-                  setAction(e.target.value);
-                }}
-              >
-                <option value="update">更新指定范围</option>
-                <option value="init">初始化采集（默认20日历年）</option>
-              </select>
-            </label>
-            <div className="field-grid">
-              <DateField
-                label="采集开始日期"
-                type="date"
-                value={start}
-                onChange={(v) => {
-                  setConfirmed(false);
-                  setStart(v);
-                }}
-                required
-              />
-              <DateField
-                label="采集结束日期"
-                type="date"
-                value={end}
-                onChange={(v) => {
-                  setConfirmed(false);
-                  setEnd(v);
-                }}
-                required
-              />
-            </div>
-            <p className="small">
-              默认终点为美国东部当前观测日{" "}
-              {status.data?.defaults.end ?? "待核实"}
-              ，不是来源已公布承诺；北京时间跨日不拒绝同段已有历史。尚未提供的尾部由后续更新补齐，缺值不补零。
-            </p>
-            <label className="cpi-collection-confirm">
-              <input
-                type="checkbox"
-                checked={confirmed}
-                onChange={(e) => setConfirmed(e.target.checked)}
-              />
-              <span>我确认将以上范围采集到开发测试库</span>
-            </label>
-            <button
-              type="submit"
-              disabled={!confirmed || busy || !!uncertain || !start || !end}
-            >
-              {busy ? "正在提交…" : "提交日频作业"}
-            </button>
-          </form>
-          <aside className="detail-pane execution-briefs" aria-label="执行简报">
-            <h3>执行简报</h3>
-            <p className="small">
-              时间基准：北京时间（UTC+08:00）。受理不等于采集成功。
-            </p>
-            {jobs.busy && !jobs.data && <p>正在读取已有作业…</p>}
-            {jobs.data?.jobs.length === 0 && (
-              <p>暂无执行记录；尚未提交本次采集。</p>
-            )}
-            {(jobs.data?.jobs ?? []).slice(0, 5).map((j) => (
-              <section key={j.request_id} className="execution-brief-card">
-                <strong>{financialJobTitle(j)}</strong>
-                <dl>
-                  <div>
-                    <dt>请求编号</dt>
-                    <dd className="request-id">{j.request_id}</dd>
-                  </div>
-                  <div>
-                    <dt>创建时间</dt>
-                    <dd>{formatBeijingTime(j.created_at)}</dd>
-                  </div>
-                  <div>
-                    <dt>采集范围</dt>
-                    <dd>
-                      {j.command.start} 至 {j.command.end}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>结果</dt>
-                    <dd>
-                      {financialJobResult(j)} ·{" "}
-                      {j.steps.filter((s) => s.state === "complete").length}/
-                      {j.steps.length}
-                    </dd>
-                  </div>
-                </dl>
-                <button
-                  onClick={() => go("collection", "executions", j.request_id)}
-                >
-                  查看执行详情
-                </button>
-              </section>
-            ))}
-          </aside>
-        </div>
+        <FinancialCollection
+          transport={transport}
+          generation={generation}
+          status={status.failure ? null : status.data}
+          onExecution={(id) => go("collection", "executions", id)}
+        />
       </section>
     );
   return (
@@ -522,7 +382,7 @@ export function FinancialDailyWorkbench({
     </>
   );
 }
-function FinancialSources({ status }: { status: Status | null }) {
+function FinancialSources({ status }: { status: FinancialStatus | null }) {
   return (
     <>
       <p>
@@ -636,7 +496,8 @@ function FinancialExecutionDetail({
           {financialJobSources(j).join("、") || "未记录"}
         </Fact>
       </dl>
-      <p>
+      <FinancialResultFacts job={j} />
+      <p className="small">
         已确认 {j.steps.filter((s) => s.state === "complete").length}/
         {j.steps.length} 段；本作业累计来源请求 {j.provider_requests}
         。执行段完成不表示所有日历日都有公布值；来源尾部、非观测日和短历史独立留缺。
@@ -677,9 +538,11 @@ function FinancialExecutionDetail({
             </p>
           ))}
           {resumable && (
-            <button disabled={busy} onClick={resume}>
-              续跑此作业
-            </button>
+            <div className="actions">
+              <button disabled={busy} onClick={resume}>
+                续跑此作业
+              </button>
+            </div>
           )}
         </section>
       )}
@@ -692,13 +555,19 @@ function FinancialExecutionDetail({
           </p>
         </details>
       )}
-      <button onClick={() => go("assets", "local")}>查看关联资产 →</button>
-      <button onClick={() => go("collection", "executions")}>
-        返回执行列表
-      </button>
+      <div className="actions">
+        <button onClick={() => go("assets", "local")}>查看关联资产 →</button>
+        <button onClick={() => go("collection", "executions")}>
+          返回执行列表
+        </button>
+      </div>
       {j.coverage && (
         <details>
           <summary>各指标覆盖与缺口</summary>
+          <p className="small">
+            作业结束时的区间本地覆盖快照，含此前已持有数据，不代表本次新增量。快照截止：
+            {formatBeijingTime(j.coverage.as_of, "未记录")}。
+          </p>
           <CoverageTable rows={j.coverage.series} />
         </details>
       )}
@@ -708,7 +577,8 @@ function FinancialExecutionDetail({
           {j.steps.map((s, i) => (
             <li key={i}>
               <strong>{s.series_id}</strong> {s.start} 至 {s.end} ·{" "}
-              {label(s.state)} · 来源请求 {s.provider_requests ?? 0} · 有效值{" "}
+              {label(s.state)} · 来源请求 {s.provider_requests ?? "未记录"} ·
+              原件批次尝试 {s.retained?.attempts ?? "未记录"} · 有效值{" "}
               {s.valid_rows ?? "待回读"}
               {s.acquired_end && (
                 <p>
@@ -743,35 +613,29 @@ function FinancialExecutionDetail({
 
 function CoverageTable({ rows }: { rows: Coverage[] }) {
   return (
-    <WorkflowTable
-      className="financial-table"
+    <CompactTable
       label="逐项覆盖与缺口"
-      columns={["指标", "有效 / 缺值", "实际有效范围", "未返回日历日"]}
-      rows={rows.map((r) => ({
-        id: r.series_id,
-        search: r.series_id,
-        cells: [
-          <>
-            {r.series_id}
-            <br />
-            {names[r.series_id]}
-          </>,
-          `${r.valid_rows} / ${r.explicit_missing}`,
-          <>
-            {r.first ?? "—"}
-            <br />
-            {r.last ?? "—"}
-          </>,
-          <>
-            {r.calendar_days_without_row}
-            <details>
-              <summary>缺口含义</summary>
-              {r.gap_explanation}
-            </details>
-          </>,
-        ],
-      }))}
-      onSelect={() => {}}
+      headers={["指标", "有效 / 缺值", "实际有效范围", "未返回日历日"]}
+      rows={rows.map((r) => [
+        <>
+          {r.series_id}
+          <br />
+          {names[r.series_id]}
+        </>,
+        `${r.valid_rows} / ${r.explicit_missing}`,
+        <>
+          {r.first ?? "—"}
+          <br />
+          {r.last ?? "—"}
+        </>,
+        <>
+          {r.calendar_days_without_row}
+          <details>
+            <summary>缺口含义</summary>
+            {r.gap_explanation}
+          </details>
+        </>,
+      ])}
     />
   );
 }

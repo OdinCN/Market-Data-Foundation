@@ -14,6 +14,7 @@ import type { Route } from "./workflowRoute";
 
 afterEach(() => {
   cleanup();
+  localStorage.removeItem("mdf.financial.timeseries.pending.v1");
   vi.unstubAllGlobals();
 });
 it("submits from HTTP LAN using the existing secure-random fallback", async () => {
@@ -77,7 +78,7 @@ it("keeps an explicit admission rejection distinct from an unknown network resul
   expect(
     (screen.getByRole("button", { name: "提交日频作业" }) as HTMLButtonElement)
       .disabled,
-  ).toBe(false);
+  ).toBe(true); // Rejected range requires a fresh explicit confirmation.
 });
 const route = (view: "assets" | "collection", tab: string): Route => ({
   view,
@@ -100,7 +101,11 @@ function fixture(post?: (body: unknown) => Promise<Response>) {
         ? post(body)
         : Response.json({
             status: "OK",
-            job: { request_id: (body as { request_id: string }).request_id },
+            job: {
+              request_id: (body as { request_id: string }).request_id,
+              state: "complete",
+              command: body,
+            },
           });
     if (url.endsWith("/status"))
       return Response.json({
@@ -112,7 +117,11 @@ function fixture(post?: (body: unknown) => Promise<Response>) {
     if (url.includes("/jobs/"))
       return Response.json({
         status: "OK",
-        job: { request_id: url.split("/").at(-1) },
+        job: {
+          request_id: url.split("/").at(-1),
+          state: "complete",
+          command: { action: "update", start: "2026-10-23", end: "2026-11-05" },
+        },
       });
     if (url.includes("/query?")) return Response.json(financialResponse(url));
     return Response.json({
@@ -138,6 +147,9 @@ it("reads defaults without writes and submits exactly one editable twenty-year j
       generation={0}
     />,
   );
+  fireEvent.change(screen.getByLabelText("采集方式"), {
+    target: { value: "init" },
+  });
   await waitFor(() =>
     expect(
       (screen.getByLabelText("采集开始日期") as HTMLInputElement).value,

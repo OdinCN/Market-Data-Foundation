@@ -532,11 +532,21 @@ class FinancialJobs:
 
 
 def status():
+    preset = defaults()
     return dict(
         status="OK",
         dataset_id="mdf.macro.financial-conditions.daily",
         definition_revision="r1",
-        defaults=defaults(),
+        defaults=preset,
+        update_defaults=dict(
+            start=(day(preset["end"]) - timedelta(days=13)).isoformat(),
+            end=preset["end"],
+        ),
+        update_default_basis="与周期维护一致，回看近14个日历日；可编辑，来源未公布的尾部独立留缺。",
+        collection_limits=dict(
+            max_calendar_days=366 * 30,
+            latest_end=datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat(),
+        ),
         series=registry(),
         resident_worker=False,
         source_requests_on_read=0,

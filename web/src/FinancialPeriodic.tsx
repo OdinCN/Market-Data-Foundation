@@ -1,3 +1,11 @@
+import { FinancialResultFacts } from "./FinancialResultFacts";
+import { CompactTable } from "./CpiQueryDetails";
+import {
+  financialJobOrigin,
+  financialJobResult,
+} from "./financialJobPresentation";
+import type { FinancialJob } from "./FinancialDailyWorkbench";
+import { executionCreatedOrder } from "./executionOrder";
 import { financialSeriesSource } from "./financialJobPresentation";
 import { useRef, useState } from "react";
 import type { Transport } from "./api";
@@ -20,6 +28,9 @@ type Task = {
 };
 type Strategy = {
   enabled: boolean;
+  revision?: number;
+  updated_at?: string | null;
+  next_group_checks?: { group: string; at: string }[];
   next_check_at: string | null;
   last_successful_collection_at: string | null;
   max_attempts: number;
@@ -98,6 +109,29 @@ export function useFinancialPeriodic(
     [transport],
     active,
   );
+  const jobs = useVisiblePolling(
+    (signal) =>
+      financialCall<{ jobs: FinancialJob[] }>(transport, "/jobs", signal),
+    [transport],
+    active,
+  );
+  const orderedJobs = [...(jobs.data?.jobs ?? [])].sort((a, b) =>
+    executionCreatedOrder(
+      { id: a.request_id, createdAt: a.created_at },
+      { id: b.request_id, createdAt: b.created_at },
+    ),
+  );
+  const recentJob =
+    orderedJobs.find((j) => j.origin === "periodic") ??
+    orderedJobs.find((j) => j.origin == null || j.origin === "manual");
+  const openJob = (id: string) =>
+    navigate("collection", {
+      tab: "executions",
+      asset: FINANCIAL.identity,
+      asset_revision: "r1",
+      execution_asset: FINANCIAL.identity + "@r1",
+      job: id,
+    });
   const latest = summary.data?.series
     .filter((s) => s.last)
     .map((s) => s.last!)
@@ -248,7 +282,9 @@ export function useFinancialPeriodic(
           )}
         <span className="strategy-control-note">
           {!data
-            ? "正在读取策略与实际进程。"
+            ? resource.failure
+              ? "策略与进程读取失败，状态待核实。"
+              : "正在读取策略与实际进程。"
             : !data.enabled
               ? "暂停后不再自动触发；手动采集不受影响。"
               : !data.control.online
@@ -303,8 +339,9 @@ export function useFinancialPeriodic(
         个日历日，保留真实修订；停用时间更长的历史区间可从新建采集手动更新。已有数据、维护检查完成和自然发布捕获分别记录。
       </p>
       <dl>
+        <Fact name="最近成功采集（北京时间）">{successText}</Fact>
+        <Fact name="最新数据期">{latestText}</Fact>
         <Fact name="下次维护检查（北京时间）">{nextText}</Fact>
-        <Fact name="最近成功自动作业（北京时间）">{successText}</Fact>
       </dl>
       <button
         onClick={() =>
@@ -332,65 +369,171 @@ export function useFinancialPeriodic(
         </p>
         <p>族级最新日期不能证明全部指标齐全；范围缺口以本地查询为准。</p>
       </details>
-      <h4>分组检查与执行</h4>
-      <p>
-        {data?.schedule_semantics}{" "}
-        以下时点为美国东部时间，执行详情统一显示北京时间；隔夜/国债/信用只在周一至周五检查，实际休市与未公布保留来源缺项。
-      </p>
-      <ul>
-        {Object.entries(data?.maintenance_times ?? {}).map(([g, t]) => (
-          <li key={g}>
-            {groups[g]}：{t.join("、")}
-          </li>
-        ))}
-      </ul>
-      {data?.tasks.slice(0, 12).map((t) => (
-        <article
-          className={
-            t.state === "failed" ? "auto-issue" : "execution-brief-card"
-          }
-          key={t.request_id}
-        >
-          <strong>
-            {groups[t.group]} · {formatBeijingTime(t.slot)}
-          </strong>
-          <p>
-            {t.state === "complete"
-              ? "该组采集作业已完成"
-              : t.state === "running"
-                ? "正在采集"
-                : `已尝试 ${t.attempts}/${data.max_attempts} 次；${reason(t.classification)}`}
+      <section aria-label="最近真实执行摘要">
+        <h4>最近真实执行摘要</h4>
+        {!jobs.data && (
+          <p role={jobs.failure ? "alert" : "status"}>
+            {jobs.failure
+              ? "执行记录读取失败，最近执行待核实。"
+              : "正在读取真实执行记录…"}
           </p>
-          {t.failures?.map((f) => (
-            <p key={f.series_id}>
-              {f.series_id}：{reason(f.classification)}
-            </p>
-          ))}
-          {t.state === "failed" && (
+        )}
+        {jobs.data && jobs.failure && (
+          <p role="alert">保留上次执行回读，当前刷新失败。</p>
+        )}
+        {jobs.data && !recentJob && <p>尚无真实执行记录。</p>}
+        {recentJob && (
+          <>
             <p>
-              {t.attempts < data.max_attempts
-                ? `下次自动续跑：${formatBeijingTime(t.retry_at)}`
-                : "本次时点自动重试已达上限；可进入该作业查看原因并续跑。后续时点仍按计划检查近14日，不覆盖旧失败事实。"}
+              本资产最近执行来源：{financialJobOrigin(recentJob)}。
+              {recentJob.origin !== "periodic" &&
+                "自动策略尚无真实执行记录；以下为手动采集结果。"}
+            </p>
+            <dl>
+              <Fact name="记录编号">{recentJob.request_id}</Fact>
+              <Fact name="采集方式">
+                {recentJob.command.action === "init"
+                  ? "初始化采集"
+                  : "更新指定范围"}
+              </Fact>
+              <Fact name="范围">
+                {recentJob.command.start} 至 {recentJob.command.end}
+              </Fact>
+              <Fact name="开始时间（北京时间）">
+                {formatBeijingTime(recentJob.started_at, "未记录")}
+              </Fact>
+              <Fact name="结束时间（北京时间）">
+                {formatBeijingTime(
+                  recentJob.state === "running" ? null : recentJob.finished_at,
+                  "未记录",
+                )}
+              </Fact>
+              <Fact name="执行结果">{financialJobResult(recentJob)}</Fact>
+            </dl>
+            <FinancialResultFacts job={recentJob} />
+            <div className="actions">
+              <button onClick={() => openJob(recentJob.request_id)}>
+                打开对应执行详情
+              </button>
+            </div>
+          </>
+        )}
+      </section>
+      <details>
+        <summary>策略上次执行回执与审计</summary>
+        {!data ? (
+          <p role="status">
+            {resource.failure
+              ? "策略回执读取失败，待核实。"
+              : "正在读取策略回执…"}
+          </p>
+        ) : (
+          <dl>
+            <Fact name="策略意图">{data.enabled ? "开启" : "暂停"}</Fact>
+            <Fact name="策略修订">{data.revision ?? "未记录"}</Fact>
+            <Fact name="意图保存时间（北京时间）">
+              {formatBeijingTime(data.updated_at, "未记录")}
+            </Fact>
+            <Fact name="最近成功自动作业（北京时间）">{successText}</Fact>
+          </dl>
+        )}
+        <p>
+          策略意图保存、服务在线与采集成功分别记录，不以其中任一项推定其他项。
+        </p>
+      </details>
+      <section aria-label="分组维护计划与结果">
+        <h4>分组维护计划与执行结果</h4>
+        <p>
+          时间基准：北京时间（UTC+08:00）。MDF
+          维护计划不代表官方发布或已经执行；每组回看近14个日历日。
+        </p>
+        {!data ? (
+          <p role={resource.failure ? "alert" : "status"}>
+            {resource.failure
+              ? "维护计划读取失败，待核实。"
+              : "正在读取维护计划…"}
+          </p>
+        ) : data.next_group_checks ? (
+          <CompactTable
+            label="下一次分组维护计划"
+            headers={["分组", "下次计划（北京时间）", "触发意图"]}
+            rows={data.next_group_checks.map((g) => [
+              groups[g.group] ?? g.group,
+              formatBeijingTime(g.at, "待核实"),
+              data.enabled ? "按计划检查" : "已暂停，不触发",
+            ])}
+          />
+        ) : (
+          <p>尚未取得带日期的分组计划；下次整体检查：{nextText}。</p>
+        )}
+        <details>
+          <summary>近期分组执行与结果</summary>
+          {!data && (
+            <p role="status">
+              {resource.failure
+                ? "执行回执读取失败，待核实。"
+                : "正在读取执行回执…"}
             </p>
           )}
-          <button
-            onClick={() =>
-              navigate("collection", {
-                tab: "executions",
-                asset: FINANCIAL.identity,
-                asset_revision: "r1",
-                execution_asset: FINANCIAL.identity + "@r1",
-                job: t.request_id,
-              })
-            }
-          >
-            查看日频执行详情 →
-          </button>
-        </article>
-      ))}
-      {!data?.tasks.length && <p>尚无日频自动执行记录。</p>}
+          {data && !data.tasks.length && <p>尚无日频自动执行记录。</p>}
+          {data?.tasks.slice(0, 12).map((t) => (
+            <details className="month-stage-detail" key={t.request_id}>
+              <summary>
+                {groups[t.group]} · {formatBeijingTime(t.slot)} ·{" "}
+                {t.state === "complete"
+                  ? "已完成"
+                  : t.state === "running"
+                    ? "采集中"
+                    : t.state === "pending"
+                      ? "等待执行"
+                      : "需核对失败与重试"}
+              </summary>
+              <dl>
+                <Fact name="记录编号">{t.request_id}</Fact>
+                <Fact name="维护计划（北京时间）">
+                  {formatBeijingTime(t.slot)}
+                </Fact>
+                <Fact name="累计调度尝试">
+                  {t.attempts}/{data.max_attempts}
+                </Fact>
+              </dl>
+              {t.state === "failed" && (
+                <p role="alert">{reason(t.classification)}</p>
+              )}
+              {t.failures?.map((f) => (
+                <p key={f.series_id}>
+                  {f.series_id}：{reason(f.classification)}
+                </p>
+              ))}
+              {t.state === "failed" && (
+                <p>
+                  {t.attempts < data.max_attempts
+                    ? `下次自动续跑：${formatBeijingTime(t.retry_at)}`
+                    : "本次时点自动重试已达上限；进入原作业核对原因后恢复。后续时点仍按计划检查近14日，旧失败事实保留。"}
+                </p>
+              )}
+              <div className="actions">
+                <button onClick={() => openJob(t.request_id)}>
+                  查看日频执行详情 →
+                </button>
+              </div>
+            </details>
+          ))}
+        </details>
+      </section>
       <details>
         <summary>技术详情</summary>
+        <p>
+          {data?.schedule_semantics}{" "}
+          美国东部规则（America/New_York，自动适用DST）；隔夜/国债/信用限周一至周五，实际休市或未公布独立留缺。
+        </p>
+        <ul>
+          {Object.entries(data?.maintenance_times ?? {}).map(([g, t]) => (
+            <li key={g}>
+              {groups[g]}：{t.join("、")}（美东规则）
+            </li>
+          ))}
+        </ul>
         <dl>
           <Fact name="服务与心跳">
             {data?.control.online ? "已核对在线" : reason(data?.control.reason)}
@@ -413,6 +556,7 @@ export function useFinancialPeriodic(
     refresh: () => {
       resource.refresh();
       summary.refresh();
+      jobs.refresh();
     },
   };
 }

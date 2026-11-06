@@ -142,6 +142,15 @@ it("uses the existing target, tabs and unified execution detail; retains the ori
   await screen.findByRole("option", { name: "金融条件日频（十项）" });
   fireEvent.change(select, { target: { value: keyOf(FINANCIAL) } });
   expect(
+    ((await screen.findByLabelText("采集方式")) as HTMLSelectElement).value,
+  ).toBe("update");
+  expect(
+    ((await screen.findByLabelText("采集开始日期")) as HTMLInputElement).value,
+  ).toBe("2026-10-23");
+  fireEvent.change(screen.getByLabelText("采集方式"), {
+    target: { value: "init" },
+  });
+  expect(
     ((await screen.findByLabelText("采集开始日期")) as HTMLInputElement).value,
   ).toBe("2006-11-05");
   expect(screen.getByLabelText("采集目标").tagName).toBe("SELECT");

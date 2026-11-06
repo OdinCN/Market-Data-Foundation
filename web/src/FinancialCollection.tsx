@@ -1,0 +1,277 @@
+import { useEffect, useRef, useState } from "react";
+import { DateField } from "./DateField";
+import {
+  beijingToday,
+  beijingInputToIso,
+  formatBeijingTime,
+} from "./beijingTime";
+import {
+  financialJobOrigin,
+  financialJobResult,
+  financialJobTitle,
+} from "./financialJobPresentation";
+import {
+  financialCall,
+  type FinancialJob,
+  type FinancialStatus,
+} from "./FinancialDailyWorkbench";
+import { useVisiblePolling } from "./useVisiblePolling";
+import { useFinancialSubmission } from "./useFinancialSubmission";
+import type { Transport } from "./api";
+
+type Range = { start: string; end: string };
+export function financialRangeError(
+  range: Range,
+  maxDays: number,
+  latestEnd: string,
+) {
+  const a = beijingInputToIso(range.start + "T00:00:00"),
+    b = beijingInputToIso(range.end + "T00:00:00");
+  if (!a || !b) return "请填写合法的采集开始和结束日期。";
+  if (range.start > range.end) return "采集开始日期不得晚于结束日期。";
+  if ((Date.parse(b) - Date.parse(a)) / 86400000 + 1 > maxDays)
+    return `采集范围不得超过 ${maxDays} 个日历日。`;
+  if (range.end > latestEnd)
+    return `采集结束日期不得晚于 ${latestEnd}（北京时间当日边界）。`;
+  return "";
+}
+export function FinancialCollection({
+  transport,
+  generation,
+  status,
+  onExecution,
+}: {
+  transport: Transport;
+  generation: number;
+  status: FinancialStatus | null;
+  onExecution: (id: string) => void;
+}) {
+  const [action, setAction] = useState<"update" | "init">("update");
+  const [drafts, setDrafts] = useState<Record<"update" | "init", Range>>({
+    update: { start: "", end: "" },
+    init: { start: "", end: "" },
+  });
+  const [confirmed, setConfirmed] = useState(false);
+  const edited = useRef({ update: false, init: false });
+  const jobs = useVisiblePolling(
+    (signal) =>
+      financialCall<{ jobs: FinancialJob[] }>(transport, "/jobs", signal),
+    [transport, generation],
+  );
+  const submission = useFinancialSubmission(transport, "new", (j) => {
+    jobs.refresh();
+    onExecution(j.request_id);
+  });
+  const { pending, busy, failure, storageFailed } = submission;
+  useEffect(() => {
+    if (!status) return;
+    const end = status.defaults.end;
+    // Compatibility for an older status DTO: same documented 14-day maintenance window.
+    const start = new Date(Date.parse(end + "T00:00:00Z") - 13 * 86400000)
+      .toISOString()
+      .slice(0, 10);
+    setDrafts((old) => ({
+      update: edited.current.update
+        ? old.update
+        : (status.update_defaults ?? { start, end }),
+      init: edited.current.init ? old.init : status.defaults,
+    }));
+  }, [status]);
+  useEffect(() => {
+    const command = pending?.command;
+    if (!command || !["init", "update"].includes(command.action)) return;
+    const mode = command.action as "init" | "update";
+    edited.current[mode] = true;
+    setAction(mode);
+    setConfirmed(false);
+    setDrafts((old) => ({
+      ...old,
+      [mode]: { start: command.start, end: command.end },
+    }));
+  }, [pending]);
+  const range = drafts[action];
+  useEffect(() => setConfirmed(false), [action, range.start, range.end]);
+  const maxDays = status?.collection_limits?.max_calendar_days ?? 366 * 30;
+  const latest = status?.collection_limits?.latest_end ?? beijingToday();
+  const error = financialRangeError(range, maxDays, latest);
+  function change(key: keyof Range, value: string) {
+    edited.current[action] = true;
+    setConfirmed(false);
+    setDrafts((old) => ({
+      ...old,
+      [action]: { ...old[action], [key]: value },
+    }));
+  }
+  const briefs =
+    jobs.data?.jobs
+      .filter((j) => financialJobOrigin(j) === "手动采集")
+      .slice(0, 5) ?? [];
+  return (
+    <div className="workbench cpi-collection-workbench">
+      <div className="collection-input-pane">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (
+              !error &&
+              confirmed &&
+              status &&
+              e.currentTarget.checkValidity()
+            )
+              void submission.submit({ action, ...range });
+          }}
+        >
+          <label>
+            采集方式
+            <select
+              aria-label="采集方式"
+              value={action}
+              disabled={busy || !!pending}
+              onChange={(e) => {
+                setConfirmed(false);
+                setAction(e.target.value as "init" | "update");
+              }}
+            >
+              <option value="update">更新指定范围</option>
+              <option value="init">初始化采集</option>
+            </select>
+          </label>
+          <div className="field-grid">
+            <DateField
+              key={`${action}-start`}
+              label="采集开始日期"
+              type="date"
+              value={range.start}
+              onChange={(v) => change("start", v)}
+              required
+              disabled={busy || !!pending}
+              max={latest}
+            />
+            <DateField
+              key={`${action}-end`}
+              label="采集结束日期"
+              type="date"
+              value={range.end}
+              onChange={(v) => change("end", v)}
+              required
+              disabled={busy || !!pending}
+              max={latest}
+            />
+          </div>
+          {action === "init" ? (
+            <>
+              <p>初始化服务预置范围：20日历年，可自行修改</p>
+              <p>
+                服务预置日期：
+                {status
+                  ? `${status.defaults.start} 至 ${status.defaults.end}`
+                  : "正在读取…"}
+              </p>
+            </>
+          ) : (
+            <p className="small">
+              更新默认范围：
+              {status?.update_default_basis ??
+                "回看近14个日历日，与周期维护范围一致，可编辑。"}{" "}
+              不沿用初始化草稿。
+            </p>
+          )}
+          <p className="small">
+            范围依据：美国东部当前观测日 {status?.defaults.end ?? "正在读取…"}
+            ，不代表来源已经公布。尾部未公布独立留缺，已有历史仍可取得；当前最多{" "}
+            {maxDays} 个日历日。
+          </p>
+          {error && range.start && range.end && <p role="alert">{error}</p>}
+          <label className="cpi-collection-confirm">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              disabled={busy || !!pending}
+              onChange={(e) => setConfirmed(e.target.checked)}
+            />
+            <span>我确认将以上范围采集到开发测试库</span>
+          </label>
+          <button
+            type="submit"
+            className="primary"
+            disabled={
+              !status ||
+              !confirmed ||
+              !!error ||
+              busy ||
+              !!pending ||
+              storageFailed
+            }
+          >
+            {busy ? "正在提交…" : "提交日频作业"}
+          </button>
+        </form>
+        {failure && <p role="alert">{failure}</p>}
+        {storageFailed && (
+          <p role="alert">本机请求记录无法核实，已阻止提交。</p>
+        )}
+        {pending && (
+          <section aria-label="原请求回查">
+            <p role="status">
+              请求编号：{pending.request_id}。
+              {pending.command &&
+                `${pending.command.start} 至 ${pending.command.end}。`}{" "}
+              结果未知期间保留同一身份。
+            </p>
+            <div className="actions">
+              <button disabled={busy} onClick={() => void submission.verify()}>
+                核实原请求
+              </button>
+            </div>
+          </section>
+        )}
+      </div>
+      <aside className="detail-pane execution-briefs" aria-label="执行简报">
+        <h3>执行简报</h3>
+        <p className="small">
+          时间基准：北京时间（UTC+08:00）。以下为手动采集；自动作业见周期任务与执行记录。
+        </p>
+        {jobs.busy && !jobs.data && <p role="status">正在读取执行简报…</p>}
+        {jobs.failure && <p role="alert">执行简报读取失败，已有记录待核实。</p>}
+        {jobs.data && !briefs.length && (
+          <p>暂无手动采集记录；尚未提交本次采集。</p>
+        )}
+        <ol className="execution-brief-list">
+          {briefs.map((j) => (
+            <li key={j.request_id}>
+              <button
+                type="button"
+                className="execution-brief-card"
+                onClick={() => onExecution(j.request_id)}
+              >
+                <strong>{financialJobTitle(j)}</strong>
+                <dl>
+                  <div>
+                    <dt>请求编号</dt>
+                    <dd className="request-id">{j.request_id}</dd>
+                  </div>
+                  <div>
+                    <dt>创建时间</dt>
+                    <dd>
+                      {formatBeijingTime(j.created_at).replace(" 北京时间", "")}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>采集范围</dt>
+                    <dd>
+                      {j.command.start} 至 {j.command.end}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>结果</dt>
+                    <dd>{financialJobResult(j)}</dd>
+                  </div>
+                </dl>
+              </button>
+            </li>
+          ))}
+        </ol>
+      </aside>
+    </div>
+  );
+}

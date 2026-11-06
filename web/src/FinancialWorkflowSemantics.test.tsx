@@ -245,7 +245,7 @@ it("complete legacy record retains unknown start instead of manufacturing it", a
   );
 });
 
-it("new-collection briefs distinguish persisted automatic and manual triggers without a submission", async () => {
+it("new-collection briefs keep manual triggers; automatic jobs remain in execution records", async () => {
   const records = [job({ origin: "periodic", request_id: recent }), job()];
   const calls: string[] = [];
   const transport: Transport = async (u, i) => {
@@ -276,7 +276,8 @@ it("new-collection briefs distinguish persisted automatic and manual triggers wi
     />,
   );
   const briefs = await screen.findByRole("complementary", { name: "执行简报" });
-  await within(briefs).findByText(/金融日频 · 自动策略 · 更新指定范围/);
+  await within(briefs).findByText(/金融日频 · 手动采集 · 更新指定范围/);
+  expect(within(briefs).queryByRole("button", { name: /自动策略/ })).toBeNull();
   expect(
     within(briefs).getByText(/金融日频 · 手动采集 · 更新指定范围/),
   ).toBeTruthy();

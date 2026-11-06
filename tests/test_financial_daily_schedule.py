@@ -350,3 +350,35 @@ def test_product_resume_of_exhausted_job_is_reconciled_while_paused_without_fetc
         and matched["completed_at"] == clock[0].isoformat()
     )
     assert matched["attempts"] == MAX_ATTEMPTS and len(jobs.calls) == original_calls
+
+
+@pytest.mark.parametrize(
+    "at,policy,treasury",
+    [
+        # At each DST boundary, use the NEXT dated slot, not a fixed UTC offset.
+        (
+            "2026-03-07T23:00:00+00:00",
+            "2026-03-08T13:10:00+00:00",
+            "2026-03-09T22:30:00+00:00",
+        ),
+        (
+            "2026-10-31T23:00:00+00:00",
+            "2026-11-01T14:10:00+00:00",
+            "2026-11-02T23:30:00+00:00",
+        ),
+    ],
+)
+def test_read_projection_exposes_dated_next_group_checks_without_writes(
+    tmp_path, at, policy, treasury
+):
+    schedule = FinancialSchedule(
+        tmp_path / "absent", clock=lambda: datetime.fromisoformat(at)
+    )
+    view = schedule.get()
+    next_checks = {v["group"]: v["at"] for v in view["next_group_checks"]}
+    assert next_checks["policy"] == policy
+    assert next_checks["treasury"] == treasury
+    assert set(next_checks) == set(GROUPS)
+    assert view["enabled"] is False and view["next_check_at"] is None
+    assert view["updated_at"] is None
+    assert not schedule.directory.exists()

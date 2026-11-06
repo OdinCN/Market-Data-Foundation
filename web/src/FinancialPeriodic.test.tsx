@@ -203,9 +203,11 @@ it("does not claim paused or absent execution before strategy facts have loaded"
   const transport: Transport = async (u) =>
     String(u).endsWith("/summary")
       ? Response.json({ status: "OK", series: [] })
-      : new Promise((r) => {
-          complete = r;
-        });
+      : String(u).endsWith("/jobs")
+        ? Response.json({ status: "OK", jobs: [] })
+        : new Promise((r) => {
+            complete = r;
+          });
   render(<Page transport={transport} />);
   await screen.findByText("自动采集状态：正在读取…");
   expect(screen.queryByText(/^自动采集已暂停/)).toBeNull();
@@ -213,4 +215,94 @@ it("does not claim paused or absent execution before strategy facts have loaded"
   complete(Response.json(base));
   await screen.findByText("自动采集已暂停 · 已暂停");
   expect(screen.getAllByText("尚无成功自动作业").length).toBeGreaterThan(0);
+});
+
+it("shows dated Beijing maintenance slots, persisted automatic job identity/stats and a GET-only detail jump", async () => {
+  const id = "00000000-0000-4000-8000-000000000009";
+  const nav = vi.fn(),
+    requests: string[] = [];
+  const transport: Transport = async (u, i) => {
+    requests.push(i?.method ?? "GET");
+    return Response.json(
+      String(u).endsWith("/jobs")
+        ? {
+            status: "OK",
+            jobs: [
+              {
+                request_id: id,
+                origin: "periodic",
+                state: "complete",
+                created_at: "2026-11-05T14:00:00Z",
+                started_at: "2026-11-05T14:00:01Z",
+                finished_at: "2026-11-05T14:00:04Z",
+                command: {
+                  action: "update",
+                  start: "2026-10-23",
+                  end: "2026-11-05",
+                },
+                provider_requests: 2,
+                steps: [
+                  {
+                    state: "complete",
+                    result: { saved_points: 3, saved_revisions: 1 },
+                  },
+                ],
+              },
+            ],
+          }
+        : String(u).endsWith("/summary")
+          ? { status: "OK", series: [] }
+          : {
+              ...base,
+              next_group_checks: [
+                { group: "policy", at: "2026-03-08T13:10:00Z" },
+                { group: "treasury", at: "2026-11-02T23:30:00Z" },
+              ],
+            },
+    );
+  };
+  function Test() {
+    const p = useFinancialPeriodic(transport, true, nav);
+    return p.detail;
+  }
+  render(<Test />);
+  await screen.findByText(id);
+  expect(
+    screen.getByRole("table", { name: "下一次分组维护计划" }).textContent,
+  ).toContain("2026-03-08 21:10:00 北京时间");
+  expect(
+    screen.getByRole("table", { name: "下一次分组维护计划" }).textContent,
+  ).toContain("2026-11-03 07:30:00 北京时间");
+  expect(screen.getByText("新增修订").closest(".fact")?.textContent).toContain(
+    "1",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "打开对应执行详情" }));
+  expect(nav).toHaveBeenCalledWith(
+    "collection",
+    expect.objectContaining({ job: id, tab: "executions" }),
+  );
+  expect(requests.every((m) => m === "GET")).toBe(true);
+});
+
+it("execution loading, failed read and an observed empty result remain distinct", async () => {
+  let done!: (r: Response) => void;
+  const transport: Transport = async (u) =>
+    String(u).endsWith("/jobs")
+      ? new Promise((r) => {
+          done = r;
+        })
+      : Response.json(
+          String(u).endsWith("/summary") ? { status: "OK", series: [] } : base,
+        );
+  render(<Page transport={transport} />);
+  await screen.findByText("正在读取真实执行记录…");
+  expect(screen.queryByText("尚无真实执行记录。")).toBeNull();
+  done(
+    Response.json(
+      { status: "UNKNOWN", classification: "financial_local_unavailable" },
+      { status: 503 },
+    ),
+  );
+  await screen.findByText("执行记录读取失败，最近执行待核实。");
+  expect(screen.queryByText("尚无真实执行记录。")).toBeNull();
 });

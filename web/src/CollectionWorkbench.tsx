@@ -1909,7 +1909,12 @@ export function CollectionWorkbench({
         <>
           <div className="toolbar">
             <h2>采集执行记录</h2>
-            {!newCpi && !newPpi && !newPce && !newEmployment && !newRetail && (
+            {(financialTarget ||
+              (!newCpi &&
+                !newPpi &&
+                !newPce &&
+                !newEmployment &&
+                !newRetail)) && (
               <button onClick={() => setRefresh((n) => n + 1)}>
                 回查执行记录
               </button>
@@ -1998,7 +2003,9 @@ export function CollectionWorkbench({
                       <span>至</span>
                       <span>{j.command.end}</span>
                     </span>,
-                    `${financialJobResult(j)} · ${j.steps.filter((s) => s.state === "complete").length}/${j.steps.length}`,
+                    <span className="execution-result">
+                      {financialJobResult(j)}
+                    </span>,
                   ],
                 })),
               ...rows.map((e) => ({
