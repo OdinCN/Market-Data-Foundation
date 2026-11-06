@@ -318,7 +318,11 @@ class PackageCatalog:
                             release_calendar=(
                                 "按来源可得时间分组检查并回看近14日修订；支持人工初始化/增量与周期采集，实际策略及运行另行核实"
                                 if cap.capability_id == "financial_daily"
-                                else "Census M3 官方发布日历（调度未装配）"
+                                else (
+                                    "Census M3 官方发布日历（"
+                                    "先行/完整报告周期采集已接入；"
+                                    "实际策略与运行另行核实）"
+                                )
                                 if cap.capability_id == "m3"
                                 else calendars.get(row.source_name, "未装配")
                             ),

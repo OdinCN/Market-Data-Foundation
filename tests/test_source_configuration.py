@@ -300,6 +300,13 @@ def test_ten_canonical_relationships_include_disabled_claims(tmp_path):
         for s in ("FRED", "Credit archive")
     )
     assert relations["MDF"]["original_institution"] == "MDF"
+    m3 = capabilities["m3"]["source_relations"][0]
+    assert m3["source_id"] == "Census"
+    assert m3["original_institution"] == "Census"
+    assert "先行/完整报告周期采集已接入" in m3["release_calendar"]
+    assert "实际策略与运行另行核实" in m3["release_calendar"]
+    assert "调度未装配" not in m3["release_calendar"]
+    assert m3["backup_status"] == "未装配备用数值通路"
     claims = next(c for c in body["capabilities"] if c["capability_id"] == "claims")
     relation = claims["source_relations"][0]
     assert relation["source_id"] == "FRED"
