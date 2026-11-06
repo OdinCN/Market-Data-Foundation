@@ -69,6 +69,7 @@ export type FinancialJob = {
   finished_at?: string | null;
   updated_at?: string | null;
   origin?: string | null;
+  resume_count?: number;
   provider_requests: number;
   command: { action: string; start: string; end: string };
   steps: Step[];
@@ -248,10 +249,11 @@ export function FinancialDailyWorkbench({
     transport,
     `${route.view}:${tab}:${jobId ?? ""}`,
     (j) => {
-      go("collection", "executions", j.request_id);
       jobs.refresh();
+      detail.commit({ job: j });
       detail.refresh();
     },
+    collecting && tab === "executions" && !!jobId,
   );
   const failureNotice = (status.failure ||
     jobs.failure ||
@@ -270,7 +272,7 @@ export function FinancialDailyWorkbench({
         </p>
       )}
       {submission.failure && <p role="alert">{submission.failure}</p>}
-      {submission.pending && (
+      {submission.pending && submission.uncertain && (
         <div className="actions">
           <button
             disabled={submission.busy}
@@ -283,18 +285,17 @@ export function FinancialDailyWorkbench({
           </span>
         </div>
       )}
-      <div className="actions">
-        <button disabled={detail.busy} onClick={() => detail.refresh()}>
-          回查此执行记录
-        </button>
-      </div>
       {job && (
         <FinancialExecutionDetail
           job={job}
           busy={
-            submission.busy || !!submission.pending || submission.storageFailed
+            submission.busy ||
+            submission.uncertain ||
+            submission.storageFailed ||
+            (!!submission.pending &&
+              submission.pending.request_id !== job.request_id)
           }
-          resume={() => void submission.submit({ resume: job.request_id })}
+          resume={() => void submission.submit({ resume: job.request_id, job })}
           go={go}
         />
       )}

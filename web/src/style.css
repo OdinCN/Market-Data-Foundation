@@ -2014,3 +2014,9 @@ button.strategy-switch::before {
 .financial-table > .detail-pane {
   display: none;
 }
+
+/* The active manual request remains prominent while the form tracks it. */
+.execution-brief-card[aria-current="true"] {
+  border-color: var(--accent);
+  background: var(--selected);
+}

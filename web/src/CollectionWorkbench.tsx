@@ -1909,16 +1909,6 @@ export function CollectionWorkbench({
         <>
           <div className="toolbar">
             <h2>采集执行记录</h2>
-            {(financialTarget ||
-              (!newCpi &&
-                !newPpi &&
-                !newPce &&
-                !newEmployment &&
-                !newRetail)) && (
-              <button onClick={() => setRefresh((n) => n + 1)}>
-                回查执行记录
-              </button>
-            )}
             {executionSchedule !== "all" && (
               <button
                 onClick={() =>

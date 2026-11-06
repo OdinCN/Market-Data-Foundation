@@ -58,11 +58,19 @@ export function FinancialCollection({
       financialCall<{ jobs: FinancialJob[] }>(transport, "/jobs", signal),
     [transport, generation],
   );
-  const submission = useFinancialSubmission(transport, "new", (j) => {
-    jobs.refresh();
-    onExecution(j.request_id);
-  });
-  const { pending, busy, failure, storageFailed } = submission;
+  const submission = useFinancialSubmission(transport, "new", () =>
+    jobs.refresh(),
+  );
+  const {
+    pending,
+    busy,
+    failure,
+    storageFailed,
+    receipt,
+    uncertain,
+    canRelease,
+    rejected,
+  } = submission;
   useEffect(() => {
     if (!status) return;
     const end = status.defaults.end;
@@ -102,10 +110,20 @@ export function FinancialCollection({
       [action]: { ...old[action], [key]: value },
     }));
   }
-  const briefs =
+  const history =
     jobs.data?.jobs
-      .filter((j) => financialJobOrigin(j) === "手动采集")
+      .filter(
+        (j) =>
+          financialJobOrigin(j) === "手动采集" &&
+          j.request_id !== pending?.request_id,
+      )
       .slice(0, 5) ?? [];
+  const briefs = [...(receipt ? [receipt] : []), ...history];
+  function newIntent() {
+    if (!canRelease) return;
+    submission.newIntent();
+    setConfirmed(false);
+  }
   return (
     <div className="workbench cpi-collection-workbench">
       <div className="collection-input-pane">
@@ -203,27 +221,12 @@ export function FinancialCollection({
               storageFailed
             }
           >
-            {busy ? "正在提交…" : "提交日频作业"}
+            {busy ? "正在提交…" : "提交 金融条件日频 采集"}
           </button>
         </form>
         {failure && <p role="alert">{failure}</p>}
         {storageFailed && (
           <p role="alert">本机请求记录无法核实，已阻止提交。</p>
-        )}
-        {pending && (
-          <section aria-label="原请求回查">
-            <p role="status">
-              请求编号：{pending.request_id}。
-              {pending.command &&
-                `${pending.command.start} 至 ${pending.command.end}。`}{" "}
-              结果未知期间保留同一身份。
-            </p>
-            <div className="actions">
-              <button disabled={busy} onClick={() => void submission.verify()}>
-                核实原请求
-              </button>
-            </div>
-          </section>
         )}
       </div>
       <aside className="detail-pane execution-briefs" aria-label="执行简报">
@@ -233,15 +236,80 @@ export function FinancialCollection({
         </p>
         {jobs.busy && !jobs.data && <p role="status">正在读取执行简报…</p>}
         {jobs.failure && <p role="alert">执行简报读取失败，已有记录待核实。</p>}
-        {jobs.data && !briefs.length && (
+        {jobs.data && !briefs.length && !pending && (
           <p>暂无手动采集记录；尚未提交本次采集。</p>
         )}
         <ol className="execution-brief-list">
+          {pending && !receipt && (
+            <li>
+              <div className="execution-brief-card" role="status">
+                <strong>
+                  金融条件日频 ·{" "}
+                  {pending.command?.action === "init"
+                    ? "初始化采集"
+                    : "更新指定范围"}
+                </strong>
+                <dl>
+                  <div>
+                    <dt>请求编号</dt>
+                    <dd className="request-id">{pending.request_id}</dd>
+                  </div>
+                  <div>
+                    <dt>创建时间</dt>
+                    <dd>未核实（本机保留意图）</dd>
+                  </div>
+                  <div>
+                    <dt>采集范围</dt>
+                    <dd>
+                      {pending.command?.start ?? "待核实"} 至{" "}
+                      {pending.command?.end ?? "待核实"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>结果</dt>
+                    <dd>
+                      {busy
+                        ? "正在提交，尚未确认任务创建。"
+                        : rejected
+                          ? failure
+                          : "结果未知，保留请求并自动跟踪，请勿重复提交；尚未确认任务创建。"}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+              {canRelease && (
+                <button disabled={busy || storageFailed} onClick={newIntent}>
+                  开始另一项采集
+                </button>
+              )}
+            </li>
+          )}
+          {pending && uncertain && !busy && (
+            <li>
+              <p role="status">
+                同一请求的回执尚未核实或已陈旧，保留请求并自动跟踪，请勿重复提交。
+              </p>
+              <button
+                disabled={busy || storageFailed}
+                onClick={() => submission.verify()}
+              >
+                核实原请求
+              </button>
+            </li>
+          )}
           {briefs.map((j) => (
-            <li key={j.request_id}>
+            <li
+              key={j.request_id}
+              aria-current={
+                pending?.request_id === j.request_id ? "true" : undefined
+              }
+            >
               <button
                 type="button"
                 className="execution-brief-card"
+                aria-current={
+                  pending?.request_id === j.request_id ? "true" : undefined
+                }
                 onClick={() => onExecution(j.request_id)}
               >
                 <strong>{financialJobTitle(j)}</strong>
@@ -268,6 +336,11 @@ export function FinancialCollection({
                   </div>
                 </dl>
               </button>
+              {pending?.request_id === j.request_id && canRelease && (
+                <button disabled={busy || storageFailed} onClick={newIntent}>
+                  开始另一项采集
+                </button>
+              )}
             </li>
           ))}
         </ol>

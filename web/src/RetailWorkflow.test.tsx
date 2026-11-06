@@ -293,7 +293,7 @@ it.each(["missing", "disabled", "loading", "failed"])(
     );
     await flush();
     expect(calls).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "回查执行记录" }));
+    fireEvent(document, new Event("visibilitychange"));
     await flush();
     expect(calls).toHaveLength(4);
     expect(

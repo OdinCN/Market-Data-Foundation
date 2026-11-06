@@ -300,7 +300,7 @@ it("late pre-submit GET cannot unlock accepted intent, including reopening", asy
   fireEvent.click(btn("创建采集任务"));
   await screen.findByRole("heading", { name: "执行详情" });
   hold = true;
-  fireEvent.click(btn("回查执行记录"));
+  fireEvent(document, new Event("visibilitychange"));
   fireEvent.click(screen.getByRole("tab", { name: "新建采集" }));
   await act(async () => {
     release(Response.json({ jobs: [] }));
@@ -512,7 +512,7 @@ it("uses real PCE API shapes for native submit → independent worker → new in
   expect(h.effects).toEqual({ source: 0, raw: 0, jobs: 1 });
   const result = await h.exchange({ control: "run" });
   expect(result.body.state).toBe("succeeded");
-  fireEvent.click(btn("回查执行记录"));
+  fireEvent(document, new Event("visibilitychange"));
   await screen.findByRole("button", { name: "精确读取结果 →" });
   fireEvent.click(btn("精确读取结果 →"));
   await ready();
@@ -623,7 +623,7 @@ it("failed native execution → exact backfill POST → independent successor wo
   expect(old.classification).toBe("credential_echo_rejected");
   expect(jobs.body.backfill.eligible).toBe(false);
   expect((await h.exchange({ control: "run" })).body.state).toBe("succeeded");
-  fireEvent.click(btn("回查执行记录"));
+  fireEvent(document, new Event("visibilitychange"));
   await screen.findByRole("button", { name: "精确读取结果 →" });
   fireEvent.click(btn("精确读取结果 →"));
   await ready();

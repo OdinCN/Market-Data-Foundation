@@ -37,7 +37,9 @@ it("submits from HTTP LAN using the existing secure-random fallback", async () =
   fireEvent.click(
     screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
   );
-  fireEvent.click(screen.getByRole("button", { name: "提交日频作业" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "提交 金融条件日频 采集" }),
+  );
   await waitFor(() =>
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(1),
   );
@@ -72,12 +74,17 @@ it("keeps an explicit admission rejection distinct from an unknown network resul
   fireEvent.click(
     screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
   );
-  fireEvent.click(screen.getByRole("button", { name: "提交日频作业" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "提交 金融条件日频 采集" }),
+  );
   await screen.findByRole("alert");
   expect(screen.queryByRole("button", { name: "核实原请求" })).toBeNull();
   expect(
-    (screen.getByRole("button", { name: "提交日频作业" }) as HTMLButtonElement)
-      .disabled,
+    (
+      screen.getByRole("button", {
+        name: "提交 金融条件日频 采集",
+      }) as HTMLButtonElement
+    ).disabled,
   ).toBe(true); // Rejected range requires a fresh explicit confirmation.
 });
 const route = (view: "assets" | "collection", tab: string): Route => ({
@@ -104,6 +111,9 @@ function fixture(post?: (body: unknown) => Promise<Response>) {
             job: {
               request_id: (body as { request_id: string }).request_id,
               state: "complete",
+              created_at: "2026-11-05T12:00:00Z",
+              steps: [],
+              provider_requests: 0,
               command: body,
             },
           });
@@ -120,7 +130,16 @@ function fixture(post?: (body: unknown) => Promise<Response>) {
         job: {
           request_id: url.split("/").at(-1),
           state: "complete",
-          command: { action: "update", start: "2026-10-23", end: "2026-11-05" },
+          created_at: "2026-11-05T12:00:00Z",
+          steps: [],
+          provider_requests: 0,
+          command: JSON.parse(
+            localStorage.getItem("mdf.financial.timeseries.pending.v1") ?? "{}",
+          ).command ?? {
+            action: "update",
+            start: "2026-10-23",
+            end: "2026-11-05",
+          },
         },
       });
     if (url.includes("/query?")) return Response.json(financialResponse(url));
@@ -159,8 +178,11 @@ it("reads defaults without writes and submits exactly one editable twenty-year j
   fireEvent.click(
     screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
   );
-  fireEvent.click(screen.getByRole("button", { name: "提交日频作业" }));
-  await waitFor(() => expect(navigate).toHaveBeenCalled());
+  fireEvent.click(
+    screen.getByRole("button", { name: "提交 金融条件日频 采集" }),
+  );
+  await screen.findByRole("button", { name: "开始另一项采集" });
+  expect(navigate).not.toHaveBeenCalled();
   const writes = calls.filter((c) => c.method === "POST");
   expect(writes).toHaveLength(1);
   expect(writes[0].body).toMatchObject({
@@ -170,9 +192,22 @@ it("reads defaults without writes and submits exactly one editable twenty-year j
   });
 });
 it("does not repeat an uncertain POST and verifies the original identity by GET", async () => {
-  const { transport, calls } = fixture(async () => {
+  const { transport: baseTransport, calls } = fixture(async () => {
     throw new TypeError("offline");
   });
+  let readable = false;
+  const transport: Transport = (u, i) =>
+    String(u).includes("/jobs/") && !readable
+      ? Promise.resolve(
+          Response.json(
+            {
+              status: "UNKNOWN",
+              classification: "financial_local_unavailable",
+            },
+            { status: 503 },
+          ),
+        )
+      : baseTransport(u, i);
   const navigate = vi.fn();
   render(
     <FinancialDailyWorkbench
@@ -190,14 +225,21 @@ it("does not repeat an uncertain POST and verifies the original identity by GET"
   fireEvent.click(
     screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
   );
-  fireEvent.click(screen.getByRole("button", { name: "提交日频作业" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "提交 金融条件日频 采集" }),
+  );
   await screen.findByRole("button", { name: "核实原请求" });
   expect(
-    (screen.getByRole("button", { name: "提交日频作业" }) as HTMLButtonElement)
-      .disabled,
+    (
+      screen.getByRole("button", {
+        name: "提交 金融条件日频 采集",
+      }) as HTMLButtonElement
+    ).disabled,
   ).toBe(true);
+  readable = true;
   fireEvent.click(screen.getByRole("button", { name: "核实原请求" }));
-  await waitFor(() => expect(navigate).toHaveBeenCalled());
+  await screen.findByRole("button", { name: "开始另一项采集" });
+  expect(navigate).not.toHaveBeenCalled();
   expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
   const requestId = (
     calls.find((c) => c.method === "POST")!.body as { request_id: string }

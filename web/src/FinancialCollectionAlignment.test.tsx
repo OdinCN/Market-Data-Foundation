@@ -89,7 +89,8 @@ const confirm = () =>
   fireEvent.click(
     screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
   );
-const submit = () => screen.getByRole("button", { name: "提交日频作业" });
+const submit = () =>
+  screen.getByRole("button", { name: "提交 金融条件日频 采集" });
 const value = (name: string) =>
   (screen.getByLabelText(name) as HTMLInputElement).value;
 it("defaults to the documented fourteen-day update, keeps independent editable drafts and clears confirmation", async () => {
@@ -145,14 +146,15 @@ it.each([
     expect(f.calls.filter((c) => c.method === "POST")).toHaveLength(0);
   },
 );
-it("deduplicates a pending POST, keeps the same request on uncertainty, then verifies a matching receipt", async () => {
+it("deduplicates a pending POST, verifies the same ID and keeps the form until an explicit new intent", async () => {
   let reject!: (e: Error) => void;
+  let readable = false;
   const f = fixture(
     () =>
       new Promise((_r, j) => {
         reject = j;
       }),
-    (rid) => job({ request_id: rid }),
+    (rid) => (readable ? job({ request_id: rid }) : null),
   );
   const { nav } = mount(f);
   confirm();
@@ -163,19 +165,25 @@ it("deduplicates a pending POST, keeps the same request on uncertainty, then ver
     expect(f.calls.filter((c) => c.method === "POST")).toHaveLength(1),
   );
   const intent = JSON.parse(localStorage.getItem(financialIntentKey)!);
-  expect(intent.command.action).toBe("update");
   reject(Error("offline"));
-  await screen.findByText(/提交结果尚未确认/);
+  await screen.findByRole("button", { name: "核实原请求" });
   expect((submit() as HTMLButtonElement).disabled).toBe(true);
+  readable = true;
   fireEvent.click(screen.getByRole("button", { name: "核实原请求" }));
-  await waitFor(() => expect(nav).toHaveBeenCalledWith(intent.request_id));
+  await screen.findByRole("button", { name: "开始另一项采集" });
+  expect(nav).not.toHaveBeenCalled();
+  expect(JSON.parse(localStorage.getItem(financialIntentKey)!).request_id).toBe(
+    intent.request_id,
+  );
   expect(f.calls.filter((c) => c.method === "POST")).toHaveLength(1);
   expect(
     f.calls.some(
       (c) => c.method === "GET" && c.url.endsWith("/jobs/" + intent.request_id),
     ),
   ).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "开始另一项采集" }));
   expect(localStorage.getItem(financialIntentKey)).toBeNull();
+  expect(f.calls.filter((c) => c.method === "POST")).toHaveLength(1);
 });
 it("a reload retains an uncertain original ID and a 404 or mismatched receipt cannot release it", async () => {
   const intent = {
@@ -185,9 +193,9 @@ it("a reload retains an uncertain original ID and a 404 or mismatched receipt ca
   localStorage.setItem(financialIntentKey, JSON.stringify(intent));
   const f = fixture();
   const view = mount(f);
+  await screen.findByRole("button", { name: "核实原请求" });
   expect((submit() as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(screen.getByRole("button", { name: "核实原请求" }));
-  await screen.findByText(/尚未取得匹配回执/);
+  expect(screen.queryByRole("button", { name: "开始另一项采集" })).toBeNull();
   view.unmount();
   const g = fixture(undefined, (rid) =>
     job({
@@ -197,11 +205,13 @@ it("a reload retains an uncertain original ID and a 404 or mismatched receipt ca
   );
   mount(g);
   fireEvent.click(screen.getByRole("button", { name: "核实原请求" }));
-  await screen.findByText(/尚未取得匹配回执/);
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "开始另一项采集" })).toBeNull(),
+  );
   expect(localStorage.getItem(financialIntentKey)).toBe(JSON.stringify(intent));
   expect([...f.calls, ...g.calls].every((c) => c.method === "GET")).toBe(true);
 });
-it("a definite HTTP rejection never auto-retries and an explicit unchanged retry reuses request_id", async () => {
+it("a definite HTTP refusal creates no implicit retry; only explicit new intent releases the original identity", async () => {
   const f = fixture(async () =>
     Response.json(
       { status: "UNKNOWN", classification: "financial_job_range_invalid" },
@@ -211,20 +221,30 @@ it("a definite HTTP rejection never auto-retries and an explicit unchanged retry
   mount(f);
   confirm();
   fireEvent.click(submit());
-  await screen.findByText(/日期区间无效/);
+  await screen.findByRole("button", { name: "开始另一项采集" });
   const first = f.calls.find((c) => c.method === "POST")!.body.request_id;
-  expect(f.calls.filter((c) => c.method === "POST")).toHaveLength(1);
   expect((submit() as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(submit());
+  expect(f.calls.filter((c) => c.method === "POST")).toHaveLength(1);
+  expect(JSON.parse(localStorage.getItem(financialIntentKey)!).request_id).toBe(
+    first,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "开始另一项采集" }));
+  expect(localStorage.getItem(financialIntentKey)).toBeNull();
+  expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(
+    false,
+  );
+  expect(f.calls.filter((c) => c.method === "POST")).toHaveLength(1);
   confirm();
   fireEvent.click(submit());
   await waitFor(() =>
     expect(f.calls.filter((c) => c.method === "POST")).toHaveLength(2),
   );
   expect(
-    f.calls.filter((c) => c.method === "POST").map((c) => c.body.request_id),
-  ).toEqual([first, first]);
+    f.calls.filter((c) => c.method === "POST")[1].body.request_id,
+  ).not.toBe(first);
 });
-it("late POST success after switching page never navigates, while its durable receipt safely clears the outbox", async () => {
+it("late POST success after switching page never navigates or releases the durable intent", async () => {
   let done!: (r: Response) => void;
   const f = fixture(
     () =>
@@ -244,7 +264,9 @@ it("late POST success after switching page never navigates, while its durable re
     }),
   );
   await waitFor(() =>
-    expect(localStorage.getItem(financialIntentKey)).toBeNull(),
+    expect(
+      JSON.parse(localStorage.getItem(financialIntentKey)!).request_id,
+    ).toBe(body.request_id),
   );
   expect(view.nav).not.toHaveBeenCalled();
 });
