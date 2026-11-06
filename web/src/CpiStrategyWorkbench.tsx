@@ -216,7 +216,12 @@ function ResultFacts({
     nested = (nested as Record<string, unknown>).result;
   }
   const labels: Record<string, string> = {
-    saved_points: profile?.id === "m3" ? "本次执行新增观测" : "新增观测",
+    saved_points:
+      profile?.id === "claims"
+        ? "保存观测版本（含修订）"
+        : profile?.id === "m3"
+          ? "本次执行新增观测"
+          : "新增观测",
     saved_revisions: profile?.id === "m3" ? "本次执行新增修订" : "新增修订",
     provider_requests: profile?.id === "m3" ? "本次执行来源请求" : "来源请求",
     provider_attempts: profile?.id === "m3" ? "本次执行来源尝试" : "来源尝试",
@@ -356,7 +361,10 @@ function RecentExecution({
               <Fact name="结果分类">{execution.classification}</Fact>
             )}
           </dl>
-          <ResultFacts result={execution.result} />
+          <ResultFacts
+            result={execution.result}
+            profile={profile.id === "claims" ? profile : undefined}
+          />
           <a href={href}>打开对应执行详情</a>
         </>
       )}
@@ -1272,7 +1280,10 @@ function CpiStrategyWorkbenchContent({
                   )}
                 </dl>
               )}
-              <ResultFacts result={data.last_result} />
+              <ResultFacts
+                result={data.last_result}
+                profile={weekly ? profile : undefined}
+              />
               {weekly ? (
                 <ClaimsCollectionDetails result={data.last_result} />
               ) : quarterly ? (
@@ -1377,6 +1388,7 @@ function CpiStrategyWorkbenchContent({
                         </p>
                         <ResultFacts
                           result={target.target?.result ?? target.result}
+                          profile={weekly ? profile : undefined}
                         />
                         {weekly ? (
                           <ClaimsCollectionDetails
@@ -1440,6 +1452,7 @@ function CpiStrategyWorkbenchContent({
                             </time>
                           </p>
                           <ResultFacts
+                            profile={weekly ? profile : undefined}
                             result={
                               quarterly
                                 ? target.history?.result

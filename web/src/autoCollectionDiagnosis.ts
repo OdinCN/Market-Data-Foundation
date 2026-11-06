@@ -229,7 +229,7 @@ export function autoCollectionDiagnosis(
       : null);
   const current = upcoming ? planPeriod(upcoming) : "最近一期";
   const normal = nextAt
-    ? `${current}待发布：${formatBeijingTime(nextAt, "时间未确认")}`
+    ? `${current}${String(upcoming?.event_id ?? "").startsWith("dol-claims-") ? "；" : ""}待发布：${formatBeijingTime(nextAt, "时间未确认")}`
     : "下次官方发布时间尚未确认";
   let running = false;
   for (const target of targets) {
