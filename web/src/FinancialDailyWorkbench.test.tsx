@@ -1,6 +1,7 @@
 import "./offlineTestSetup";
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -32,11 +33,25 @@ it("submits from HTTP LAN using the existing secure-random fallback", async () =
   await waitFor(() =>
     expect(
       (screen.getByLabelText("采集开始日期") as HTMLInputElement).value,
-    ).toBeTruthy(),
+    ).toBe("2026-10-23"),
   );
+  // Initial defaults legitimately clear an older confirmation. Flush that
+  // render/effect before expressing this user's new submit intent.
+  await act(async () => {});
+  expect(
+    (screen.getByLabelText("采集结束日期") as HTMLInputElement).value,
+  ).toBe("2026-11-05");
   fireEvent.click(
     screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
   );
+  expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true);
+  expect(
+    (
+      screen.getByRole("button", {
+        name: "提交 金融条件日频 采集",
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(false);
   fireEvent.click(
     screen.getByRole("button", { name: "提交 金融条件日频 采集" }),
   );
