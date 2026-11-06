@@ -98,6 +98,12 @@ it("keeps the real macro catalog/filter/search while alternating financial daily
   });
   pickFinancial();
   const daily = await screen.findByLabelText("开始日期");
+  expect(
+    (screen.getByRole("checkbox", { name: "历史截止查询" }) as HTMLInputElement)
+      .checked,
+  ).toBe(false);
+  expect(new URLSearchParams(location.hash.slice(1)).has("as_of")).toBe(false);
+  expect(screen.queryByLabelText("截止时间（北京时间）")).toBeNull();
   expect(daily.getAttribute("placeholder")).toBe("YYYY-MM-DD");
   expect(screen.getByLabelText("搜索数据资产")).toBeTruthy();
   expect(screen.getByLabelText("接入包筛选")).toBeTruthy();
@@ -129,6 +135,10 @@ it("keeps the real macro catalog/filter/search while alternating financial daily
   expect(
     (await screen.findByLabelText("开始日期")).getAttribute("placeholder"),
   ).toBe("YYYY-MM-DD");
+  expect(
+    (screen.getByRole("checkbox", { name: "历史截止查询" }) as HTMLInputElement)
+      .checked,
+  ).toBe(false);
   expect(requests.every((r) => r.method === "GET")).toBe(true);
 });
 it("uses the existing target, tabs and unified execution detail; retains the original job deep link", async () => {

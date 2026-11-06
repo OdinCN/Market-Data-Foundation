@@ -212,6 +212,11 @@ export function RuntimeAssets({
                   operation: null,
                   version: null,
                   tab: null,
+                  // Legacy navigation seeds a monthly reference/as_of globally;
+                  // selecting the daily asset is an ordinary query, not history.
+                  ...(identity === FINANCIAL.identity
+                    ? { reference: null, as_of: null }
+                    : {}),
                 },
                 true,
               )

@@ -28,7 +28,7 @@ afterEach(() => {
     Object.defineProperty(navigator, "clipboard", originalClipboard);
   else Reflect.deleteProperty(navigator, "clipboard");
 });
-function setup(queryExtra: Record<string, unknown> = {}) {
+function setup(queryExtra: Record<string, unknown> = {}, asOf = "") {
   const calls: { url: string; method: string }[] = [];
   const transport: Transport = async (input, init) => {
     const url = String(input);
@@ -69,6 +69,7 @@ function setup(queryExtra: Record<string, unknown> = {}) {
         fields: new URLSearchParams({
           asset: FINANCIAL.identity,
           asset_revision: "r1",
+          ...(asOf ? { as_of: asOf } : {}),
         }),
       }}
       navigate={vi.fn()}
@@ -321,3 +322,23 @@ it.each([false, true])(
     expect(calls.every((c) => c.method === "GET")).toBe(true);
   },
 );
+
+it("preserves explicit old financial as_of deep links as historical reads", async () => {
+  const calls = setup({}, "2026-10-01T00:00:00Z");
+  await screen.findByLabelText("开始日期");
+  expect(
+    (screen.getByRole("checkbox", { name: "历史截止查询" }) as HTMLInputElement)
+      .checked,
+  ).toBe(true);
+  expect(
+    (screen.getByLabelText("截止时间（北京时间）") as HTMLInputElement).value,
+  ).toBe("2026-10-01T08:00:00");
+  fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
+  await screen.findByRole("button", { name: "刷新查询结果" });
+  const request = new URL(
+    calls.find((c) => c.url.includes("/query?"))!.url,
+    "http://local",
+  );
+  expect(request.searchParams.get("as_of")).toBe("2026-10-01T00:00:00.000Z");
+  expect(request.searchParams.get("local_only")).toBe("true");
+});
