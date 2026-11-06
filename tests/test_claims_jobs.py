@@ -164,3 +164,53 @@ def test_receipt_compaction_preserves_exact_readback_validation(tmp_path, corrup
     assert job["state"] == "unknown"
     assert job["classification"] == "claims_job_readback_mismatch"
     assert calls[-1] == dict(allow_upstream=False, as_of_basis="available")
+
+
+def test_existing_history_verification_uses_each_reports_native_week_without_writes():
+    from market_data_foundation.web.claims_host import ClaimsTimeSeriesHost
+
+    actuals = {
+        s: "2026-10-31" if s.startswith("IC") else "2026-10-24" for s in SERIES_IDS
+    }
+    observations = [
+        ClaimsObservation(s, w, Decimal("100"), AT, AT, 1, batch_id="fixture")
+        for s in SERIES_IDS
+        for w in weeks("2026-09-12", actuals[s])
+    ]
+    service = service_for(observations)
+    calls = []
+
+    @__import__("contextlib").contextmanager
+    def read():
+        calls.append("local_read")
+        yield service
+
+    host = SimpleNamespace(service=read)
+    receipt = dict(
+        material=dict(status="available", readback_verified=True, actual_weeks=actuals),
+        readback=dict(
+            verified=True,
+            as_of_basis="available",
+            actuals_verified=True,
+            actual_weeks=actuals,
+        ),
+    )
+    result = ClaimsTimeSeriesHost.verify_existing_history(
+        host, "2026-09-12", "2026-11-05", receipt
+    )
+    assert result["coverage"] == dict(
+        expected=45, available=45, missing_rows=0, provider_missing_values=0
+    )
+    assert (
+        result["provider_requests"] == 0
+        and result["completion"] == "existing_history_readback_verified"
+    )
+    assert actuals_ready(result)
+    observations.pop()
+    assert (
+        ClaimsTimeSeriesHost.verify_existing_history(
+            host, "2026-09-12", "2026-11-05", receipt
+        )
+        is None
+    )
+    assert calls == ["local_read", "local_read"]

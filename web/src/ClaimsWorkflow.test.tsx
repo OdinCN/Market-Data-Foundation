@@ -442,7 +442,8 @@ it("shows null reference-week calendar as release plans and toggles strategy onc
   const plans = await screen.findByRole("list", {
     name: `${profile.label} 周频计划`,
   });
-  expect(plans.textContent).toContain("参考周待发布材料确认");
+  expect(plans.textContent).toContain("初请参考周 待报告确认");
+  expect(plans.textContent).toContain("续请参考周 待报告确认");
   expect(plans.textContent).toContain("2026-11-05");
   expect(plans.textContent).not.toContain("月份");
   const source = screen.getByText("当前日历入口").parentElement!;

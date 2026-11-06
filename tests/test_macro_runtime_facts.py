@@ -67,3 +67,41 @@ def test_heartbeat_and_unverified_completion_do_not_invent_success():
         collection_facts(host)["last_successful_collection_at"]
         == records[0]["finished_at"]
     )
+
+
+def test_claims_partial_range_is_not_current_success_but_normal_week_lag_can_be():
+    @contextmanager
+    def service():
+        yield SimpleNamespace(
+            status=lambda: {
+                "latest_weeks": {"ICSA": "2026-10-31", "CCSA": "2026-10-24"}
+            }
+        )
+
+    from market_data_foundation.historical.claims_contract import SERIES_IDS
+
+    weeks = {
+        s: "2026-10-31" if s.startswith("IC") else "2026-10-24" for s in SERIES_IDS
+    }
+    result = dict(
+        status="partial",
+        material=dict(status="available", readback_verified=True, actual_weeks=weeks),
+        readback=dict(
+            verified=True,
+            as_of_basis="available",
+            actuals_verified=False,
+            actual_weeks={},
+        ),
+    )
+    record = dict(state="complete", finished_at="2026-11-05T13:33:00Z", result=result)
+    host = SimpleNamespace(
+        profile=SimpleNamespace(key="claims"),
+        service=service,
+        executions=lambda: dict(executions=[record]),
+    )
+    assert collection_facts(host)["last_successful_collection_at"] is None
+    result["readback"].update(actuals_verified=True, actual_weeks=weeks)
+    assert (
+        collection_facts(host)["last_successful_collection_at"] == record["finished_at"]
+    )
+    assert collection_facts(host)["latest_data_periods"]["CCSA"] == "2026-10-24"

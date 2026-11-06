@@ -1,3 +1,4 @@
+import { claimsExecutionPeriod } from "./claimsPeriod";
 import {
   dayRangeValid,
   claimsLatest,
@@ -691,6 +692,12 @@ function CpiTimeSeriesCollectionContent({
                         {job.start} 至 {job.end}
                       </dd>
                     </div>
+                    {weekly && (
+                      <div>
+                        <dt>发布与参考周</dt>
+                        <dd>{claimsExecutionPeriod(job.result)}</dd>
+                      </div>
+                    )}
                     <div>
                       <dt>结果</dt>
                       <dd>

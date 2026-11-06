@@ -1,3 +1,8 @@
+import {
+  claimsPlanPeriod,
+  claimsActualsVerified,
+  claimsLatestDataText,
+} from "./claimsPeriod";
 import { ExecutionFacts } from "./ExecutionFacts";
 import { planTargetKey, type PlanIssue } from "./autoCollectionDiagnosis";
 import { ClaimsCollectionDetails } from "./ClaimsCollectionDetails";
@@ -88,12 +93,12 @@ export function cpiExecutionStateText(
   if (_profile.id === "m3" && state === "waiting") return "等待来源准入";
   if (_profile.id === "claims") {
     const data = (result?.result ?? result) as Record<string, unknown> | null;
-    const c = data?.coverage as Record<string, number> | undefined;
-    return ["complete", "succeeded"].includes(state ?? "") &&
-      c &&
-      c.available < c.expected
-      ? "已完成（各系列存在缺周或提供方缺值）"
-      : cpiStateText(state);
+    if (!["complete", "succeeded"].includes(state ?? ""))
+      return cpiStateText(state);
+    if (claimsActualsVerified(data)) return "执行完成（本次发布参考周已核实）";
+    const material = data?.material as Record<string, unknown> | undefined;
+    if (material?.actual_weeks) return "执行完成（本次发布仍有缺项）";
+    return "执行完成（发布参考周待核实）";
   }
   if (_profile.id === "gdp")
     return gdpExecutionState(state, result) ?? cpiStateText(state);
@@ -178,6 +183,8 @@ type Schedule = {
   calendar_refresh_error?: string | null;
   targets: (Stage & {
     reference_week?: string | null;
+    event_id?: string;
+    source_date?: string;
     reference_month?: string;
     dataset?: "m3" | "advm3";
     reference_quarter?: string;
@@ -843,7 +850,7 @@ function CpiStrategyWorkbenchContent({
   const periodLabel = weekly ? "周频" : quarterly ? "季度" : "月份";
   const planPeriod = (target: Schedule["targets"][number]) =>
     weekly
-      ? `${target.release_at?.slice(0, 10) ?? "计划日期未知"} · ${target.reference_week ?? "参考周待发布材料确认"}`
+      ? claimsPlanPeriod(target as unknown as Record<string, unknown>)
       : quarterly
         ? target.reference_quarter
         : profile.id === "m3"
@@ -972,7 +979,10 @@ function CpiStrategyWorkbenchContent({
                     ).replace(" 北京时间", "")}
                   </span>
                   <span>
-                    最新数据期：{e.data?.latest_data_period ?? "未知"}
+                    最新数据期：
+                    {e.profile.id === "claims"
+                      ? claimsLatestDataText(e.data?.latest_data_periods)
+                      : (e.data?.latest_data_period ?? "未知")}
                   </span>
                 </span>,
               ],
@@ -1055,7 +1065,11 @@ function CpiStrategyWorkbenchContent({
                   "未记录",
                 )}
               </Fact>
-              <Fact name="最新数据期">{data.latest_data_period ?? "未知"}</Fact>
+              <Fact name="最新数据期">
+                {weekly
+                  ? claimsLatestDataText(data.latest_data_periods)
+                  : (data.latest_data_period ?? "未知")}
+              </Fact>
               <Fact name="下次官方日历时间（北京时间）">
                 {formatBeijingTime(data.next_release_at, "未记录")}
               </Fact>
@@ -1220,7 +1234,7 @@ function CpiStrategyWorkbenchContent({
               {data.last_result && (
                 <dl>
                   <Fact name="最近执行状态">
-                    {quarterly
+                    {quarterly || weekly
                       ? cpiExecutionStateText(
                           typeof data.last_result.state === "string"
                             ? data.last_result.state
@@ -1329,7 +1343,7 @@ function CpiStrategyWorkbenchContent({
                       <div className="month-stage-state">
                         <strong>当期采集</strong>
                         <span>
-                          {quarterly
+                          {quarterly || weekly
                             ? cpiExecutionStateText(
                                 target.target?.state ?? target.state,
                                 target.target?.result,

@@ -1,3 +1,4 @@
+import { claimsExecutionPeriod } from "./claimsPeriod";
 import { executionCreatedOrder } from "./executionOrder";
 import {
   financialJobTitle,
@@ -2014,9 +2015,16 @@ export function CollectionWorkbench({
               ...macroRecords.map((e) => ({
                 id: e.rowId,
                 createdAt: e.created_at,
-                search: `${e.id} ${macroAssetLabel(e.profile)} ${e.origin !== "manual" ? "自动策略" : "手动采集"} ${cpiActionText(e.origin !== "manual" ? (e.stage ?? e.action) : e.action)} ${e.start ?? ""} ${e.end ?? ""} ${cpiExecutionStateText(e.state, e.result, e.profile, e)}`,
+                search: `${e.id} ${macroAssetLabel(e.profile)} ${e.origin !== "manual" ? "自动策略" : "手动采集"} ${cpiActionText(e.origin !== "manual" ? (e.stage ?? e.action) : e.action)} ${e.start ?? ""} ${e.end ?? ""} ${cpiExecutionStateText(e.state, e.result, e.profile, e)}${e.profile.id === "claims" ? " " + claimsExecutionPeriod(e.result) : ""}`,
                 cells: [
-                  `${e.profile.label} · ${e.origin !== "manual" ? "自动阶段 · " : ""}${cpiActionText(e.origin !== "manual" ? (e.stage ?? e.action) : e.action)}`,
+                  <>
+                    {`${e.profile.label} · ${e.origin !== "manual" ? "自动阶段 · " : ""}${cpiActionText(e.origin !== "manual" ? (e.stage ?? e.action) : e.action)}`}
+                    {e.profile.id === "claims" && (
+                      <span className="small">
+                        {claimsExecutionPeriod(e.result)}
+                      </span>
+                    )}
+                  </>,
                   <ExecutionCreatedAt value={e.created_at} />,
                   <span className="execution-range">
                     <span>{e.start ?? "未记录"}</span>

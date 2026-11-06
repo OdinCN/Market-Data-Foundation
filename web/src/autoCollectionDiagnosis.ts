@@ -1,3 +1,4 @@
+import { claimsPlanPeriod } from "./claimsPeriod";
 import { formatBeijingTime } from "./beijingTime";
 import type { CpiStrategy, CpiAvailability } from "./cpiTimeSeriesApi";
 import type { WorkerObservation } from "./useAutoCollection";
@@ -52,6 +53,11 @@ export function planTargetKey(target: RecordValue): string {
   );
 }
 export function planPeriod(target: RecordValue): string {
+  if (
+    String(target.event_id ?? "").startsWith("dol-claims-") ||
+    String(target.key ?? "").startsWith("dol-claims-week-")
+  )
+    return claimsPlanPeriod(target);
   return (
     String(
       target.reference_month ??
@@ -81,6 +87,11 @@ const reasons: Record<string, string> = {
   calendar_reference_month_conflict: "官方日历参考期不一致",
   calendar_removed: "该期已从官方日历移除",
   source_unavailable: "来源尚未提供该期数据",
+  claims_current_actuals_missing:
+    "该次回读尚未核实本次报告的初请/续请参考周数值",
+  claims_material_unconfirmed: "本次官方报告材料尚未核实",
+  claims_rolling_http_budget:
+    "滚动24小时HTTP额度已占用，等待已核实消耗结算或额度到期",
   storage_commit_unknown: "写入提交结果未确认，需要先核对持久回读",
   historical_source_gaps: "历史来源仍有缺值",
   provider_http_403: "来源拒绝访问（HTTP403）",
@@ -321,8 +332,17 @@ export function autoCollectionDiagnosis(
     for (const [stage, value] of stages) {
       const state = text(value.state);
       if (state === "running") running = true;
+      const result = obj(value.result);
+      const claimsGap =
+        String(target.event_id ?? "").startsWith("dol-claims-") &&
+        obj(result.readback).actuals_verified === false &&
+        Object.keys(obj(obj(result.material).actual_weeks)).length > 0;
       const code =
+        (value.budget_blocked_until
+          ? "claims_rolling_http_budget"
+          : undefined) ??
         text(value.classification) ??
+        (claimsGap ? "claims_current_actuals_missing" : undefined) ??
         text(obj(obj(value.result).source_failure).classification);
       const retryAt = text(value.next_attempt_at);
       let kind: PlanIssue["kind"] | null = [

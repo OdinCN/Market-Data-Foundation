@@ -16,12 +16,24 @@ def collection_facts(host):
         for record in records:
             result = record.get("result") or {}
             finished = record.get("finished_at")
+            verified = (result.get("readback") or {}).get(
+                "verified"
+            ) is True or result.get("availability_verified") is True
+            if host.profile.key == "claims":
+                from market_data_foundation.web.claims_jobs import actuals_ready
+
+                # Range readback can be verified while this release's six exact
+                # weeks are still missing. Conversely the normal one-week lag in
+                # continued claims must not invalidate a proved current release.
+                verified = (
+                    actuals_ready(result)
+                    if result.get("material", {}).get("actual_weeks")
+                    else verified
+                    and result.get("status") not in {"partial", "unavailable"}
+                )
             if (
                 record.get("state") in {"complete", "succeeded"}
-                and (
-                    (result.get("readback") or {}).get("verified") is True
-                    or result.get("availability_verified") is True
-                )
+                and verified
                 and finished
             ):
                 at = datetime.fromisoformat(finished)

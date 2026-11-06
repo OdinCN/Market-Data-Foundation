@@ -118,7 +118,11 @@ export function FinancialCollection({
           j.request_id !== pending?.request_id,
       )
       .slice(0, 5) ?? [];
-  const briefs = [...(receipt ? [receipt] : []), ...history];
+  // A late poll effect after newIntent may still retain the previous receipt.
+  // Only the active intent owns a receipt card; history already owns released IDs.
+  const currentReceipt =
+    pending?.request_id === receipt?.request_id ? receipt : null;
+  const briefs = [...(currentReceipt ? [currentReceipt] : []), ...history];
   function newIntent() {
     if (!canRelease) return;
     submission.newIntent();

@@ -102,6 +102,8 @@ def material_fetcher(
             clock=clock,
         )
         raw, obtained, _ = source._read(SimpleNamespace(url=url))
-        return AcquiredCalendar(raw, obtained)
+        value = AcquiredCalendar(raw, obtained)
+        value.http_attempts = source.attempts
+        return value
 
     return fetch
