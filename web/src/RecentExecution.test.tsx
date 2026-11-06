@@ -217,14 +217,26 @@ for (const profile of profiles)
         expect(url.get("asset")).toBe(profile.asset.identity);
         expect(url.get("tab")).toBe("executions");
         expect(url.get("execution_schedule")).toBe("all");
+        const savedLabel =
+          profile.id === "claims" ? "保存观测版本（含修订）" : "新增观测";
         if (["failed", "running", "cancelled"].includes(scenario)) {
           expect(summary.textContent).toContain(
             { failed: "失败", running: "执行中", cancelled: "已取消" }[
               scenario as "failed" | "running" | "cancelled"
             ]!,
           );
-          expect(within(summary).queryByText("新增观测")).toBeNull();
-        } else expect(within(summary).getByText("新增观测")).toBeTruthy();
+          expect(within(summary).queryByText(savedLabel)).toBeNull();
+        } else {
+          const saved = within(summary).getByText(savedLabel).parentElement;
+          expect(saved?.textContent).toContain(
+            String(
+              native[profile.id]?.executions.executions[0].result
+                .saved_points ?? 13,
+            ),
+          );
+          if (profile.id === "claims")
+            expect(within(summary).queryByText("新增观测")).toBeNull();
+        }
         if (scenario === "nested" && !native[profile.id])
           expect(
             within(summary).getByText("累计调度尝试").parentElement

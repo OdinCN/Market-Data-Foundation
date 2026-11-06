@@ -1,6 +1,6 @@
-# 五族发布事件、材料和修订读取
+# 宏观发布事件、材料和修订读取
 
-发布记录复用五族连续资产工作台、任务、策略和 worker。材料导入不改写连续数值表，
+发布记录复用各族连续资产工作台、任务、策略和 worker。下方原五族表是已证明材料范围的基线，R4增量见文末。材料导入不改写连续数值表，
 不以最新 API 值、本地 revision=1、数值相等或日历计划证明某次官方 actual。
 真实未来自然发布验证仍未完成；历史官方留存、离线合同和 DEV 自动抓取是分别验收的事实。
 
@@ -84,14 +84,14 @@ uv run --locked --no-sync --offline python scripts/macro_release_records.py \
   --material-format official_selected_projection
 ```
 
-统一 CLI 支持五族 `schema-sql/prepare/import-material/import-consensus/bind-version/acquire/read`。
+统一 CLI 支持 CPI/PPI/PCE/就业/消费收入/JOLTS/零售/M3 的 `schema-sql/prepare/import-material/import-consensus/bind-version/acquire/read`；Claims 保留自己的周频入口与参考周合同，不假装月频CLI通用。
 来源、读写身份由本地显式 service factory 绑定；无隐式 Provider 替换。
 原就业 CLI 的 prepare/import/read 保留，并接受 selected projection。
 `acquire` 额外要求 `--live-provider`、selection JSON 和独立 durable state path；普通导入不联网。
 
 迁移只在已有实际 DEV family schema 加 `release_events/release_evidence/release_annotations`，
 升级旧事件的 JSON reference_months 并回填原 primary month；不 drop/reset 原就业两个记录，
-不改连续 revisions/batches/views。Root 先备份、事务演练及回读原记录时间/digest，再授权只读 SELECT。
+不改连续 revisions/batches/views。迁移须显式授权并核对实际增量影响与原记录时间/digest；既有DEV备份后置决定不影响正常任务恢复，不把备份演练新增为工程前置。
 回退首选回退应用且保留增量 schema；需要物理回退时先备份 annotation/coverage，
 仅撤新增 annotation 表和 reference_months 列，**不删除已有 release_events/release_evidence**。
 
@@ -122,3 +122,15 @@ Root正常环境的重点回归：`tests/test_macro_release_followup.py`（含�
 用于区分原公布和后续修订。它们来自已留存事件，不由事件编号或月份偏移推断。
 旧 event_id、evidence_ids、association、reason 字段与版本绑定规则不变；新增展示信息不构成版本证明。
 零售派生口径的关联仍是月份级材料相关性，不代表网页提供了该派生值。
+
+## R4 核心事件增量与证据边界
+
+就业 `value_comparisons` 按系列/统计量/单位/季调分别列当期值、官方原前值、本材料修订后前值、修订差额和 MDF 发布前已持有值；各项缺失独立说明。旧材料 actual 可独立消费，continuous_version=null 只限制强绑定。无具名事前共识就不计算 surprise，缺失不补零。BLS原文实际403与已有官方留存的读取是两件事；服从冷却，不把离线材料冒充本次下载。
+
+PCE价格和消费收入共用 BEA Personal Income and Outlays canonical 事件及可复用原文，但指标范围、数值提交和失败恢复独立。`shared_publication` 说明同次发布及本资产结果，不把另一资产状态或多次API获取说成原子官方快照。HTML未列金额水平或完整分项时仍列缺项，不用连续值填成官方报告claim。
+
+M3以先行/完整报告、参考月和具名来源日期区分事件；滚动URL若返回别期或别阶段，不能绑定到当前目标。按原表月份和季调分组读取，空列、缺列或拆字无法可靠定位时留缺；仅有NSA表头不能标作SA。JOLTS保留报告的季调、单位和统计量，不借连续序列制造官方事件/修订。正常执行分别保留数值、材料结果和逐报告 event/evidence 对应；兼容旧联合作业时只按可证明关系跳转，不能把独立排序数组按下标配对。
+
+M3数值已确认而材料暂缺时，正常周期tick按既有限额、冷却重试同一作业的材料，复用已确认数值；手动resume不冒充自动恢复。连续失败有界。日期改TBA时暂停该条材料请求、保留数值和原回执，后续仅按恢复后的同一日历身份继续；不修改系统时钟或线上日历来制造成功。确定性503/TBA/修订案例与具名官方传输、已有材料复用及正常作业回读分别留证。
+
+Claims读取本次DOL报告证明的初请/续请各自参考周，不能用发布日期或两者最大周替代。普通区间回读可含尚未发布的续请末端周；是否完成本次发布按六条材料参考周的本地可用值核实。以上工程能力、真实DEV取得/回读及未来自然发布捕获分别结算，不因worker在线或测试全绿推定所有材料/版本已强绑定。

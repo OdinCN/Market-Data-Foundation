@@ -1,6 +1,6 @@
 # 金融条件日频数据层 r1
 
-提供日频数据链及显式准入的人工工作台/作业。常驻日频执行器另段交付，本模块不会自动启动。
+提供日频数据链、显式准入的人工工作台/作业及独立 DEV 周期执行器。读取、部署和轮询不会自动启动；周期装配与恢复见 [日频周期采集](financial-daily-periodic.md)。
 稳定数据集为 `mdf.macro.financial-conditions.daily@r1`。run/attempt 不构成数据集身份。
 数据库物理版本 r3 可从已存在 r1/r2 增量升级，不重建或删除原数据；查询不迁移。
 
@@ -44,7 +44,7 @@ CLI 默认使用此绑定，不是 FRED 失败后的自动替代。十条代码�
 18761 从首页左侧「数据资产」进入目录，在「宏观数据接入包」筛选或搜索「金融」后选中
 「金融条件日频（十项）」，在原目录右侧查询本地日频、查看覆盖/来源和 API 说明。
 「采集任务」的原有采集目标下拉提供同一登记资产，保留新建采集、周期任务、执行记录页签；
-初始化/增量使用日粒度字段及可编辑的二十日历年默认值，执行记录使用原有列表与右侧详情。
+初始化使用日粒度字段及可编辑的二十日历年默认值；更新默认回看近期14个日历日，两种方式独立保留草稿。执行记录使用原有列表与右侧详情。
 选中日频不会替换父目录或采集工作台；其他资产保持各自原粒度。旧资产/作业深链继续有效。
 REGISTERED_MANUAL 表示显式装配的人工能力，不等于包策略启用、已有持有或常驻执行器在线；
 持有由本地只读证据独立核验，未知和空库也保留入口，不发来源请求。提供采集数据、查询数据、
@@ -53,7 +53,7 @@ update 独立刷新用户区间，确认的变化保留版本；无值不补零�
 双边政策范围出现之前无上下限证据，明确保留覆盖缺口。
 
 - `GET /api/r5/financial/timeseries/status`：默认窗口及十项明确绑定。
-- `GET /api/r5/financial/timeseries/query`：start/end/series/as_of/offset/limit/local_only，本地优先临时补缺；显式截止严格只读。
+- `GET /api/r5/financial/timeseries/query`：start/end/series/as_of/offset/limit/local_only/order，本地优先临时补缺；显式截止严格只读。
 - `GET /api/r5/financial/timeseries/jobs`、`/jobs/{request_id}`：任务进度、逐段请求、批次及原件身份。
 - `POST /api/r5/financial/timeseries/jobs`：规范 UUID request_id、action=init/update、start/end。
 - `POST /api/r5/financial/timeseries/jobs/resume`：已有 request_id，复用同一任务，只续未完成段。
@@ -64,6 +64,8 @@ update 独立刷新用户区间，确认的变化保留版本；无值不补零�
 每个已取得分段先将原始/metadata 字节写入校验内容地址，再记录持久恢复种子，之后确认 PG 数值；
 确认不确定时续跑原件而不是再次请求。已完成段与重复 request_id 不重复采集。失败段保留分类和
 冷却时间，其他段独立结算；中断不构成自动成功，用户明确续跑后按原作业继续。
+
+提交受理、运行和终态均留在新建页，右侧执行简报跟踪同一 request_id；只有用户主动点简报才进入执行详情。已核实终态由“开始另一项采集”释放表单意图，不自动再POST。回执未知、404、错ID或陈旧状态保留原请求并核实，刷新/切族/切页的迟到响应不得导航或重复写入。执行页依靠自动刷新，不提供两个重复的常驻回查按钮；真正未知回执仍保留同ID核实入口。
 
 ## 正常数据层 CLI
 
@@ -133,7 +135,7 @@ MDF_FINANCIAL_DAILY_DEV_OPT_IN=1 uv run --no-sync pytest -q \
 
 Web `/api/r5/financial/timeseries/query` 默认普通查询：先读本地，仅未持有且已进入来源可得日的缺口，复用已绑定原机构、固定信用归档/FRED尾段临时补足。`as_of` 一旦提供即为历史只读；`local_only=true` 显式只读，均不构造上游。页面普通响应的读取时刻不会自动变成下一次请求的历史截止。CLI 的原显式本地 `query` 语义保留。
 
-参数为 `start/end/series/as_of/offset/limit/local_only`，最后一项仅接受 `true|false`。按所选指标、日期分页，每页最多20次实际HTTP；来源分窗，进程内最多64窗缓存5分钟（固定归档24小时），失败也受缓存与既有来源冷却限制。缓存过期或Web重启可能重新请求，缓存不构成持久化或历史可得证据。摘要、覆盖、页面加载仍只读。`coverage` 只统计本地持有，不含临时值。
+参数为 `start/end/series/as_of/offset/limit/local_only/order`，local_only 仅接受 `true|false`，series 为非空、去重的十项代码CSV。order 支持 asc/desc，旧API省略时维持asc；工作台显式请求desc，先按完整范围日期倒序、同日指标身份排序再分页，不是单页排序。按所选指标、日期分页，每页最多20次实际HTTP；来源分窗，进程内最多64窗缓存5分钟（固定归档24小时），失败也受缓存与既有来源冷却限制。缓存过期或Web重启可能重新请求，缓存不构成持久化或历史可得证据。摘要、覆盖、页面加载仍只读。`coverage` 只统计本地持有，不含临时值。
 
 响应 `query_mode=current|history|local`；`provider_requests` 为该次实际HTTP次数，`upstream.cache_hits/issues` 给出缓存命中与逐项区间/分类。已有数值（含0）及来源明确缺值不覆盖；有据起始日前、非观测日、尚未发布日不补抓。NYFed按下一工作日公布约定作保守准入；节假日或原件字段缺失仍以真实响应分类，不推造观测。
 

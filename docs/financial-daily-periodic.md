@@ -8,6 +8,6 @@ MDF 维护检查采用 America/New_York（随 DST 切换）：政策上下限每
 
 每组取近 14 日，派生步骤在两条输入持久化后执行，保留同截止腿版本。每个组/维护时点的 UUID 固定；成功时点不再重复取数。部分失败按来源 retry_at 与指数退避中较晚者续跑同一作业，最多三次/时点；只重做未完成段，原件已留存则恢复提交不重抓。下一时点照常检查近期区间，原失败事实留存；长于 14 日的暂停缺口由人工指定区间恢复，不伪称全历史覆盖。人工/周期作业共用互斥锁，忙时不消耗上游重试次数。重启读取磁盘意图与任务，不重设时点身份。
 
-接口为既有 `/api/r5/financial/timeseries/strategy` GET/POST，POST body 为 `{"enabled":true|false}`，明确异常恢复可加 `"recover":true`（只允许 enabled=true）。正常私有写准入复用现有 Host/Origin 规则；公开 Host 仍只读。GET `/jobs` 与 `/jobs/{UUID}` 可追踪 `origin=periodic`、schedule_slot、所选指标、逐段来源/原件/PG 确认；本地 `/summary`、`/query` 不发上游请求。心跳线程独立于阻塞采集，在线状态不代替采集成功。
+接口为既有 `/api/r5/financial/timeseries/strategy` GET/POST，POST body 为 `{"enabled":true|false}`，明确异常恢复可加 `"recover":true`（只允许 enabled=true）。正常私有写准入复用现有 Host/Origin 规则；公开 Host 仍只读。GET `/jobs` 与 `/jobs/{UUID}` 可追踪 `origin=periodic`、schedule_slot、所选指标、逐段来源/原件/PG 确认；`/summary`、显式 local_only 或历史 `/query` 不发上游请求。普通查询的本地缺口可临时补源而不落库，不能算作周期采集成功。心跳线程独立于阻塞采集，在线状态不代替采集成功。
 
 到期以原窗口的绝对截止为准：启动 guard、运行时检查、systemd RuntimeMaxSec 以及原 expire timer 的实际停止集合共同约束新增单元；不重算窗口。
