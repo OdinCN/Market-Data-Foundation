@@ -28,7 +28,7 @@ afterEach(() => {
     Object.defineProperty(navigator, "clipboard", originalClipboard);
   else Reflect.deleteProperty(navigator, "clipboard");
 });
-function setup() {
+function setup(queryExtra: Record<string, unknown> = {}) {
   const calls: { url: string; method: string }[] = [];
   const transport: Transport = async (input, init) => {
     const url = String(input);
@@ -58,6 +58,7 @@ function setup() {
       next_offset: offset === 0 ? 200 : null,
       provider_requests: 0,
       coverage: { series: [] },
+      ...queryExtra,
     });
   };
   render(
@@ -91,6 +92,8 @@ it("shares the exact date/series/cutoff/page request with the query and copies w
   });
   const calls = setup();
   await screen.findByLabelText("开始日期");
+  expect(screen.queryByLabelText("截止时间（北京时间）")).toBeNull();
+  fireEvent.click(screen.getByLabelText("历史截止查询"));
   fireEvent.change(screen.getByLabelText("显示指标"), {
     target: { value: "SOFR" },
   });
@@ -100,7 +103,7 @@ it("shares the exact date/series/cutoff/page request with the query and copies w
   fireEvent.change(screen.getByLabelText("结束日期"), {
     target: { value: "2026-11-03" },
   });
-  fireEvent.change(screen.getByLabelText("截止时间（北京时间，可空）"), {
+  fireEvent.change(screen.getByLabelText("截止时间（北京时间）"), {
     target: { value: "2026-11-05T16:00:03" },
   });
   tab("API说明");
@@ -113,6 +116,7 @@ it("shares the exact date/series/cutoff/page request with the query and copies w
     series: "SOFR",
     offset: "0",
     limit: "200",
+    local_only: "true",
     as_of: "2026-11-05T08:00:03.000Z",
   });
   fireEvent.click(screen.getByRole("button", { name: "复制请求预览URL" }));
@@ -124,7 +128,7 @@ it("shares the exact date/series/cutoff/page request with the query and copies w
   );
   expect(calls.filter((c) => c.url.includes("/query?"))).toHaveLength(0);
   tab("查询数据");
-  fireEvent.click(screen.getByRole("button", { name: "查询本地数据" }));
+  fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
   await screen.findByRole("button", { name: "下一页" });
   expect(calls.find((c) => c.url.includes("/query?"))!.url).toBe(
     parsed.pathname + parsed.search,
@@ -139,9 +143,7 @@ it("shares the exact date/series/cutoff/page request with the query and copies w
   fireEvent.change(screen.getByLabelText("显示指标"), {
     target: { value: "DGS2" },
   });
-  fireEvent.change(screen.getByLabelText("截止时间（北京时间，可空）"), {
-    target: { value: "" },
-  });
+  fireEvent.click(screen.getByLabelText("历史截止查询"));
   tab("API说明");
   expect(new URL(url()).searchParams.get("offset")).toBe("0");
   expect(new URL(url()).searchParams.has("as_of")).toBe(false);
@@ -229,3 +231,93 @@ it("does not render a fabricated request for an invalid cutoff draft", () => {
     }),
   ).not.toContain("as_of");
 });
+
+it("keeps ordinary mode across responses and requires explicit historical cutoff", async () => {
+  const calls = setup();
+  await screen.findByLabelText("开始日期");
+  expect(screen.queryByLabelText("截止时间（北京时间）")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
+  await screen.findByRole("button", { name: "刷新查询结果" });
+  fireEvent.click(screen.getByRole("button", { name: "刷新查询结果" }));
+  await waitFor(() =>
+    expect(calls.filter((c) => c.url.includes("/query?")).length).toBe(2),
+  );
+  expect(
+    calls
+      .filter((c) => c.url.includes("/query?"))
+      .every(
+        (c) => !c.url.includes("as_of") && c.url.includes("local_only=false"),
+      ),
+  ).toBe(true);
+  fireEvent.click(screen.getByLabelText("历史截止查询"));
+  expect(
+    (screen.getByLabelText("截止时间（北京时间）") as HTMLInputElement)
+      .required,
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole("button", {
+        name: "查询数据",
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  tab("API说明");
+  expect(screen.queryByRole("region", { name: "请求预览" })).toBeNull();
+  tab("查询数据");
+  fireEvent.click(screen.getByLabelText("历史截止查询"));
+  fireEvent.click(screen.getByLabelText("仅查询本地"));
+  tab("API说明");
+  expect(new URL(url()).searchParams.get("local_only")).toBe("true");
+});
+
+it.each([false, true])(
+  "shows unpersisted upstream and specific partial failure=%s without creating jobs",
+  async (failed) => {
+    const calls = setup({
+      query_mode: "current",
+      rows: [
+        {
+          series_id: "DGS10",
+          observation_date: "2026-10-30",
+          value: "0",
+          basis_points: null,
+          state: "observed",
+          origin: "upstream",
+          persisted: false,
+          revision: null,
+          available_at: null,
+          observed_at: null,
+          raw_locator: null,
+          provider_extra: { source_origin: "us_treasury" },
+        },
+      ],
+      upstream: {
+        cache_hits: 0,
+        issues: failed
+          ? [
+              {
+                series_id: "DGS10",
+                start: "2026-10-29",
+                end: "2026-10-29",
+                classification: "financial_http_failure",
+              },
+            ]
+          : [],
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
+    await screen.findByText(/包含上游临时值/);
+    const table = screen.getByRole("region", { name: "日频观测结果" });
+    expect(table.textContent).toContain("上游临时值／未保存");
+    expect(table.textContent).toContain("0");
+    if (failed) {
+      expect(screen.getByLabelText("查询补源缺口").textContent).toContain(
+        "具名来源HTTP请求暂未成功",
+      );
+      expect(screen.getByLabelText("查询补源缺口").textContent).toContain(
+        "2026-10-29",
+      );
+    }
+    expect(calls.every((c) => c.method === "GET")).toBe(true);
+  },
+);

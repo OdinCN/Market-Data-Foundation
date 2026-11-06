@@ -194,7 +194,7 @@ it("does not repeat an uncertain POST and verifies the original identity by GET"
     ),
   ).toBe(true);
 });
-it("query and refresh use only local GET with a fixed cutoff", async () => {
+it("explicitly fixing the response cutoff switches refresh to historical local GET", async () => {
   const { transport, calls } = fixture();
   render(
     <FinancialDailyWorkbench
@@ -204,10 +204,10 @@ it("query and refresh use only local GET with a fixed cutoff", async () => {
       generation={0}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "查询本地数据" }));
+  fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
   await screen.findByRole("button", { name: "固定此截止" });
   fireEvent.click(screen.getByRole("button", { name: "固定此截止" }));
-  fireEvent.click(screen.getByRole("button", { name: "刷新本地结果" }));
+  fireEvent.click(screen.getByRole("button", { name: "刷新查询结果" }));
   await waitFor(() =>
     expect(calls.filter((c) => c.url.includes("/query?")).length).toBe(2),
   );

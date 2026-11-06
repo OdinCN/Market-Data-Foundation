@@ -32,6 +32,8 @@ export function FinancialApiHelp({
   end,
   series,
   cutoff,
+  history = Boolean(cutoff),
+  localOnly = false,
   offset,
 }: {
   help: FinancialHelp | null;
@@ -39,12 +41,23 @@ export function FinancialApiHelp({
   end: string;
   series: string;
   cutoff: string;
+  history?: boolean;
+  localOnly?: boolean;
   offset: number;
 }) {
   let path: string | null = null;
   try {
     path =
-      prefix + financialQuerySuffix({ start, end, series, cutoff, offset });
+      prefix +
+      financialQuerySuffix({
+        start,
+        end,
+        series,
+        cutoff,
+        history,
+        localOnly,
+        offset,
+      });
   } catch {
     /* Invalid draft: do not invent a valid request. */
   }
@@ -55,14 +68,13 @@ export function FinancialApiHelp({
     >
       <h4>GET {prefix}/query</h4>
       <p>
-        按观测日和 MDF 确认可用截止读取本地版本。GET
-        不采集、不写库、不建表，上游请求数为0。日期、指标、截止和分页与当前查询表单共用同一请求生成器。
+        普通查询优先本地，仅实际缺口临时向具名来源补足。GET不写PG/Garage、不创建采集作业；临时值标为upstream及未保存。历史截止和local_only=true严格只读，已覆盖零上游。请求预览与当前查询表单共用生成器。
       </p>
       {path ? (
         <RequestPreview request={{ method: "GET", path }} />
       ) : (
         <p role="status">
-          当前截止时间格式无效，请回到查询数据核对；未生成或执行请求。
+          当前历史截止时间未填写或格式无效，请回到查询数据核对；未生成或执行请求。
         </p>
       )}
       <CompactTable
@@ -82,8 +94,13 @@ export function FinancialApiHelp({
           ],
           [
             "as_of",
-            "否 / 服务读取时刻",
-            "含时区ISO8601的MDF确认可用截止。表单北京时间转UTC；留空则请求不带此参数。不是官方历史首发时刻。",
+            "否 / 普通查询不传",
+            "含时区ISO8601；一旦提供即强制历史只读，不调用上游。勾选历史截止后必填，北京时间转UTC。不是官方历史首发。普通响应的as_of是读取时刻，不自动进入历史模式。",
+          ],
+          [
+            "local_only",
+            "否 / false",
+            "仅接受true或false。true显式本地只读；as_of存在时无论该值为何均只读。",
           ],
           ["offset", "否 / 0", "非负整数；日历行偏移，超出total返回空rows。"],
           [
@@ -94,7 +111,7 @@ export function FinancialApiHelp({
         ]}
       />
       <p>
-        只支持以上六个参数；重复参数和未知参数会被拒绝。不支持月频的basket、measure、columns或单位转换、来源切换参数。total为包含端点的日历天数×所选序列数，包含缺值行，不能当作成功观测数。
+        只支持以上七个参数；重复参数和未知参数会被拒绝。不支持月频的basket、measure、columns或单位转换、来源切换参数。total为包含端点的日历天数×所选序列数，包含缺值行，不能当作成功观测数。
       </p>
       <details>
         <summary>十条序列、类型与单位</summary>
@@ -122,17 +139,22 @@ export function FinancialApiHelp({
             [
               "total / offset / next_offset",
               "integer / integer / integer|null",
-              "本地日历行总量、当前偏移及下一页；末页next_offset=null。",
+              "日历行总量、当前偏移及下一页；末页next_offset=null。",
             ],
             [
               "provider_requests",
-              "integer；恒0",
-              "本次本地查询不产生来源请求。",
+              "integer",
+              "本次实际来源HTTP次数，缓存命中不计；历史/仅本地/已覆盖为0。",
+            ],
+            [
+              "query_mode / upstream",
+              "string / object",
+              "current|history|local；upstream含provider_requests、cache_hits和issues（序列、区间、分类）。临时补源每页最多20请求；最多64来源窗短时缓存5分钟，固定归档24小时；冷却不重复请求。分页按缺口分窗，不重跑初始化。",
             ],
             [
               "coverage",
               "object",
-              "同截止、完整请求区间的覆盖；series数组始终含十项，不受查询series过滤。",
+              "本地持有在该截止、完整请求区间的覆盖（不含临时值）；series数组始终含十项，不受查询series过滤。",
             ],
             [
               "coverage.as_of / provider_requests / series[]",
@@ -157,7 +179,7 @@ export function FinancialApiHelp({
             [
               "revision / batch_id",
               "integer|null / string|null",
-              "本地修订序号与留存批次；不证明官方vintage。",
+              "本地修订序号与留存批次；上游临时值二者均null，不证明官方vintage。",
             ],
             [
               "observed_at / available_at",
@@ -177,7 +199,7 @@ export function FinancialApiHelp({
             [
               "origin / identity",
               "string|null / string|null",
-              "原机构、政策投影、credit_archive、fred或mdf_derived等来源身份。受控样本会标controlled_fixture。",
+              "本地原机构、政策投影、credit_archive、fred或mdf_derived；临时值origin=upstream，真实来源在source_binding与provider_extra.source_origin。受控样本明确controlled_fixture。",
             ],
             [
               "original_agency / distributor / source_url / attribution",
@@ -188,6 +210,11 @@ export function FinancialApiHelp({
               "source_binding / source_request / provider_extra",
               "object / object|null / object|null",
               "具名绑定、实际请求依据、来源特有信息；派生输入版本见绑定与原件。",
+            ],
+            [
+              "persisted / query_classification",
+              "false / string（临时行或缺口可选）",
+              "补源值persisted=false，无revision/batch_id/observed_at/available_at/原件定位；未保存不能作早期截止证据。query_classification为本次补源失败或缺项分类。",
             ],
             [
               "is_copyrighted",
@@ -220,7 +247,7 @@ export function FinancialApiHelp({
           rows={[
             [
               "observed / provider_missing",
-              "有本地有值版本 / 来源明确点号缺值；后者value=null。",
+              "有值（需结合origin区分本地或临时） / 来源明确点号缺值；后者value=null。",
             ],
             [
               "non_observation_day",
@@ -228,7 +255,7 @@ export function FinancialApiHelp({
             ],
             [
               "not_known_at_cutoff / not_collected",
-              "该截止尚无已知批次 / 所选日期尚未采集；检查截止或显式人工补取。",
+              "该截止尚无已知批次 / 所选日期尚未采集；普通查询按可得日补缺；历史模式只保留当时缺项。",
             ],
             [
               "outside_provider_range / not_yet_available_from_provider",
@@ -262,7 +289,7 @@ export function FinancialApiHelp({
           政策目标上下限来自联储理事会具体政策生效记录；EFFR/SOFR来自纽约联储；DGS2/DGS10/DFII10来自美国财政部。以上FRED代码仅为指标映射。
         </p>
         <p>
-          MDF派生T10YIE=DGS10−DFII10，采用同观测日、同一截止可得的两条财政部输入并保留两腿版本；它是收益率差形成的通胀补偿，不是纯调查预期或FRED实采。
+          MDF派生T10YIE=DGS10−DFII10，采用同观测日、同一截止可得的两条财政部输入并保留两腿版本；普通查询也可使用同次临时两腿，完整输入见provider_extra.inputs，任一缺失不计算；它是收益率差形成的通胀补偿，不是纯调查预期或FRED实采。
         </p>
         <p>
           IG/HY使用Owner固定的PStoclet

@@ -53,14 +53,14 @@ update 独立刷新用户区间，确认的变化保留版本；无值不补零�
 双边政策范围出现之前无上下限证据，明确保留覆盖缺口。
 
 - `GET /api/r5/financial/timeseries/status`：默认窗口及十项明确绑定。
-- `GET /api/r5/financial/timeseries/query`：start/end/series/as_of/offset/limit，本地分页，固定截止。
+- `GET /api/r5/financial/timeseries/query`：start/end/series/as_of/offset/limit/local_only，本地优先临时补缺；显式截止严格只读。
 - `GET /api/r5/financial/timeseries/jobs`、`/jobs/{request_id}`：任务进度、逐段请求、批次及原件身份。
 - `POST /api/r5/financial/timeseries/jobs`：规范 UUID request_id、action=init/update、start/end。
 - `POST /api/r5/financial/timeseries/jobs/resume`：已有 request_id，复用同一任务，只续未完成段。
 - `GET /api/r5/financial/timeseries/api-help`：入口、字段及语义说明。
 
-所有 GET 不创建来源、不取凭据、不发来源请求、不自动恢复作业。写入需独立显式 Web 参数，
-复用私网 Host/Origin/JSON 准入；公开只读 Host 仍拒绝 POST。没有日频策略或常驻 worker。
+除普通query的有界临时补缺外，GET不创建来源、不取凭据、不发来源请求；任何GET均不自动恢复作业。写入需独立显式Web参数，
+复用私网Host/Origin/JSON准入；公开Host仍拒绝敏感POST。日频策略与常驻执行器见financial-daily-periodic.md，查询不改变其状态。
 每个已取得分段先将原始/metadata 字节写入校验内容地址，再记录持久恢复种子，之后确认 PG 数值；
 确认不确定时续跑原件而不是再次请求。已完成段与重复 request_id 不重复采集。失败段保留分类和
 冷却时间，其他段独立结算；中断不构成自动成功，用户明确续跑后按原作业继续。
@@ -128,3 +128,13 @@ MDF_FINANCIAL_DAILY_DEV_OPT_IN=1 uv run --no-sync pytest -q \
 未来尾部或来源尚未提供的日期留缺，后续增量补齐，不把整段历史归为失败。
 金融资产复用正常详情的展开/收起、查询/API/更新记录页签；采集使用共用日历与 DEV 确认、执行简报，
 执行详情与其他宏观资产共用身份、范围、北京时间和结果字段。更新记录表示 MDF 采集/确认，不冒称官方发布事件。
+
+### 普通查询与历史截止
+
+Web `/api/r5/financial/timeseries/query` 默认普通查询：先读本地，仅未持有且已进入来源可得日的缺口，复用已绑定原机构、固定信用归档/FRED尾段临时补足。`as_of` 一旦提供即为历史只读；`local_only=true` 显式只读，均不构造上游。页面普通响应的读取时刻不会自动变成下一次请求的历史截止。CLI 的原显式本地 `query` 语义保留。
+
+参数为 `start/end/series/as_of/offset/limit/local_only`，最后一项仅接受 `true|false`。按所选指标、日期分页，每页最多20次实际HTTP；来源分窗，进程内最多64窗缓存5分钟（固定归档24小时），失败也受缓存与既有来源冷却限制。缓存过期或Web重启可能重新请求，缓存不构成持久化或历史可得证据。摘要、覆盖、页面加载仍只读。`coverage` 只统计本地持有，不含临时值。
+
+响应 `query_mode=current|history|local`；`provider_requests` 为该次实际HTTP次数，`upstream.cache_hits/issues` 给出缓存命中与逐项区间/分类。已有数值（含0）及来源明确缺值不覆盖；有据起始日前、非观测日、尚未发布日不补抓。NYFed按下一工作日公布约定作保守准入；节假日或原件字段缺失仍以真实响应分类，不推造观测。
+
+临时行 `origin=upstream,persisted=false`，真实来源在 `source_binding`、`provider_extra.source_origin`；`revision/batch_id/available_at/observed_at/raw_locator/metadata_locator` 均为空。T10YIE仅用同观测日、同一本地读取截止的合格财政部输入，允许同次临时输入，逐腿身份/版本保留；缺腿不计算。不写PG/Garage、不创建作业。正式保存仍需原采集入口。

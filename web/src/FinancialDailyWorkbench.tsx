@@ -100,6 +100,8 @@ type Point = {
   identity: string | null;
   attribution: string;
   provider_extra: unknown;
+  persisted?: boolean;
+  query_classification?: string;
 };
 type Query = {
   rows: Point[];
@@ -107,6 +109,16 @@ type Query = {
   total: number;
   next_offset: number | null;
   provider_requests: number;
+  query_mode?: string;
+  upstream?: {
+    cache_hits: number;
+    issues: {
+      series_id: string;
+      start: string;
+      end: string;
+      classification: string;
+    }[];
+  };
   coverage: { series: Coverage[] };
 };
 const names: Record<string, string> = {
@@ -180,6 +192,23 @@ export function financialReason(
     ? `本段未完成（${code}）；核实对应来源或存储后续跑同一作业，已确认值保留。`
     : "";
 }
+function financialQueryReason(code: string) {
+  if (code.includes("derived_inputs"))
+    return "同日财政部名义/实际两腿不齐；缺腿公布或恢复后重新查询，不推算缺值。";
+  if (code.includes("credential") || code.includes("permission"))
+    return "此具名来源准入或凭据不可用；在数据源管理核实该来源后重新查询，不换源。";
+  if (code.includes("budget"))
+    return "本页补源达到有界请求限额；缩小区间后重新查询，或使用采集数据保存大范围。";
+  if (
+    code.includes("admission") ||
+    code.includes("cool") ||
+    code.includes("rate_limit")
+  )
+    return "具名来源正在限流/冷却；待冷却结束再查询，不自动重复请求。";
+  if (code.includes("http"))
+    return "具名来源HTTP请求暂未成功；待来源恢复并结束冷却后重新查询。";
+  return `本次具名补源未完成（${code}）；核实来源可用性后重新查询。`;
+}
 export function FinancialDailyWorkbench({
   route,
   navigate,
@@ -210,6 +239,8 @@ export function FinancialDailyWorkbench({
     ),
     [queryEnd, setQueryEnd] = useState(new Date().toISOString().slice(0, 10));
   const [cutoff, setCutoff] = useState(route.fields.get("as_of") ?? ""),
+    [history, setHistory] = useState(!!route.fields.get("as_of")),
+    [localOnly, setLocalOnly] = useState(false),
     [sid, setSid] = useState("DGS10"),
     [queryOffset, setQueryOffset] = useState(0),
     [query, setQuery] = useState<Query | null>(null),
@@ -339,6 +370,8 @@ export function FinancialDailyWorkbench({
           end: queryEnd,
           series: sid,
           cutoff,
+          history,
+          localOnly,
           offset,
         }),
       );
@@ -556,6 +589,8 @@ export function FinancialDailyWorkbench({
               end={queryEnd}
               series={sid}
               cutoff={cutoff}
+              history={history}
+              localOnly={localOnly}
               offset={queryOffset}
             />
           </div>
@@ -573,8 +608,7 @@ export function FinancialDailyWorkbench({
           </div>
           <div hidden={consumerTab !== "query"}>
             <p className="muted">
-              查询仅读取已保存的日频版本；刷新不发来源请求。同截止不借后来数值，政策生效日期与
-              MDF 确认可用时刻分别保留。
+              普通查询优先本地，仅缺口临时补源，不保存；已覆盖区间不请求来源。历史截止查询只读当时已持有版本，不补源。页面加载与摘要刷新不采集。
             </p>
             {summary.data && (
               <>
@@ -644,30 +678,80 @@ export function FinancialDailyWorkbench({
                   }}
                   required
                 />
+              </div>
+              <label className="cpi-history-toggle">
+                <input
+                  type="checkbox"
+                  checked={history}
+                  onChange={(e) => {
+                    setHistory(e.target.checked);
+                    setQueryOffset(0);
+                  }}
+                />
+                历史截止查询
+              </label>
+              {history && (
                 <DateField
-                  label="截止时间（北京时间，可空）"
+                  label="截止时间（北京时间）"
                   type="datetime-local"
                   value={cutoff ? toBeijingInput(cutoff) : ""}
                   onChange={(v) => {
                     setCutoff(v ? beijingInputToIso(v) : "");
                     setQueryOffset(0);
                   }}
+                  required
                 />
-              </div>
-              <button disabled={busy}>查询本地数据</button>
+              )}
+              {!history && (
+                <label className="cpi-history-toggle">
+                  <input
+                    type="checkbox"
+                    checked={localOnly}
+                    onChange={(e) => {
+                      setLocalOnly(e.target.checked);
+                      setQueryOffset(0);
+                    }}
+                  />
+                  仅查询本地
+                </label>
+              )}
+              <button disabled={busy || (history && !cutoff)}>查询数据</button>
             </form>
             {query && (
               <>
                 <p>
-                  截止 {formatBeijingTime(query.as_of)} · 本地日历行{" "}
-                  {query.total} · 上游请求 {query.provider_requests}。
+                  {query.query_mode === "history" ? "历史截止" : "本次读取时刻"}{" "}
+                  {formatBeijingTime(query.as_of)} · 日历行 {query.total} ·
+                  上游请求 {query.provider_requests}。
                 </p>
-                <button onClick={() => setCutoff(query.as_of)}>
+                <button
+                  onClick={() => {
+                    setCutoff(query.as_of);
+                    setHistory(true);
+                    setQueryOffset(0);
+                  }}
+                >
                   固定此截止
                 </button>
                 <button disabled={busy} onClick={() => void read()}>
-                  刷新本地结果
+                  刷新查询结果
                 </button>
+                {query.rows.some((r) => r.origin === "upstream") && (
+                  <p role="status">
+                    包含上游临时值，尚未保存，无本地版本或确认可用时刻；正式落库请使用采集数据。
+                  </p>
+                )}
+                {!!query.upstream?.issues.length && (
+                  <ul aria-label="查询补源缺口">
+                    {query.upstream.issues.map((issue, i) => (
+                      <li key={i}>
+                        {issue.series_id} · {issue.start}..{issue.end}：
+                        {financialQueryReason(issue.classification)}{" "}
+                        本地结果保留，本次未保存。
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <WorkflowTable
                   className="financial-table"
                   label="日频观测结果"
@@ -681,7 +765,12 @@ export function FinancialDailyWorkbench({
                         {r.value ?? "—"}
                         {r.basis_points !== null && ` / ${r.basis_points} bp`}
                       </>,
-                      label(r.state),
+                      <>
+                        {label(r.state)}
+                        {r.origin === "upstream" && " · 上游临时值／未保存"}
+                        {r.query_classification &&
+                          ` · ${r.query_classification}`}
+                      </>,
                       String(r.revision ?? "—"),
                     ],
                   }))}
@@ -711,6 +800,11 @@ export function FinancialDailyWorkbench({
                     <dl>
                       <Fact name="观测日">{point.observation_date}</Fact>
                       <Fact name="来源身份">{point.identity ?? "未取得"}</Fact>
+                      {point.origin === "upstream" && (
+                        <Fact name="保存状态">
+                          上游临时值，未保存；本地版本与可用时刻未知
+                        </Fact>
+                      )}
                       <Fact name="MDF首次观察">
                         {formatBeijingTime(point.observed_at, "未取得")}
                       </Fact>

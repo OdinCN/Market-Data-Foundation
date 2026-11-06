@@ -31,6 +31,7 @@ from market_data_foundation.web.financial_daily_jobs import (
     stamp,
     status,
 )
+from market_data_foundation.web.financial_daily_query import FinancialQuery
 from market_data_foundation.web.financial_daily_schedule import FinancialSchedule
 from market_data_foundation.web.gdp_api import body
 from market_data_foundation.web.worker_control import DevWorkerControl
@@ -62,7 +63,7 @@ HELP = dict(
         summary=PREFIX + "/summary",
         query=PREFIX
         + "/query?start=YYYY-MM-DD&end=YYYY-MM-DD&series=DGS10"
-        + "&as_of=ISO8601&offset=0&limit=200",
+        + "&local_only=false&offset=0&limit=200",
         jobs=PREFIX + "/jobs",
         detail=PREFIX + "/jobs/{request_id}",
         resume=PREFIX + "/jobs/resume",
@@ -75,7 +76,13 @@ HELP = dict(
     ),
     resume_body=dict(request_id="existing job UUID; resumes only incomplete steps"),
     notes=[
-        "GET/查询/刷新零上游请求；POST 仅已准入私网 Host/Origin，公开 Host 只读。",
+        "普通查询本地优先，只有缺口临时补源，不写PG/Garage或创建作业；已覆盖零上游。页面加载与摘要刷新不补源。",
+        (
+            "as_of 强制历史只读；local_only=true 显式只读。"
+            "临时 origin=upstream、persisted=false，无本地版本/可用时间。"
+        ),
+        "补源每页最多20次请求，按来源分窗；进程内最多64窗缓存5分钟（固定归档24小时），翻页复用，失败冷却亦缓存。",
+        "POST 仅已准入私网 Host/Origin，公开 Host 禁止敏感写；查询不保存。",
         "默认初始化为当天往前二十日历年，可编辑；增量更新所选日期区间并保留真实修订。",
         "as_of 是 MDF 确认可用截止，不代表官方历史首发；无历史发布时间证据则未知。",
         "信用原值为百分比，basis_points=percent×100；保留月末周末值。",
@@ -88,9 +95,12 @@ HELP = dict(
 )
 
 
-def financial_router(options=None, *, service_factory=build_service, jobs=None):
+def financial_router(
+    options=None, *, service_factory=build_service, jobs=None, query_reader=None
+):
     router = APIRouter(prefix=PREFIX, tags=["financial-daily"])
     host = jobs or (FinancialJobs(options.job_directory) if options else None)
+    reader = query_reader or FinancialQuery()
     schedule = (
         FinancialSchedule(options.state_directory)
         if options and options.state_directory
@@ -234,6 +244,7 @@ def financial_router(options=None, *, service_factory=build_service, jobs=None):
                 "as_of",
                 "offset",
                 "limit",
+                "local_only",
             } or any(len(params.getlist(k)) != 1 for k in params):
                 raise WebError("financial_query_invalid")
             start, end = day(params["start"]), day(params["end"])
@@ -247,6 +258,10 @@ def financial_router(options=None, *, service_factory=build_service, jobs=None):
             )
             if offset < 0 or not 1 <= limit <= 1000:
                 raise WebError("financial_query_page_invalid")
+            if params.get("local_only", "false") not in {"true", "false"}:
+                raise WebError("financial_query_invalid")
+            if "as_of" in params and not params["as_of"]:
+                raise WebError("financial_query_invalid")
             service = service_factory()
             cutoff = (
                 stamp(params.get("as_of")) if params.get("as_of") else service.clock()
@@ -254,7 +269,7 @@ def financial_router(options=None, *, service_factory=build_service, jobs=None):
             days = (end - start).days + 1
             total = days * len(selected)
             rows = []
-            # Read the page's dates at one cutoff; no provider is constructed.
+            # Each page reads one local cutoff; history never constructs a source.
             for n, sid in enumerate(selected):
                 lo, hi = max(offset, n * days), min(offset + limit, (n + 1) * days)
                 if lo < hi:
@@ -263,6 +278,16 @@ def financial_router(options=None, *, service_factory=build_service, jobs=None):
                     rows.extend(
                         service.query(a, b, selected=(sid,), as_of=cutoff)["rows"]
                     )
+            mode = (
+                "history"
+                if params.get("as_of")
+                else "local"
+                if params.get("local_only") == "true"
+                else "current"
+            )
+            upstream = dict(provider_requests=0, cache_hits=0, issues=[])
+            if mode == "current" and options.allow_collect:
+                rows, upstream = reader.supplement(service, rows, cutoff)
             return dict(
                 status="OK",
                 rows=rows,
@@ -270,7 +295,9 @@ def financial_router(options=None, *, service_factory=build_service, jobs=None):
                 total=total,
                 offset=offset,
                 next_offset=offset + limit if offset + limit < total else None,
-                provider_requests=0,
+                provider_requests=upstream["provider_requests"],
+                query_mode=mode,
+                upstream=upstream,
                 coverage=coverage(
                     service.store, start.isoformat(), end.isoformat(), as_of=cutoff
                 ),

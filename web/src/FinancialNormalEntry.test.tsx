@@ -104,7 +104,7 @@ it("keeps the real macro catalog/filter/search while alternating financial daily
   expect(
     screen.queryByRole("button", { name: "金融条件日频（十项）" }),
   ).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "查询本地数据" }));
+  fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
   await screen.findByRole("button", { name: "固定此截止" });
   fireEvent.click(screen.getByRole("tab", { name: "API说明" }));
   await screen.findByRole("heading", {
