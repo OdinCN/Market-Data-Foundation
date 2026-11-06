@@ -135,7 +135,7 @@ MDF_FINANCIAL_DAILY_DEV_OPT_IN=1 uv run --no-sync pytest -q \
 
 Web `/api/r5/financial/timeseries/query` 默认普通查询：先读本地，仅未持有且已进入来源可得日的缺口，复用已绑定原机构、固定信用归档/FRED尾段临时补足。`as_of` 一旦提供即为历史只读；`local_only=true` 显式只读，均不构造上游。页面普通响应的读取时刻不会自动变成下一次请求的历史截止。CLI 的原显式本地 `query` 语义保留。
 
-参数为 `start/end/series/as_of/offset/limit/local_only/order`，local_only 仅接受 `true|false`，series 为非空、去重的十项代码CSV。order 支持 asc/desc，旧API省略时维持asc；工作台显式请求desc，先按完整范围日期倒序、同日指标身份排序再分页，不是单页排序。按所选指标、日期分页，每页最多20次实际HTTP；来源分窗，进程内最多64窗缓存5分钟（固定归档24小时），失败也受缓存与既有来源冷却限制。缓存过期或Web重启可能重新请求，缓存不构成持久化或历史可得证据。摘要、覆盖、页面加载仍只读。`coverage` 只统计本地持有，不含临时值。
+参数为 `start/end/series/as_of/offset/limit/local_only/order`，local_only 仅接受 `true|false`，series 为非空、去重的十项代码CSV。order 支持 asc/desc，旧API省略时维持asc；工作台显式请求desc，先按完整范围日期倒序、同日按所选指标顺序再分页，不是单页排序。按所选指标、日期分页，每页最多20次实际HTTP；来源分窗，进程内最多64窗缓存5分钟（固定归档24小时），失败也受缓存与既有来源冷却限制。缓存过期或Web重启可能重新请求，缓存不构成持久化或历史可得证据。摘要、覆盖、页面加载仍只读。`coverage` 只统计本地持有，不含临时值。
 
 响应 `query_mode=current|history|local`；`provider_requests` 为该次实际HTTP次数，`upstream.cache_hits/issues` 给出缓存命中与逐项区间/分类。已有数值（含0）及来源明确缺值不覆盖；有据起始日前、非观测日、尚未发布日不补抓。NYFed按下一工作日公布约定作保守准入；节假日或原件字段缺失仍以真实响应分类，不推造观测。
 
