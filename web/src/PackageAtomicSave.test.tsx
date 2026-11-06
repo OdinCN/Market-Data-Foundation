@@ -84,6 +84,109 @@ function enterKey(source = "BLS", value = KEY) {
 }
 const signal = () => new AbortController().signal;
 
+it("saves all eleven capabilities with four credential intents and keeps public/local sources out of authentication", async () => {
+  const h = host();
+  const before = await getPackage(h.transport, "macro", signal());
+  const original = before.capabilities
+    .filter((c) => c.capability_id !== "financial_daily")
+    .map((c) => c.capability_id);
+  await putPackage(h.transport, "macro", {
+    expected_revision: null,
+    enabled_capability_ids: original,
+    source_changes: [],
+  });
+  await open(h.transport);
+  await ready();
+  choose("金融条件日频（十项）");
+  tab("来源配置");
+  const local = screen.getByRole("group", { name: "MDF 取数方式" });
+  expect(local.textContent).toContain("本地计算");
+  expect(within(local).queryByText("认证未知", { exact: false })).toBeNull();
+  for (const source of [
+    "Federal Reserve Board",
+    "New York Fed",
+    "US Treasury",
+    "Credit archive",
+  ]) {
+    const group = screen.getByRole("group", { name: source + " 取数方式" });
+    expect(group.textContent).toContain("无需 API Key");
+    expect(within(group).queryByRole("button")).toBeNull();
+    expect(within(group).queryByText("认证未知", { exact: false })).toBeNull();
+  }
+  const fred = screen.getByRole("group", { name: "FRED" });
+  expect(within(fred).getByText("已配置（仅表示存在）")).toBeTruthy();
+  expect(
+    within(fred).getByRole("button", { name: "替换 FRED 凭据" }),
+  ).toBeTruthy();
+  click("保存配置");
+  await screen.findByText(/配置已保存/);
+  const writes = h.packages.requests.filter((r) => r.method === "PUT");
+  expect(writes).toHaveLength(2);
+  expect(writes[1].body.source_changes).toEqual(
+    ["BEA", "BLS", "Census", "FRED"].map((source_id) => ({
+      source_id,
+      credential_action: "keep",
+    })),
+  );
+  const saved = await getPackage(h.transport, "macro", signal());
+  expect(new Set(saved.enabled_capability_ids)).toEqual(
+    new Set([...original, "financial_daily"]),
+  );
+  click("重读核对配置");
+  await waitFor(() => expect(button("重读核对配置").disabled).toBe(false));
+  tab("能力配置");
+  expect(
+    (
+      screen.getByRole("checkbox", {
+        name: "金融条件日频（十项）",
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+  choose("金融条件日频（十项）");
+  tab("来源配置");
+  click("取消");
+  await ready();
+  expect(
+    (
+      screen.getByRole("checkbox", {
+        name: "金融条件日频（十项）",
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+  expect(h.packages.requests.filter((r) => r.method === "PUT")).toHaveLength(2);
+  choose("金融条件日频（十项）");
+  click("保存配置");
+  await screen.findByText(/配置已保存/);
+  const final = await getPackage(h.transport, "macro", signal());
+  expect(new Set(final.enabled_capability_ids)).toEqual(new Set(original));
+  expect(h.packages.requests.filter((r) => r.method === "PUT")).toHaveLength(3);
+});
+
+it("explains a classified credential save rejection without displaying the input or retrying", async () => {
+  const h = host();
+  const transport: Transport = (input, init) =>
+    init?.method === "PUT"
+      ? Promise.resolve(
+          Response.json(
+            {
+              status: "REJECTED",
+              classification: "invalid_credential",
+              effect: "NONE",
+            },
+            { status: 422 },
+          ),
+        )
+      : h.transport(input, init);
+  await open(transport);
+  await ready();
+  choose("美国 CPI");
+  enterKey();
+  click("保存配置");
+  await screen.findByText(/新凭据格式不正确，本次未保存/);
+  expect(document.body.textContent).not.toContain(KEY);
+  expect(h.packages.requests.filter((r) => r.method === "PUT")).toHaveLength(0);
+});
+
 it("closing or cancelling password drafts sends no PUT and reopening has no stored input", async () => {
   const h = host();
   await open(h.transport);

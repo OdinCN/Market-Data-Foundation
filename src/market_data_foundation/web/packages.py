@@ -184,23 +184,14 @@ class PackageHost:
             self._verification_lock.release()
 
     def credential_states(self, package_id, record, *, source_ids=None):
-        sources = {
-            s
-            for cap in self.catalog.package(package_id).capabilities
-            for s in cap.required_sources
-        }
+        sources = self.catalog.credential_sources(package_id)
         wanted = sources if source_ids is None else set(source_ids)
         if not wanted <= sources:
             raise PackageError("illegal_source_change", 422, "REJECTED")
         references = record.credential_refs if record else {}
         inherited = wanted - set(references)
         enabled = set(record.enabled_capability_ids) if record else set()
-        required = {
-            s
-            for c in self.catalog.package(package_id).capabilities
-            if c.capability_id in enabled
-            for s in c.required_sources
-        }
+        required = self.catalog.credential_sources(package_id, enabled)
         # Effective references for every enabled capability need no legacy
         # inspection of an unrelated inactive source. That source stays unknown.
         inspect_legacy = inherited and (not references or required & inherited)
@@ -240,11 +231,7 @@ class PackageHost:
 
     def load_credential(self, package_id, source_id, *, record=None):
         """Host-only loading shared with a Worker; never exposed by HTTP."""
-        sources = {
-            s
-            for c in self.catalog.package(package_id).capabilities
-            for s in c.required_sources
-        }
+        sources = self.catalog.credential_sources(package_id)
         if source_id not in sources:
             raise PackageError("illegal_source_change", 422, "REJECTED")
         current = (
@@ -306,7 +293,7 @@ class PackageHost:
             state_map = {s.source_id: s for s in states}
             history = {key(h.definition_ref): h for h in evidence.history}
             known_refs = {key(c.definition_ref) for c in package.capabilities}
-            sources = {s for c in package.capabilities for s in c.required_sources}
+            sources = self.catalog.credential_sources(package_id)
             if (
                 len(state_map) != len(states)
                 or not set(state_map) <= sources
@@ -431,6 +418,7 @@ class PackageHost:
             config_revision=record.revision if record else None,
             enabled_capability_ids=list(enabled),
             required_sources=required,
+            source_access=self.catalog.source_access(package_id),
             credential_states=credentials,
             source_verifications=self.verification_views(package_id, record),
             history_completeness="COMPLETE" if complete else "UNKNOWN",
@@ -515,10 +503,20 @@ class PackageRoute(APIRoute):
                     except ValueError, UnicodeError:
                         raise PackageError("invalid_request", 422, "REJECTED") from None
                 return await original(request)
-            except RequestValidationError:
-                return failure_response(
-                    PackageError("invalid_request", 422, "REJECTED")
-                )
+            except RequestValidationError as error:
+                classification = "invalid_request"
+                for item in error.errors():
+                    location = item["loc"]
+                    if "credential_value" in location:
+                        classification = "invalid_credential"
+                        break
+                    if "source_changes" in location:
+                        classification = (
+                            "too_many_credential_changes"
+                            if item["type"] == "too_long"
+                            else "invalid_source_changes"
+                        )
+                return failure_response(PackageError(classification, 422, "REJECTED"))
             except PackageError as exc:
                 return failure_response(exc)
             except Exception:

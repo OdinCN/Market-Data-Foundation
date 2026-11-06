@@ -30,13 +30,7 @@ def fixture_host(root, *, initialize=True, scenario="default"):
         )
 
     def credentials(environment_id, package_id, record):
-        sources = sorted(
-            {
-                s
-                for c in catalog.package(package_id).capabilities
-                for s in c.required_sources
-            }
-        )
+        sources = sorted(catalog.credential_sources(package_id))
         return [
             CredentialState(
                 source_id=s, credential_state="missing" if s == "BEA" else "configured"

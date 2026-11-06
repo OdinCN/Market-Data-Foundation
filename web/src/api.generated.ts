@@ -1775,6 +1775,8 @@ export interface components {
       enabled_capability_ids: string[];
       /** Required Sources */
       required_sources: string[];
+      /** Source Access */
+      source_access?: components["schemas"]["SourceAccess"][];
       /** Credential States */
       credential_states: components["schemas"]["CredentialState"][];
       /** Source Verifications */
@@ -2151,6 +2153,25 @@ export interface components {
        * @constant
        */
       qualification: "VERIFIED_FOR_REQUEST";
+    };
+    /**
+     * SourceAccess
+     * @description Declared access requirements, independent of credentials or runtime health.
+     */
+    SourceAccess: {
+      /** Source Id */
+      source_id: string;
+      /**
+       * Kind
+       * @default external
+       * @enum {string}
+       */
+      kind: "external" | "local_derived";
+      /**
+       * Credential Requirement
+       * @enum {string}
+       */
+      credential_requirement: "api_key" | "none" | "host_managed" | "unknown";
     };
     /** SourceContractDTO */
     SourceContractDTO: {

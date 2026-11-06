@@ -1,4 +1,4 @@
-"""Named installed manual daily paths; inventory registration has no source effects."""
+"""Named daily paths shared by explicit manual jobs and periodic maintenance."""
 
 from market_data_foundation.canonical.model import (
     EvidenceRequirement,
@@ -9,7 +9,7 @@ from market_data_foundation.canonical.model import (
 )
 from market_data_foundation.historical.financial_daily import DEFINITION
 
-# This is the actual composite manual workflow, not the legacy all-FRED contract.
+# Keep installed binding identities for both callers; never imply an all-FRED source.
 PATHS = (
     ("board", "Federal Reserve Board", "policy effective lower/upper projection"),
     ("nyfed", "New York Fed", "EFFR and SOFR official daily observations"),
@@ -39,12 +39,13 @@ def contracts():
             None,
             None,
             "read",
-            "explicit_manual_daily_capture",
+            "explicit_manual_or_periodic_daily_capture",
             DEFINITION.scope,
             "observation day, source availability and MDF cutoff are distinct",
             "per-series partial results; absent values remain absent",
-            "bounded source segments within one resumable manual job",
-            "manual init/update only; no resident financial worker",
+            "bounded source segments within one resumable daily job",
+            "manual init/update and source-group periodic maintenance; "
+            "actual strategy and worker state observed separately",
             frozenset({Grade.ORIGINAL}),
         )
         binding = SourceBindingRevision(

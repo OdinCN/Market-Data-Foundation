@@ -208,11 +208,7 @@ class ReadonlyRuntime:
         return self._secret(section, "api_key") if section is not None else None
 
     def credential_states(self, environment_id, package_id, record):
-        sources = {
-            s
-            for cap in self.packages.catalog.package(package_id).capabilities
-            for s in cap.required_sources
-        }
+        sources = self.packages.catalog.credential_sources(package_id)
         states = []
         for source in sorted(sources):
             if source not in {"BLS", "BEA", "FRED"}:

@@ -88,6 +88,38 @@ class CapabilityView(DTO):
     source_relations: list[SourceRelation] = Field(default_factory=list)
 
 
+class SourceAccess(DTO):
+    """Declared access requirements, independent of credentials or runtime health."""
+
+    source_id: str
+    kind: Literal["external", "local_derived"] = "external"
+    credential_requirement: Literal["api_key", "none", "host_managed", "unknown"]
+
+
+def source_access(source_id):
+    requirement = (
+        "api_key"
+        if source_id in {"BLS", "BEA", "Census", "FRED"}
+        else "none"
+        if source_id
+        in {
+            "Federal Reserve Board",
+            "New York Fed",
+            "US Treasury",
+            "Credit archive",
+            "MDF",
+        }
+        else "host_managed"
+        if source_id in {"TDX", "KD"}
+        else "unknown"
+    )
+    return SourceAccess(
+        source_id=source_id,
+        kind="local_derived" if source_id == "MDF" else "external",
+        credential_requirement=requirement,
+    )
+
+
 @dataclass(frozen=True)
 class PackageMetadata:
     package_id: str
@@ -240,6 +272,27 @@ class PackageCatalog:
                         raise PackageError("package_catalog_mapping_invalid")
                 self.entries[package.package_id, cap.capability_id] = rows
 
+    def source_access(self, package_id):
+        return [
+            source_access(s)
+            for s in sorted(
+                {
+                    s
+                    for c in self.package(package_id).capabilities
+                    for s in c.required_sources
+                }
+            )
+        ]
+
+    def credential_sources(self, package_id, enabled=None):
+        return {
+            s
+            for c in self.package(package_id).capabilities
+            if enabled is None or c.capability_id in enabled
+            for s in c.required_sources
+            if source_access(s).credential_requirement in {"api_key", "host_managed"}
+        }
+
     def capabilities(self, package_id):
         calendars = {
             "BLS": "BLS 官方发布日历",
@@ -263,7 +316,7 @@ class PackageCatalog:
                                 else row.source_name
                             ),
                             release_calendar=(
-                                "按观测日人工初始化/增量；日频常驻未接入"
+                                "按来源可得时间分组检查并回看近14日修订；支持人工初始化/增量与周期采集，实际策略及运行另行核实"
                                 if cap.capability_id == "financial_daily"
                                 else "Census M3 官方发布日历（调度未装配）"
                                 if cap.capability_id == "m3"
@@ -422,6 +475,7 @@ class PackageView(DTO):
     config_revision: str | None
     enabled_capability_ids: list[str]
     required_sources: list[str]
+    source_access: list[SourceAccess] = Field(default_factory=list)
     credential_states: list[CredentialState]
     source_verifications: list[SourceVerification] = Field(default_factory=list)
     history_completeness: Literal["COMPLETE", "UNKNOWN"]

@@ -300,7 +300,8 @@ function PackageEditor({
       ].sort()
     : [];
   const replacementSources = required.filter(
-    (source) => source in credentialDrafts,
+    (source) =>
+      credentialRequired(snapshot, source) && source in credentialDrafts,
   );
   const invalidCredential = replacementSources.some(
     (source) => !credentialDrafts[source].trim(),
@@ -328,15 +329,17 @@ function PackageEditor({
     const command: SavePackage = {
       expected_revision: snapshot.config_revision,
       enabled_capability_ids: [...enabled],
-      source_changes: required.map((source_id) =>
-        source_id in credentialDrafts
-          ? {
-              source_id,
-              credential_action: "replace" as const,
-              credential_value: credentialDrafts[source_id],
-            }
-          : { source_id, credential_action: "keep" as const },
-      ),
+      source_changes: required
+        .filter((source) => credentialRequired(snapshot, source))
+        .map((source_id) =>
+          source_id in credentialDrafts
+            ? {
+                source_id,
+                credential_action: "replace" as const,
+                credential_value: credentialDrafts[source_id],
+              }
+            : { source_id, credential_action: "keep" as const },
+        ),
     };
     const intent: SaveIntent = {
       expected_revision: snapshot.config_revision,
@@ -385,7 +388,8 @@ function PackageEditor({
       else {
         setPhase("ready");
         setNotice(
-          "保存被拒绝或确认未提交，本次修改未生效；可检查后再保存。" +
+          (saveFailureReasons[detail?.classification ?? ""] ??
+            "保存被拒绝或确认未提交，本次修改未生效；可检查后再保存。") +
             (intent.replaced_sources.length
               ? "凭据输入已清除；请重新输入，或明确取消本次替换。"
               : ""),
@@ -577,7 +581,7 @@ function PackageEditor({
         ) : (
           <>
             <p>
-              默认使用已保存的凭据；需要更换时再输入新值。保存后不会回显完整凭据。
+              取数来源与凭据需求分别列示。需要凭据的通路默认保留已保存值；公开取数和本地计算不要求凭据。保存后不会回显完整凭据。
             </p>
             <p>
               本次选择所需来源：{required.join(" / ") || "无"}
@@ -640,6 +644,29 @@ function PackageEditor({
               ))}
             </section>
             {required.map((id) => {
+              const access = snapshot.source_access?.find(
+                (source) => source.source_id === id,
+              );
+              if (!credentialRequired(snapshot, id))
+                return (
+                  <fieldset key={id} aria-label={`${id} 取数方式`}>
+                    <legend>
+                      {id} ·{" "}
+                      {access?.kind === "local_derived"
+                        ? "本地计算"
+                        : access?.credential_requirement === "none"
+                          ? "公开取数"
+                          : "凭据需求待核实"}
+                    </legend>
+                    <p>
+                      {access?.kind === "local_derived"
+                        ? "MDF 本地派生计算，保留同观测日、同截止的两腿版本；不是需要 Key 的外部提供商。"
+                        : access?.credential_requirement === "none"
+                          ? "公开取数通路，无需 API Key；认证不适用。来源可用性以实际请求及作业结果为准。"
+                          : "凭据需求尚未核实，当前不提供凭据操作；请核对来源绑定。"}
+                    </p>
+                  </fieldset>
+                );
               const state = snapshot.credential_states.find(
                 (c) => c.source_id === id,
               );
@@ -845,6 +872,26 @@ function PackageEditor({
     </PackageDialog>
   );
 }
+
+function credentialRequired(snapshot: Package | null, source: string) {
+  const requirement = snapshot?.source_access?.find(
+    (item) => item.source_id === source,
+  )?.credential_requirement;
+  return requirement === "api_key" || requirement === "host_managed";
+}
+
+const saveFailureReasons: Record<string, string> = {
+  too_many_credential_changes:
+    "凭据操作数量超出限制，本次未保存；仅对需要凭据的来源提交配置。请重读后重试。",
+  invalid_source_changes:
+    "来源凭据操作格式不正确，本次未保存；请核对来源选择和替换方式。",
+  invalid_credential:
+    "新凭据格式不正确，本次未保存；请重新输入有效凭据或取消替换。",
+  source_credentials_not_applicable:
+    "公开取数或本地计算不使用凭据，本次未保存；请重读来源配置后重试。",
+  illegal_source_change:
+    "凭据操作不属于当前接入包，本次未保存；请重读后核对来源。",
+};
 
 const verificationReasons: Record<string, string> = {
   not_checked: "尚未验证",

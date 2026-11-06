@@ -106,11 +106,6 @@ def test_first_enable_required_keep_and_package_environment_isolation(tmp_path):
             "BEA": "missing",
             "Census": "configured",
             "FRED": "configured",
-            "Federal Reserve Board": "configured",
-            "New York Fed": "configured",
-            "US Treasury": "configured",
-            "MDF": "configured",
-            "Credit archive": "configured",
         }
         assert put(client, ["daily_raw"], package="tdx").status_code == 200
         assert client.get(f"{PATH}/macro").json() == ppi

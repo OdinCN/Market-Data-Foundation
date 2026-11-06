@@ -1015,11 +1015,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         return host.write_factory(credential_loader=host.effective_credential)
 
     def credential_states(self, environment_id, package_id, record):
-        sources = {
-            s
-            for cap in self.packages.catalog.package(package_id).capabilities
-            for s in cap.required_sources
-        }
+        sources = self.packages.catalog.credential_sources(package_id)
         return self.scoped_credential_states(
             environment_id, package_id, record, source_ids=sources
         )
