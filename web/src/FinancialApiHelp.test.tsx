@@ -16,6 +16,7 @@ import {
 } from "./financialQuery";
 import example from "./financial-query-example.json";
 import type { Transport } from "./api";
+import { financialResponse } from "./financialQueryTestFixture";
 
 const originalClipboard = Object.getOwnPropertyDescriptor(
   navigator,
@@ -46,20 +47,7 @@ function setup(queryExtra: Record<string, unknown> = {}, asOf = "") {
         endpoints: { query: prefix + "/query" },
         notes: ["GET 本地读取零上游请求。"],
       });
-    const offset = Number(
-      new URL(url, location.origin).searchParams.get("offset") ?? 0,
-    );
-    return Response.json({
-      status: "OK",
-      rows: [],
-      as_of: "2026-11-05T08:00:03+00:00",
-      total: 201,
-      offset,
-      next_offset: offset === 0 ? 200 : null,
-      provider_requests: 0,
-      coverage: { series: [] },
-      ...queryExtra,
-    });
+    return Response.json(financialResponse(url, queryExtra));
   };
   render(
     <FinancialDailyWorkbench
@@ -79,10 +67,22 @@ function setup(queryExtra: Record<string, unknown> = {}, asOf = "") {
   );
   return calls;
 }
+function chooseSeries(ids: string[]) {
+  fireEvent.click(screen.getByRole("button", { name: "金融指标" }));
+  const group = screen.getByRole("group", { name: "金融指标选项" });
+  fireEvent.click(within(group).getByRole("button", { name: "清空" }));
+  for (const id of ids)
+    fireEvent.click(
+      within(group).getByRole("checkbox", { name: new RegExp(` · ${id}$`) }),
+    );
+  fireEvent.keyDown(group, { key: "Escape" });
+}
 const tab = (name: string) =>
   fireEvent.click(screen.getByRole("tab", { name }));
 function url() {
-  return screen.getByLabelText("请求 URL").textContent!.replace(/^GET /, "");
+  return within(screen.getByRole("region", { name: "请求预览" }))
+    .getByLabelText("请求 URL")
+    .textContent!.replace(/^GET /, "");
 }
 
 it("shares the exact date/series/cutoff/page request with the query and copies without submitting", async () => {
@@ -95,11 +95,9 @@ it("shares the exact date/series/cutoff/page request with the query and copies w
   await screen.findByLabelText("开始日期");
   expect(screen.queryByLabelText("截止时间（北京时间）")).toBeNull();
   fireEvent.click(screen.getByLabelText("历史截止查询"));
-  fireEvent.change(screen.getByLabelText("显示指标"), {
-    target: { value: "SOFR" },
-  });
+  chooseSeries(["SOFR"]);
   fireEvent.change(screen.getByLabelText("开始日期"), {
-    target: { value: "2026-10-30" },
+    target: { value: "2026-09-01" },
   });
   fireEvent.change(screen.getByLabelText("结束日期"), {
     target: { value: "2026-11-03" },
@@ -112,17 +110,22 @@ it("shares the exact date/series/cutoff/page request with the query and copies w
   const preview = url(),
     parsed = new URL(preview);
   expect(Object.fromEntries(parsed.searchParams)).toEqual({
-    start: "2026-10-30",
+    start: "2026-09-01",
     end: "2026-11-03",
     series: "SOFR",
     offset: "0",
-    limit: "200",
+    limit: "40",
     local_only: "true",
+    order: "desc",
     as_of: "2026-11-05T08:00:03.000Z",
   });
   fireEvent.click(screen.getByRole("button", { name: "复制请求预览URL" }));
   await waitFor(() => expect(writeText).toHaveBeenCalledWith(preview));
-  fireEvent.click(screen.getByText("cURL 示例（当前服务地址）"));
+  fireEvent.click(
+    within(screen.getByRole("region", { name: "请求预览" })).getByText(
+      "cURL 示例（当前服务地址）",
+    ),
+  );
   fireEvent.click(screen.getByRole("button", { name: "复制cURL" }));
   await waitFor(() =>
     expect(writeText).toHaveBeenCalledWith(`curl --request GET '${preview}'`),
@@ -139,11 +142,9 @@ it("shares the exact date/series/cutoff/page request with the query and copies w
     expect(calls.filter((c) => c.url.includes("/query?"))).toHaveLength(2),
   );
   tab("API说明");
-  expect(new URL(url()).searchParams.get("offset")).toBe("200");
+  expect(new URL(url()).searchParams.get("offset")).toBe("40");
   tab("查询数据");
-  fireEvent.change(screen.getByLabelText("显示指标"), {
-    target: { value: "DGS2" },
-  });
+  chooseSeries(["DGS2"]);
   fireEvent.click(screen.getByLabelText("历史截止查询"));
   tab("API说明");
   expect(new URL(url()).searchParams.get("offset")).toBe("0");
@@ -238,8 +239,8 @@ it("keeps ordinary mode across responses and requires explicit historical cutoff
   await screen.findByLabelText("开始日期");
   expect(screen.queryByLabelText("截止时间（北京时间）")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
-  await screen.findByRole("button", { name: "刷新查询结果" });
-  fireEvent.click(screen.getByRole("button", { name: "刷新查询结果" }));
+  await screen.findByRole("region", { name: "本次原始响应" });
+  fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
   await waitFor(() =>
     expect(calls.filter((c) => c.url.includes("/query?")).length).toBe(2),
   );
@@ -266,9 +267,16 @@ it("keeps ordinary mode across responses and requires explicit historical cutoff
   expect(screen.queryByRole("region", { name: "请求预览" })).toBeNull();
   tab("查询数据");
   fireEvent.click(screen.getByLabelText("历史截止查询"));
-  fireEvent.click(screen.getByLabelText("仅查询本地"));
-  tab("API说明");
-  expect(new URL(url()).searchParams.get("local_only")).toBe("true");
+  expect(screen.queryByLabelText("仅查询本地")).toBeNull();
+  expect(
+    financialQuerySuffix({
+      start: "2026-10-30",
+      end: "2026-10-30",
+      series: "DGS10",
+      cutoff: "",
+      localOnly: true,
+    }),
+  ).toContain("local_only=true");
 });
 
 it.each([false, true])(
@@ -306,10 +314,17 @@ it.each([false, true])(
           : [],
       },
     });
+    chooseSeries(["DGS10"]);
+    fireEvent.change(screen.getByLabelText("开始日期"), {
+      target: { value: "2026-10-30" },
+    });
+    fireEvent.change(screen.getByLabelText("结束日期"), {
+      target: { value: "2026-10-30" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
-    await screen.findByText(/包含上游临时值/);
-    const table = screen.getByRole("region", { name: "日频观测结果" });
-    expect(table.textContent).toContain("上游临时值／未保存");
+    await screen.findByText("临时来源值 · 未保存");
+    const table = screen.getByRole("table", { name: "金融条件日频 范围数据" });
+    expect(table.textContent).toContain("临时来源值 · 未保存");
     expect(table.textContent).toContain("0");
     if (failed) {
       expect(screen.getByLabelText("查询补源缺口").textContent).toContain(
@@ -334,7 +349,7 @@ it("preserves explicit old financial as_of deep links as historical reads", asyn
     (screen.getByLabelText("截止时间（北京时间）") as HTMLInputElement).value,
   ).toBe("2026-10-01T08:00:00");
   fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
-  await screen.findByRole("button", { name: "刷新查询结果" });
+  await screen.findByRole("region", { name: "本次原始响应" });
   const request = new URL(
     calls.find((c) => c.url.includes("/query?"))!.url,
     "http://local",

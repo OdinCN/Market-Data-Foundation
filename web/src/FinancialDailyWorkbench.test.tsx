@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { FINANCIAL, FinancialDailyWorkbench } from "./FinancialDailyWorkbench";
 import type { Transport } from "./api";
+import { financialResponse } from "./financialQueryTestFixture";
 import type { Route } from "./workflowRoute";
 
 afterEach(() => {
@@ -113,6 +114,7 @@ function fixture(post?: (body: unknown) => Promise<Response>) {
         status: "OK",
         job: { request_id: url.split("/").at(-1) },
       });
+    if (url.includes("/query?")) return Response.json(financialResponse(url));
     return Response.json({
       status: "OK",
       rows: [],
@@ -194,7 +196,7 @@ it("does not repeat an uncertain POST and verifies the original identity by GET"
     ),
   ).toBe(true);
 });
-it("explicitly fixing the response cutoff switches refresh to historical local GET", async () => {
+it("queries ordinary data then uses the common historical form for local GET", async () => {
   const { transport, calls } = fixture();
   render(
     <FinancialDailyWorkbench
@@ -205,9 +207,12 @@ it("explicitly fixing the response cutoff switches refresh to historical local G
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
-  await screen.findByRole("button", { name: "固定此截止" });
-  fireEvent.click(screen.getByRole("button", { name: "固定此截止" }));
-  fireEvent.click(screen.getByRole("button", { name: "刷新查询结果" }));
+  await screen.findByRole("region", { name: "本次原始响应" });
+  fireEvent.click(screen.getByRole("checkbox", { name: "历史截止查询" }));
+  fireEvent.change(screen.getByLabelText("截止时间（北京时间）"), {
+    target: { value: "2026-11-05T22:00:00" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
   await waitFor(() =>
     expect(calls.filter((c) => c.url.includes("/query?")).length).toBe(2),
   );

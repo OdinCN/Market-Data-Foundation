@@ -16,6 +16,7 @@ import { FINANCIAL } from "./FinancialDailyWorkbench";
 import { CPI, keyOf } from "./workflowModel";
 import { asgi, closeBridges } from "./workflowTestBridge";
 import type { Transport } from "./api";
+import { financialResponse } from "./financialQueryTestFixture";
 let root = "";
 afterEach(() => {
   cleanup();
@@ -57,14 +58,7 @@ async function setup(financialJobs = [job]) {
           : url.includes("/jobs/")
             ? { job }
             : url.includes("/query?")
-              ? {
-                  rows: [],
-                  as_of: "2026-11-05T12:00:00Z",
-                  total: 0,
-                  next_offset: null,
-                  provider_requests: 0,
-                  coverage: { series: [] },
-                }
+              ? financialResponse(url)
               : { endpoints: { query: "/api/r5/financial/timeseries/query" } };
       return Response.json({ status: "OK", ...data });
     }
@@ -111,7 +105,7 @@ it("keeps the real macro catalog/filter/search while alternating financial daily
     screen.queryByRole("button", { name: "金融条件日频（十项）" }),
   ).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
-  await screen.findByRole("button", { name: "固定此截止" });
+  await screen.findByRole("region", { name: "本次原始响应" });
   fireEvent.click(screen.getByRole("tab", { name: "API说明" }));
   await screen.findByRole("heading", {
     name: "GET /api/r5/financial/timeseries/query",

@@ -349,3 +349,95 @@ def test_unconfirmed_hole_can_fill_but_explicit_dot_is_retained():
     assert (
         result[1]["state"] == "provider_missing" and receipt["provider_requests"] == 1
     )
+
+
+def test_descending_order_is_global_date_major_across_pages_and_legacy_is_unchanged(
+    tmp_path,
+):
+    store = ReadStore()
+    reader = FinancialQuery(
+        lambda _: pytest.fail("historical ordering constructed a source")
+    )
+    params = dict(
+        start="2026-10-29",
+        end="2026-10-31",
+        series="SOFR,DGS10",
+        as_of=NOW.isoformat(),
+        limit=3,
+        order="desc",
+    )
+    with TestClient(app_for(tmp_path, store, reader)) as client:
+        first = client.get(PREFIX + "/query", params=params).json()
+        second = client.get(PREFIX + "/query", params=params | {"offset": 3}).json()
+        back = client.get(PREFIX + "/query", params=params).json()
+        legacy = client.get(
+            PREFIX + "/query", params=params | {"order": "asc", "limit": 6}
+        ).json()
+
+    def ids(r):
+        return [(x["observation_date"], x["series_id"]) for x in r["rows"]]
+
+    assert ids(first) == [
+        ("2026-10-31", "SOFR"),
+        ("2026-10-31", "DGS10"),
+        ("2026-10-30", "SOFR"),
+    ]
+    assert ids(second) == [
+        ("2026-10-30", "DGS10"),
+        ("2026-10-29", "SOFR"),
+        ("2026-10-29", "DGS10"),
+    ]
+    assert (
+        ids(back) == ids(first)
+        and first["next_offset"] == 3
+        and second["next_offset"] is None
+    )
+    assert len(set(ids(first) + ids(second))) == 6
+    assert ids(legacy) == [
+        (at, sid)
+        for sid in ("SOFR", "DGS10")
+        for at in ("2026-10-29", "2026-10-30", "2026-10-31")
+    ]
+    assert all(r["provider_requests"] == 0 for r in (first, second, back, legacy))
+
+
+def test_descending_page_roundtrip_reuses_same_upstream_gap(tmp_path):
+    source = Source({("DGS10", "2026-10-30"): "4.1"})
+    store = ReadStore([value("DGS10", "2026-10-29", "4.0")])
+    params = dict(
+        start="2026-10-29", end="2026-10-30", series="DGS10", limit=1, order="desc"
+    )
+    with TestClient(
+        app_for(tmp_path, store, FinancialQuery(lambda _: source))
+    ) as client:
+        pages = [
+            client.get(PREFIX + "/query", params=params | {"offset": off}).json()
+            for off in (0, 1, 0)
+        ]
+    assert [p["provider_requests"] for p in pages] == [1, 0, 0]
+    assert [p["rows"][0]["value"] for p in pages] == ["4.1", "4.0", "4.1"]
+    assert len(source.calls) == 1
+
+
+@pytest.mark.parametrize(
+    "extra", [{"series": ""}, {"order": "date_desc"}, {"order": ""}]
+)
+def test_empty_selection_or_invalid_sort_is_rejected_before_read_or_upstream(
+    tmp_path, extra
+):
+    with TestClient(
+        app_for(
+            tmp_path,
+            ReadStore(),
+            FinancialQuery(lambda _: pytest.fail("invalid selection fetched")),
+        )
+    ) as client:
+        response = client.get(
+            PREFIX + "/query",
+            params=dict(start="2026-10-29", end="2026-10-30", series="DGS10") | extra,
+        )
+    assert response.status_code == 400
+    assert response.json()["classification"] in {
+        "financial_series_invalid",
+        "financial_query_invalid",
+    }

@@ -74,7 +74,7 @@ export function FinancialApiHelp({
         <RequestPreview request={{ method: "GET", path }} />
       ) : (
         <p role="status">
-          当前历史截止时间未填写或格式无效，请回到查询数据核对；未生成或执行请求。
+          当前日期、指标或历史截止未完成或格式无效，请回到查询数据核对；未生成或执行请求。
         </p>
       )}
       <CompactTable
@@ -90,7 +90,7 @@ export function FinancialApiHelp({
           [
             "series",
             "否 / 十项",
-            "逗号分隔的精确代码；至少一项、无重复、不加空格。当前表单选择一个指标，API可选多项。",
+            "逗号分隔的精确代码；至少一项、无重复、不加空格。表单默认十项，可单选/多选；空选择无效。",
           ],
           [
             "as_of",
@@ -102,16 +102,21 @@ export function FinancialApiHelp({
             "否 / false",
             "仅接受true或false。true显式本地只读；as_of存在时无论该值为何均只读。",
           ],
+          [
+            "order",
+            "否 / asc（旧调用兼容）",
+            "仅asc或desc。表单显式desc；先对全范围确定顺序再分页，不只对单页排序。",
+          ],
           ["offset", "否 / 0", "非负整数；日历行偏移，超出total返回空rows。"],
           [
             "limit",
             "否 / 200",
-            "整数1..1000；当前表单使用200。按所选序列顺序、序列内日期升序分页。",
+            "整数1..1000；当前表单使用40。order=desc时按全范围日期倒序、同日按所选序列顺序；旧asc保持序列优先日期升序。",
           ],
         ]}
       />
       <p>
-        只支持以上七个参数；重复参数和未知参数会被拒绝。不支持月频的basket、measure、columns或单位转换、来源切换参数。total为包含端点的日历天数×所选序列数，包含缺值行，不能当作成功观测数。
+        只支持以上八个参数；重复参数和未知参数会被拒绝。不支持月频的basket、measure、columns或单位转换、来源切换参数。total为包含端点的日历天数×所选序列数，包含缺值行，不能当作成功观测数。
       </p>
       <details>
         <summary>十条序列、类型与单位</summary>
@@ -302,7 +307,7 @@ export function FinancialApiHelp({
       <details>
         <summary>成功示例（合成合同样本）</summary>
         <p>
-          以下由隔离产品路由及受控数据生成，含有值和来源点号缺值；不是现场数值、原始发布或当前筛选结果。复制仅复制文本。
+          以下由隔离产品路由及受控数据生成，含有值和来源点号缺值；不是现场数值、原始发布或当前筛选结果。复制仅复制文本。示例显式order=desc；UI显示字段只控制表格列，不是服务端columns参数。
         </p>
         <CodeBlock
           text={JSON.stringify(example, null, 2)}

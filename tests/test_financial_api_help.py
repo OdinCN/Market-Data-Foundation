@@ -30,6 +30,7 @@ QUERY = dict(
     as_of=(AT + timedelta(seconds=3)).isoformat(),
     offset=0,
     limit=200,
+    order="desc",
 )
 EXAMPLE = Path("web/src/financial-query-example.json")
 
@@ -121,14 +122,14 @@ def test_success_example_equals_actual_router_and_projection_without_upstream(tm
         result = client.get(PREFIX + "/query", params=QUERY)
         assert result.status_code == 200, result.text
         assert result.json() == json.loads(EXAMPLE.read_text())
-        assert result.json()["rows"][0]["basis_points"] == "125.0000"
-        assert result.json()["rows"][1]["value"] is None
-        assert result.json()["rows"][1]["state"] == "provider_missing"
+        assert result.json()["rows"][1]["basis_points"] == "125.0000"
+        assert result.json()["rows"][0]["value"] is None
+        assert result.json()["rows"][0]["state"] == "provider_missing"
         assert len(result.json()["coverage"]["series"]) == 10
         paged = client.get(
             PREFIX + "/query", params=QUERY | {"offset": 1, "limit": 1}
         ).json()
-        assert len(paged["rows"]) == 1 and paged["rows"][0]["value"] is None
+        assert len(paged["rows"]) == 1 and paged["rows"][0]["value"] == "1.2500"
         assert paged["offset"] == 1 and paged["next_offset"] is None
     assert calls == ["local_read", "local_read"] and store.closed == 2
 

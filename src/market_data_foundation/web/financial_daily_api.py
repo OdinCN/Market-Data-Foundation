@@ -63,7 +63,7 @@ HELP = dict(
         summary=PREFIX + "/summary",
         query=PREFIX
         + "/query?start=YYYY-MM-DD&end=YYYY-MM-DD&series=DGS10"
-        + "&local_only=false&offset=0&limit=200",
+        + "&local_only=false&order=desc&offset=0&limit=40",
         jobs=PREFIX + "/jobs",
         detail=PREFIX + "/jobs/{request_id}",
         resume=PREFIX + "/jobs/resume",
@@ -82,6 +82,7 @@ HELP = dict(
             "临时 origin=upstream、persisted=false，无本地版本/可用时间。"
         ),
         "补源每页最多20次请求，按来源分窗；进程内最多64窗缓存5分钟（固定归档24小时），翻页复用，失败冷却亦缓存。",
+        "order=desc按全范围日期倒序、同日按所选序列顺序分页；省略或asc兼容旧序列优先升序。",
         "POST 仅已准入私网 Host/Origin，公开 Host 禁止敏感写；查询不保存。",
         "默认初始化为当天往前二十日历年，可编辑；增量更新所选日期区间并保留真实修订。",
         "as_of 是 MDF 确认可用截止，不代表官方历史首发；无历史发布时间证据则未知。",
@@ -245,6 +246,7 @@ def financial_router(
                 "offset",
                 "limit",
                 "local_only",
+                "order",
             } or any(len(params.getlist(k)) != 1 for k in params):
                 raise WebError("financial_query_invalid")
             start, end = day(params["start"]), day(params["end"])
@@ -262,6 +264,9 @@ def financial_router(
                 raise WebError("financial_query_invalid")
             if "as_of" in params and not params["as_of"]:
                 raise WebError("financial_query_invalid")
+            order = params.get("order", "asc")
+            if order not in {"asc", "desc"}:
+                raise WebError("financial_query_invalid")
             service = service_factory()
             cutoff = (
                 stamp(params.get("as_of")) if params.get("as_of") else service.clock()
@@ -269,15 +274,33 @@ def financial_router(
             days = (end - start).days + 1
             total = days * len(selected)
             rows = []
-            # Each page reads one local cutoff; history never constructs a source.
-            for n, sid in enumerate(selected):
-                lo, hi = max(offset, n * days), min(offset + limit, (n + 1) * days)
-                if lo < hi:
-                    a = (start + timedelta(days=lo - n * days)).isoformat()
-                    b = (start + timedelta(days=hi - 1 - n * days)).isoformat()
-                    rows.extend(
-                        service.query(a, b, selected=(sid,), as_of=cutoff)["rows"]
+            # Compute identities across the FULL range before reading the page.
+            # Omitted order preserves the original series-major ascending API.
+            identities = [
+                (
+                    selected[i % len(selected)],
+                    (end - timedelta(days=i // len(selected))).isoformat(),
+                )
+                if order == "desc"
+                else (
+                    selected[i // days],
+                    (start + timedelta(days=i % days)).isoformat(),
+                )
+                for i in range(offset, min(offset + limit, total))
+            ]
+            found = {}
+            for sid in selected:
+                at = [d for s, d in identities if s == sid]
+                if at:
+                    found.update(
+                        {
+                            (r["series_id"], r["observation_date"]): r
+                            for r in service.query(
+                                min(at), max(at), selected=(sid,), as_of=cutoff
+                            )["rows"]
+                        }
                     )
+            rows = [found[key] for key in identities]
             mode = (
                 "history"
                 if params.get("as_of")

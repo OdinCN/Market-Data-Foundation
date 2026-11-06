@@ -138,3 +138,7 @@ Web `/api/r5/financial/timeseries/query` 默认普通查询：先读本地，仅
 响应 `query_mode=current|history|local`；`provider_requests` 为该次实际HTTP次数，`upstream.cache_hits/issues` 给出缓存命中与逐项区间/分类。已有数值（含0）及来源明确缺值不覆盖；有据起始日前、非观测日、尚未发布日不补抓。NYFed按下一工作日公布约定作保守准入；节假日或原件字段缺失仍以真实响应分类，不推造观测。
 
 临时行 `origin=upstream,persisted=false`，真实来源在 `source_binding`、`provider_extra.source_origin`；`revision/batch_id/available_at/observed_at/raw_locator/metadata_locator` 均为空。T10YIE仅用同观测日、同一本地读取截止的合格财政部输入，允许同次临时输入，逐腿身份/版本保留；缺腿不计算。不写PG/Garage、不创建作业。正式保存仍需原采集入口。
+
+正常金融查询沿用宏观公共表单：日期、金融指标多选（默认十项）、显示字段多选（原生percent/信用bp）、历史截止及查询按钮。显示字段只控制列，不发送不支持的columns或月频变化参数。普通表单不再额外提供local_only开关，API显式参数兼容保留。
+
+查询新增可选`order=asc|desc`。省略时保留旧序列优先升序；工作台显式desc，以完整区间的日期倒序、同日所选序列顺序确定身份后分页，非单页倒排。工作台每页40行，支持上一页/下一页和页码。每条身份是series_id+observation_date，缺值也占相应日历行。改变日期/系列/截止取消旧请求，迟到响应不能恢复旧范围。查询页和API页共用请求生成器；表格/原始响应、状态/耗时/北京时间复用公共HTTP面板，复制的是实际本次API HTTP正文，成功与失败均保留，不以JSON重建替代。临时来源值不冒称持有，来源/可用时间和原件定位在来源与时间详情中按需读取。

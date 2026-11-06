@@ -7,17 +7,11 @@ import {
   financialJobResult,
 } from "./financialJobPresentation";
 import { DateField } from "./DateField";
-import { FinancialApiHelp, type FinancialHelp } from "./FinancialApiHelp";
-import {
-  FINANCIAL_PREFIX as prefix,
-  financialQuerySuffix,
-} from "./financialQuery";
+import type { FinancialHelp } from "./FinancialApiHelp";
+import { FinancialDailyQuery } from "./FinancialDailyQuery";
+import { FINANCIAL_PREFIX as prefix } from "./financialQuery";
 import { ExecutionFacts } from "./ExecutionFacts";
-import {
-  formatBeijingTime,
-  toBeijingInput,
-  beijingInputToIso,
-} from "./beijingTime";
+import { formatBeijingTime } from "./beijingTime";
 import { useEffect, useState, type ReactNode } from "react";
 import type { Navigate, Route } from "./workflowRoute";
 import type { Transport } from "./api";
@@ -84,42 +78,6 @@ type Status = {
   defaults: { start: string; end: string };
   series: Metric[];
   cutoff_semantics: string;
-};
-type Point = {
-  series_id: string;
-  observation_date: string;
-  value: string | null;
-  basis_points: string | null;
-  state: string;
-  origin: string | null;
-  revision: number | null;
-  observed_at: string | null;
-  available_at: string | null;
-  is_copyrighted: boolean | null;
-  raw_locator: string | null;
-  identity: string | null;
-  attribution: string;
-  provider_extra: unknown;
-  persisted?: boolean;
-  query_classification?: string;
-};
-type Query = {
-  rows: Point[];
-  as_of: string;
-  total: number;
-  next_offset: number | null;
-  provider_requests: number;
-  query_mode?: string;
-  upstream?: {
-    cache_hits: number;
-    issues: {
-      series_id: string;
-      start: string;
-      end: string;
-      classification: string;
-    }[];
-  };
-  coverage: { series: Coverage[] };
 };
 const names: Record<string, string> = {
   DFEDTARL: "政策目标下限",
@@ -192,23 +150,6 @@ export function financialReason(
     ? `本段未完成（${code}）；核实对应来源或存储后续跑同一作业，已确认值保留。`
     : "";
 }
-function financialQueryReason(code: string) {
-  if (code.includes("derived_inputs"))
-    return "同日财政部名义/实际两腿不齐；缺腿公布或恢复后重新查询，不推算缺值。";
-  if (code.includes("credential") || code.includes("permission"))
-    return "此具名来源准入或凭据不可用；在数据源管理核实该来源后重新查询，不换源。";
-  if (code.includes("budget"))
-    return "本页补源达到有界请求限额；缩小区间后重新查询，或使用采集数据保存大范围。";
-  if (
-    code.includes("admission") ||
-    code.includes("cool") ||
-    code.includes("rate_limit")
-  )
-    return "具名来源正在限流/冷却；待冷却结束再查询，不自动重复请求。";
-  if (code.includes("http"))
-    return "具名来源HTTP请求暂未成功；待来源恢复并结束冷却后重新查询。";
-  return `本次具名补源未完成（${code}）；核实来源可用性后重新查询。`;
-}
 export function FinancialDailyWorkbench({
   route,
   navigate,
@@ -234,17 +175,6 @@ export function FinancialDailyWorkbench({
   const [busy, setBusy] = useState(false),
     [failure, setFailure] = useState<string | null>(null),
     [uncertain, setUncertain] = useState<string | null>(null);
-  const [queryStart, setQueryStart] = useState(
-      new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10),
-    ),
-    [queryEnd, setQueryEnd] = useState(new Date().toISOString().slice(0, 10));
-  const [cutoff, setCutoff] = useState(route.fields.get("as_of") ?? ""),
-    [history, setHistory] = useState(!!route.fields.get("as_of")),
-    [localOnly, setLocalOnly] = useState(false),
-    [sid, setSid] = useState("DGS10"),
-    [queryOffset, setQueryOffset] = useState(0),
-    [query, setQuery] = useState<Query | null>(null),
-    [point, setPoint] = useState<Point | null>(null);
   const status = useVisiblePolling(
     (signal) => financialCall<Status>(transport, "/status", signal),
     [transport, generation],
@@ -350,33 +280,6 @@ export function FinancialDailyWorkbench({
       setUncertain(null);
       setFailure(null);
       go("collection", "executions", r.job.request_id);
-    } catch (error) {
-      setFailure(
-        error instanceof Error ? error.message : "financial_read_failed",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function read(offset = 0) {
-    setBusy(true);
-    setFailure(null);
-    setQueryOffset(offset);
-    try {
-      const r = await financialCall<Query>(
-        transport,
-        financialQuerySuffix({
-          start: queryStart,
-          end: queryEnd,
-          series: sid,
-          cutoff,
-          history,
-          localOnly,
-          offset,
-        }),
-      );
-      setQuery(r);
-      setPoint(null);
     } catch (error) {
       setFailure(
         error instanceof Error ? error.message : "financial_read_failed",
@@ -582,18 +485,13 @@ export function FinancialDailyWorkbench({
             onChange={setConsumerTab}
           />
           {failureNotice}
-          <div hidden={consumerTab !== "api"}>
-            <FinancialApiHelp
-              help={help.data}
-              start={queryStart}
-              end={queryEnd}
-              series={sid}
-              cutoff={cutoff}
-              history={history}
-              localOnly={localOnly}
-              offset={queryOffset}
-            />
-          </div>
+          <FinancialDailyQuery
+            transport={transport}
+            summary={summary.data}
+            help={help.data}
+            activeTab={consumerTab}
+            initialAsOf={route.fields.get("as_of") ?? ""}
+          />
           <div hidden={consumerTab !== "updates"}>
             <h4>采集与版本确认记录</h4>
             <p>
@@ -606,230 +504,10 @@ export function FinancialDailyWorkbench({
               onSelect={(id) => go("collection", "executions", id)}
             />
           </div>
-          <div hidden={consumerTab !== "query"}>
-            <p className="muted">
-              普通查询优先本地，仅缺口临时补源，不保存；已覆盖区间不请求来源。历史截止查询只读当时已持有版本，不补源。页面加载与摘要刷新不采集。
-            </p>
-            {summary.data && (
-              <>
-                <p>
-                  已保存观测{" "}
-                  {summary.data.observation_count?.toLocaleString() ?? "未知"}{" "}
-                  条；各指标最新有值观测日：
-                </p>
-                <ul className="cpi-coverage">
-                  {(summary.data.series ?? []).map((s) => (
-                    <li key={s.series_id}>
-                      <span>{names[s.series_id]}：</span>
-                      <span className="cpi-coverage-period">
-                        {s.last ?? "尚无本地记录"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="small">
-                  最近 MDF 确认可用：
-                  {formatBeijingTime(summary.data.last_available_at, "未记录")}
-                  。这不是官方公布时间。
-                </p>
-              </>
-            )}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (e.currentTarget.checkValidity()) void read();
-              }}
-            >
-              <div className="field-grid">
-                <label>
-                  显示指标
-                  <select
-                    aria-label="显示指标"
-                    value={sid}
-                    onChange={(e) => {
-                      setSid(e.target.value);
-                      setQueryOffset(0);
-                    }}
-                  >
-                    {Object.entries(names).map(([id, name]) => (
-                      <option key={id} value={id}>
-                        {id} · {name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <DateField
-                  label="开始日期"
-                  type="date"
-                  value={queryStart}
-                  onChange={(v) => {
-                    setQueryStart(v);
-                    setQueryOffset(0);
-                  }}
-                  required
-                />
-                <DateField
-                  label="结束日期"
-                  type="date"
-                  value={queryEnd}
-                  onChange={(v) => {
-                    setQueryEnd(v);
-                    setQueryOffset(0);
-                  }}
-                  required
-                />
-              </div>
-              <label className="cpi-history-toggle">
-                <input
-                  type="checkbox"
-                  checked={history}
-                  onChange={(e) => {
-                    setHistory(e.target.checked);
-                    setQueryOffset(0);
-                  }}
-                />
-                历史截止查询
-              </label>
-              {history && (
-                <DateField
-                  label="截止时间（北京时间）"
-                  type="datetime-local"
-                  value={cutoff ? toBeijingInput(cutoff) : ""}
-                  onChange={(v) => {
-                    setCutoff(v ? beijingInputToIso(v) : "");
-                    setQueryOffset(0);
-                  }}
-                  required
-                />
-              )}
-              {!history && (
-                <label className="cpi-history-toggle">
-                  <input
-                    type="checkbox"
-                    checked={localOnly}
-                    onChange={(e) => {
-                      setLocalOnly(e.target.checked);
-                      setQueryOffset(0);
-                    }}
-                  />
-                  仅查询本地
-                </label>
-              )}
-              <button disabled={busy || (history && !cutoff)}>查询数据</button>
-            </form>
-            {query && (
-              <>
-                <p>
-                  {query.query_mode === "history" ? "历史截止" : "本次读取时刻"}{" "}
-                  {formatBeijingTime(query.as_of)} · 日历行 {query.total} ·
-                  上游请求 {query.provider_requests}。
-                </p>
-                <button
-                  onClick={() => {
-                    setCutoff(query.as_of);
-                    setHistory(true);
-                    setQueryOffset(0);
-                  }}
-                >
-                  固定此截止
-                </button>
-                <button disabled={busy} onClick={() => void read()}>
-                  刷新查询结果
-                </button>
-                {query.rows.some((r) => r.origin === "upstream") && (
-                  <p role="status">
-                    包含上游临时值，尚未保存，无本地版本或确认可用时刻；正式落库请使用采集数据。
-                  </p>
-                )}
-                {!!query.upstream?.issues.length && (
-                  <ul aria-label="查询补源缺口">
-                    {query.upstream.issues.map((issue, i) => (
-                      <li key={i}>
-                        {issue.series_id} · {issue.start}..{issue.end}：
-                        {financialQueryReason(issue.classification)}{" "}
-                        本地结果保留，本次未保存。
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <WorkflowTable
-                  className="financial-table"
-                  label="日频观测结果"
-                  columns={["观测日", "值（%） / 信用 bp", "状态", "版本"]}
-                  rows={query.rows.map((r) => ({
-                    id: r.observation_date,
-                    search: r.observation_date,
-                    cells: [
-                      r.observation_date,
-                      <>
-                        {r.value ?? "—"}
-                        {r.basis_points !== null && ` / ${r.basis_points} bp`}
-                      </>,
-                      <>
-                        {label(r.state)}
-                        {r.origin === "upstream" && " · 上游临时值／未保存"}
-                        {r.query_classification &&
-                          ` · ${r.query_classification}`}
-                      </>,
-                      String(r.revision ?? "—"),
-                    ],
-                  }))}
-                  selected={point?.observation_date}
-                  onSelect={(id) =>
-                    setPoint(
-                      query.rows.find((r) => r.observation_date === id) ?? null,
-                    )
-                  }
-                />
-                {query.next_offset !== null && (
-                  <button
-                    disabled={busy}
-                    onClick={() => void read(query.next_offset!)}
-                  >
-                    下一页
-                  </button>
-                )}
-                <CoverageTable
-                  rows={query.coverage.series.filter(
-                    (r) => r.series_id === sid,
-                  )}
-                />
-                {point && (
-                  <section aria-label="观测来源与可用依据">
-                    <h4>观测来源与可用依据</h4>
-                    <dl>
-                      <Fact name="观测日">{point.observation_date}</Fact>
-                      <Fact name="来源身份">{point.identity ?? "未取得"}</Fact>
-                      {point.origin === "upstream" && (
-                        <Fact name="保存状态">
-                          上游临时值，未保存；本地版本与可用时刻未知
-                        </Fact>
-                      )}
-                      <Fact name="MDF首次观察">
-                        {formatBeijingTime(point.observed_at, "未取得")}
-                      </Fact>
-                      <Fact name="MDF确认可用">
-                        {formatBeijingTime(point.available_at, "未取得")}
-                      </Fact>
-                      <Fact name="出处">{point.attribution}</Fact>
-                      <Fact name="原件定位">
-                        {point.raw_locator ?? "此日无已确认原件"}
-                      </Fact>
-                    </dl>
-                    <Technical>
-                      <pre className="financial-json">
-                        {JSON.stringify(point, null, 2)}
-                      </pre>
-                    </Technical>
-                  </section>
-                )}
-              </>
-            )}
-            <details>
-              <summary>十项来源与使用说明</summary>
-              <FinancialSources status={status.data} />
-            </details>
-          </div>
+          <details>
+            <summary>十项来源与使用说明</summary>
+            <FinancialSources status={status.data} />
+          </details>
         </section>
       )}
       {collecting && tab === "executions" && (
