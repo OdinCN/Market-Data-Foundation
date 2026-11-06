@@ -299,9 +299,11 @@ function PackageEditor({
         ),
       ].sort()
     : [];
-  const replacementSources = required.filter(
-    (source) =>
-      credentialRequired(snapshot, source) && source in credentialDrafts,
+  const credentialSources = required.filter((source) =>
+    credentialRequired(snapshot, source),
+  );
+  const replacementSources = credentialSources.filter(
+    (source) => source in credentialDrafts,
   );
   const invalidCredential = replacementSources.some(
     (source) => !credentialDrafts[source].trim(),
@@ -329,17 +331,15 @@ function PackageEditor({
     const command: SavePackage = {
       expected_revision: snapshot.config_revision,
       enabled_capability_ids: [...enabled],
-      source_changes: required
-        .filter((source) => credentialRequired(snapshot, source))
-        .map((source_id) =>
-          source_id in credentialDrafts
-            ? {
-                source_id,
-                credential_action: "replace" as const,
-                credential_value: credentialDrafts[source_id],
-              }
-            : { source_id, credential_action: "keep" as const },
-        ),
+      source_changes: credentialSources.map((source_id) =>
+        source_id in credentialDrafts
+          ? {
+              source_id,
+              credential_action: "replace" as const,
+              credential_value: credentialDrafts[source_id],
+            }
+          : { source_id, credential_action: "keep" as const },
+      ),
     };
     const intent: SaveIntent = {
       expected_revision: snapshot.config_revision,
@@ -591,11 +591,7 @@ function PackageEditor({
               验证结果保留于本次服务运行期间；服务重启后需重新验证。来源资格不由此验证评定，采集是否可执行请查看本包资产的当前准入。
             </p>
             <section aria-label="能力与来源关系">
-              <h3>
-                {snapshot.package_id === "macro"
-                  ? "能力与来源关系"
-                  : "能力与来源关系"}
-              </h3>
+              <h3>能力与来源关系</h3>
               {snapshot.capabilities.map((cap) => (
                 <details key={cap.capability_id}>
                   <summary>
@@ -621,7 +617,10 @@ function PackageEditor({
                   {cap.source_relations?.length ? (
                     distinctRelations(cap.source_relations).map(
                       (relation, index) => (
-                        <dl key={index}>
+                        <dl key={index} data-source-id={relation.source_id}>
+                          <Fact name="用途">
+                            {sourcePurpose(cap, relation.source_id)}
+                          </Fact>
                           <Fact name="数值通路">
                             {relation.source_id === relation.numeric_path
                               ? relation.numeric_path
@@ -629,6 +628,12 @@ function PackageEditor({
                           </Fact>
                           <Fact name="原始机构">
                             {relation.original_institution}
+                          </Fact>
+                          <Fact name="凭据需求">
+                            {credentialDescription(
+                              snapshot,
+                              relation.source_id,
+                            )}
                           </Fact>
                           <Fact name="发布日历">
                             {relation.release_calendar}
@@ -643,192 +648,178 @@ function PackageEditor({
                 </details>
               ))}
             </section>
-            {required.map((id) => {
-              const access = snapshot.source_access?.find(
-                (source) => source.source_id === id,
-              );
-              if (!credentialRequired(snapshot, id))
+            <section aria-label="凭据配置">
+              <h3>需要凭据的来源</h3>
+              <p>
+                同一来源供多个能力共用，只需在此配置一次。
+                {credentialSources.length === 0 ? "当前选择无需配置凭据。" : ""}
+              </p>
+              {credentialSources.map((id) => {
+                const state = snapshot.credential_states.find(
+                  (c) => c.source_id === id,
+                );
+                const verification = snapshot.source_verifications?.find(
+                  (v) => v.source_id === id,
+                );
                 return (
-                  <fieldset key={id} aria-label={`${id} 取数方式`}>
-                    <legend>
-                      {id} ·{" "}
-                      {access?.kind === "local_derived"
-                        ? "本地计算"
-                        : access?.credential_requirement === "none"
-                          ? "公开取数"
-                          : "凭据需求待核实"}
-                    </legend>
+                  <fieldset key={id}>
+                    <legend>{id}</legend>
+                    <dl>
+                      <Fact name="凭据状态">
+                        {state?.credential_state === "configured"
+                          ? "已配置（仅表示存在）"
+                          : state?.credential_state === "missing"
+                            ? "缺少配置"
+                            : "配置状态未知"}
+                      </Fact>
+                    </dl>
+                    <dl aria-label={`${id} 验证结果`}>
+                      <Fact name="已保存配置验证">
+                        {verification?.reason
+                          ? (verificationReasons[verification.reason] ??
+                            verification.reason)
+                          : "尚未验证"}
+                      </Fact>
+                      <Fact name="请求结果">
+                        {verification?.request_status === "succeeded"
+                          ? "请求成功"
+                          : verification?.request_status === "failed"
+                            ? "请求失败"
+                            : "未发起请求"}
+                      </Fact>
+                      <Fact name="认证">
+                        {verification?.authentication === "confirmed"
+                          ? "认证已确认"
+                          : verification?.authentication === "rejected"
+                            ? "认证被拒绝（来源明确返回认证错误）"
+                            : "认证未知（本次检查未确认认证结论）"}
+                      </Fact>
+                      <Fact name="验证时间">
+                        {verification?.checked_at
+                          ? formatBeijingTime(verification.checked_at)
+                          : "尚未验证"}
+                      </Fact>
+                      <Fact name="HTTP">
+                        {verification?.http_status ?? "未取得响应"}
+                      </Fact>
+                    </dl>
                     <p>
-                      {access?.kind === "local_derived"
-                        ? "MDF 本地派生计算，保留同观测日、同截止的两腿版本；不是需要 Key 的外部提供商。"
-                        : access?.credential_requirement === "none"
-                          ? "公开取数通路，无需 API Key；认证不适用。来源可用性以实际请求及作业结果为准。"
-                          : "凭据需求尚未核实，当前不提供凭据操作；请核对来源绑定。"}
+                      来源资格与采集执行权限另行判定；验证不会启用能力、采集或影响已保存数据读取。30秒内重复验证复用当前结果。
                     </p>
+                    {["BLS", "BEA", "Census", "FRED"].includes(id) ? (
+                      <button
+                        disabled={
+                          blocked ||
+                          dirty ||
+                          !snapshot.config_revision ||
+                          snapshot.write_eligible !== true
+                        }
+                        onClick={() => void verify(id)}
+                      >
+                        {verifying === id
+                          ? "正在验证…"
+                          : `验证已保存的 ${id} 配置`}
+                      </button>
+                    ) : (
+                      <p>当前环境未装配此来源的配置验证。</p>
+                    )}
+                    {dirty && <p>请先保存或取消修改，再验证当前已保存配置。</p>}
+                    {state?.replace_supported === true ? (
+                      id in credentialDrafts ? (
+                        <div
+                          className="credential-replacement"
+                          aria-label={`${id} 待提交凭据`}
+                        >
+                          <label>
+                            {id} 新凭据
+                            <input
+                              type="password"
+                              disabled={
+                                blocked || snapshot.write_eligible !== true
+                              }
+                              autoComplete="new-password"
+                              spellCheck={false}
+                              maxLength={4096}
+                              value={credentialDrafts[id]}
+                              onChange={(event) => {
+                                setNotice("");
+                                setDiagnostic("");
+                                setCredentialDrafts((old) => ({
+                                  ...old,
+                                  [id]: event.target.value,
+                                }));
+                              }}
+                            />
+                          </label>
+                          <p className="small">
+                            此入口会一并保存整个接入包的所有待提交修改：能力启停{" "}
+                            {capabilityChanges} 项变更；凭据替换{" "}
+                            {replacementSources.join(" / ") || "无"}
+                            。保存不会发起上游验证。
+                          </p>
+                          <div className="actions">
+                            <button
+                              className="primary"
+                              disabled={!!reason}
+                              title={reason}
+                              onClick={() => void save(id)}
+                            >
+                              保存整包配置（{id}入口）
+                            </button>
+                            <button
+                              disabled={
+                                blocked || snapshot.write_eligible !== true
+                              }
+                              onClick={() => {
+                                setCredentialDrafts((old) => {
+                                  const next = { ...old };
+                                  delete next[id];
+                                  return next;
+                                });
+                                setSaveSource(id);
+                                setNotice(
+                                  `已取消 ${id} 本次替换，未保存；其他待提交修改仍需整包保存。`,
+                                );
+                                setDiagnostic("");
+                              }}
+                            >
+                              取消替换 {id} 凭据
+                            </button>
+                          </div>
+                          {reason && (
+                            <p className="small">不能保存：{reason}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          disabled={blocked || snapshot.write_eligible !== true}
+                          onClick={() =>
+                            setCredentialDrafts((old) => ({
+                              ...old,
+                              [id]: "",
+                            }))
+                          }
+                        >
+                          替换 {id} 凭据
+                        </button>
+                      )
+                    ) : (
+                      <p>当前环境未装配此来源的凭据替换。</p>
+                    )}
+                    {localFeedback && saveSource === id && (
+                      <div aria-label={`${id} 保存反馈`}>
+                        {saveFeedback}
+                        {(phase === "conflict" || phase === "unknown") && (
+                          <button onClick={() => void reread()}>
+                            重读核对整包配置
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </fieldset>
                 );
-              const state = snapshot.credential_states.find(
-                (c) => c.source_id === id,
-              );
-              const verification = snapshot.source_verifications?.find(
-                (v) => v.source_id === id,
-              );
-              return (
-                <fieldset key={id}>
-                  <legend>{id}</legend>
-                  <dl>
-                    <Fact name="凭据状态">
-                      {state?.credential_state === "configured"
-                        ? "已配置（仅表示存在）"
-                        : state?.credential_state === "missing"
-                          ? "缺少配置"
-                          : "配置状态未知"}
-                    </Fact>
-                  </dl>
-                  <dl aria-label={`${id} 验证结果`}>
-                    <Fact name="已保存配置验证">
-                      {verification?.reason
-                        ? (verificationReasons[verification.reason] ??
-                          verification.reason)
-                        : "尚未验证"}
-                    </Fact>
-                    <Fact name="请求结果">
-                      {verification?.request_status === "succeeded"
-                        ? "请求成功"
-                        : verification?.request_status === "failed"
-                          ? "请求失败"
-                          : "未发起请求"}
-                    </Fact>
-                    <Fact name="认证">
-                      {verification?.authentication === "confirmed"
-                        ? "认证已确认"
-                        : verification?.authentication === "rejected"
-                          ? "认证被拒绝（来源明确返回认证错误）"
-                          : "认证未知（本次检查未确认认证结论）"}
-                    </Fact>
-                    <Fact name="验证时间">
-                      {verification?.checked_at
-                        ? formatBeijingTime(verification.checked_at)
-                        : "尚未验证"}
-                    </Fact>
-                    <Fact name="HTTP">
-                      {verification?.http_status ?? "未取得响应"}
-                    </Fact>
-                  </dl>
-                  <p>
-                    来源资格与采集执行权限另行判定；验证不会启用能力、采集或影响已保存数据读取。30秒内重复验证复用当前结果。
-                  </p>
-                  {["BLS", "BEA", "Census", "FRED"].includes(id) ? (
-                    <button
-                      disabled={
-                        blocked ||
-                        dirty ||
-                        !snapshot.config_revision ||
-                        snapshot.write_eligible !== true
-                      }
-                      onClick={() => void verify(id)}
-                    >
-                      {verifying === id
-                        ? "正在验证…"
-                        : `验证已保存的 ${id} 配置`}
-                    </button>
-                  ) : (
-                    <p>当前环境未装配此来源的配置验证。</p>
-                  )}
-                  {dirty && <p>请先保存或取消修改，再验证当前已保存配置。</p>}
-                  {state?.replace_supported === true ? (
-                    id in credentialDrafts ? (
-                      <div
-                        className="credential-replacement"
-                        aria-label={`${id} 待提交凭据`}
-                      >
-                        <label>
-                          {id} 新凭据
-                          <input
-                            type="password"
-                            disabled={
-                              blocked || snapshot.write_eligible !== true
-                            }
-                            autoComplete="new-password"
-                            spellCheck={false}
-                            maxLength={4096}
-                            value={credentialDrafts[id]}
-                            onChange={(event) => {
-                              setNotice("");
-                              setDiagnostic("");
-                              setCredentialDrafts((old) => ({
-                                ...old,
-                                [id]: event.target.value,
-                              }));
-                            }}
-                          />
-                        </label>
-                        <p className="small">
-                          此入口会一并保存整个接入包的所有待提交修改：能力启停{" "}
-                          {capabilityChanges} 项变更；凭据替换{" "}
-                          {replacementSources.join(" / ") || "无"}
-                          。保存不会发起上游验证。
-                        </p>
-                        <div className="actions">
-                          <button
-                            className="primary"
-                            disabled={!!reason}
-                            title={reason}
-                            onClick={() => void save(id)}
-                          >
-                            保存整包配置（{id}入口）
-                          </button>
-                          <button
-                            disabled={
-                              blocked || snapshot.write_eligible !== true
-                            }
-                            onClick={() => {
-                              setCredentialDrafts((old) => {
-                                const next = { ...old };
-                                delete next[id];
-                                return next;
-                              });
-                              setSaveSource(id);
-                              setNotice(
-                                `已取消 ${id} 本次替换，未保存；其他待提交修改仍需整包保存。`,
-                              );
-                              setDiagnostic("");
-                            }}
-                          >
-                            取消替换 {id} 凭据
-                          </button>
-                        </div>
-                        {reason && <p className="small">不能保存：{reason}</p>}
-                      </div>
-                    ) : (
-                      <button
-                        disabled={blocked || snapshot.write_eligible !== true}
-                        onClick={() =>
-                          setCredentialDrafts((old) => ({
-                            ...old,
-                            [id]: "",
-                          }))
-                        }
-                      >
-                        替换 {id} 凭据
-                      </button>
-                    )
-                  ) : (
-                    <p>当前环境未装配此来源的凭据替换。</p>
-                  )}
-                  {localFeedback && saveSource === id && (
-                    <div aria-label={`${id} 保存反馈`}>
-                      {saveFeedback}
-                      {(phase === "conflict" || phase === "unknown") && (
-                        <button onClick={() => void reread()}>
-                          重读核对整包配置
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </fieldset>
-              );
-            })}
+              })}
+            </section>
           </>
         )}
         <p className="small">
@@ -878,6 +869,37 @@ function credentialRequired(snapshot: Package | null, source: string) {
     (item) => item.source_id === source,
   )?.credential_requirement;
   return requirement === "api_key" || requirement === "host_managed";
+}
+
+function credentialDescription(snapshot: Package, source: string) {
+  const access = snapshot.source_access?.find(
+    (item) => item.source_id === source,
+  );
+  if (access?.kind === "local_derived") return "本地派生计算，无需配置凭据。";
+  if (access?.credential_requirement === "none")
+    return "当前公开取数通路，无需配置凭据。";
+  if (access?.credential_requirement === "api_key")
+    return `当前接入通路使用 API Key；在下方共用 ${source} 凭据卡片配置。`;
+  if (access?.credential_requirement === "host_managed")
+    return "当前通路使用宿主配置，配置状态见下方共用凭据卡片。";
+  return "当前通路的凭据需求尚未核实，不提供凭据操作。";
+}
+
+function sourcePurpose(cap: Package["capabilities"][number], source: string) {
+  if (cap.capability_id !== "financial_daily")
+    return `用于${cap.title}的数值采集。`;
+  const purposes: Record<string, string> = {
+    "Federal Reserve Board":
+      "DFEDTARL / DFEDTARU 政策目标上下限，按具体政策生效日投影。",
+    "New York Fed": "EFFR / SOFR 官方日值；分别保留观测日与公布可得时间。",
+    "US Treasury":
+      "DGS2 / DGS10 名义国债及 DFII10 实际国债收益率，按观测日留存。",
+    "Credit archive":
+      "固定 PStoclet GitHub 归档用于 IG / HY 信用利差初始化；指数提供者为 ICE，历史回补不证明历史首发。",
+    FRED: "BAMLC0A0CM / BAMLH0A0HYM2 信用利差归档补尾及显式增量；指数提供者为 ICE。",
+    MDF: "本地派生计算 T10YIE = DGS10 - DFII10；两条输入均来自美国财政部，采用同观测日、同一截止可得版本并保留两腿版本。",
+  };
+  return purposes[source] ?? "当前来源用途尚未核实，请核对已登记通路。";
 }
 
 const saveFailureReasons: Record<string, string> = {

@@ -99,20 +99,47 @@ it("saves all eleven capabilities with four credential intents and keeps public/
   await ready();
   choose("金融条件日频（十项）");
   tab("来源配置");
-  const local = screen.getByRole("group", { name: "MDF 取数方式" });
-  expect(local.textContent).toContain("本地计算");
-  expect(within(local).queryByText("认证未知", { exact: false })).toBeNull();
+  const relations = screen.getByRole("region", { name: "能力与来源关系" });
+  const financial = within(relations)
+    .getByText(/金融条件日频（十项） · 数值来源/)
+    .closest("details")!;
+  fireEvent.click(financial.querySelector("summary")!);
+  expect(financial.open).toBe(true);
+  const local = financial.querySelector('[data-source-id="MDF"]')!;
+  expect(local.textContent).toContain("本地派生计算 T10YIE = DGS10 - DFII10");
+  expect(local.textContent).toContain("两条输入均来自美国财政部");
+  expect(local.textContent).toContain("同观测日、同一截止可得版本");
+  expect(local.textContent).toContain("无需配置凭据");
+  const credentials = screen.getByRole("region", { name: "凭据配置" });
+  expect(
+    within(credentials)
+      .getAllByRole("group")
+      .map((group) => group.querySelector("legend")!.textContent)
+      .sort(),
+  ).toEqual(["BEA", "BLS", "Census", "FRED"]);
   for (const source of [
     "Federal Reserve Board",
     "New York Fed",
     "US Treasury",
     "Credit archive",
   ]) {
-    const group = screen.getByRole("group", { name: source + " 取数方式" });
-    expect(group.textContent).toContain("无需 API Key");
-    expect(within(group).queryByRole("button")).toBeNull();
-    expect(within(group).queryByText("认证未知", { exact: false })).toBeNull();
+    const relation = financial.querySelector(`[data-source-id="${source}"]`)!;
+    expect(relation.textContent).toContain("无需配置凭据");
+    expect(credentials.textContent).not.toContain(source);
+    expect(
+      screen.queryByRole("group", { name: source + " 取数方式" }),
+    ).toBeNull();
   }
+  expect(credentials.textContent).not.toContain("MDF");
+  expect(
+    financial.querySelector('[data-source-id="Credit archive"]')!.textContent,
+  ).toContain("固定 PStoclet GitHub 归档");
+  expect(
+    financial.querySelector('[data-source-id="FRED"]')!.textContent,
+  ).toContain("归档补尾及显式增量");
+  expect(
+    financial.querySelector('[data-source-id="FRED"]')!.textContent,
+  ).toContain("当前接入通路使用 API Key");
   const fred = screen.getByRole("group", { name: "FRED" });
   expect(within(fred).getByText("已配置（仅表示存在）")).toBeTruthy();
   expect(
