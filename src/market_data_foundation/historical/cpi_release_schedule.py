@@ -2113,8 +2113,8 @@ class CpiReleaseScheduler:
             for word in ("daily_limit", "daily_quota", "daily_request_limit")
         ):
             stop = True
-        elif any(
-            word in classification for word in ("state_unknown", "outcome_unknown")
+        elif "outcome_unknown" in classification or (
+            "state_unknown" in classification and retry_at is None
         ):
             # A known source count is not proof of a known storage commit. Keep
             # the target stopped for local/same-ID verification, never refetch
@@ -2346,7 +2346,8 @@ class CpiReleaseScheduler:
         validate_month(reference_month)
         if (
             not self.auto_mode
-            or not evidence_locator
+            or not isinstance(evidence_locator, str)
+            or not evidence_locator.strip()
             or type(diagnostic_http) is not int
             or diagnostic_http < 0
             or not isinstance(job, dict)
@@ -2356,6 +2357,8 @@ class CpiReleaseScheduler:
             identity = str(UUID(job["job_id"]))
             if identity != job["job_id"] or identity != job["request_id"]:
                 raise ValueError
+            started_at = _instant(job["started_at"])
+            finished_at = _instant(job["finished_at"])
         except ValueError, KeyError, TypeError, AttributeError:
             raise CpiScheduleError("schedule_recovery_job_identity_invalid") from None
         with self._locked():
@@ -2382,12 +2385,14 @@ class CpiReleaseScheduler:
                 or job.get("action") != "update"
                 or job.get("start") != reference_month
                 or job.get("end") != reference_month
-                or not (job.get("result") or {}).get("readback", {}).get("verified")
+                or (job.get("result") or {}).get("readback", {}).get("verified")
+                is not True
                 or count is None
                 or count == 0
                 or written.get("persisted") is not True
                 or not _fresh_target(written, reference_month, self.series_ids)
-                or _instant(job["started_at"]) <= _instant(auto["last_attempt_at"])
+                or started_at <= _instant(auto["last_attempt_at"])
+                or not started_at <= finished_at <= at
             ):
                 raise CpiScheduleError("schedule_recovery_job_not_verified")
             if (

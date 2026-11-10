@@ -312,7 +312,16 @@ def test_recovery_preserves_original_attempt_and_does_not_replay_history(
 
 @pytest.mark.parametrize(
     "mutation",
-    ["wrong_id", "wrong_asset", "partial", "write_unknown", "values_changed", "budget"],
+    [
+        "wrong_id",
+        "wrong_asset",
+        "partial",
+        "write_unknown",
+        "values_changed",
+        "budget",
+        "truthy_verified",
+        "backward_time",
+    ],
 )
 def test_recovery_rejects_unproved_or_over_budget_receipts_without_state_change(
     tmp_path, mutation
@@ -332,6 +341,10 @@ def test_recovery_rejects_unproved_or_over_budget_receipts_without_state_change(
         job["state"] = "unknown"
     if mutation == "values_changed":
         job["numeric_result"]["points"][0]["value"] = "999"
+    if mutation == "truthy_verified":
+        job["result"]["readback"]["verified"] = "false"
+    if mutation == "backward_time":
+        job["finished_at"] = (clock.at - timedelta(seconds=20)).isoformat()
     if mutation == "budget":
         state = scheduler._read()
         state["targets"]["2026-10"]["auto"]["actual_http"] = 30
