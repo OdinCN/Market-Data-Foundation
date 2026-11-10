@@ -1,5 +1,6 @@
 """Pure official calendar projections; never schedule work or infer a month."""
 
+from copy import deepcopy
 from datetime import datetime
 from urllib.parse import urlsplit
 
@@ -84,11 +85,47 @@ def bls_calendar_publications(state):
         for ref in references
         if ref["reference_month"] not in used
     ]
+    for row in result:
+        if (
+            state["targets"]
+            .get(row["reference_month"], {})
+            .get("calendar_execution_blocked")
+        ):
+            row["calendar_execution_blocked"] = True
     return result
 
 
+def _instant(value):
+    try:
+        stamp = value if isinstance(value, datetime) else datetime.fromisoformat(value)
+        return stamp if stamp.utcoffset() is not None else None
+    except ValueError, TypeError:
+        return None
+
+
+def _visible(row, cache, cutoff, basis):
+    if cutoff is None:
+        return True
+    evidence = row.get("reference_month_evidence") or {}
+    stamps = [
+        row.get("acquired_at", cache.get("acquired_at", cache.get("fetched_at"))),
+        evidence.get("acquired_at"),
+    ]
+    if basis == "available":
+        stamps += [
+            row.get("available_at", cache.get("available_at")),
+            evidence.get("available_at"),
+            row.get("imported_at", cache.get("imported_at")),
+            evidence.get("imported_at"),
+        ]
+    stamps = [value for value in stamps if value is not None]
+    return bool(stamps) and all(
+        (stamp := _instant(value)) is not None and stamp <= cutoff for value in stamps
+    )
+
+
 def publication_events(snapshot, official_origin, *, as_of=None, as_of_basis=None):
-    """Calendar cache supersedes execution snapshots; ambiguity withholds time."""
+    """Select a recorded view before projecting; GET never migrates the cache."""
     cutoff = (
         as_of
         if isinstance(as_of, datetime)
@@ -96,8 +133,36 @@ def publication_events(snapshot, official_origin, *, as_of=None, as_of_basis=Non
         if as_of
         else None
     )
+    if cutoff is not None and cutoff.utcoffset() is None:
+        return {}
+    history = snapshot.get("calendar_publication_history")
+    if cutoff is not None and history is not None:
+        validate_publication_history(history)
+        eligible = [
+            (index, record)
+            for index, record in enumerate(history)
+            if _instant(record["observed_at"]) <= cutoff
+            and (
+                as_of_basis != "available" or _instant(record["available_at"]) <= cutoff
+            )
+        ]
+        if not eligible:
+            return {}
+        _, record = max(
+            eligible, key=lambda pair: (_instant(pair[1]["observed_at"]), pair[0])
+        )
+        if record.get("valid_through") and cutoff > _instant(record["valid_through"]):
+            # Restored legacy captures prove only their explicitly verified span.
+            # Do not fall back to an older unbounded view across an evidence gap.
+            return {}
+        snapshot = record["projection"]
     cache = snapshot.get("calendar", {})
-    calendar = snapshot.get("calendar_publications", [])
+    calendar = [
+        row
+        for row in snapshot.get("calendar_publications", [])
+        if _visible(row, cache, cutoff, as_of_basis)
+    ]
+    # A later, cutoff-ineligible calendar must not suppress an eligible target.
     authoritative = {row.get("reference_month") for row in calendar}
     rows = [
         row
@@ -109,36 +174,8 @@ def publication_events(snapshot, official_origin, *, as_of=None, as_of_basis=Non
     groups = {}
     for row in rows:
         evidence = row.get("reference_month_evidence") or {}
-        if cutoff is not None:
-            # Mapping evidence and current event evidence must both predate cutoff.
-            acquired = [
-                value
-                for value in (
-                    row.get(
-                        "acquired_at", cache.get("acquired_at", cache.get("fetched_at"))
-                    ),
-                    evidence.get("acquired_at"),
-                )
-                if value is not None
-            ]
-            if not acquired:
-                acquired = [cache.get("acquired_at", cache.get("fetched_at"))]
-            if as_of_basis == "available":
-                acquired.extend(
-                    value
-                    for value in (
-                        cache.get("available_at"),
-                        row.get("available_at"),
-                        evidence.get("available_at"),
-                    )
-                    if value is not None
-                )
-            try:
-                stamps = [datetime.fromisoformat(value) for value in acquired]
-                if any(stamp.utcoffset() is None or stamp > cutoff for stamp in stamps):
-                    continue
-            except ValueError, TypeError:
-                continue
+        if not _visible(row, cache, cutoff, as_of_basis):
+            continue
         month = row.get("reference_month")
         source = evidence.get("source") or evidence.get("evidence_url")
         if (
@@ -200,3 +237,97 @@ def publication_events(snapshot, official_origin, *, as_of=None, as_of_basis=Non
             event.update(time=None, publication_time=None)
         result[month] = event
     return result
+
+
+def publication_projection(snapshot):
+    """Freeze calendar evidence, excluding mutable numeric/execution results."""
+    keys = {
+        "reference_month",
+        "reference_month_evidence",
+        "release_at",
+        "calendar_release_at",
+        "calendar_execution_blocked",
+        "calendar_cancelled_after_completion",
+        "state",
+        "acquired_at",
+        "available_at",
+        "imported_at",
+    }
+    return deepcopy(
+        {
+            "calendar": snapshot.get("calendar", {}),
+            "calendar_publications": snapshot.get("calendar_publications", []),
+            "targets": [
+                {key: value for key, value in row.items() if key in keys}
+                for row in snapshot.get("targets", [])
+            ],
+        }
+    )
+
+
+def validate_publication_history(history):
+    if not isinstance(history, list):
+        raise ValueError("calendar_publication_history_invalid")
+    previous = None
+    for row in history:
+        if (
+            not isinstance(row, dict)
+            or _instant(row.get("observed_at")) is None
+            or _instant(row.get("available_at")) is None
+            or _instant(row["available_at"]) < _instant(row["observed_at"])
+            or (
+                "valid_through" in row
+                and (
+                    _instant(row["valid_through"]) is None
+                    or _instant(row["valid_through"]) < _instant(row["available_at"])
+                )
+            )
+            or not isinstance(row.get("projection"), dict)
+            or "calendar_publication_history" in row["projection"]
+        ):
+            raise ValueError("calendar_publication_history_invalid")
+        projection = row["projection"]
+        if (
+            not isinstance(projection.get("calendar", {}), dict)
+            or any(
+                not isinstance(projection.get(key, []), list)
+                or any(not isinstance(value, dict) for value in projection.get(key, []))
+                for key in ("targets", "calendar_publications")
+            )
+            or (previous is not None and _instant(row["observed_at"]) < previous)
+        ):
+            raise ValueError("calendar_publication_history_invalid")
+        previous = _instant(row["observed_at"])
+
+
+def record_publication_view(state, snapshot, observed_at, official_origin):
+    """Append the view actually assembled now, never backdate a legacy import.
+
+    Raw acquisition/import times remain in the projection and are independently
+    checked on reads. Without an older recorded view, old history stays unknown.
+    Repeated semantically identical refreshes retain the first complete view.
+    """
+    stamp = _instant(observed_at)
+    if stamp is None:
+        raise ValueError("calendar_publication_time_invalid")
+    history = state.setdefault("calendar_publication_history", [])
+    validate_publication_history(history)
+    if history and stamp < _instant(history[-1]["observed_at"]):
+        raise ValueError("calendar_publication_clock_reversal")
+    projection = publication_projection(snapshot)
+    if (
+        history
+        and "valid_through" not in history[-1]
+        and publication_events(history[-1]["projection"], official_origin)
+        == publication_events(projection, official_origin)
+    ):
+        return False
+    history.append(
+        {
+            "observed_at": stamp.isoformat(),
+            "available_at": stamp.isoformat(),
+            "timing_basis": "recorded_projection_not_official_publication_time",
+            "projection": projection,
+        }
+    )
+    return True
