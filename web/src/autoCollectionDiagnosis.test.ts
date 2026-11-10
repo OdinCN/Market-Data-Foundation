@@ -316,6 +316,24 @@ it("does not mistake an explicit verified recovery for the original stopped auto
   expect(d.issues).toEqual([]);
 });
 
+it.each(["unknown", "outcome_unknown"])(
+  "does not invent a stopped retry for a generic %s receipt",
+  (state) => {
+    const v = entry([
+      {
+        reference_month: "2026-11",
+        release_at: "2026-11-04T18:00:00Z",
+        target: { state },
+      },
+    ]);
+    const d = autoCollectionDiagnosis(v, now);
+    expect(d.state).toBe("待核实");
+    expect(d.issues[0].next).toContain("原回执");
+    expect(d.issues[0].next).toContain("不要重复提交");
+    expect(d.issues[0].next).not.toContain("自动重试已停止");
+  },
+);
+
 it.each([
   "cpi_timeseries_storage_outcome_unknown",
   "schedule_release_window_expired",
