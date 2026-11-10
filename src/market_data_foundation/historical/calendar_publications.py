@@ -151,6 +151,10 @@ def publication_events(snapshot, official_origin, *, as_of=None, as_of_basis=Non
         _, record = max(
             eligible, key=lambda pair: (_instant(pair[1]["observed_at"]), pair[0])
         )
+        if record.get("valid_through") and cutoff > _instant(record["valid_through"]):
+            # Restored legacy captures prove only their explicitly verified span.
+            # Do not fall back to an older unbounded view across an evidence gap.
+            return {}
         snapshot = record["projection"]
     cache = snapshot.get("calendar", {})
     calendar = [
@@ -271,6 +275,13 @@ def validate_publication_history(history):
             or _instant(row.get("observed_at")) is None
             or _instant(row.get("available_at")) is None
             or _instant(row["available_at"]) < _instant(row["observed_at"])
+            or (
+                "valid_through" in row
+                and (
+                    _instant(row["valid_through"]) is None
+                    or _instant(row["valid_through"]) < _instant(row["available_at"])
+                )
+            )
             or not isinstance(row.get("projection"), dict)
             or "calendar_publication_history" in row["projection"]
         ):
@@ -304,9 +315,12 @@ def record_publication_view(state, snapshot, observed_at, official_origin):
     if history and stamp < _instant(history[-1]["observed_at"]):
         raise ValueError("calendar_publication_clock_reversal")
     projection = publication_projection(snapshot)
-    if history and publication_events(
-        history[-1]["projection"], official_origin
-    ) == publication_events(projection, official_origin):
+    if (
+        history
+        and "valid_through" not in history[-1]
+        and publication_events(history[-1]["projection"], official_origin)
+        == publication_events(projection, official_origin)
+    ):
         return False
     history.append(
         {

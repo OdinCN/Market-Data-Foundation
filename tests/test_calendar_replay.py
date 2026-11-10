@@ -241,9 +241,49 @@ def test_recorded_view_observed_and_available_are_independently_enforced():
     )
 
 
+@pytest.mark.parametrize("asset", ["cpi", "ppi"])
+@pytest.mark.parametrize("basis", ["observed", "available"])
+def test_restored_view_expires_into_unknown_without_falling_back(dual, asset, basis):
+    _, host, source, _, clock, _, raw = prepare(dual, asset)
+    state = json.loads(host.scheduler.state_path.read_text())
+    history = state["calendar_publication_history"]
+    verified_until = NOW + timedelta(seconds=10)
+    history[-1]["valid_through"] = verified_until.isoformat()
+    count = len(history)
+    host.scheduler.state_path.write_text(json.dumps(state))  # Bounded legacy fixture.
+    snapshot = host.scheduler.status()
+    assert publication_events(
+        snapshot, host.official_origin, as_of=verified_until, as_of_basis=basis
+    )
+    unknown_cutoff = verified_until + timedelta(microseconds=1)
+    assert not publication_events(
+        snapshot, host.official_origin, as_of=unknown_cutoff, as_of_basis=basis
+    )
+    clock[0] += timedelta(hours=1)
+    host.scheduler.import_calendar(raw, clock[0])
+    snapshot = host.scheduler.status()
+    # Even unchanged content starts a new tracked span after a bounded capture.
+    assert len(snapshot["calendar_publication_history"]) == count + 1
+    assert publication_events(
+        snapshot, host.official_origin, as_of=clock[0], as_of_basis=basis
+    )
+    assert not publication_events(
+        snapshot, host.official_origin, as_of=unknown_cutoff, as_of_basis=basis
+    )
+    assert source.calls == 1
+
+
 @pytest.mark.parametrize(
     "corrupt",
-    ["not_list", "naive", "available_before_observed", "nested_history", "bad_rows"],
+    [
+        "not_list",
+        "naive",
+        "available_before_observed",
+        "nested_history",
+        "bad_rows",
+        "naive_bound",
+        "bound_before_available",
+    ],
 )
 def test_invalid_journal_is_not_replaced_by_current_evidence(dual, corrupt):
     _, host, _, _, _, _, _ = prepare(dual, "cpi")
@@ -257,6 +297,10 @@ def test_invalid_journal_is_not_replaced_by_current_evidence(dual, corrupt):
         history[0]["available_at"] = (NOW - timedelta(seconds=1)).isoformat()
     elif corrupt == "nested_history":
         history[0]["projection"]["calendar_publication_history"] = []
+    elif corrupt == "naive_bound":
+        history[0]["valid_through"] = "2026-10-29T00:00:00"
+    elif corrupt == "bound_before_available":
+        history[0]["valid_through"] = (NOW - timedelta(seconds=1)).isoformat()
     else:
         history[0]["projection"]["calendar_publications"] = [None]
     host.scheduler.state_path.write_text(json.dumps(state))
