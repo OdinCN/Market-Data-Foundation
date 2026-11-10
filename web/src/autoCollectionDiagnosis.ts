@@ -92,6 +92,17 @@ const reasons: Record<string, string> = {
   claims_material_unconfirmed: "本次官方报告材料尚未核实",
   claims_rolling_http_budget:
     "滚动24小时HTTP额度已占用，等待已核实消耗结算或额度到期",
+  schedule_actual_http_unknown:
+    "上次尝试的实际来源请求次数未确认，自动重试已停止且预留额度保留",
+  schedule_release_window_expired:
+    "该期发布观察窗口已结束，目标仍未完成，自动重试已停止",
+  schedule_event_http_budget_exhausted:
+    "该期来源请求额度已用尽，自动重试已停止",
+  cpi_timeseries_storage_outcome_unknown:
+    "数值写入提交结果未确认，已停止自动重取，须先核对原回执与持久版本",
+  cpi_timeseries_confirmation_outcome_unknown:
+    "数值可用时点确认未取得回执，须先核对持久版本",
+  collection_not_enabled: "该资产未取得本次采集准入；尚未发出来源请求",
   storage_commit_unknown: "写入提交结果未确认，需要先核对持久回读",
   historical_source_gaps: "历史来源仍有缺值",
   provider_http_403: "来源拒绝访问（HTTP403）",
@@ -331,6 +342,27 @@ export function autoCollectionDiagnosis(
     }
     for (const [stage, value] of stages) {
       const state = text(value.state);
+      const recovery = obj(target.recovery);
+      if (
+        stage === "自动调度" &&
+        recovery.state === "confirmed" &&
+        target.target_available === true &&
+        obj(target.target).state === "complete"
+      )
+        continue;
+      // The target stage and its auto envelope can carry the same stopped
+      // attempt. Explain that one cause once; keep genuinely different causes.
+      if (
+        stage === "自动调度" &&
+        state === "stopped" &&
+        text(value.classification) &&
+        text(value.classification) ===
+          text(obj(target.target).classification) &&
+        ["awaiting_provider", "failed", "error"].includes(
+          String(obj(target.target).state),
+        )
+      )
+        continue;
       if (state === "running") running = true;
       const result = obj(value.result);
       const claimsGap =
@@ -345,22 +377,30 @@ export function autoCollectionDiagnosis(
         (claimsGap ? "claims_current_actuals_missing" : undefined) ??
         text(obj(obj(value.result).source_failure).classification);
       const retryAt = text(value.next_attempt_at);
-      let kind: PlanIssue["kind"] | null = [
-        "unknown",
-        "outcome_unknown",
-      ].includes(state ?? "")
-        ? "unknown"
-        : ["awaiting_provider", "retrying"].includes(state ?? "") ||
-            (state === "failed" && !!retryAt)
-          ? "retry"
-          : ["failed", "error", "pending_exhausted"].includes(state ?? "")
-            ? "failed"
-            : state === "blocked" &&
-                attempted(value) &&
-                !target.calendar_execution_blocked
-              ? "blocked"
-              : null;
+      const stopped =
+        state === "stopped" ||
+        (state === "awaiting_provider" &&
+          !retryAt &&
+          obj(target.auto).state === "stopped");
+      let kind: PlanIssue["kind"] | null = stopped
+        ? code === "schedule_actual_http_unknown" ||
+          code?.includes("outcome_unknown")
+          ? "unknown"
+          : "blocked"
+        : ["unknown", "outcome_unknown"].includes(state ?? "")
+          ? "unknown"
+          : ["awaiting_provider", "retrying"].includes(state ?? "") ||
+              (state === "failed" && !!retryAt)
+            ? "retry"
+            : ["failed", "error", "pending_exhausted"].includes(state ?? "")
+              ? "failed"
+              : state === "blocked" &&
+                  attempted(value) &&
+                  !target.calendar_execution_blocked
+                ? "blocked"
+                : null;
       if (!kind) continue;
+      const detail = obj(value.last_error);
       const reason = diagnosisReason(
         code,
         kind === "unknown"
@@ -377,11 +417,15 @@ export function autoCollectionDiagnosis(
         historical: historical || stage === "历史核实",
         code,
         summary: `${historical || stage === "历史核实" ? "历史事项：" : ""}${period} · ${stage}：${reason}`,
-        reason,
+        reason: detail.classification
+          ? `${reason}（${diagnosisReason(text(detail.classification), "底层分类未确认")}；阶段：${String(detail.phase ?? "未记录")}）`
+          : reason,
         impact: `${period}的${stage}${kind === "unknown" ? "结果未确认" : kind === "retry" ? "尚未完成" : "受阻"}；不以其他期次或手动成功记录抵消该事项。`,
         next:
           kind === "unknown"
-            ? "先核对该期阶段的回执和覆盖；等待正常持久回读，勿直接重复采集。"
+            ? stopped
+              ? "自动重试已停止；先按原回执核对持久版本及请求账本。经核实后可用新的具名增量作业补该期，再由运维关联恢复证据；未知预留不释放。"
+              : "先按原回执核对持久版本及请求账本；结果确认前不要重复提交。当前重试安排尚未确认，以该期实际计划为准。"
             : kind === "retry"
               ? retryAt
                 ? `等待现有调度于${formatBeijingTime(retryAt, "时间未确认")}重试；到时刷新核实结果。`

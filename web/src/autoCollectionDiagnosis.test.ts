@@ -246,3 +246,116 @@ it.each([
     expect(d.summary).toContain("2026-11-17 21:30:00");
   },
 );
+
+it("shows the stopped employment October target even with an online worker and a December next release", () => {
+  const v = entry([]);
+  v.data!.schedule!.targets = [
+    {
+      reference_month: "2026-10",
+      release_at: "2026-11-06T13:30:00Z",
+      target_available: false,
+      target: {
+        state: "awaiting_provider",
+        attempts: 1,
+        next_attempt_at: null,
+        classification: "schedule_actual_http_unknown",
+      },
+      auto: {
+        state: "stopped",
+        actual_http: 1,
+        reserved_http: 1,
+        next_attempt_at: null,
+        classification: "schedule_actual_http_unknown",
+      },
+      history: { state: "blocked", attempts: 0 },
+    },
+    {
+      reference_month: "2026-11",
+      release_at: "2026-12-04T13:30:00Z",
+      target: { state: "pending" },
+    },
+  ];
+  const d = autoCollectionDiagnosis(v, Date.parse("2026-11-10T06:00:00Z"));
+  expect(d.state).toContain("待核实");
+  expect(d.state).not.toContain("重试中");
+  expect(d.listReason).toContain("2026-10");
+  expect(d.listReason).toContain("自动重试已停止");
+  expect(d.issues).toHaveLength(1);
+  expect(d.issues[0].next).toContain("未知预留不释放");
+});
+
+it("does not mistake an explicit verified recovery for the original stopped automatic success", () => {
+  const v = entry([]);
+  v.data!.schedule!.targets = [
+    {
+      reference_month: "2026-09",
+      release_at: "2026-10-02T13:30:00Z",
+      target_available: true,
+      target: { state: "complete", recovered_by_job: "new-job" },
+      auto: {
+        state: "stopped",
+        actual_http: 1,
+        reserved_http: 1,
+        classification: "schedule_actual_http_unknown",
+      },
+      recovery: {
+        state: "confirmed",
+        kind: "operator_job_not_natural_capture",
+        job_id: "new-job",
+      },
+      history: { state: "blocked", attempts: 0 },
+    },
+    {
+      reference_month: "2026-10",
+      release_at: "2026-11-17T13:30:00Z",
+      target: { state: "pending" },
+    },
+  ];
+  const d = autoCollectionDiagnosis(v, now);
+  expect(d.state).toBe("待发布");
+  expect(d.issues).toEqual([]);
+});
+
+it.each(["unknown", "outcome_unknown"])(
+  "does not invent a stopped retry for a generic %s receipt",
+  (state) => {
+    const v = entry([
+      {
+        reference_month: "2026-11",
+        release_at: "2026-11-04T18:00:00Z",
+        target: { state },
+      },
+    ]);
+    const d = autoCollectionDiagnosis(v, now);
+    expect(d.state).toBe("待核实");
+    expect(d.issues[0].next).toContain("原回执");
+    expect(d.issues[0].next).toContain("不要重复提交");
+    expect(d.issues[0].next).not.toContain("自动重试已停止");
+  },
+);
+
+it.each([
+  "cpi_timeseries_storage_outcome_unknown",
+  "schedule_release_window_expired",
+])(
+  "explains a stopped %s without pretending another retry is scheduled",
+  (code) => {
+    const v = entry([
+      {
+        reference_month: "2026-09",
+        release_at: "2026-10-01T13:30:00Z",
+        target: {
+          state: "awaiting_provider",
+          attempts: 1,
+          classification: code,
+        },
+        auto: { state: "stopped", classification: code },
+        history: { state: "blocked", attempts: 0 },
+      },
+    ]);
+    const d = autoCollectionDiagnosis(v, now);
+    expect(d.state).not.toContain("重试中");
+    expect(d.listReason).toContain("2026-09");
+    expect(d.issues[0].reason).toContain("停止");
+  },
+);

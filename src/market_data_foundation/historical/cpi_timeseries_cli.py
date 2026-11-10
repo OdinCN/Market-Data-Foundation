@@ -505,7 +505,17 @@ class WorkerService:
         self.profile = validate_profile(profile)
 
     def _call(self, operation, *args, **kwargs):
-        service = self.factory()
+        # Constructors do not fetch providers. Only explicitly classified local
+        # admission errors carry zero; arbitrary factory/operation failures keep
+        # their unknown count rather than being guessed to have consumed zero.
+        try:
+            service = self.factory()
+        except Exception as error:
+            if not hasattr(error, "operation_phase"):
+                error.operation_phase = "service_factory"
+            raise
+        result = None
+        failure = None
         try:
             if getattr(service, "profile", CPI_PROFILE) is not self.profile:
                 from market_data_foundation.historical.cpi_timeseries import (
@@ -517,12 +527,50 @@ class WorkerService:
             if operation in {"update_range", "init_range"} and hasattr(
                 self, "material_capture"
             ):
-                result["release_material"] = self.material_capture(
-                    service, args[0], args[1], result
-                )
+                try:
+                    result["release_material"] = self.material_capture(
+                        service, args[0], args[1], result
+                    )
+                except Exception as error:
+                    # Numeric persistence and material acquisition settle
+                    # independently. A callback failure cannot erase the numeric
+                    # HTTP receipt, nor assert zero material transport calls.
+                    result["release_material"] = dict(
+                        state="unknown",
+                        reasons=[
+                            getattr(
+                                error,
+                                "classification",
+                                "release_material_callback_failed",
+                            )
+                        ],
+                        event_ids=[],
+                        evidence_ids=[],
+                        material_outcomes=[],
+                        provider_requests=None,
+                        transport_calls=None,
+                    )
             return result
+        except Exception as error:
+            failure = error
+            if not hasattr(error, "operation_phase"):
+                error.operation_phase = operation
+            raise
         finally:
-            service.close()
+            try:
+                service.close()
+            except Exception as error:
+                classification = getattr(
+                    error, "classification", "worker_service_close_failed"
+                )
+                if isinstance(result, dict) and failure is None:
+                    result["service_cleanup"] = dict(
+                        state="failed", classification=classification
+                    )
+                elif failure is not None:
+                    failure.cleanup_classification = classification
+                else:
+                    raise
 
     def update_range(self, *args, **kwargs):
         return self._call("update_range", *args, **kwargs)

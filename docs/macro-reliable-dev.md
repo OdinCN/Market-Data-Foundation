@@ -28,3 +28,11 @@ DEV 使用固定提交的 git archive、独立 uv 环境、uv.lock、package-loc
 | 证据与交付 | 确定性后端/前端全集、类型/合同/构建、既有真实API/PG/Garage/浏览器证据按适用代码复用 | 工程、DEV窗口、自然更新分别结算；PR/CI、合并和生产是不同事实 |
 
 取源和时间合同见 [金融日频](financial_conditions_daily.md)、[周期维护](financial-daily-periodic.md) 和 [事件读取](macro-release-records-r1.md)。真实初始化、同ID恢复、逐资产运行版本及浏览器核验留在 MDF 控制事务证据中，不将原件、凭据或运行状态提交到 Git。整分支确定性检查按仓库 CI 的 `not live_provider and not postgres_integration` 选择；私网 PG、Garage 和 live provider 不属于云 CI 前置。
+
+## BLS 停止目标与具名恢复
+
+CPI、PPI、就业的本地采集准入拒绝发生在 service/provider 调用之前，明确记录零次来源请求。任意未知异常仍不能按零结算：自动目标保留预留并停止，诊断保留异常分类、发生阶段和实际计数是否已知，不保留原异常文本。已知 HTTP 次数也不能证明存储提交已知；`outcome_unknown` 必须先核对原回执与本地版本，不能自动重取来替代原尝试。材料回调和连接关闭的失败独立记录，不覆盖已持久的数值结果或其 HTTP 计数。
+
+周期页对 `auto.state=stopped` 和没有下一次尝试的停止目标显示具体期间、原因和处理路径；下一期日历、worker 在线或其他期次成功不抵销该缺项。旧状态未记录底层原因时仍如实未知，修复不能反推原始失败的真实原因。
+
+有证据的停止目标恢复采用新的具名正常增量作业，之后通过所属 Host 的本地运维端口 `confirm_target_recovery(reference_month, request_id, evidence_locator=..., diagnostic_http=...)` 核对其持久 journal、数值回执、同一参考月全部序列和严格 available 本地版本。此端口不接受网页传来的作业回执、不发来源请求，也不排历史初始化。原 `auto` 的停止、计数和未知预留保留，独立 `recovery` 标明新作业、实际时间及原阶段；不把恢复写成原自动尝试成功或自然发布捕获。调用前把已发生的具名诊断请求计入保守的单事件上限核对，同一作业重复确认不重复扣款或写入。

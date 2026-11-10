@@ -256,8 +256,12 @@ def automatic_executions(snapshot, *, profile=CPI_PROFILE):
         month = target.get("reference_month")
         # Automatic target attempts are persisted on auto, not target stage.
         auto = target.get("auto", {})
+        # An operator's independent job can fulfill a target, but it cannot
+        # turn the original stopped automatic attempt into a natural success.
+        recovery = target.get("recovery") or {}
+        original_stage = recovery.get("previous_target", target.get("target", {}))
         target_stage = {
-            **target.get("target", {}),
+            **original_stage,
             **auto,
             "last_attempt_at": auto.get("last_attempt_at"),
             "attempts": target.get("target", {}).get("attempts"),

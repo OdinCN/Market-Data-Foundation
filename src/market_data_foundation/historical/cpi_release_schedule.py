@@ -2113,7 +2113,12 @@ class CpiReleaseScheduler:
             for word in ("daily_limit", "daily_quota", "daily_request_limit")
         ):
             stop = True
-        elif "state_unknown" in classification and retry_at is None:
+        elif "outcome_unknown" in classification or (
+            "state_unknown" in classification and retry_at is None
+        ):
+            # A known source count is not proof of a known storage commit. Keep
+            # the target stopped for local/same-ID verification, never refetch
+            # automatically to replace an uncertain write.
             stop = True
         elif status == 429 or "rate_limit" in classification:
             auto.setdefault("rate_limited_since", at.isoformat())
@@ -2290,6 +2295,16 @@ class CpiReleaseScheduler:
                     raise CpiScheduleError("schedule_local_readback_incomplete")
                 action = self._auto_accept_local(target, at, at)
         except Exception as error:
+            # Preserve why/where an adapter failed even when its HTTP count is
+            # unknown. Do not retain raw exception messages or credentials.
+            auto["last_error"] = dict(
+                classification=_classification(error, "schedule_update_failed"),
+                phase=getattr(error, "operation_phase", "update_range"),
+                exception_type=type(error).__name__,
+                observed_at=_aware(self.clock()).isoformat(),
+                provider_attempts=self._actual_http(error),
+            )
+            stage["last_error"] = auto["last_error"]
             if not counted:
                 count = self._actual_http(error)
                 if count is None:
@@ -2315,6 +2330,147 @@ class CpiReleaseScheduler:
         self._sync_target(target)
         self._save(state)
         return action
+
+    def confirm_target_recovery(
+        self, reference_month, job, *, evidence_locator, diagnostic_http=0
+    ):
+        """Explicit operator reconciliation of a NEW, journal-backed numeric job.
+
+        No acquisition, retry or history initialization occurs here. The old
+        automatic attempt/count/reservation stays intact; a separate recovery
+        links exact locally verified versions to the same calendar target.
+        The Host supplies its own persisted job, never an HTTP client receipt.
+        """
+        from uuid import UUID
+
+        validate_month(reference_month)
+        if (
+            not self.auto_mode
+            or not isinstance(evidence_locator, str)
+            or not evidence_locator.strip()
+            or type(diagnostic_http) is not int
+            or diagnostic_http < 0
+            or not isinstance(job, dict)
+        ):
+            raise CpiScheduleError("schedule_recovery_evidence_invalid")
+        try:
+            identity = str(UUID(job["job_id"]))
+            if identity != job["job_id"] or identity != job["request_id"]:
+                raise ValueError
+            started_at = _instant(job["started_at"])
+            finished_at = _instant(job["finished_at"])
+        except ValueError, KeyError, TypeError, AttributeError:
+            raise CpiScheduleError("schedule_recovery_job_identity_invalid") from None
+        with self._locked():
+            state, at = self._read(), _aware(self.clock())
+            target = state["targets"].get(reference_month)
+            if target is None:
+                raise CpiScheduleError("schedule_recovery_target_not_found")
+            previous = target.get("recovery")
+            if previous:
+                if previous["job_id"] != identity:
+                    raise CpiScheduleError("schedule_recovery_already_reconciled")
+                return self._snapshot(state, at)
+            auto = target.get("auto", {})
+            written = job.get("numeric_result") or {}
+            count = self._actual_http(written)
+            if (
+                auto.get("state") != "stopped"
+                or target.get("target_available")
+                or target.get("calendar_execution_blocked")
+                or target.get("state") == "calendar_removed"
+                or _instant(target["release_at"]) > at
+                or job.get("asset") != self.profile.key
+                or job.get("state") != "complete"
+                or job.get("action") != "update"
+                or job.get("start") != reference_month
+                or job.get("end") != reference_month
+                or (job.get("result") or {}).get("readback", {}).get("verified")
+                is not True
+                or count is None
+                or count == 0
+                or written.get("persisted") is not True
+                or not _fresh_target(written, reference_month, self.series_ids)
+                or started_at <= _instant(auto["last_attempt_at"])
+                or not started_at <= finished_at <= at
+            ):
+                raise CpiScheduleError("schedule_recovery_job_not_verified")
+            if (
+                auto.get("actual_http", 0)
+                + auto.get("uncertain_http", 0)
+                + count
+                + diagnostic_http
+                > AUTO_HTTP_CAP
+            ):
+                raise CpiScheduleError("schedule_event_http_budget_exhausted")
+            readback = self.service.query_range(
+                reference_month,
+                reference_month,
+                series_ids=self.series_ids,
+                allow_upstream=False,
+                vintage_mode="available",
+            )
+            if not _target_present(readback, reference_month, self.series_ids):
+                raise CpiScheduleError("schedule_recovery_local_readback_incomplete")
+            produced = {
+                p["series_id"]: p
+                for p in written.get("points", [])
+                if p.get("month") == reference_month
+            }
+            actual = {
+                p["series_id"]: p
+                for p in readback.get("points", [])
+                if p.get("month") == reference_month
+            }
+            fields = (
+                "value" if self.profile.key == "employment" else "index_value",
+                "revision",
+                "raw_sha256",
+                "batch_id",
+            )
+            if any(
+                sid not in produced
+                or sid not in actual
+                or actual[sid].get("available_at") is None
+                or any(actual[sid].get(k) != produced[sid].get(k) for k in fields)
+                for sid in self.series_ids
+            ):
+                raise CpiScheduleError("schedule_recovery_versions_not_matched")
+            target["recovery"] = dict(
+                state="confirmed",
+                kind="operator_job_not_natural_capture",
+                job_id=identity,
+                evidence_locator=evidence_locator,
+                confirmed_at=at.isoformat(),
+                started_at=job["started_at"],
+                finished_at=job["finished_at"],
+                actual_http=count,
+                diagnostic_http=diagnostic_http,
+                previous_target=copy.deepcopy(target["target"]),
+                previous_auto=copy.deepcopy(auto),
+                verified_series=list(self.series_ids),
+                original_unknown_reservation_preserved=auto.get("reserved_http", 0),
+            )
+            target.update(
+                target_available=True,
+                target_refreshed=True,
+                verified_target_series=list(self.series_ids),
+                collection_kind="operator_recovery",
+                release_material=job.get("release_material"),
+            )
+            target["target"].update(
+                state="complete",
+                next_attempt_at=None,
+                classification=None,
+                availability_verified=True,
+                recovered_by_job=identity,
+                completed_at=at.isoformat(),
+            )
+            # Keep history's prior state. Confirming this one target must never
+            # enqueue a twenty-year pass or rewrite its original automatic error.
+            self._sync_target(target)
+            self._save(state)
+            return self._snapshot(state, at)
 
     def _auto_history_run(self, state, stage, end, at):
         """One persisted, calendar-bounded history batch per low-priority tick."""

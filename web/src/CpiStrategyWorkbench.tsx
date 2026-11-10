@@ -217,11 +217,7 @@ function ResultFacts({
   }
   const labels: Record<string, string> = {
     saved_points:
-      profile?.id === "claims"
-        ? "保存观测版本（含修订）"
-        : profile?.id === "m3"
-          ? "本次执行新增观测"
-          : "新增观测",
+      profile?.id === "m3" ? "本次执行新增观测" : "保存观测版本（含修订）",
     saved_revisions: profile?.id === "m3" ? "本次执行新增修订" : "新增修订",
     provider_requests: profile?.id === "m3" ? "本次执行来源请求" : "来源请求",
     provider_attempts: profile?.id === "m3" ? "本次执行来源尝试" : "来源尝试",

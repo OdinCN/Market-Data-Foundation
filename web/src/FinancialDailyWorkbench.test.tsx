@@ -190,9 +190,26 @@ it("reads defaults without writes and submits exactly one editable twenty-year j
     ).toBe("2006-11-05"),
   );
   expect(calls.every((c) => c.method === "GET")).toBe(true);
+  // Date defaults render before their confirmation-reset effect is settled.
+  // Express a new user intent only after that initial asynchronous load.
+  await act(async () => {});
   fireEvent.click(
     screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
   );
+  expect(
+    (
+      screen.getByRole("checkbox", {
+        name: "我确认将以上范围采集到开发测试库",
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole("button", {
+        name: "提交 金融条件日频 采集",
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(false);
   fireEvent.click(
     screen.getByRole("button", { name: "提交 金融条件日频 采集" }),
   );

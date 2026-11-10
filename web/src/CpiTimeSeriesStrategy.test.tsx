@@ -386,7 +386,7 @@ it("renders month cards with stage grids, real attempt evidence and separate his
   ).toHaveLength(4);
   expect(within(card).getByText("2026-10-24 20:31:00")).toBeTruthy();
   expect(within(card).getByText("2026-10-25 08:00:00")).toBeTruthy();
-  expect(within(card).getByText("新增观测")).toBeTruthy();
+  expect(within(card).getByText("保存观测版本（含修订）")).toBeTruthy();
   expect(within(card).getByText("新增修订")).toBeTruthy();
   expect(card.textContent).not.toContain("北京时间");
   expect(screen.getByText(/计划时间不代表已经执行/)).toBeTruthy();
@@ -518,7 +518,7 @@ it("identifies blocked calendar months without erasing prior execution facts", a
   expect(
     within(card).getByText(/此月份的日历信息有冲突或尚未重新确认/),
   ).toBeTruthy();
-  expect(within(card).getByText("新增观测")).toBeTruthy();
+  expect(within(card).getByText("保存观测版本（含修订）")).toBeTruthy();
   expect(within(card).getByText("4")).toBeTruthy();
 });
 

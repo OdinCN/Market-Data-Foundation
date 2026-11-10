@@ -4,10 +4,43 @@ import {
   CpiExecutionDetail,
   cpiExecutionStateText,
 } from "./CpiStrategyWorkbench";
-import { CPI_PROFILE, PPI_PROFILE, M3_PROFILE } from "./macroTimeSeriesProfile";
+import {
+  CPI_PROFILE,
+  PPI_PROFILE,
+  M3_PROFILE,
+  EMPLOYMENT_PROFILE,
+} from "./macroTimeSeriesProfile";
 import { shiftMonth, type CpiExecution } from "./cpiTimeSeriesApi";
 
 afterEach(cleanup);
+
+it("keeps employment saved-version counts separate from new observation keys", () => {
+  render(
+    <CpiExecutionDetail
+      profile={EMPLOYMENT_PROFILE}
+      execution={{
+        id: "controlled-employment-repair",
+        origin: "manual",
+        action: "update",
+        start: "2026-10",
+        end: "2026-10",
+        created_at: null,
+        started_at: null,
+        finished_at: null,
+        state: "complete",
+        classification: null,
+        result: { saved_points: 47, saved_revisions: 29 },
+      }}
+    />,
+  );
+  expect(
+    screen.getByText("保存观测版本（含修订）").parentElement?.textContent,
+  ).toContain("47");
+  expect(screen.getByText("新增修订").parentElement?.textContent).toContain(
+    "29",
+  );
+  expect(screen.queryByText("新增观测")).toBeNull();
+});
 for (const profile of [CPI_PROFILE, PPI_PROFILE]) {
   const point = (month = "2026-09", series_id = profile.series[0][0]) => ({
     series_id,
