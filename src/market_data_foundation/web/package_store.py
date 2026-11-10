@@ -179,12 +179,7 @@ class LocalPackageStore:
         return self.snapshot().record(environment_id, package_id)
 
     def _sources(self, package_id, enabled=None):
-        return {
-            s
-            for c in self.catalog.package(package_id).capabilities
-            if enabled is None or c.capability_id in enabled
-            for s in c.required_sources
-        }
+        return self.catalog.credential_sources(package_id, enabled)
 
     @contextmanager
     def _credential_directory(self, *, create=False):
@@ -286,6 +281,13 @@ class LocalPackageStore:
         self.catalog.validate(package_id, command.enabled_capability_ids)
         sources = self._sources(package_id)
         changes = [c.source_id for c in command.source_changes]
+        public = {
+            s.source_id
+            for s in self.catalog.source_access(package_id)
+            if s.credential_requirement == "none"
+        }
+        if set(changes) & public:
+            raise PackageError("source_credentials_not_applicable", 422, "REJECTED")
         if len(changes) != len(set(changes)) or not set(changes) <= sources:
             raise PackageError("illegal_source_change", 422, "REJECTED")
         replacements = [

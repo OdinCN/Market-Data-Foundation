@@ -191,6 +191,15 @@ def test_default_is_actual_catalog_without_host_scope_or_network(monkeypatch):
         m3 = next(f for f in data["families"] if f["identity"] == "M3")
         assert m3["catalog_identities"] == ["mdf.source.census.m3.capital-goods@r1"]
         assert m3["qualification"] == "UNKNOWN"
+        financial = next(
+            f for f in data["families"] if f["identity"] == "FINANCIAL_DAILY"
+        )
+        assert set(financial["catalog_identities"]) == {
+            f"mdf.source.financial-conditions.manual.{path}@r1"
+            for path in ("board", "nyfed", "treasury", "derived", "archive", "fred")
+        }
+        assert financial["qualification"] == "UNKNOWN"
+        assert financial["title"] == "金融条件日频（十项）"
         macro = {e["identity"] for e in data["entries"] if e["domain"] == "Macro"}
         linked = [
             identity for f in data["families"] for identity in f["catalog_identities"]

@@ -22,6 +22,12 @@ from market_data_foundation.historical.consumption_contract import (
 )
 from market_data_foundation.historical.daily_bars import RAW_DAILY_BARS
 from market_data_foundation.historical.employment_contract import BLS_EMPLOYMENT
+from market_data_foundation.historical.financial_daily import (
+    DEFINITION as FINANCIAL_DEFINITION,
+)
+from market_data_foundation.historical.financial_daily_catalog import (
+    PATHS as FINANCIAL_PATHS,
+)
 from market_data_foundation.historical.gdp_contract import GDP_DEFINITION
 from market_data_foundation.historical.jolts_contract import JOLTS_DEFINITION
 from market_data_foundation.historical.m3_contract import M3_DEFINITION
@@ -82,6 +88,38 @@ class CapabilityView(DTO):
     source_relations: list[SourceRelation] = Field(default_factory=list)
 
 
+class SourceAccess(DTO):
+    """Declared access requirements, independent of credentials or runtime health."""
+
+    source_id: str
+    kind: Literal["external", "local_derived"] = "external"
+    credential_requirement: Literal["api_key", "none", "host_managed", "unknown"]
+
+
+def source_access(source_id):
+    requirement = (
+        "api_key"
+        if source_id in {"BLS", "BEA", "Census", "FRED"}
+        else "none"
+        if source_id
+        in {
+            "Federal Reserve Board",
+            "New York Fed",
+            "US Treasury",
+            "Credit archive",
+            "MDF",
+        }
+        else "host_managed"
+        if source_id in {"TDX", "KD"}
+        else "unknown"
+    )
+    return SourceAccess(
+        source_id=source_id,
+        kind="local_derived" if source_id == "MDF" else "external",
+        credential_requirement=requirement,
+    )
+
+
 @dataclass(frozen=True)
 class PackageMetadata:
     package_id: str
@@ -99,7 +137,7 @@ PACKAGES = (
         "宏观数据接入包",
         "Macro",
         "美国 CPI、PPI、JOLTS、就业、零售销售、消费与收入、初请与续请失业金、"
-        "GDP与增长、PCE价格指数及耐用品与核心资本品；启用不代表来源或运行就绪。",
+        "GDP与增长、PCE价格指数、耐用品与核心资本品及金融条件日频十项；启用不代表来源或运行就绪。",
         (
             CapabilityView(
                 capability_id="cpi",
@@ -160,6 +198,12 @@ PACKAGES = (
                 title="美国 PCE价格指数",
                 definition_ref=ref(PCE_DEFINITION),
                 required_sources=["BEA"],
+            ),
+            CapabilityView(
+                capability_id="financial_daily",
+                title="金融条件日频（十项）",
+                definition_ref=ref(FINANCIAL_DEFINITION),
+                required_sources=[name for _, name, _ in FINANCIAL_PATHS],
             ),
         ),
     ),
@@ -228,6 +272,27 @@ class PackageCatalog:
                         raise PackageError("package_catalog_mapping_invalid")
                 self.entries[package.package_id, cap.capability_id] = rows
 
+    def source_access(self, package_id):
+        return [
+            source_access(s)
+            for s in sorted(
+                {
+                    s
+                    for c in self.package(package_id).capabilities
+                    for s in c.required_sources
+                }
+            )
+        ]
+
+    def credential_sources(self, package_id, enabled=None):
+        return {
+            s
+            for c in self.package(package_id).capabilities
+            if enabled is None or c.capability_id in enabled
+            for s in c.required_sources
+            if source_access(s).credential_requirement in {"api_key", "host_managed"}
+        }
+
     def capabilities(self, package_id):
         calendars = {
             "BLS": "BLS 官方发布日历",
@@ -243,12 +308,21 @@ class PackageCatalog:
                             source_id=row.source_name,
                             numeric_path=row.source_contract.product,
                             original_institution=(
-                                "DOL/ETA"
+                                "ICE Data Indices, LLC"
+                                if cap.capability_id == "financial_daily"
+                                and row.source_name in {"FRED", "Credit archive"}
+                                else "DOL/ETA"
                                 if row.source_name == "FRED"
                                 else row.source_name
                             ),
                             release_calendar=(
-                                "Census M3 官方发布日历（调度未装配）"
+                                "按来源可得时间分组检查并回看近14日修订；支持人工初始化/增量与周期采集，实际策略及运行另行核实"
+                                if cap.capability_id == "financial_daily"
+                                else (
+                                    "Census M3 官方发布日历（"
+                                    "先行/完整报告周期采集已接入；"
+                                    "实际策略与运行另行核实）"
+                                )
                                 if cap.capability_id == "m3"
                                 else calendars.get(row.source_name, "未装配")
                             ),
@@ -356,6 +430,7 @@ class SourceVerification(VerificationFacts):
 
 
 class HistoryEvidence(DTO):
+    manual_registered: bool = False
     definition_ref: ContractRef
     holding: Literal["present", "absent", "unknown"]
     metadata_view_permission: Permission = "unknown"
@@ -376,7 +451,9 @@ class Eligibility(DTO):
 class AssetRevision(DTO):
     definition_ref: ContractRef
     capability_enabled: bool
-    visibility_basis: list[Literal["ENABLED_MAPPING", "RETAINED_HISTORY"]]
+    visibility_basis: list[
+        Literal["ENABLED_MAPPING", "RETAINED_HISTORY", "REGISTERED_MANUAL"]
+    ]
     source_entries: list[DirectoryEntryDTO]
     metadata_view_permission: Permission
     local_holding: Literal["UNKNOWN", "ABSENT", "PRESENT"]
@@ -402,6 +479,7 @@ class PackageView(DTO):
     config_revision: str | None
     enabled_capability_ids: list[str]
     required_sources: list[str]
+    source_access: list[SourceAccess] = Field(default_factory=list)
     credential_states: list[CredentialState]
     source_verifications: list[SourceVerification] = Field(default_factory=list)
     history_completeness: Literal["COMPLETE", "UNKNOWN"]

@@ -263,7 +263,7 @@ it("preserves exact manual target through lost durable receipt, explicit resubmi
   await act(async () => {
     await api.run(identity);
   });
-  fireEvent.click(screen.getByRole("button", { name: "回查执行记录" }));
+  fireEvent(document, new Event("visibilitychange"));
   await waitFor(() => {
     const detail = within(
       screen.getByRole("complementary", { name: "执行记录详情" }),

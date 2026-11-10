@@ -21,6 +21,7 @@ from market_data_foundation.historical.claims_calendar import (
     rule_slot,
 )
 from market_data_foundation.historical.claims_contract import (
+    SERIES_IDS,
     ClaimsError,
     day,
     twenty_year_range,
@@ -91,6 +92,158 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
         except ValueError, TypeError, KeyError, OSError:
             raise ClaimsError("claims_schedule_state_invalid") from None
 
+    @staticmethod
+    def reference_weeks(target):
+        for name in ("target", "history"):
+            material = (target.get(name, {}).get("result") or {}).get("material") or {}
+            actuals = material.get("actual_weeks") or {}
+            if (
+                material.get("status") == "available"
+                and material.get("event_id") == target.get("event_id")
+                and set(actuals) == set(SERIES_IDS)
+            ):
+                try:
+                    if all(
+                        day(w).weekday() == 5 and w <= target["source_date"]
+                        for w in actuals.values()
+                    ):
+                        return actuals
+                except ClaimsError:
+                    pass
+        return {}
+
+    @staticmethod
+    def http_charge(job, reserve):
+        # Only a closed, normally returned collection can settle a reservation.
+        # Legacy receipts know FRED attempts but not DOL: retain its full 3-attempt
+        # upper bound rather than pretending that unrecorded consumption is zero.
+        result = job.get("result") or {}
+        requests, fred = (
+            result.get("provider_requests"),
+            result.get("provider_attempts"),
+        )
+        material = result.get("material")
+        if (
+            job.get("state") != "complete"
+            or not job.get("finished_at")
+            or type(requests) is not int
+            or type(fred) is not int
+            or not 0 <= requests <= 6
+            or not requests <= fred <= requests * 3
+            or not isinstance(material, dict)
+        ):
+            return None
+        dol = material.get("provider_attempts")
+        known = type(dol) is int and 0 <= dol <= 3
+        charged = fred + (dol if known else 3)
+        if charged > reserve:
+            return None
+        return dict(
+            charged_http=charged,
+            fred_actual_http=fred,
+            dol_actual_http=dol if known else None,
+            dol_held_http=0 if known else 3,
+            accounting_state="actual" if known else "conservative_dol_bound",
+        )
+
+    @staticmethod
+    def held_http(entry):
+        value = entry.get("charged_http")
+        reserve = entry["reserved_http"]
+        return (
+            value
+            if (
+                type(value) is int
+                and 0 <= value <= reserve
+                and entry.get("accounting_state")
+                in {"actual", "conservative_dol_bound"}
+            )
+            else reserve
+        )
+
+    def _settle_admissions(self, state, now):
+        journal = getattr(self.runner, "journal", None)
+        if journal is None:
+            return
+        admissions = state.get("data_admissions", [])
+        expected = {
+            str(uuid5(NAMESPACE_URL, f"claims:{t['key']}:{n}:{i}"))
+            for t in state["targets"]
+            for n in ("target", "history")
+            for i in range(1, min(t[n]["attempts"], POLICY["stage_max_attempts"]) + 1)
+        }
+        records = [
+            j
+            for j in journal.list()
+            if j.get("request_id") in expected
+            and j.get("origin") == "schedule"
+            and j.get("stage") in {"target", "history"}
+        ]
+        changed = False
+        previous_block = min(
+            (_instant(b["at"]) + timedelta(hours=24) for b in admissions), default=None
+        )
+        for index, entry in enumerate(admissions):
+            if "charged_http" in entry:
+                continue
+            job = next(
+                (j for j in records if j["request_id"] == entry.get("request_id")), None
+            )
+            if not entry.get("request_id"):
+                # Old ledgers lacked IDs. Match only one deterministic scheduled
+                # job wholly enclosed by this reservation and the next one.
+                lower = _instant(entry["at"])
+                upper = (
+                    _instant(admissions[index + 1]["at"])
+                    if index + 1 < len(admissions)
+                    else now
+                )
+                candidates = [
+                    j
+                    for j in records
+                    if j.get("started_at")
+                    and j.get("finished_at")
+                    and lower
+                    <= _instant(j["started_at"])
+                    <= _instant(j["finished_at"])
+                    <= upper
+                ]
+                job = candidates[0] if len(candidates) == 1 else None
+            charge = self.http_charge(job, entry["reserved_http"]) if job else None
+            if charge is not None:
+                entry.update(
+                    charge, request_id=job["request_id"], settled_at=now.isoformat()
+                )
+                changed = True
+        active = [
+            b for b in admissions if _instant(b["at"]) > now - timedelta(hours=24)
+        ]
+        remaining = sum(self.held_http(b) for b in active)
+        if changed and remaining + 21 <= POLICY["rolling_24h_reserved_http"]:
+            for target in state["targets"]:
+                for name in ("target", "history"):
+                    stage = target[name]
+                    blocked_until = stage.get("budget_blocked_until")
+                    legacy_block = (
+                        previous_block
+                        and stage.get("next_attempt_at") == previous_block.isoformat()
+                    )
+                    if (
+                        stage["state"] == "awaiting_provider"
+                        and stage["attempts"] < POLICY["stage_max_attempts"]
+                        and (blocked_until or legacy_block)
+                    ):
+                        delay = _instant(stage["last_attempt_at"]) + timedelta(
+                            seconds=RETRY_SECONDS[min(stage["attempts"] - 1, 7)]
+                        )
+                        retry = (stage.get("result") or {}).get("retry_at")
+                        stage["next_attempt_at"] = max(
+                            now, delay, _instant(retry) if retry else delay
+                        ).isoformat()
+                        stage.pop("budget_blocked_until", None)
+        if changed:
+            self._save(state)
+
     def status(self):
         state, now = self._read(), _aware(self.clock())
         due = [
@@ -98,10 +251,15 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
             for t in state["targets"]
             if not t.get("calendar_execution_blocked")
             for n in ("target", "history")
-            if t[n]["state"] in {"pending", "awaiting_provider"}
+            if (n != "history" or t["target"]["state"] == "complete")
+            and t[n]["state"] in {"pending", "awaiting_provider"}
+        ]
+        targets = [
+            dict(t, reference_weeks=self.reference_weeks(t)) for t in state["targets"]
         ]
         return dict(
             state,
+            targets=targets,
             provider="FRED",
             original_agency="DOL-ETA",
             calendar_status=self._calendar_status(state, now),
@@ -323,6 +481,7 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
                         return dict(action="execution_interrupted")
             if self._calendar_status(state, now) == "clock_reversal":
                 return dict(action="clock_reversal")
+            self._settle_admissions(state, now)
             refresh = state["calendar"].get("next_refresh_at")
             if not refresh or _instant(refresh) <= now:
                 self._refresh(state, now)
@@ -347,6 +506,25 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
 
     def _run(self, state, target, name, now):
         stage = target[name]
+        verify = getattr(self.runner, "verify_existing_history", None)
+        if name == "history" and verify:
+            result = verify(
+                self.history_start,
+                target["source_date"],
+                target["target"].get("result") or {},
+            )
+            if result is not None and actuals_ready(result):
+                stage.update(
+                    state="complete",
+                    completed_at=_aware(self.clock()).isoformat(),
+                    last_attempt_at=now.isoformat(),
+                    result=result,
+                    classification=None,
+                    verification="existing_history_readback",
+                    last_job_id=None,
+                )
+                self._save(state)
+                return dict(action="existing_history_verified", state="complete")
         budget = [
             b
             for b in state.get("data_admissions", [])
@@ -354,12 +532,13 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
         ]
         reserve = 21  # six FRED + one DOL logical read, at most three attempts each
         if (
-            sum(b["reserved_http"] for b in budget) + reserve
+            sum(self.held_http(b) for b in budget) + reserve
             > POLICY["rolling_24h_reserved_http"]
         ):
             stage["next_attempt_at"] = (
                 _instant(budget[0]["at"]) + timedelta(hours=24)
             ).isoformat()
+            stage["budget_blocked_until"] = stage["next_attempt_at"]
             self._save(state)
             return dict(action="budget_exhausted")
         stage.update(
@@ -372,7 +551,7 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
         )
         stage["request_id"] = rid
         state["data_admissions"] = budget + [
-            dict(at=now.isoformat(), reserved_http=reserve)
+            dict(at=now.isoformat(), reserved_http=reserve, request_id=rid)
         ]
         self._save(state)
         start = (
@@ -397,6 +576,11 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
             self._save(state)
             return dict(action="execution_interrupted")
         result = job.get("result") or {}
+        charge = self.http_charge(job, reserve)
+        if charge is not None:
+            state["data_admissions"][-1].update(
+                charge, settled_at=_aware(self.clock()).isoformat()
+            )
         stage.update(
             last_job_id=job["job_id"],
             result=result,
@@ -409,8 +593,12 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
         )
         if ready:
             ready = actuals_ready(result)
-        if job["state"] == "unknown":
-            stage["state"] = "unknown"
+        material_code = (result.get("material") or {}).get("classification") or ""
+        if job["state"] == "unknown" or "unknown" in material_code:
+            stage.update(
+                state="unknown",
+                classification=job.get("classification") or material_code,
+            )
         elif ready:
             stage.update(
                 state="complete", completed_at=_aware(self.clock()).isoformat()
@@ -424,6 +612,12 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
             retry = result.get("retry_at")
             stage.update(
                 state="awaiting_provider",
+                classification=job.get("classification")
+                or (
+                    "claims_current_actuals_missing"
+                    if result.get("material", {}).get("actual_weeks")
+                    else "claims_material_unconfirmed"
+                ),
                 next_attempt_at=max(
                     delay, _instant(retry) if retry else delay
                 ).isoformat(),

@@ -1438,6 +1438,20 @@ footer {
   min-width: 200px;
 }
 
+.financial-api-help .table-wrap table {
+  min-width: 0;
+  width: 100%;
+  table-layout: fixed;
+}
+.financial-api-help th,
+.financial-api-help td,
+.financial-api-help th:first-child,
+.financial-api-help td:first-child {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .cpi-timeseries .cpi-multiselect > button {
   white-space: normal;
 }
@@ -1577,4 +1591,432 @@ footer {
 .cpi-timeseries .m3-comparison-table th:nth-child(2),
 .cpi-timeseries .m3-comparison-table td:nth-child(2) {
   width: 6rem;
+}
+
+/* Balanced periodic workspace; narrow devices use a right-side detail drawer. */
+.periodic-layout {
+  container: periodic / inline-size;
+  min-width: 0;
+}
+.workbench.periodic-workbench {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+.periodic-workbench .table-wrap {
+  overflow-x: auto;
+}
+.periodic-workbench table {
+  min-width: 470px;
+  table-layout: fixed;
+  font-size: 13px;
+}
+.periodic-workbench th {
+  white-space: normal;
+  text-wrap: balance;
+  font-size: 12px;
+}
+.periodic-workbench th:nth-child(1) {
+  width: 40%;
+}
+.periodic-workbench th:nth-child(2) {
+  width: 38%;
+}
+.periodic-workbench th:nth-child(3) {
+  width: 22%;
+}
+.periodic-workbench td {
+  padding: 10px 8px;
+}
+.periodic-workbench td,
+.periodic-workbench .row-link {
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.strategy-target,
+.strategy-data,
+.strategy-control {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.strategy-target small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.strategy-data {
+  font-size: 12px;
+}
+.strategy-data > span {
+  max-width: 100%;
+}
+.strategy-control-note {
+  color: var(--text);
+  font-size: 12px;
+}
+button.strategy-switch {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 88px;
+  min-width: 88px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  touch-action: manipulation;
+}
+button.strategy-switch::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  width: 56px;
+  height: 22px;
+  border-radius: 12px;
+  background: #b92f35;
+  border: 1px solid #8f2020;
+}
+button.strategy-switch:hover:not(:disabled) {
+  background: transparent;
+}
+button.strategy-switch[aria-checked="true"]::before {
+  background: #187447;
+  border-color: #105431;
+}
+button.strategy-switch:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+}
+button.strategy-switch[data-unconfirmed="true"]::before {
+  background: var(--button);
+  border: 1px dashed var(--muted);
+}
+.strategy-switch-thumb {
+  position: absolute;
+  left: 4px;
+  top: 9px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 2px #0005;
+  transition: transform 150ms ease;
+}
+.strategy-switch[aria-checked="true"] .strategy-switch-thumb {
+  transform: translateX(34px);
+}
+.strategy-switch[data-unconfirmed="true"] .strategy-switch-thumb {
+  background: var(--muted);
+}
+.strategy-switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.strategy-periods {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+.strategy-periods li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 4px 0;
+}
+.periodic-workbench .detail-pane {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+.periodic-workbench .detail-pane .fact {
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.periodic-workbench .detail-pane dd {
+  flex: 1 1 auto;
+}
+.periodic-workbench .detail-close {
+  display: none;
+}
+.periodic-workbench .detail-pane:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.periodic-workbench .list-pane::after {
+  content: "列表空间不足时，可在列表内横向滚动查看策略开关。采集时间为北京时间。";
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+  background: #0005;
+  border: 0;
+  border-radius: 0;
+}
+@media (max-width: 760px) {
+  .workbench.periodic-workbench {
+    display: block;
+  }
+  .periodic-workbench .detail-pane {
+    position: fixed;
+    inset: 0 0 0 auto;
+    z-index: 50;
+    width: min(94vw, 520px);
+    height: 100dvh;
+    max-height: none;
+    border-radius: 12px 0 0 12px;
+    display: none;
+  }
+  .periodic-workbench .detail-pane.right-details-open {
+    display: block;
+  }
+  .periodic-workbench .detail-close {
+    display: block;
+    margin: 0 0 12px auto;
+  }
+  .periodic-workbench .list-pane::after {
+    content: "选择一项，从右侧打开策略详情。采集时间为北京时间。";
+  }
+  .periodic-workbench table,
+  .periodic-workbench tbody {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  .periodic-workbench thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .periodic-workbench tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 96px;
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+  }
+  .periodic-workbench td {
+    display: block;
+    min-width: 0;
+    border: 0;
+    padding: 4px 8px;
+  }
+  .periodic-workbench td:nth-child(1) {
+    grid-area: 1 / 1;
+  }
+  .periodic-workbench td:nth-child(2) {
+    grid-area: 2 / 1 / 3 / -1;
+  }
+  .periodic-workbench td:nth-child(3) {
+    grid-area: 1 / 2;
+    align-self: center;
+  }
+  .strategy-data {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 3px 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .strategy-switch-thumb {
+    transition: none;
+  }
+}
+/* Approved single daily control; compact groups stay reachable in each row. */
+.periodic-workbench .list-pane {
+  container: periodic-list / inline-size;
+}
+.periodic-workbench .table-wrap {
+  overflow-x: visible;
+}
+.periodic-workbench table {
+  min-width: 0;
+  width: 100%;
+}
+.periodic-workbench th:nth-child(1) {
+  width: 29%;
+}
+.periodic-workbench th:nth-child(2) {
+  width: 31%;
+}
+.periodic-workbench th:nth-child(3) {
+  width: 40%;
+}
+.periodic-workbench .list-pane::after {
+  content: "最近成功采集为北京时间；最新数据期不是发布时间，也不代表全序列完整。";
+}
+.periodic-workbench .detail-pane dd {
+  flex: 1 1 auto;
+}
+.periodic-workbench .month-stage-detail .fact {
+  flex-direction: row;
+  gap: 8px;
+  padding: 3px 0;
+}
+.periodic-workbench .month-stage-detail .fact dd {
+  flex: 0 1 auto;
+  min-height: 0;
+  height: auto;
+}
+.periodic-workbench .month-stage-detail dl {
+  margin: 4px 0;
+}
+.periodic-workbench .stage-history {
+  grid-column: 1 / -1;
+}
+.auto-control-line {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.auto-state {
+  font-size: 12px;
+}
+button.auto-recover {
+  font-size: 12px;
+  padding: 3px 6px;
+}
+button.strategy-switch {
+  width: 52px;
+  min-width: 52px;
+  height: 24px;
+}
+button.strategy-switch::before {
+  width: 50px;
+  height: 18px;
+  top: 2px;
+}
+.strategy-switch-thumb {
+  width: 12px;
+  height: 12px;
+  left: 4px;
+  top: 6px;
+}
+.strategy-switch[aria-checked="true"] .strategy-switch-thumb {
+  transform: translateX(32px);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@container periodic-list (max-width: 620px) {
+  .periodic-workbench table,
+  .periodic-workbench tbody {
+    display: block;
+    width: 100%;
+  }
+  .periodic-workbench thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .periodic-workbench tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(140px, 44%);
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+  }
+  .periodic-workbench td {
+    display: block;
+    min-width: 0;
+    border: 0;
+    padding: 4px 6px;
+  }
+  .periodic-workbench td:nth-child(1) {
+    grid-area: 1 / 1;
+  }
+  .periodic-workbench td:nth-child(2) {
+    grid-area: 1 / 2;
+  }
+  .periodic-workbench td:nth-child(3) {
+    grid-area: 2 / 1 / 3 / -1;
+  }
+  .strategy-data {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 8px;
+  }
+}
+.auto-diagnosis {
+  margin: 8px 0 14px;
+  font-size: 13px;
+}
+.auto-diagnosis p {
+  margin: 6px 0;
+  line-height: 1.6;
+}
+.auto-issue,
+.auto-advisory {
+  border-left: 3px solid var(--accent);
+  padding: 8px 10px;
+  margin: 10px 0;
+  overflow-wrap: anywhere;
+}
+.auto-issue {
+  border-left-color: #b86a19;
+  background: color-mix(in srgb, #b86a19 7%, transparent);
+}
+.auto-advisory {
+  border-left-color: var(--muted);
+}
+.auto-diagnosis button {
+  font-size: 12px;
+  padding: 5px 8px;
+}
+.periodic-workbench .located-plan {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.financial-json {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.financial-steps {
+  padding-left: 1.2rem;
+}
+.financial-steps li {
+  margin-block: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.workbench.financial-table {
+  grid-template-columns: minmax(0, 1fr);
+}
+.financial-table > .detail-pane {
+  display: none;
+}
+
+/* The active manual request remains prominent while the form tracks it. */
+.execution-brief-card[aria-current="true"] {
+  border-color: var(--accent);
+  background: var(--selected);
 }

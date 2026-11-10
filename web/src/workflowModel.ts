@@ -224,6 +224,7 @@ export type StorageObservation = {
   dto: Observability["storage"][number] | null;
 };
 const titles: Record<string, string> = {
+  "mdf.macro.financial-conditions.daily": "金融条件日频（十项）",
   "mdf.macro.bls.jolts": "美国 JOLTS 职位空缺与劳动力流动",
   "mdf.macro.dol.claims": "美国初请与续请失业金",
   "mdf.macro.bls.cpi.headlines": "美国 CPI",
@@ -284,6 +285,8 @@ export function catalogForOperation(
   };
 }
 function variantLabel(dto: DirectoryEntry): string {
+  if (dto.component_identity.endsWith("financial_daily_catalog"))
+    return dto.source_contract?.product ?? "日频具名人工通路";
   if (dto.component_identity.endsWith("daily_bars")) return "具名日线合同";
   if (dto.component_identity.endsWith("tdx_recent_daily"))
     return "最近 30 日有界窗口";

@@ -1,3 +1,4 @@
+import { claimsExecutionPeriod } from "./claimsPeriod";
 import {
   dayRangeValid,
   claimsLatest,
@@ -50,7 +51,7 @@ function MonthField(props: Parameters<typeof QuarterField>[0]) {
 }
 const profileIntentKey = (profile: MacroProfile) =>
   `mdf.${profile.id}.timeseries.pending.v1`;
-function requestId() {
+export function requestId() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   // HTTP LAN origins still expose getRandomValues outside a secure context.
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -691,6 +692,12 @@ function CpiTimeSeriesCollectionContent({
                         {job.start} 至 {job.end}
                       </dd>
                     </div>
+                    {weekly && (
+                      <div>
+                        <dt>发布与参考周</dt>
+                        <dd>{claimsExecutionPeriod(job.result)}</dd>
+                      </div>
+                    )}
                     <div>
                       <dt>结果</dt>
                       <dd>

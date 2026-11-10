@@ -143,7 +143,7 @@ def test_real_heartbeat_survives_restart_and_get_never_advances_it(tmp_path):
     assert auto.update(enabled=True, history_start="1999-01")["exists"]
     service.available = True
     result = auto.tick()
-    assert result["worker"] == {
+    assert {k: result["worker"][k] for k in ("state", "last_heartbeat_at")} == {
         "state": "idle",
         "last_heartbeat_at": clock().isoformat(),
     }

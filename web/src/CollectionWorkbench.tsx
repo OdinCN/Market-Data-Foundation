@@ -1,3 +1,17 @@
+import { claimsExecutionPeriod } from "./claimsPeriod";
+import { executionCreatedOrder } from "./executionOrder";
+import {
+  financialJobTitle,
+  financialJobSearch,
+  financialJobResult,
+} from "./financialJobPresentation";
+import { useFinancialPeriodic } from "./FinancialPeriodic";
+import {
+  FINANCIAL,
+  FinancialDailyWorkbench,
+  financialCall,
+  type FinancialJob,
+} from "./FinancialDailyWorkbench";
 import { macroAssetLabel } from "./macroTimeSeriesProfile";
 import {
   M3_PROFILE,
@@ -92,6 +106,7 @@ export function CollectionWorkbench({
   navigate,
   transport,
   generation,
+  financialRegistered = false,
   invalidIdentity,
   cpiAvailability,
   ppiAvailability,
@@ -111,6 +126,7 @@ export function CollectionWorkbench({
   navigate: Navigate;
   transport: Transport;
   generation: number;
+  financialRegistered?: boolean;
   invalidIdentity: boolean;
   m3Availability?: CpiAvailability;
   joltsAvailability?: CpiAvailability;
@@ -331,6 +347,10 @@ export function CollectionWorkbench({
         route.fields.get("asset") === CPI.identity &&
         route.fields.get("asset_revision") === CPI.revision &&
         !route.fields.has("operation")));
+  const financialTarget =
+    !invalidIdentity &&
+    sameKey(asset?.key, FINANCIAL) &&
+    !route.fields.has("operation");
   const filterField = tab === "periodic" ? "periodic_asset" : "execution_asset";
   const filter = route.fields.get(filterField) ?? "all";
   const executionSchedule = route.fields.get("execution_schedule") ?? "all";
@@ -385,7 +405,25 @@ export function CollectionWorkbench({
     ],
     readPceRecords,
   );
+  const financialPeriodic = useFinancialPeriodic(
+    transport,
+    financialRegistered && tab === "periodic",
+    navigate,
+  );
+  const financialRecords = useVisiblePolling(
+    (signal) =>
+      financialCall<{ jobs: FinancialJob[] }>(transport, "/jobs", signal),
+    [transport, generation, refresh, filter, tab],
+    tab === "executions" &&
+      financialRegistered &&
+      !invalidIdentity &&
+      (filter === "all" || filter === keyOf(FINANCIAL)),
+  );
   const jobId = route.fields.get("job");
+  const financialExecution =
+    financialTarget && jobId
+      ? financialRecords.data?.jobs.find((j) => j.request_id === jobId)
+      : undefined;
   const scheduleId = route.fields.get("schedule");
   const jobs = useVisiblePolling<Jobs>(
     (signal) => request(transport, "/api/r5/cpi/jobs", {}, signal),
@@ -632,6 +670,17 @@ export function CollectionWorkbench({
     operation: HISTORY_OPERATION,
   };
   function recordState(kind: "plans" | "jobs") {
+    if (kind === "jobs" && filter === keyOf(FINANCIAL)) {
+      if (!financialRegistered)
+        return "金融日频人工接入尚未核实，执行记录尚未查询。";
+      if (financialRecords.busy) return "正在读取金融日频执行记录…";
+      if (financialRecords.failure)
+        return "金融日频执行记录读取失败，当前结果尚未核实。";
+      return financialRecords.data
+        ? "当前已查询范围没有金融日频执行记录。"
+        : "金融日频执行记录尚未查询。";
+    }
+
     if (filter === keyOf(M3))
       return m3Records.failure
         ? "M3执行记录读取失败"
@@ -1121,6 +1170,59 @@ export function CollectionWorkbench({
     operation: context?.source?.id ?? null,
   };
   const calendar = `${frequency === "daily" ? "每天" : frequency === "weekly" ? `每周 ${day}` : frequency === "monthly" ? `每月 ${day} 日` : `每年 ${month} 月 ${day} 日`} ${time}（${zone}）`;
+  const targetControl = (
+    <label>
+      采集目标
+      <select
+        aria-label="采集目标"
+        value={selectedTarget}
+        onChange={(e) => {
+          const key =
+            assets.find((a) => keyOf(a.key) === e.target.value)?.key ??
+            [
+              CPI,
+              PPI,
+              PCE,
+              EMPLOYMENT,
+              RETAIL,
+              CONSUMPTION,
+              M3,
+              JOLTS,
+              CLAIMS,
+              GDP,
+            ].find((k) => keyOf(k) === e.target.value);
+          navigate("collection", {
+            asset: key?.identity ?? null,
+            asset_revision: key?.revision ?? null,
+            operation: null,
+            tab: "new",
+            job: null,
+            ...(sameKey(key, FINANCIAL)
+              ? { reference: null, as_of: null }
+              : {}),
+          });
+        }}
+      >
+        <option value="">选择一个已登记资产</option>
+        {[
+          ...assets,
+          ...[
+            ...new Map(
+              [CPI, PPI, PCE, EMPLOYMENT, CLAIMS, GDP, macroProfile.asset].map(
+                (key) => [keyOf(key), key],
+              ),
+            ).values(),
+          ]
+            .filter((k) => !assets.some((a) => sameKey(a.key, k)))
+            .map((key) => ({ key })),
+        ].map((a) => (
+          <option key={keyOf(a.key)} value={keyOf(a.key)}>
+            {assetTitle(a.key)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
   return (
     <>
       <Tabs
@@ -1134,6 +1236,7 @@ export function CollectionWorkbench({
           <label>
             {tab === "periodic" ? "周期资产筛选" : "执行资产筛选"}
             <select
+              aria-label={tab === "periodic" ? "周期资产筛选" : "执行资产筛选"}
               value={filter}
               onChange={(e) =>
                 navigate(
@@ -1214,9 +1317,13 @@ export function CollectionWorkbench({
         consumptionRecords.failure ||
         gdpRecords.failure ||
         claimsRecords.failure ||
-        joltsRecords.failure) && (
+        joltsRecords.failure ||
+        financialRecords.failure) && (
         <div role="alert">
           采集记录已陈旧，保留上次数据并自动重读。
+          {financialRecords.failure && (
+            <p>金融日频执行记录读取失败，当前结果尚未核实。</p>
+          )}
           {claimsRecords.failure && (
             <p>美国初请与续请执行记录读取失败，当前结果尚未核实。</p>
           )}
@@ -1238,96 +1345,31 @@ export function CollectionWorkbench({
           )}
         </div>
       )}
-      {tab === "new" &&
-      (newMacro || macroPending) &&
-      (cpiTarget ||
-        isPpi ||
-        pceTarget ||
-        employmentTarget ||
-        retailTarget ||
-        consumptionTarget ||
-        gdpTarget ||
-        joltsTarget ||
-        m3Target ||
-        claimsTarget) ? (
+      {tab === "new" && financialTarget ? (
         <>
-          <label>
-            采集目标
-            <select
-              value={selectedTarget}
-              onChange={(e) => {
-                const selected = assets.find(
-                  (a) => keyOf(a.key) === e.target.value,
-                );
-                const selectedKey =
-                  e.target.value === keyOf(M3)
-                    ? M3
-                    : e.target.value === keyOf(JOLTS)
-                      ? JOLTS
-                      : e.target.value === keyOf(CLAIMS)
-                        ? CLAIMS
-                        : e.target.value === keyOf(GDP)
-                          ? GDP
-                          : e.target.value === keyOf(CONSUMPTION)
-                            ? CONSUMPTION
-                            : e.target.value === keyOf(RETAIL)
-                              ? RETAIL
-                              : e.target.value === keyOf(EMPLOYMENT)
-                                ? EMPLOYMENT
-                                : e.target.value === keyOf(PCE)
-                                  ? PCE
-                                  : e.target.value === keyOf(PPI)
-                                    ? PPI
-                                    : e.target.value === keyOf(CPI)
-                                      ? CPI
-                                      : selected?.key;
-                navigate("collection", {
-                  asset: selectedKey?.identity ?? null,
-                  asset_revision: selectedKey?.revision ?? null,
-                  operation: null,
-                  tab: "new",
-                });
-              }}
-            >
-              {!assets.some((a) => sameKey(a.key, CLAIMS)) &&
-                macroProfile.id !== "claims" && (
-                  <option value={keyOf(CLAIMS)}>{assetTitle(CLAIMS)}</option>
-                )}
-              {!assets.some((a) => sameKey(a.key, GDP)) &&
-                macroProfile.id !== "gdp" && (
-                  <option value={keyOf(GDP)}>{assetTitle(GDP)}</option>
-                )}
-              {!assets.some((a) => sameKey(a.key, macroProfile.asset)) && (
-                <option value={keyOf(macroProfile.asset)}>
-                  {macroAssetLabel(macroProfile)}
-                </option>
-              )}
-              {!assets.some((a) => sameKey(a.key, EMPLOYMENT)) &&
-                macroProfile.id !== "employment" &&
-                newEmployment && (
-                  <option value={keyOf(EMPLOYMENT)}>
-                    {assetTitle(EMPLOYMENT)}
-                  </option>
-                )}
-              {!assets.some((a) => sameKey(a.key, CPI)) &&
-                macroProfile.id !== "cpi" && (
-                  <option value={keyOf(CPI)}>{assetTitle(CPI)}</option>
-                )}
-              {!assets.some((a) => sameKey(a.key, PPI)) &&
-                macroProfile.id !== "ppi" && (
-                  <option value={keyOf(PPI)}>{assetTitle(PPI)}</option>
-                )}
-              {!assets.some((a) => sameKey(a.key, PCE)) &&
-                macroProfile.id !== "pce" && (
-                  <option value={keyOf(PCE)}>{assetTitle(PCE)}</option>
-                )}
-              {assets.map((a) => (
-                <option key={keyOf(a.key)} value={keyOf(a.key)}>
-                  {assetTitle(a.key)}
-                </option>
-              ))}
-            </select>
-          </label>
+          {targetControl}
+          <FinancialDailyWorkbench
+            route={route}
+            navigate={navigate}
+            transport={transport}
+            generation={generation}
+            embedded
+          />
+        </>
+      ) : tab === "new" &&
+        (newMacro || macroPending) &&
+        (cpiTarget ||
+          isPpi ||
+          pceTarget ||
+          employmentTarget ||
+          retailTarget ||
+          consumptionTarget ||
+          gdpTarget ||
+          joltsTarget ||
+          m3Target ||
+          claimsTarget) ? (
+        <>
+          {targetControl}
           {macroPending ? (
             <p role="status">正在核实 {macroProfile.label} 采集服务…</p>
           ) : (
@@ -1370,64 +1412,7 @@ export function CollectionWorkbench({
               </p>
             )}
             <div className="field-grid">
-              <label>
-                采集目标
-                <select
-                  value={selectedTarget}
-                  onChange={(e) => {
-                    const a = assets.find(
-                      (a) => keyOf(a.key) === e.target.value,
-                    );
-                    const selectedKey =
-                      e.target.value === keyOf(CLAIMS)
-                        ? CLAIMS
-                        : e.target.value === keyOf(GDP)
-                          ? GDP
-                          : e.target.value === keyOf(EMPLOYMENT)
-                            ? EMPLOYMENT
-                            : e.target.value === keyOf(PCE)
-                              ? PCE
-                              : e.target.value === keyOf(PPI)
-                                ? PPI
-                                : e.target.value === keyOf(CPI)
-                                  ? CPI
-                                  : a?.key;
-                    navigate("collection", {
-                      asset: selectedKey?.identity ?? null,
-                      asset_revision: selectedKey?.revision ?? null,
-                      operation: null,
-                      tab: "new",
-                    });
-                  }}
-                >
-                  <option value="">选择一个已登记资产</option>
-                  {!assets.some((a) => sameKey(a.key, CLAIMS)) && (
-                    <option value={keyOf(CLAIMS)}>{assetTitle(CLAIMS)}</option>
-                  )}
-                  {!assets.some((a) => sameKey(a.key, GDP)) && (
-                    <option value={keyOf(GDP)}>{assetTitle(GDP)}</option>
-                  )}
-                  {!assets.some((a) => sameKey(a.key, EMPLOYMENT)) && (
-                    <option value={keyOf(EMPLOYMENT)}>
-                      {assetTitle(EMPLOYMENT)}
-                    </option>
-                  )}
-                  {!assets.some((a) => sameKey(a.key, CPI)) && (
-                    <option value={keyOf(CPI)}>{assetTitle(CPI)}</option>
-                  )}
-                  {!assets.some((a) => sameKey(a.key, PPI)) && (
-                    <option value={keyOf(PPI)}>{assetTitle(PPI)}</option>
-                  )}
-                  {!assets.some((a) => sameKey(a.key, PCE)) && (
-                    <option value={keyOf(PCE)}>{assetTitle(PCE)}</option>
-                  )}
-                  {assets.map((a) => (
-                    <option key={keyOf(a.key)} value={keyOf(a.key)}>
-                      {assetTitle(a.key)}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {targetControl}
               <label>
                 关联数据源 / Operation
                 <output>
@@ -1731,7 +1716,8 @@ export function CollectionWorkbench({
           </aside>
         </div>
       ) : tab === "periodic" &&
-        (newCpi ||
+        (financialRegistered ||
+          newCpi ||
           newPpi ||
           newPce ||
           newEmployment ||
@@ -1748,6 +1734,13 @@ export function CollectionWorkbench({
           (filter === keyOf(RETAIL) && retailAvailability) ||
           (filter === keyOf(CONSUMPTION) && consumptionAvailability)) ? (
         <CpiStrategyWorkbench
+          supplement={
+            financialRegistered &&
+            !invalidIdentity &&
+            (filter === "all" || filter === keyOf(FINANCIAL))
+              ? financialPeriodic
+              : undefined
+          }
           transport={transport}
           tenthProfile={
             (newM3 || m3Target || filter === keyOf(M3)) && m3Availability
@@ -1917,11 +1910,6 @@ export function CollectionWorkbench({
         <>
           <div className="toolbar">
             <h2>采集执行记录</h2>
-            {!newCpi && !newPpi && !newPce && !newEmployment && !newRetail && (
-              <button onClick={() => setRefresh((n) => n + 1)}>
-                回查执行记录
-              </button>
-            )}
             {executionSchedule !== "all" && (
               <button
                 onClick={() =>
@@ -1938,23 +1926,45 @@ export function CollectionWorkbench({
             columns={["任务名称", "创建时间（北京时间）", "采集范围", "结果"]}
             pageSize={20}
             locateId={
-              (m3Target ||
-                joltsTarget ||
-                claimsTarget ||
-                gdpTarget ||
-                consumptionTarget ||
-                retailTarget ||
-                employmentTarget ||
-                isPpi ||
-                (pceTarget && newPce)) &&
-              (briefTarget || jobId)
-                ? `${macroProfile.id}:${briefTarget || jobId}`
-                : briefTarget
+              financialTarget && jobId
+                ? `financial:${jobId}`
+                : (m3Target ||
+                      joltsTarget ||
+                      claimsTarget ||
+                      gdpTarget ||
+                      consumptionTarget ||
+                      retailTarget ||
+                      employmentTarget ||
+                      isPpi ||
+                      (pceTarget && newPce)) &&
+                    (briefTarget || jobId)
+                  ? `${macroProfile.id}:${briefTarget || jobId}`
+                  : briefTarget
             }
-            selected={cpiExecution?.rowId ?? execution?.id}
+            selected={
+              financialExecution
+                ? `financial:${financialExecution.request_id}`
+                : (cpiExecution?.rowId ?? execution?.id)
+            }
             empty={recordState("jobs")}
             onSelect={(job) => {
               setBriefTarget(null);
+              const financial = financialRecords.data?.jobs.find(
+                (j) => `financial:${j.request_id}` === job,
+              );
+              if (financial) {
+                navigate(
+                  "collection",
+                  {
+                    asset: FINANCIAL.identity,
+                    asset_revision: FINANCIAL.revision,
+                    operation: null,
+                    job: financial.request_id,
+                  },
+                  true,
+                );
+                return;
+              }
               const macro = macroRecords.find((e) => e.rowId === job);
               navigate(
                 "collection",
@@ -1970,8 +1980,28 @@ export function CollectionWorkbench({
               );
             }}
             rows={[
+              ...(financialRecords.data?.jobs ?? [])
+                .filter(() => executionSchedule === "all")
+                .map((j) => ({
+                  id: `financial:${j.request_id}`,
+                  createdAt: j.created_at,
+                  search: financialJobSearch(j),
+                  cells: [
+                    financialJobTitle(j),
+                    <ExecutionCreatedAt value={j.created_at} />,
+                    <span className="execution-range">
+                      <span>{j.command.start}</span>
+                      <span>至</span>
+                      <span>{j.command.end}</span>
+                    </span>,
+                    <span className="execution-result">
+                      {financialJobResult(j)}
+                    </span>,
+                  ],
+                })),
               ...rows.map((e) => ({
                 id: e.id,
+                createdAt: e.dto?.created_at,
                 search: `${e.id} ${e.attempt ?? ""} ${assetTitle(e.asset)} ${stateLabel(e.state)}`,
                 cells: [
                   `${sameKey(e.asset, PCE) ? "PCE" : "CPI"} · ${e.schedule ? "自动阶段" : (e.pce?.parent_job_id ?? e.dto?.parent_job_id) ? "范围回补" : "初始化采集"}`,
@@ -1984,9 +2014,17 @@ export function CollectionWorkbench({
               })),
               ...macroRecords.map((e) => ({
                 id: e.rowId,
-                search: `${e.id} ${macroAssetLabel(e.profile)} ${e.origin !== "manual" ? "自动策略" : "手动采集"} ${cpiActionText(e.origin !== "manual" ? (e.stage ?? e.action) : e.action)} ${e.start ?? ""} ${e.end ?? ""} ${cpiExecutionStateText(e.state, e.result, e.profile, e)}`,
+                createdAt: e.created_at,
+                search: `${e.id} ${macroAssetLabel(e.profile)} ${e.origin !== "manual" ? "自动策略" : "手动采集"} ${cpiActionText(e.origin !== "manual" ? (e.stage ?? e.action) : e.action)} ${e.start ?? ""} ${e.end ?? ""} ${cpiExecutionStateText(e.state, e.result, e.profile, e)}${e.profile.id === "claims" ? " " + claimsExecutionPeriod(e.result) : ""}`,
                 cells: [
-                  `${e.profile.label} · ${e.origin !== "manual" ? "自动阶段 · " : ""}${cpiActionText(e.origin !== "manual" ? (e.stage ?? e.action) : e.action)}`,
+                  <>
+                    {`${e.profile.label} · ${e.origin !== "manual" ? "自动阶段 · " : ""}${cpiActionText(e.origin !== "manual" ? (e.stage ?? e.action) : e.action)}`}
+                    {e.profile.id === "claims" && (
+                      <span className="small">
+                        {claimsExecutionPeriod(e.result)}
+                      </span>
+                    )}
+                  </>,
                   <ExecutionCreatedAt value={e.created_at} />,
                   <span className="execution-range">
                     <span>{e.start ?? "未记录"}</span>
@@ -1998,9 +2036,18 @@ export function CollectionWorkbench({
                   </span>,
                 ],
               })),
-            ]}
+            ].sort(executionCreatedOrder)}
           >
-            {cpiExecution ? (
+            {financialTarget && jobId ? (
+              <FinancialDailyWorkbench
+                route={route}
+                navigate={navigate}
+                transport={transport}
+                generation={generation}
+                embedded
+                detailOnly
+              />
+            ) : cpiExecution ? (
               <CpiExecutionDetail
                 execution={cpiExecution}
                 profile={cpiExecution.profile}
@@ -2039,7 +2086,8 @@ export function CollectionWorkbench({
             !retailRecords.busy &&
             !consumptionRecords.busy &&
             !execution &&
-            !cpiExecution && (
+            !cpiExecution &&
+            !financialTarget && (
               <p role="status">
                 请求的具名执行记录当前不可核实，未改选其他任务。
               </p>

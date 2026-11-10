@@ -129,6 +129,19 @@
       "stage_max_attempts": 10,
       "calendar_cache_hours": 24
     },
+    "last_successful_collection_at": "2026-11-02T12:00:00+00:00",
+    "latest_data_period": "2026-Q3",
+    "latest_data_periods": {
+      "A191RX": "2026-Q3",
+      "LB000003": "2026-Q3",
+      "A191RL": "2026-Q3",
+      "DPCERY": "2026-Q3",
+      "A007RY": "2026-Q3",
+      "A014RY": "2026-Q3",
+      "A822RY": "2026-Q3",
+      "A019RY": "2026-Q3"
+    },
+    "collection_facts_classification": null,
     "calendar_status": "fresh",
     "calendar": {
       "acquired_at": "2026-11-02T12:00:00+00:00",
@@ -921,10 +934,7 @@
               "source": "BEA GDP official release archive"
             },
             "estimate_kind": "third",
-            "roles": [
-              "actual",
-              "previous_estimate"
-            ],
+            "roles": ["actual", "previous_estimate"],
             "association": "scope_only",
             "continuous_version_bound": false
           },
@@ -938,10 +948,7 @@
               "source": "BEA GDP official release archive"
             },
             "estimate_kind": "second",
-            "roles": [
-              "actual",
-              "previous_estimate"
-            ],
+            "roles": ["actual", "previous_estimate"],
             "association": "scope_only",
             "continuous_version_bound": false
           }
@@ -1595,10 +1602,7 @@
         "event_id": "bea:gdp:2026-09-30:2026-Q2:third",
         "family": "gdp",
         "reference_quarter": "2026-Q2",
-        "reference_quarters": [
-          "2026-Q1",
-          "2026-Q2"
-        ],
+        "reference_quarters": ["2026-Q1", "2026-Q2"],
         "estimate_kind": "third",
         "actual_at": null,
         "source_version": {
@@ -1730,12 +1734,8 @@
         "previous_estimate_revision_pp": "0.7",
         "consensus": null,
         "surprise": null,
-        "surprise_missing": [
-          "consensus_source_unavailable"
-        ],
-        "missing": [
-          "actual_publication_instant_not_proven"
-        ],
+        "surprise_missing": ["consensus_source_unavailable"],
+        "missing": ["actual_publication_instant_not_proven"],
         "missing_scopes": [
           {
             "series_id": "A191RX",
@@ -1786,10 +1786,7 @@
         "event_id": "bea:gdp:2026-09-30:2026-Q2:second",
         "family": "gdp",
         "reference_quarter": "2026-Q2",
-        "reference_quarters": [
-          "2026-Q1",
-          "2026-Q2"
-        ],
+        "reference_quarters": ["2026-Q1", "2026-Q2"],
         "estimate_kind": "second",
         "actual_at": null,
         "source_version": {
@@ -1898,12 +1895,8 @@
         "previous_estimate_revision_pp": "0.7",
         "consensus": null,
         "surprise": null,
-        "surprise_missing": [
-          "consensus_source_unavailable"
-        ],
-        "missing": [
-          "actual_publication_instant_not_proven"
-        ],
+        "surprise_missing": ["consensus_source_unavailable"],
+        "missing": ["actual_publication_instant_not_proven"],
         "missing_scopes": [
           {
             "series_id": "A191RX",
@@ -1961,10 +1954,7 @@
         "event_id": "bea:gdp:2026-09-30:2026-Q2:third",
         "family": "gdp",
         "reference_quarter": "2026-Q2",
-        "reference_quarters": [
-          "2026-Q1",
-          "2026-Q2"
-        ],
+        "reference_quarters": ["2026-Q1", "2026-Q2"],
         "estimate_kind": "third",
         "actual_at": null,
         "source_version": {
@@ -2081,12 +2071,8 @@
         "previous_estimate_revision_pp": "0.7",
         "consensus": null,
         "surprise": null,
-        "surprise_missing": [
-          "consensus_source_unavailable"
-        ],
-        "missing": [
-          "actual_publication_instant_not_proven"
-        ],
+        "surprise_missing": ["consensus_source_unavailable"],
+        "missing": ["actual_publication_instant_not_proven"],
         "missing_scopes": [
           {
             "series_id": "A191RX",
@@ -2133,10 +2119,7 @@
         "event_id": "bea:gdp:2026-09-30:2026-Q2:second",
         "family": "gdp",
         "reference_quarter": "2026-Q2",
-        "reference_quarters": [
-          "2026-Q1",
-          "2026-Q2"
-        ],
+        "reference_quarters": ["2026-Q1", "2026-Q2"],
         "estimate_kind": "second",
         "actual_at": null,
         "source_version": {
@@ -2233,12 +2216,8 @@
         "previous_estimate_revision_pp": "0.7",
         "consensus": null,
         "surprise": null,
-        "surprise_missing": [
-          "consensus_source_unavailable"
-        ],
-        "missing": [
-          "actual_publication_instant_not_proven"
-        ],
+        "surprise_missing": ["consensus_source_unavailable"],
+        "missing": ["actual_publication_instant_not_proven"],
         "missing_scopes": [
           {
             "series_id": "A191RX",

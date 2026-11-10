@@ -12,6 +12,7 @@ export function WorkflowTable({
   pageSize,
   locateId,
   className,
+  rightDetails = false,
 }: {
   label: string;
   columns: string[];
@@ -24,11 +25,52 @@ export function WorkflowTable({
   pageSize?: number;
   locateId?: string | null;
   className?: string;
+  rightDetails?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const located = useRef<string | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const detail = useRef<HTMLElement>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia?.("(max-width: 760px)");
+    if (!media) return;
+    const update = () => setNarrow(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useEffect(() => {
+    if (!rightDetails || !narrow || !detailOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    detail.current?.focus({ preventScroll: true });
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [rightDetails, narrow, detailOpen]);
+  useEffect(() => {
+    if (rightDetails && detail.current) detail.current.scrollTop = 0;
+  }, [selected, rightDetails]);
+  function closeDetails() {
+    setDetailOpen(false);
+    root.current
+      ?.querySelector<HTMLButtonElement>('tr[aria-selected="true"] .row-link')
+      ?.focus({ preventScroll: true });
+  }
+  function selectRow(id: string) {
+    onSelect(id);
+    if (rightDetails) {
+      setDetailOpen(true);
+      if (narrow)
+        requestAnimationFrame(() =>
+          detail.current?.focus({ preventScroll: true }),
+        );
+    }
+  }
   useEffect(() => {
     if (!locateId) {
       located.current = null;
@@ -51,7 +93,7 @@ export function WorkflowTable({
     ? visible.slice(currentPage * pageSize, (currentPage + 1) * pageSize)
     : visible;
   return (
-    <div className={`workbench${className ? ` ${className}` : ""}`}>
+    <div ref={root} className={`workbench${className ? ` ${className}` : ""}`}>
       <section aria-label={label} className="list-pane">
         <div className="searchbar">
           <input
@@ -89,16 +131,16 @@ export function WorkflowTable({
                   key={row.id}
                   className={row.id === selected ? "selected" : ""}
                   aria-selected={row.id === selected}
-                  onClick={() => onSelect(row.id)}
+                  onClick={() => selectRow(row.id)}
                 >
                   {row.cells.map((cell, i) => (
-                    <td key={i}>
+                    <td key={i} data-label={columns[i]}>
                       {i === 0 ? (
                         <button
                           className="row-link"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onSelect(row.id);
+                            selectRow(row.id);
                           }}
                           aria-label={`选择 ${row.search}`}
                         >
@@ -137,7 +179,53 @@ export function WorkflowTable({
           </div>
         )}
       </section>
-      <aside className="detail-pane" aria-label={`${label}详情`}>
+      {rightDetails && narrow && detailOpen && (
+        <button
+          className="detail-backdrop"
+          aria-label="关闭策略详情遮罩"
+          onClick={closeDetails}
+        />
+      )}
+      <aside
+        ref={detail}
+        tabIndex={rightDetails ? -1 : undefined}
+        className={`detail-pane${rightDetails && detailOpen ? " right-details-open" : ""}`}
+        role={rightDetails && narrow && detailOpen ? "dialog" : undefined}
+        aria-modal={rightDetails && narrow && detailOpen ? true : undefined}
+        onKeyDown={(event) => {
+          if (!rightDetails || !narrow || !detailOpen) return;
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            closeDetails();
+          }
+          if (event.key === "Tab") {
+            const buttons = [
+              ...(detail.current?.querySelectorAll<HTMLElement>(
+                'button:not(:disabled),a[href],input:not(:disabled),[tabindex="0"]',
+              ) ?? []),
+            ].filter((el) => el.getClientRects().length);
+            const first = buttons[0],
+              last = buttons.at(-1);
+            if (
+              event.shiftKey &&
+              (document.activeElement === first ||
+                document.activeElement === detail.current)
+            ) {
+              event.preventDefault();
+              last?.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+              event.preventDefault();
+              first?.focus();
+            }
+          }
+        }}
+        aria-label={`${label}详情`}
+      >
+        {rightDetails && (
+          <button className="detail-close" onClick={closeDetails}>
+            关闭详情
+          </button>
+        )}
         {children ?? (
           <div className="empty detail-empty">
             <span aria-hidden="true">▦</span>

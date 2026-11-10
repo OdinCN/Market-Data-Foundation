@@ -1,3 +1,4 @@
+import { claimsExecutionPeriod, claimsActualWeeks } from "./claimsPeriod";
 import { retailDecimalText } from "./decimalValue";
 import { CLAIMS_PROFILE } from "./macroTimeSeriesProfile";
 import { releaseLink } from "./macroReleaseLinks";
@@ -10,6 +11,7 @@ export function ClaimsCollectionDetails({
   const data = (
     result.result && typeof result.result === "object" ? result.result : result
   ) as Record<string, unknown>;
+  const actuals = claimsActualWeeks(data);
   const coverage = data.coverage as Record<string, number> | undefined;
   const series = data.series_coverage as
     | Record<string, Record<string, unknown>>
@@ -69,6 +71,10 @@ export function ClaimsCollectionDetails({
   };
   return (
     <div aria-label="Claims周频回读覆盖">
+      <p>{claimsExecutionPeriod(data)}。发布日期与参考周分别列示。</p>
+      {data.completion === "existing_history_readback_verified" && (
+        <p>历史核实复用目标报告，只读检查本地覆盖，未发起新的来源请求。</p>
+      )}
       <p>
         本次回读范围：{display(data.start_date)} 至 {display(data.end_date)}
         。数值回读：{readback?.verified === true ? "已核实" : "尚未核实"}
@@ -78,7 +84,7 @@ export function ClaimsCollectionDetails({
       {coverage && (
         <p>
           周频覆盖：目标 {display(coverage.expected)}，有值{" "}
-          {display(coverage.available)}，本地缺行{" "}
+          {display(coverage.available)}，区间本地缺行（含尚未发布周）{" "}
           {display(coverage.missing_rows)}，FRED提供方缺值{" "}
           {display(coverage.provider_missing_values)}。各系列末端周独立。
         </p>
@@ -95,6 +101,17 @@ export function ClaimsCollectionDetails({
               {display(v.trailing_missing_weeks_total)}。展开查看有限样本。
             </summary>
             <p>
+              本次报告参考周：{actuals[id] ?? "待报告确认"}。
+              {actuals[id] && Array.isArray(v.missing_weeks) && (
+                <span>
+                  报告参考周之后的区间缺行{" "}
+                  {
+                    v.missing_weeks.filter((w) => String(w) > actuals[id])
+                      .length
+                  }{" "}
+                  个，不作为本次发布漏采；各序列按自己的参考周核实。
+                </span>
+              )}
               缺周样本：
               {Array.isArray(v.missing_weeks)
                 ? v.missing_weeks.join("、") || "无"

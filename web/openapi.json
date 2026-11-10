@@ -1373,7 +1373,8 @@
               "type": "string",
               "enum": [
                 "ENABLED_MAPPING",
-                "RETAINED_HISTORY"
+                "RETAINED_HISTORY",
+                "REGISTERED_MANUAL"
               ]
             },
             "type": "array",
@@ -1447,7 +1448,8 @@
               "type": "string",
               "enum": [
                 "ENABLED_MAPPING",
-                "RETAINED_HISTORY"
+                "RETAINED_HISTORY",
+                "REGISTERED_MANUAL"
               ]
             },
             "type": "array",
@@ -5124,6 +5126,13 @@
             "type": "array",
             "title": "Required Sources"
           },
+          "source_access": {
+            "items": {
+              "$ref": "#/components/schemas/SourceAccess"
+            },
+            "type": "array",
+            "title": "Source Access"
+          },
           "credential_states": {
             "items": {
               "$ref": "#/components/schemas/CredentialState"
@@ -6151,6 +6160,41 @@
           "publication_identity"
         ],
         "title": "ServiceDTO"
+      },
+      "SourceAccess": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "title": "Source Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "external",
+              "local_derived"
+            ],
+            "title": "Kind",
+            "default": "external"
+          },
+          "credential_requirement": {
+            "type": "string",
+            "enum": [
+              "api_key",
+              "none",
+              "host_managed",
+              "unknown"
+            ],
+            "title": "Credential Requirement"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source_id",
+          "credential_requirement"
+        ],
+        "title": "SourceAccess",
+        "description": "Declared access requirements, independent of credentials or runtime health."
       },
       "SourceContractDTO": {
         "properties": {

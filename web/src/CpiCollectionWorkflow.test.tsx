@@ -279,22 +279,32 @@ it.each(["all", keyOf(CPI), keyOf(PCE)])(
     await flush();
     expect(screen.getAllByRole("table")).toHaveLength(1);
     expect(
-      screen.queryByRole("button", { name: /新建周期|创建|刷新|回查/ }),
+      screen.queryByRole("button", { name: /新建周期|创建|回查/ }),
     ).toBeNull();
+    expect(screen.getByRole("button", { name: "刷新页面" })).toBeTruthy();
     expect(screen.getAllByRole("row")).toHaveLength(
       filter === keyOf(PCE) ? 1 : 2,
     );
     if (filter !== keyOf(PCE)) {
-      fireEvent.click(screen.getByText("官方发布自动采集"));
+      fireEvent.click(screen.getByRole("button", { name: /选择 美国 CPI/ }));
       await flush();
       const detail = within(
         screen.getByRole("complementary", { name: "周期任务详情" }),
       );
-      expect(detail.queryByRole("button")).toBeNull();
+      expect(detail.getByRole("button", { name: "关闭详情" })).toBeTruthy();
+      expect(
+        detail.queryByRole("button", { name: /新建|保存|启动执行器/ }),
+      ).toBeNull();
+      fireEvent.click(detail.getByText("策略上次执行回执与审计"));
+      fireEvent.click(detail.getByText("技术详情与日历状态"));
       expect(detail.queryByRole("textbox")).toBeNull();
       expect(detail.getByText("累计调度尝试")).toBeTruthy();
       expect(detail.getByText("日历可用")).toBeTruthy();
     }
+    expect(h.calls.every((c) => c.method === "GET")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "刷新页面" }));
+    await flush();
+    expect(h.calls.every((c) => c.method === "GET")).toBe(true);
   },
 );
 it("shows two actions and leaves an unavailable default empty until the user enters a range", async () => {

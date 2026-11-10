@@ -1,8 +1,8 @@
 import { afterEach, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { releaseLink } from "./macroReleaseLinks";
+import { releaseEvidenceLinks, releaseLink } from "./macroReleaseLinks";
 import { route } from "./workflowRoute";
-import { EMPLOYMENT_PROFILE } from "./macroTimeSeriesProfile";
+import { EMPLOYMENT_PROFILE, M3_PROFILE } from "./macroTimeSeriesProfile";
 import { CpiExecutionDetail } from "./CpiStrategyWorkbench";
 
 afterEach(() => {
@@ -61,4 +61,82 @@ it("keeps numeric completion and qualified material absence separate in executio
       .getByRole("link", { name: "打开发布事件与证据" })
       .getAttribute("href"),
   ).toContain("release_evidence=retained-proof");
+});
+
+it("pairs legacy M3 joint proofs by report rather than independently sorted aggregate arrays", () => {
+  const material = {
+    state: "retained",
+    event_ids: ["census:m3:advance:2026-10-27", "census:m3:full:2026-11-03"],
+    evidence_ids: ["full-proof", "advance-proof"],
+    reports: {
+      advm3: {
+        event_ids: ["census:m3:advance:2026-10-27"],
+        evidence_ids: ["advance-proof"],
+      },
+      m3: {
+        event_ids: ["census:m3:full:2026-11-03"],
+        evidence_ids: ["full-proof"],
+      },
+    },
+  };
+  render(
+    <CpiExecutionDetail
+      profile={M3_PROFILE}
+      execution={{
+        id: "legacy-joint-job",
+        origin: "manual",
+        action: "update",
+        start: "2026-09",
+        end: "2026-09",
+        created_at: null,
+        started_at: null,
+        finished_at: null,
+        state: "complete",
+        classification: null,
+        result: { release_material: material },
+      }}
+    />,
+  );
+  const advance = screen.getByRole("link", {
+    name: "打开耐用品先行报告事件与证据",
+  });
+  const full = screen.getByRole("link", {
+    name: "打开制造业完整报告事件与证据",
+  });
+  for (const [link, expectedEvent, expectedProof] of [
+    [advance, material.event_ids[0], "advance-proof"],
+    [full, material.event_ids[1], "full-proof"],
+  ] as const) {
+    const fields = new URLSearchParams(link.getAttribute("href")!.slice(1));
+    expect(fields.get("release_event")).toBe(expectedEvent);
+    expect(fields.get("release_evidence")).toBe(expectedProof);
+  }
+});
+
+it("does not invent proof pairing for unqualified multi-event aggregates", () => {
+  expect(
+    releaseEvidenceLinks({
+      event_ids: ["advance", "full"],
+      evidence_ids: ["b", "a"],
+    }),
+  ).toEqual([
+    { eventId: "advance", evidenceId: undefined, report: undefined },
+    { eventId: "full", evidenceId: undefined, report: undefined },
+  ]);
+});
+
+it("uses explicit per-material event identities even when aggregate arrays disagree in order", () => {
+  expect(
+    releaseEvidenceLinks({
+      event_ids: ["advance", "full"],
+      evidence_ids: ["f", "a"],
+      material_outcomes: [
+        { event_id: "full", evidence_id: "f" },
+        { event_id: "advance", evidence_ids: ["a"] },
+      ],
+    }),
+  ).toEqual([
+    { eventId: "advance", evidenceId: "a", report: undefined },
+    { eventId: "full", evidenceId: "f", report: undefined },
+  ]);
 });

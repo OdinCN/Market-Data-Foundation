@@ -145,6 +145,41 @@ class TimeSeriesPackages(PackageHost):
                             )
                         }
                     )
+                if (
+                    revision.definition_ref.identity
+                    == "mdf.macro.financial-conditions.daily"
+                ):
+                    financial = getattr(self, "financial_options", None)
+                    periodic_available = bool(
+                        financial
+                        and financial.allow_read
+                        and financial.allow_collect
+                        and financial.allow_strategy
+                        and financial.state_directory
+                        and financial.window_path
+                    )
+                    revision = revision.model_copy(
+                        update={
+                            "collect": Eligibility(
+                                allowed=bool(financial and financial.allow_collect),
+                                reasons=["financial_manual_host_opt_in"],
+                            ),
+                            "upstream_read": Eligibility(
+                                allowed=None,
+                                reasons=[
+                                    "financial_named_sources_checked_per_explicit_job"
+                                ],
+                            ),
+                            "plan": Eligibility(
+                                allowed=periodic_available,
+                                reasons=[
+                                    "financial_periodic_host_opt_in"
+                                    if periodic_available
+                                    else "financial_periodic_host_not_enabled"
+                                ],
+                            ),
+                        }
+                    )
                 if host is not None:
                     source = host.source(record)
                     capabilities = host.capabilities(source)
@@ -980,11 +1015,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         return host.write_factory(credential_loader=host.effective_credential)
 
     def credential_states(self, environment_id, package_id, record):
-        sources = {
-            s
-            for cap in self.packages.catalog.package(package_id).capabilities
-            for s in cap.required_sources
-        }
+        sources = self.packages.catalog.credential_sources(package_id)
         return self.scoped_credential_states(
             environment_id, package_id, record, source_ids=sources
         )
@@ -1160,6 +1191,45 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             raise
 
     def _history(self, capability, definition, at):
+        if capability == "financial_daily":
+            options = getattr(self, "financial_options", None)
+            holding = "unknown"
+            if options and options.allow_read:
+                connection = None
+                try:
+                    from market_data_foundation.historical import financial_daily_store
+
+                    schema = financial_daily_store.SCHEMA
+
+                    connection = self.connect(
+                        **self.profile.connection_kwargs(),
+                        autocommit=True,
+                        connect_timeout=5,
+                        options="-c statement_timeout=3000",
+                    )
+                    row = connection.execute(
+                        f"SELECT EXISTS(SELECT 1 FROM {schema}.revisions "
+                        "WHERE available_at IS NOT NULL AND available_at <= %s)",
+                        (at,),
+                    ).fetchone()
+                    holding = "present" if row[0] else "absent"
+                except Exception:
+                    pass
+                finally:
+                    if connection:
+                        connection.close()
+            return HistoryEvidence(
+                manual_registered=bool(options and options.allow_read),
+                definition_ref=definition,
+                holding=holding,
+                metadata_view_permission="allowed"
+                if options and options.allow_read
+                else "unknown",
+                read_permission="allowed"
+                if options and options.allow_read
+                else "unknown",
+                publication_readable=True if holding == "present" else None,
+            )
         if capability not in {
             "cpi",
             "ppi",
@@ -1212,7 +1282,16 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             (c.definition_ref.identity, c.definition_ref.revision): c
             for c in self.packages.catalog.package("macro").capabilities
             if c.capability_id
-            in {"ppi", "employment", "retail", "consumption", "gdp", "claims", "jolts"}
+            in {
+                "ppi",
+                "employment",
+                "retail",
+                "consumption",
+                "gdp",
+                "claims",
+                "jolts",
+                "financial_daily",
+            }
         }
         return result.model_copy(
             update={
@@ -1233,10 +1312,20 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         )
 
 
-def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **options):
+def create_timeseries_preview(
+    settings,
+    *,
+    enabled=False,
+    ui_directory=None,
+    worker_control=None,
+    financial_options=None,
+    **options,
+):
     if enabled is not True:
         raise ValueError("cpi_timeseries_web_opt_in_required")
     runtime = TimeSeriesRuntime(settings, **options)
+    runtime.financial_options = financial_options
+    runtime.packages.financial_options = financial_options
     # No legacy CPI scope is installed. Its old endpoint remains unconfigured;
     # new data never traverses the old canonical schema or publication model.
     app = create_app(package_host=runtime.packages)
@@ -1301,6 +1390,15 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
     app.include_router(
         timeseries_router(runtime.jolts_timeseries, profile=JOLTS_PROFILE)
     )
+    from market_data_foundation.web.worker_control import (
+        admitted_worker,
+        install_worker_control,
+    )
+
+    install_worker_control(app, runtime, worker_control)
+    from market_data_foundation.web.financial_daily_api import financial_router
+
+    app.include_router(financial_router(financial_options))
     app.state.timeseries_runtime = runtime
 
     @app.middleware("http")
@@ -1316,9 +1414,16 @@ def create_timeseries_preview(settings, *, enabled=False, ui_directory=None, **o
             "/api/r5/claims/timeseries",
             "/api/r5/jolts/timeseries",
             "/api/r5/m3/timeseries",
+            "/api/r5/financial/timeseries",
         )
-        job_post = any(admitted_job(request, prefix=prefix) for prefix in prefixes)
-        job_post = job_post or admitted_job(request, prefix="/api/r5/m3/timeseries")
+        job_post = admitted_worker(request) or any(
+            admitted_job(request, prefix=prefix) for prefix in prefixes
+        )
+        from market_data_foundation.web.financial_daily_api import (
+            admitted_financial_job,
+        )
+
+        job_post = job_post or admitted_financial_job(request)
         if request.url.path == "/api/r5/m3/timeseries/jobs/resume":
             job_post = admitted_job(
                 Request(dict(request.scope, path="/api/r5/m3/timeseries/jobs")),

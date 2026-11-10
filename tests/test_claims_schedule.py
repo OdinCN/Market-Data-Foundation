@@ -400,3 +400,148 @@ def test_latest_week_alone_or_incomplete_exact_readback_never_completes(
         ),
     )
     assert scheduler.due_check()["state"] == "awaiting_provider"
+
+
+def test_closed_http_reservation_settles_actuals_and_keeps_legacy_dol_upper_bound():
+    job = dict(
+        state="complete",
+        finished_at=AT.isoformat(),
+        result=dict(
+            provider_requests=6, provider_attempts=8, material=dict(status="available")
+        ),
+    )
+    charge = ClaimsReleaseScheduler.http_charge(job, 21)
+    assert charge["charged_http"] == 11
+    assert charge["dol_actual_http"] is None and charge["dol_held_http"] == 3
+    job["result"]["material"]["provider_attempts"] = 1
+    assert ClaimsReleaseScheduler.http_charge(job, 21)["charged_http"] == 9
+    for state in ("running", "unknown", "failed"):
+        assert ClaimsReleaseScheduler.http_charge(dict(job, state=state), 21) is None
+    job["result"]["provider_attempts"] = "8"
+    assert ClaimsReleaseScheduler.http_charge(job, 21) is None
+    for bad in (-1, 22, None, "0"):
+        assert (
+            ClaimsReleaseScheduler.held_http(
+                dict(reserved_http=21, charged_http=bad, accounting_state="actual")
+            )
+            == 21
+        )
+
+
+def test_legacy_four_reservations_reconcile_only_unique_closed_deterministic_jobs(
+    tmp_path,
+):
+    from uuid import NAMESPACE_URL, uuid5
+
+    scheduler, clock, _, _ = setup(tmp_path)
+    scheduler.due_check()
+    state = scheduler._read()
+    target = state["targets"][0]
+    start = datetime(2026, 11, 5, 13, 30, tzinfo=UTC)
+    admissions, records = [], []
+    for i in range(4):
+        at = start + timedelta(minutes=i)
+        rid = str(uuid5(NAMESPACE_URL, f"claims:{target['key']}:target:{i + 1}"))
+        admissions.append(dict(at=at.isoformat(), reserved_http=21))
+        records.append(
+            dict(
+                request_id=rid,
+                job_id=rid,
+                origin="schedule",
+                stage="target",
+                state="complete",
+                started_at=(at + timedelta(milliseconds=10)).isoformat(),
+                finished_at=(at + timedelta(seconds=20)).isoformat(),
+                result=dict(
+                    provider_requests=6,
+                    provider_attempts=6,
+                    material=dict(status="available"),
+                ),
+            )
+        )
+    target["target"].update(
+        state="awaiting_provider",
+        attempts=4,
+        last_attempt_at=(start + timedelta(minutes=3)).isoformat(),
+        next_attempt_at=(start + timedelta(hours=24)).isoformat(),
+    )
+    state["data_admissions"] = admissions
+    scheduler.runner.journal = SimpleNamespace(list=lambda: records)
+    clock[0] = start + timedelta(hours=1)
+    scheduler._settle_admissions(state, clock[0])
+    assert sum(scheduler.held_http(e) for e in admissions) == 36
+    assert all(e["reserved_http"] == 21 and e["dol_held_http"] == 3 for e in admissions)
+    assert target["target"]["next_attempt_at"] == clock[0].isoformat()
+    assert [r["state"] for r in records] == ["complete"] * 4  # no journal rewriting
+    assert target["target"]["attempts"] == 4
+
+
+def test_unclosed_or_unattributed_budget_reservations_are_not_released(tmp_path):
+    scheduler, clock, _, _ = setup(tmp_path)
+    scheduler.due_check()
+    state = scheduler._read()
+    state["data_admissions"] = [dict(at=clock[0].isoformat(), reserved_http=21)]
+    scheduler.runner.journal = SimpleNamespace(list=lambda: [])
+    scheduler._settle_admissions(state, clock[0] + timedelta(hours=1))
+    assert state["data_admissions"] == [dict(at=clock[0].isoformat(), reserved_http=21)]
+
+
+def test_verified_existing_history_does_not_submit_twenty_year_initialization(tmp_path):
+    scheduler, clock, calls, result = setup(tmp_path)
+    scheduler.due_check()
+    clock[0] = datetime(2026, 11, 5, 13, 30, tzinfo=UTC)
+    actuals = {
+        s: "2026-10-31" if s.startswith("IC") else "2026-10-24" for s in SERIES_IDS
+    }
+    receipt = dict(
+        material=dict(
+            status="available",
+            event_id="dol-claims-2026-11-05",
+            actual_weeks=actuals,
+            readback_verified=True,
+        ),
+        readback=dict(
+            verified=True,
+            as_of_basis="available",
+            actuals_verified=True,
+            actual_weeks=actuals,
+        ),
+    )
+    result[0]["result"] = receipt
+    assert scheduler.due_check()["state"] == "complete"
+    audits = []
+    scheduler.runner.verify_existing_history = lambda *args: (
+        audits.append(args)
+        or dict(
+            receipt,
+            provider_requests=0,
+            completion="existing_history_readback_verified",
+        )
+    )
+    assert scheduler.due_check() == dict(
+        action="existing_history_verified", state="complete"
+    )
+    assert len(calls) == 1 and calls[0][0]["action"] == "update"
+    assert audits[0][:2] == (scheduler.history_start, "2026-11-05")
+    assert (
+        scheduler.status()["targets"][0]["history"]["verification"]
+        == "existing_history_readback"
+    )
+    assert scheduler.status()["targets"][0]["reference_weeks"] == actuals
+    assert scheduler.status()["targets"][1]["reference_weeks"] == {}
+    assert scheduler.status()["next_due"] > clock[0].isoformat()
+
+
+def test_material_write_unknown_is_not_automatically_replayed(tmp_path):
+    scheduler, clock, calls, result = setup(tmp_path)
+    scheduler.due_check()
+    clock[0] = datetime(2026, 11, 5, 13, 30, tzinfo=UTC)
+    result[0]["result"] = dict(
+        material=dict(
+            status="unavailable", classification="claims_material_commit_unknown"
+        )
+    )
+    assert scheduler.due_check()["state"] == "unknown"
+    clock[0] += timedelta(hours=1)
+    assert scheduler.due_check()["action"] == "not_due"
+    assert len(calls) == 1

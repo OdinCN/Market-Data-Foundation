@@ -27,6 +27,10 @@ from tests.test_cpi_timeseries_web_host import setup
 fixture = base_web.fixture
 SID = core.SERIES_IDS[0]
 STRATEGY_FIELDS = {
+    "last_successful_collection_at",
+    "latest_data_period",
+    "latest_data_periods",
+    "collection_facts_classification",
     "exists",
     "enabled",
     "history_start",
@@ -70,7 +74,7 @@ def test_strategy_is_explicit_and_http_fields_are_fixed(fixture):
         assert response.json()["exists"] and response.json()["enabled"]
         assert response.json()["worker"]["last_heartbeat_at"] is None
         assert http.get(PREFIX + "/strategy").json() == response.json()
-    assert source.calls == 0 and closed == []
+    assert source.calls == 0 and closed == [True, True, True]
     assert store.status()["observation_count"] == 0
     assert not host.scheduler.state_path.exists()
 

@@ -30,13 +30,7 @@ def fixture_host(root, *, initialize=True, scenario="default"):
         )
 
     def credentials(environment_id, package_id, record):
-        sources = sorted(
-            {
-                s
-                for c in catalog.package(package_id).capabilities
-                for s in c.required_sources
-            }
-        )
+        sources = sorted(catalog.credential_sources(package_id))
         return [
             CredentialState(
                 source_id=s, credential_state="missing" if s == "BEA" else "configured"
@@ -52,7 +46,15 @@ def fixture_host(root, *, initialize=True, scenario="default"):
             history=[
                 HistoryEvidence(
                     definition_ref=c.definition_ref,
-                    holding="present" if c.capability_id == "ppi" else "absent",
+                    manual_registered=scenario == "financial_manual"
+                    and c.capability_id == "financial_daily",
+                    holding="present"
+                    if c.capability_id == "ppi"
+                    or (
+                        scenario == "financial_manual"
+                        and c.capability_id == "financial_daily"
+                    )
+                    else "absent",
                     metadata_view_permission="denied"
                     if scenario == "metadata_denied"
                     else ("unknown" if scenario == "metadata_unknown" else "allowed"),

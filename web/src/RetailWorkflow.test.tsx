@@ -1,3 +1,4 @@
+import { workerFixture } from "./autoCollectionTestFixture";
 import { afterEach, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -292,7 +293,7 @@ it.each(["missing", "disabled", "loading", "failed"])(
     );
     await flush();
     expect(calls).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "回查执行记录" }));
+    fireEvent(document, new Event("visibilitychange"));
     await flush();
     expect(calls).toHaveLength(4);
     expect(
@@ -537,13 +538,27 @@ it("retains a lost submission across remount and explicitly resumes the same dur
 it("uses the real shared App retail periodic row with start/pause and truthful details", async () => {
   const h = fixture();
   let enabled = false;
+  const worker = workerFixture();
+  const workerCalls: { method: string; body?: unknown }[] = [];
+  const strategyBodies: unknown[] = [];
   const strategyCalls: string[] = [];
   const transport: Transport = async (input, init) => {
     const path = String(input);
+    if (path === `${profile.basePath}/worker`) {
+      const method = init?.method ?? "GET";
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      workerCalls.push({ method, body });
+      return response(
+        worker("retail", method === "POST" ? body.action : undefined),
+      );
+    }
     if (path === `${profile.basePath}/strategy`) {
       strategyCalls.push(init?.method ?? "GET");
-      if (init?.method === "PUT")
-        enabled = JSON.parse(String(init.body)).enabled;
+      if (init?.method === "PUT") {
+        const body = JSON.parse(String(init.body));
+        strategyBodies.push(body);
+        enabled = body.enabled;
+      }
       return response({
         exists: strategyCalls.includes("PUT"),
         enabled,
@@ -581,26 +596,32 @@ it("uses the real shared App retail periodic row with start/pause and truthful d
   location.hash = `ui=r5&view=collection&tab=periodic&periodic_asset=${keyOf(RETAIL)}`;
   render(<App transport={transport} />);
   const row = await screen.findByRole("row", {
-    name: /官方发布自动采集.*美国零售销售/,
+    name: /美国零售销售.*自动采集/,
   });
   await waitFor(() =>
     expect(
       within(row)
-        .getByRole("button", { name: "启动" })
+        .getByRole("switch", { checked: false })
         .hasAttribute("disabled"),
     ).toBe(false),
   );
   expect(strategyCalls.every((m) => m === "GET")).toBe(true);
+  expect(workerCalls.every((c) => c.method === "GET")).toBe(true);
   fireEvent.click(row);
   expect(await screen.findByText("零售销售 策略详情")).toBeTruthy();
   expect(screen.getByText("2026-11-17 21:30:00 北京时间")).toBeTruthy();
   expect(screen.getByText("target_month_not_returned")).toBeTruthy();
   expect(screen.getByText(/继续使用有效缓存/)).toBeTruthy();
-  fireEvent.click(within(row).getByRole("button", { name: "启动" }));
-  await screen.findByRole("button", { name: "暂停" });
-  fireEvent.click(screen.getByRole("button", { name: "暂停" }));
-  await screen.findByRole("button", { name: "启动" });
+  fireEvent.click(within(row).getByRole("switch", { checked: false }));
+  await screen.findByRole("switch", { checked: true });
+  fireEvent.click(screen.getByRole("switch", { checked: true }));
+  await screen.findByRole("switch", { checked: false });
   expect(strategyCalls.filter((m) => m === "PUT")).toHaveLength(2);
+  expect(strategyBodies).toEqual([{ enabled: true }, { enabled: false }]);
+  expect(workerCalls.filter((c) => c.method !== "GET")).toEqual([
+    { method: "POST", body: { action: "start" } },
+  ]);
+  expect(worker("retail").online).toBe(true);
   expect(h.calls.some((c) => /\/cpi\/timeseries/.test(c.path))).toBe(false);
 });
 
@@ -618,11 +639,11 @@ it.each(["loading", "failed"])(
     location.hash = `ui=r5&view=collection&tab=periodic&periodic_asset=${keyOf(RETAIL)}`;
     render(<App transport={transport} />);
     const row = await screen.findByRole("row", {
-      name: /官方发布自动采集.*美国零售销售/,
+      name: /美国零售销售.*自动采集/,
     });
     expect(
       within(row)
-        .getByRole("button", { name: "启动" })
+        .getByRole("switch", { checked: false })
         .hasAttribute("disabled"),
     ).toBe(true);
     fireEvent.click(row);

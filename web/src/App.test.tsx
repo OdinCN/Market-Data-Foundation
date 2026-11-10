@@ -48,7 +48,14 @@ function nav(name: string) {
 }
 const btn = (name: string | RegExp) => screen.getByRole("button", { name });
 async function ready() {
-  await waitFor(() => expect(btn("刷新").hasAttribute("disabled")).toBe(false));
+  // This includes cold-starting the real offline Python ASGI fixture. Readiness
+  // is an asynchronous contract, not a one-second performance requirement.
+  await waitFor(
+    () => expect(btn("刷新").hasAttribute("disabled")).toBe(false),
+    {
+      timeout: 5000,
+    },
+  );
 }
 async function hash(fields: Record<string, string>) {
   await act(async () => {
@@ -380,7 +387,12 @@ it("D: projection keeps components/interfaces/assets/materials/services separate
   ).body as Catalog;
   const model = project(d, c, null);
   expect(model.components.map((c) => c.id)).toEqual(["Macro", "TDX", "KD"]);
-  expect(model.interfaces).toHaveLength(21);
+  expect(model.interfaces).toHaveLength(27);
+  expect(
+    model.assets.find(
+      (a) => a.key.identity === "mdf.macro.financial-conditions.daily",
+    )?.interfaces,
+  ).toHaveLength(6);
   expect(
     model.assets.find(
       (a) => a.key.identity === "mdf.macro.census.durable-capital-goods",

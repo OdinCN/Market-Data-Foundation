@@ -17,6 +17,14 @@ import { Tabs } from "./WorkflowTable";
 
 type Locator =
   | {
+      kind: "official_pdf_table_cell";
+      page: number;
+      table: string;
+      row: string;
+      column: string;
+      excerpt: string;
+    }
+  | {
       kind: "official_report_fragment";
       page: number | null;
       reference_header: string;
@@ -88,8 +96,35 @@ export type Evidence = {
   };
   claims: Claim[];
 };
+type ValueComparison = {
+  series_id: string;
+  statistic: string;
+  unit: string;
+  adjustment: string;
+  reference_month: string;
+  actual: Claim | null;
+  official_previous: Claim | null;
+  previous_reference_month: string;
+  previous_as_reported_in_this_release: Claim | null;
+  revision_difference: string | null;
+  revision_history: {
+    reference_month: string;
+    official_previous: Claim | null;
+    previous_as_reported_in_this_release: Claim | null;
+    revision_difference: string | null;
+    original_basis: string | null;
+  }[];
+  mdf_pre_event_last_consumable_previous: {
+    value: string;
+    versions: unknown[];
+  } | null;
+  mdf_pre_event_previous_basis: string | null;
+  missing: string[];
+};
 export type Release = Evidence & {
   event_id: string;
+  report_stage?: "advance" | "full";
+  report_number?: string;
   reference_week?: string;
   reference_month?: string;
   reference_quarter?: string;
@@ -100,6 +135,15 @@ export type Release = Evidence & {
   previous_estimate_revision_pp?: string | null;
   conflicts?: unknown[];
   prior_event_values?: Claim[];
+  value_comparisons?: ValueComparison[];
+  shared_publication?: {
+    event_id: string;
+    current_asset: string;
+    member_assets: string[];
+    material_digests: string[];
+    numeric_snapshot: string;
+    other_asset_status: string;
+  };
   actual_at: string | null;
   state: "confirmed" | "unknown";
   consensus_snapshots?: {
@@ -298,6 +342,7 @@ export function MacroReleaseRecords({
     index: "指数点",
     percent: "%",
     thousand_jobs: "千岗位",
+    thousand_persons: "千人次",
     million_USD: "百万美元",
     "USD/hour": "美元/小时",
     hours: "小时",
@@ -470,6 +515,13 @@ export function MacroReleaseRecords({
           {event && (
             <section aria-label="发布事件详情">
               <h4>{event.event_id}</h4>
+              {event.report_stage && (
+                <p>
+                  报告阶段：
+                  {event.report_stage === "full" ? "完整报告" : "先行报告"} ·
+                  期次：{referenceText(event)} · {event.report_number}
+                </p>
+              )}
               {gdp && (
                 <p>
                   季度：{referenceText(event)} · 估计：{event.estimate_kind}
@@ -498,6 +550,123 @@ export function MacroReleaseRecords({
                 <summary>技术缺项代码</summary>
                 <pre>{event.missing.join("\n")}</pre>
               </details>
+              {event.shared_publication && (
+                <section aria-label="BEA共享发布">
+                  <h5>同次BEA发布，独立指标结果</h5>
+                  <p>
+                    价格、消费与收入共享事件 {event.shared_publication.event_id}{" "}
+                    及可复用原文；本响应仅核实当前资产，其他资产结果需分别读取。多次API取得不构成原子官方快照。
+                  </p>
+                  <p className="small">
+                    当前材料内容凭据：
+                    {event.shared_publication.material_digests.join(" · ")}
+                  </p>
+                </section>
+              )}
+              {!!event.value_comparisons?.length && (
+                <section aria-label="发布值与前值对照">
+                  <h5>本次公布与修订对照</h5>
+                  <p className="small">
+                    下列actual由材料独立支持，不要求continuous_version已绑定；缺项不补零。原前值、本次报告前值和MDF事前持有值分别保留。
+                  </p>
+                  {event.value_comparisons.map((row, i) => (
+                    <details
+                      key={`${row.series_id}/${row.statistic}/${row.reference_month}`}
+                      open={i === 0}
+                    >
+                      <summary>
+                        {seriesLabel(row.series_id)} ·{" "}
+                        {statistics[row.statistic] ?? row.statistic} ·{" "}
+                        {row.reference_month}
+                      </summary>
+                      <dl>
+                        <div className="fact">
+                          <dt>本次官方公布值</dt>
+                          <dd>
+                            {row.actual?.value ?? "材料冲突或尚未确认"}{" "}
+                            {units[row.unit] ?? row.unit}
+                          </dd>
+                        </div>
+                        <div className="fact">
+                          <dt>官方原前值（{row.previous_reference_month}）</dt>
+                          <dd>
+                            {row.official_previous?.value ?? "缺少匹配官方证据"}
+                          </dd>
+                        </div>
+                        <div className="fact">
+                          <dt>
+                            本次报告前值（{row.previous_reference_month}）
+                          </dt>
+                          <dd>
+                            {row.previous_as_reported_in_this_release?.value ??
+                              "本次材料未明确说明"}
+                          </dd>
+                        </div>
+                        <div className="fact">
+                          <dt>官方前值修订差</dt>
+                          <dd>
+                            {row.revision_difference ??
+                              "未计算（原前值或本次前值缺证据）"}
+                          </dd>
+                        </div>
+                        <div className="fact">
+                          <dt>MDF发布前持有的上期值</dt>
+                          <dd>
+                            {row.mdf_pre_event_last_consumable_previous
+                              ?.value ?? "无足够时间与版本证据"}
+                          </dd>
+                        </div>
+                      </dl>
+                      <p className="small">
+                        MDF前值依据：
+                        {row.mdf_pre_event_previous_basis ===
+                        "strictly_before_official_release_date_lower_bound"
+                          ? "严格早于官方发布日期下界；不推定盘中顺序"
+                          : row.mdf_pre_event_previous_basis ===
+                              "strictly_before_proven_event_instant"
+                            ? "严格早于已证明的发布时刻"
+                            : "时间依据未确认"}
+                        。口径：{row.series_id} / {row.statistic} /{" "}
+                        {row.adjustment} / {row.unit}。
+                      </p>
+                      {row.revision_history
+                        .filter(
+                          (r) =>
+                            r.reference_month !== row.previous_reference_month,
+                        )
+                        .map((r) => (
+                          <p key={r.reference_month}>
+                            同时涉及 {r.reference_month}：官方原前值{" "}
+                            {r.official_previous?.value ?? "缺证据"}
+                            ；本次报告前值{" "}
+                            {r.previous_as_reported_in_this_release?.value ??
+                              "缺证据"}
+                            ；修订差 {r.revision_difference ?? "未计算"}。
+                          </p>
+                        ))}
+                      <details>
+                        <summary>本项材料与缺项依据</summary>
+                        {[
+                          row.actual,
+                          row.official_previous,
+                          row.previous_as_reported_in_this_release,
+                        ]
+                          .filter((c): c is Claim => !!c)
+                          .map((c, index) => (
+                            <p key={index}>
+                              {roles[c.role] ?? c.role} · {c.reference_month} ·
+                              材料 {c.evidence_id ?? "未记录"} ·{" "}
+                              {c.locator.excerpt}
+                            </p>
+                          ))}
+                        {row.missing.map((reason) => (
+                          <p key={reason}>{releaseReasonText(reason)}</p>
+                        ))}
+                      </details>
+                    </details>
+                  ))}
+                </section>
+              )}
               {!!event.consensus_snapshots?.length && (
                 <details>
                   <summary>
@@ -649,9 +818,13 @@ export function MacroReleaseRecords({
                                 : claim.locator.kind ===
                                     "official_report_fragment"
                                   ? `报告第${claim.locator.page ?? "未知"}页 · ${claim.locator.reference_header}`
-                                  : claim.locator.kind === "official_table_cell"
-                                    ? `${tableLabel(claim.locator.table)} · ${claim.locator.row} · ${claim.locator.column}`
-                                    : `材料段落 ${claim.locator.start}–${claim.locator.end}`}
+                                  : claim.locator.kind ===
+                                      "official_pdf_table_cell"
+                                    ? `PDF第${claim.locator.page ?? "未知"}页 · ${tableLabel(claim.locator.table)} · ${claim.locator.column}`
+                                    : claim.locator.kind ===
+                                        "official_table_cell"
+                                      ? `${tableLabel(claim.locator.table)} · ${claim.locator.row} · ${claim.locator.column}`
+                                      : `材料段落 ${claim.locator.start}–${claim.locator.end}`}
                             </summary>
                             {claim.locator.excerpt}
                             {claims &&

@@ -1,3 +1,4 @@
+import { onlineWorkerFixture } from "./workerControlTestFixture";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   act,
@@ -44,7 +45,12 @@ const response = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), { status });
 const flush = () => act(async () => {});
 const button = (name: string) =>
-  screen.getByRole("button", { name }) as HTMLButtonElement;
+  screen.getByRole(
+    ["启动", "暂停", "保存中…"].includes(name) ? "switch" : "button",
+    ["启动", "暂停", "保存中…"].includes(name)
+      ? { checked: name === "暂停" }
+      : { name },
+  ) as HTMLButtonElement;
 const nativeStatus = {
   ...fixture.status,
   latest_months: {},
@@ -96,6 +102,8 @@ it("requires confirmation, sends init for an editable 80-quarter preset, and tra
   const calls: { path: string; body?: Record<string, string> }[] = [];
   let receipt: CpiJob | null = null;
   const transport: Transport = async (path, init) => {
+    if (String(path).endsWith("/worker"))
+      return new Response(JSON.stringify(onlineWorkerFixture));
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ path: String(path), body });
     if (body) {
@@ -296,6 +304,8 @@ it("enables and pauses GDP strategy with one PUT per click, without extra confir
   const writes: unknown[] = [];
   let strategy = fixture.strategy;
   const transport: Transport = async (path, init) => {
+    if (String(path).endsWith("/worker"))
+      return new Response(JSON.stringify(onlineWorkerFixture));
     if (String(path).endsWith("/schedule")) return response(fixture.schedule);
     if (init?.method === "PUT") {
       const body = JSON.parse(String(init.body));
@@ -329,9 +339,9 @@ it("enables and pauses GDP strategy with one PUT per click, without extra confir
   fireEvent.click(button("暂停"));
   await flush();
   expect(writes).toEqual([{ enabled: true }, { enabled: false }]);
-  const heartbeat = screen.getByText("最近心跳（北京时间）").parentElement!;
+  const heartbeat = screen.getByText("心跳（北京时间）").parentElement!;
   expect(heartbeat.textContent).toContain("未记录");
-  expect(screen.getByText("后台进程").parentElement!.textContent).toContain(
+  expect(screen.getByText("实际进程状态").parentElement!.textContent).toContain(
     "尚未启动",
   );
 });
@@ -404,6 +414,8 @@ it("includes GDP in the common execution list and opens its own detail with sche
       }}
       navigate={navigate}
       transport={async (path) => {
+        if (String(path).endsWith("/worker"))
+          return new Response(JSON.stringify(onlineWorkerFixture));
         expect(String(path)).toBe(profile.basePath + "/executions");
         return response({ executions: [scheduled] });
       }}
@@ -458,6 +470,8 @@ it("automatically supplements current gaps and keeps URL preview, raw result and
     provider_attempts: 1,
   };
   const transport: Transport = async (path) => {
+    if (String(path).endsWith("/worker"))
+      return new Response(JSON.stringify(onlineWorkerFixture));
     paths.push(String(path));
     return response(
       String(path).includes("query_mode=history") ? fixture.history : upstream,
@@ -631,6 +645,8 @@ it("includes GDP in the shared workbench periodic list when the host is availabl
       }}
       navigate={vi.fn()}
       transport={async (path) => {
+        if (String(path).endsWith("/worker"))
+          return new Response(JSON.stringify(onlineWorkerFixture));
         paths.push(String(path));
         return response(
           String(path).endsWith("/schedule")
@@ -757,6 +773,8 @@ it.each(["denied", "unverified"])(
           },
         }}
         transport={async (path, init) => {
+          if (String(path).endsWith("/worker"))
+            return new Response(JSON.stringify(onlineWorkerFixture));
           if (init?.method === "PUT") writes.push(init.body);
           return response(
             String(path).endsWith("/schedule")
@@ -784,6 +802,8 @@ it("keeps a GDP save locked while pending and reconciles a lost receipt by GET w
       profile={profile}
       availability={availability}
       transport={async (path, init) => {
+        if (String(path).endsWith("/worker"))
+          return new Response(JSON.stringify(onlineWorkerFixture));
         if (String(path).endsWith("/schedule"))
           return response(fixture.schedule);
         if (init?.method === "PUT") {
@@ -809,9 +829,10 @@ it("keeps a GDP save locked while pending and reconciles a lost receipt by GET w
   fireEvent.click(button("启动"));
   expect(button("保存中…").disabled).toBe(true);
   fireEvent.click(button("保存中…"));
+  await flush();
   expect(writes).toEqual([{ enabled: true }]);
   await act(async () => release());
-  expect(screen.getByText(/策略保存结果未知/)).toBeTruthy();
+  expect(screen.getByText(/操作结果待核实/)).toBeTruthy();
   expect(button("启动").disabled).toBe(true);
   failedRead = false;
   await act(async () => {

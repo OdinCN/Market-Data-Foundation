@@ -1,3 +1,4 @@
+import { FINANCIAL, FinancialDailyWorkbench } from "./FinancialDailyWorkbench";
 import {
   M3_PROFILE,
   JOLTS_PROFILE,
@@ -162,7 +163,13 @@ export default function App({
       hash.set("reference", PCE_REFERENCE);
     location.hash = hash.toString();
     setPage(appRoute());
-    document.querySelector("main")?.scrollIntoView?.({ block: "start" });
+    const selectingStrategy =
+      view === "collection" &&
+      page.view === "collection" &&
+      page.fields.get("tab") === "periodic" &&
+      "schedule" in fields;
+    if (!selectingStrategy)
+      document.querySelector("main")?.scrollIntoView?.({ block: "start" });
   };
   const directory = useResource<Directory>(
     (signal) => request(transport, "/api/r5/sources", {}, signal),
@@ -172,7 +179,7 @@ export default function App({
   const packages = useResource<Packages>(
     (signal) => getPackages(transport, signal),
     [transport, generation, page.invalid],
-    !page.invalid && ["access", "assets"].includes(page.view),
+    !page.invalid && ["access", "assets", "collection"].includes(page.view),
   );
   const management = useResource<Management>(
     (signal) => request(transport, "/api/r3/management", undefined, signal),
@@ -490,6 +497,10 @@ export default function App({
   );
   const source = model.interfaces.find((i) => i.id === operation);
   const asset = model.assets.find((a) => sameKey(a.key, key));
+  const financialExact =
+    identity === FINANCIAL.identity &&
+    (!revision || revision === FINANCIAL.revision) &&
+    !operation;
   const invalidIdentity = !!(
     directory.data &&
     ((operation && !source) ||
@@ -504,7 +515,8 @@ export default function App({
           !sameKey(key, GDP) &&
           !sameKey(key, M3) &&
           !sameKey(key, JOLTS) &&
-          !sameKey(key, CLAIMS)) ||
+          !sameKey(key, CLAIMS) &&
+          !sameKey(key, FINANCIAL)) ||
           (!revision &&
             (page.view !== "assets" ||
               !!operation ||
@@ -735,6 +747,18 @@ export default function App({
                   {page.view === "assets" && (
                     <RuntimeAssets
                       profile={macroProfile}
+                      financial={
+                        financialExact && !invalidIdentity ? (
+                          <FinancialDailyWorkbench
+                            key={`${identity}:${revision}`}
+                            route={page}
+                            navigate={navigate}
+                            transport={transport}
+                            generation={generation}
+                            embedded
+                          />
+                        ) : undefined
+                      }
                       data={packages.data}
                       busy={packages.busy}
                       failure={packages.failure}
@@ -784,8 +808,12 @@ export default function App({
                         <button
                           onClick={() =>
                             navigate("collection", {
-                              asset: macroProfile.asset.identity,
-                              asset_revision: macroProfile.asset.revision,
+                              asset: financialExact
+                                ? FINANCIAL.identity
+                                : macroProfile.asset.identity,
+                              asset_revision: financialExact
+                                ? FINANCIAL.revision
+                                : macroProfile.asset.revision,
                               operation: null,
                               tab: "new",
                             })
@@ -851,6 +879,19 @@ export default function App({
                     <CollectionWorkbench
                       key={`${identity}:${revision}:${operation}`}
                       assets={model.assets}
+                      financialRegistered={
+                        packages.data?.packages.some((p) =>
+                          p.assets.some(
+                            (a) =>
+                              a.identity === FINANCIAL.identity &&
+                              a.revisions.some((r) =>
+                                r.visibility_basis.includes(
+                                  "REGISTERED_MANUAL",
+                                ),
+                              ),
+                          ),
+                        ) ?? false
+                      }
                       asset={selectedAsset}
                       source={invalidIdentity ? undefined : source}
                       invalidIdentity={invalidIdentity || missingMapping}

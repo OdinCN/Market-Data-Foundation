@@ -60,9 +60,11 @@ def arguments(asset="ppi"):
 
 
 @pytest.mark.parametrize("asset", ["ppi", "cpi"])
-def test_worker_selects_only_asset_and_scopes_collect(monkeypatch, asset):
+def test_worker_selects_only_asset_and_scopes_collect(tmp_path, monkeypatch, asset):
     module = worker_module()
     cpi, ppi = Mock(), Mock()
+    cpi.auto_strategy.strategy_path = tmp_path / "cpi.json"
+    ppi.auto_strategy.strategy_path = tmp_path / "ppi.json"
     runtime = SimpleNamespace(timeseries=cpi, ppi_timeseries=ppi)
     constructor = Mock(return_value=runtime)
     monkeypatch.setattr(module, "TimeSeriesRuntime", constructor)
@@ -79,9 +81,12 @@ def test_worker_selects_only_asset_and_scopes_collect(monkeypatch, asset):
 
 @pytest.mark.parametrize("asset", ["cpi", "ppi", "pce"])
 @pytest.mark.parametrize("allow_collect", [False, True])
-def test_worker_never_reads_unselected_hosts(monkeypatch, asset, allow_collect):
+def test_worker_never_reads_unselected_hosts(
+    tmp_path, monkeypatch, asset, allow_collect
+):
     module = worker_module()
     host = Mock()
+    host.auto_strategy.strategy_path = tmp_path / "strategy.json"
     accesses = []
     selected = {
         "cpi": "timeseries",

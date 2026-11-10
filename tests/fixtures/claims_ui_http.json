@@ -9720,6 +9720,17 @@
       "history_priority": "low",
       "event_binding": "calendar_is_not_value_evidence"
     },
+    "last_successful_collection_at": "2026-11-02T18:00:00+00:00",
+    "latest_data_period": "2026-10-31",
+    "latest_data_periods": {
+      "ICSA": "2026-10-31",
+      "ICNSA": "2026-10-31",
+      "CCSA": "2026-10-17",
+      "CCNSA": "2026-10-17",
+      "IC4WSA": "2026-10-31",
+      "CC4WSA": "2026-10-17"
+    },
+    "collection_facts_classification": null,
     "calendar_status": "fresh",
     "calendar": {
       "acquired_at": "2026-11-02T18:00:00+00:00",
@@ -12009,7 +12020,8 @@
           "attempts": 0,
           "next_attempt_at": "2026-11-05T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12028,7 +12040,8 @@
           "attempts": 0,
           "next_attempt_at": "2026-11-12T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12047,7 +12060,8 @@
           "attempts": 0,
           "next_attempt_at": "2026-11-19T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12066,7 +12080,8 @@
           "attempts": 0,
           "next_attempt_at": "2026-11-25T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12085,7 +12100,8 @@
           "attempts": 0,
           "next_attempt_at": "2026-12-03T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12104,7 +12120,8 @@
           "attempts": 0,
           "next_attempt_at": "2026-12-10T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12123,7 +12140,8 @@
           "attempts": 0,
           "next_attempt_at": "2026-12-17T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12142,7 +12160,8 @@
           "attempts": 0,
           "next_attempt_at": "2026-12-24T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12161,7 +12180,8 @@
           "attempts": 0,
           "next_attempt_at": "2026-12-31T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12180,7 +12200,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-01-07T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12199,7 +12220,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-01-14T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12218,7 +12240,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-01-21T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12237,7 +12260,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-01-28T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12256,7 +12280,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-02-04T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12275,7 +12300,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-02-11T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12294,7 +12320,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-02-18T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12313,7 +12340,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-02-25T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12332,7 +12360,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-03-04T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12351,7 +12380,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-03-11T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12370,7 +12400,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-03-18T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12389,7 +12420,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-03-25T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12408,7 +12440,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-04-01T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12427,7 +12460,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-04-08T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12446,7 +12480,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-04-15T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12465,7 +12500,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-04-22T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12484,7 +12520,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-04-29T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12503,7 +12540,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-05-06T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12522,7 +12560,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-05-13T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12541,7 +12580,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-05-20T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12560,7 +12600,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-05-27T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12579,7 +12620,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-06-03T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12598,7 +12640,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-06-10T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12617,7 +12660,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-06-17T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12636,7 +12680,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-06-24T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12655,7 +12700,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-07-01T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12674,7 +12720,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-07-08T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12693,7 +12740,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-07-15T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12712,7 +12760,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-07-22T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12731,7 +12780,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-07-29T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12750,7 +12800,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-08-05T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12769,7 +12820,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-08-12T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12788,7 +12840,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-08-19T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12807,7 +12860,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-08-26T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12826,7 +12880,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-09-02T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12845,7 +12900,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-09-09T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12864,7 +12920,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-09-16T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12883,7 +12940,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-09-23T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12902,7 +12960,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-09-30T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12921,7 +12980,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-10-07T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12940,7 +13000,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-10-14T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12959,7 +13020,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-10-21T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12978,7 +13040,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-10-28T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -12997,7 +13060,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-11-04T12:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -13016,7 +13080,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-11-10T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -13035,7 +13100,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-11-18T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -13054,7 +13120,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-11-24T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -13073,7 +13140,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-12-02T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -13092,7 +13160,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-12-09T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -13111,7 +13180,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-12-16T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -13130,7 +13200,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-12-23T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       },
       {
         "calendar_execution_blocked": false,
@@ -13149,7 +13220,8 @@
           "attempts": 0,
           "next_attempt_at": "2027-12-30T13:30:00+00:00",
           "state": "pending"
-        }
+        },
+        "reference_weeks": {}
       }
     ],
     "version": 1,

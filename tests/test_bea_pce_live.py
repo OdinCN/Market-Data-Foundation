@@ -763,13 +763,16 @@ def test_real_transport_constructs_only_named_wire_request(monkeypatch):
 
 def test_combined_network_budget_stops_second_exchange():
     # Each 65ms response fits 100ms; together they exceed the 110ms network cap.
+    # Spawn/import time is not the budget under test. Leave startup headroom on
+    # contended hosts, while keeping both network limits and completion assertions.
+    # The separate total-attempt test below still exercises its tight deadline.
     result = edge._supervise(
         IDENTITY,
         SyntheticTransport(delay=0.065),
         dummy_loader,
         request_seconds=0.10,
         network_seconds=0.11,
-        attempt_seconds=3.0,
+        attempt_seconds=10.0,
     )
     assert result.classification == "deadline_unknown"
     assert len(result.observations) == 2

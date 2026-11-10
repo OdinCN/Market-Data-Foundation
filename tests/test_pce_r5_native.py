@@ -42,6 +42,28 @@ def client(app, origin=CANDIDATE_ORIGIN):
     return TestClient(app, base_url=origin, client=("192.168.10.25", 12345))
 
 
+def assert_financial_inventory(entries):
+    # Six explicitly registered paths extend the original 21-entry inventory;
+    # registration does not qualify a source or activate a runtime binding.
+    assert len(entries) == 27
+    financial = [
+        e
+        for e in entries
+        if e["asset"] is not None
+        and e["asset"]["identity"] == "mdf.macro.financial-conditions.daily"
+    ]
+    assert {e["identity"] for e in financial} == {
+        f"mdf.source.financial-conditions.manual.{path}@r1"
+        for path in ("board", "nyfed", "treasury", "derived", "archive", "fred")
+    }
+    assert all(e["source_qualified_contract"] is False for e in financial)
+    assert all(
+        e["current_binding"] == e["runtime_observation"] == "UNKNOWN"
+        and e["web_read"] == "DOMAIN_SPECIFIC_ONLY"
+        for e in financial
+    )
+
+
 def test_native_r5_reader_failed_job_and_seven_page_apis_are_preserved(tmp_path):
     server, rig, _ = fixture(tmp_path)
     spec = candidate_spec()
@@ -69,7 +91,7 @@ def test_native_r5_reader_failed_job_and_seven_page_apis_are_preserved(tmp_path)
         for path in ("/api/r5/sources", "/api/r5/observability", "/api/r3/management"):
             assert c.get(path).status_code == 200
         entries = c.get("/api/r5/sources").json()["entries"]
-        assert len(entries) == 21
+        assert_financial_inventory(entries)
         assert "mdf.source.census.m3.capital-goods@r1" in {
             e["identity"] for e in entries
         }
@@ -293,7 +315,7 @@ def test_native_backfill_boundary_keeps_cpi_and_bea_composite_identities():
             pce_initial(),
         )
         assert c.get("/api/r5/sources").json() == before
-        assert len(before["entries"]) == 21
+        assert_financial_inventory(before["entries"])
         assert "mdf.source.census.m3.capital-goods@r1" in {
             e["identity"] for e in before["entries"]
         }

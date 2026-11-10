@@ -237,7 +237,7 @@ it("enables only the exact DEV candidate with confirmation, then reads the new v
   await act(async () => {
     await api.exchange({ control: "run" });
   });
-  fireEvent.click(screen.getByRole("button", { name: "回查执行记录" }));
+  fireEvent(document, new Event("visibilitychange"));
   await waitFor(() => {
     const detail = within(
       screen.getByRole("complementary", { name: "执行记录详情" }),

@@ -294,6 +294,8 @@ class MaterialAcquirer:
         family = repo.profile.key
         official_url(family, selection["source_url"])
         prefix = {
+            "m3": "census:m3:"
+            + ("full" if "/prel/" in selection["source_url"] else "advance"),
             "employment": "bls:employment-situation",
             "cpi": "bls:cpi",
             "ppi": "bls:ppi",
@@ -309,6 +311,11 @@ class MaterialAcquirer:
                 for r in repo._rows(now)
                 if r["event_id"] == identity
                 and r["source_url"] == selection["source_url"]
+                and (
+                    family not in {"m3", "jolts"}
+                    or selection["reference_month"]
+                    in r.get("reference_months", [r["reference_month"]])
+                )
             ]
         except CpiTimeSeriesError as error:
             if error.classification != "release_schema_not_prepared":
@@ -369,6 +376,8 @@ class MaterialAcquirer:
                 return dict(base, reasons=["release_material_state_unknown"])
             old = state.get(key, {})
             if old.get("state") == "retained":
+                if family in {"m3", "jolts"} and not retained:
+                    return dict(base, reasons=["release_retained_scope_unconfirmed"])
                 return dict(
                     base,
                     state="retained",

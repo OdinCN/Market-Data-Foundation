@@ -30,6 +30,8 @@ from market_data_foundation.historical.claims_timeseries import (
 from market_data_foundation.web.claims_jobs import (
     CLAIMS_PROFILE,
     ClaimsJobRunner,
+    actual_readback,
+    actuals_ready,
     validate_command,
 )
 from market_data_foundation.web.cpi_timeseries_jobs import JobJournal, WebError
@@ -237,8 +239,12 @@ class ClaimsTimeSeriesHost(GdpTimeSeriesHost):
             event_id = (
                 max(due, key=lambda e: e["release_at"])["event_id"] if due else None
             )
+        accounting = {}
         try:
             raw = self.material_fetcher()
+            attempts = getattr(raw, "http_attempts", None)
+            if type(attempts) is int and 0 <= attempts <= 3:
+                accounting = dict(provider_attempts=attempts)
             obtained = getattr(raw, "obtained_at", self.clock())
             # The HTTP acquisition envelope is a bytes subclass. Preserve its
             # real acquisition time, then pass plain bytes to parser/storage.
@@ -248,6 +254,7 @@ class ClaimsTimeSeriesHost(GdpTimeSeriesHost):
             if event_id and parsed["event_id"] != event_id:
                 return dict(
                     status="source_not_updated",
+                    **accounting,
                     expected_event_id=event_id,
                     reported_event_id=parsed["event_id"],
                     classification="claims_dol_source_not_updated",
@@ -263,6 +270,7 @@ class ClaimsTimeSeriesHost(GdpTimeSeriesHost):
                 raise WebError("claims_material_readback_mismatch", 503)
             return dict(
                 status="available",
+                **accounting,
                 event_id=parsed["event_id"],
                 evidence_kind="official_current_report_snapshot",
                 readback_verified=True,
@@ -274,8 +282,57 @@ class ClaimsTimeSeriesHost(GdpTimeSeriesHost):
             )
         except Exception as error:
             return dict(
-                status="unavailable", **failure(error, "claims_dol_material_failed")
+                status="unavailable",
+                **accounting,
+                **failure(error, "claims_dol_material_failed"),
             )
+
+    def verify_existing_history(self, start, end, target_result):
+        if not actuals_ready(target_result):
+            return None
+        actuals = target_result["material"]["actual_weeks"]
+        with self.service() as service:
+            result = service.query_range(
+                start, end, allow_upstream=False, as_of_basis="available"
+            )
+        expected = {
+            (sid, week)
+            for sid in SERIES_IDS
+            for week in weeks(start, min(end, actuals[sid]))
+        }
+        held = {
+            (r["series_id"], r["week_ending"])
+            for r in result["rows"]
+            if r["value"] is not None
+            and not r.get("missing_reason")
+            and (r.get("provenance") or {}).get("origin") == "local"
+            and (r.get("provenance") or {}).get("available_at")
+        }
+        if not expected or not expected <= held:
+            return None
+        return dict(
+            status="ok",
+            start_date=start,
+            end_date=end,
+            saved_points=0,
+            saved_revisions=0,
+            provider_requests=0,
+            provider_attempts=0,
+            coverage=dict(
+                expected=len(expected),
+                available=len(expected),
+                missing_rows=0,
+                provider_missing_values=0,
+            ),
+            material=target_result["material"],
+            readback=dict(
+                verified=True,
+                as_of_basis="available",
+                **actual_readback(target_result["material"], result),
+            ),
+            completion="existing_history_readback_verified",
+            material_reused_from_target=True,
+        )
 
     def submit(
         self, command, *, on_started=None, origin="manual", stage=None, event_id=None

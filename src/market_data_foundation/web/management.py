@@ -36,6 +36,7 @@ FAMILIES = (
     ("CLAIMS", "美国初请与续请失业金", "claims_contract"),
     ("JOLTS", "美国职位空缺与劳动力流动", "jolts_binding"),
     ("M3", "美国耐用品与核心资本品", "m3_contract"),
+    ("FINANCIAL_DAILY", "金融条件日频（十项）", "financial_daily_catalog"),
     ("FRED_ALFRED", "FRED / ALFRED vintage", "fred_alfred_vintage"),
     ("FOMC", "FOMC 声明", "fomc_statement"),
     ("ECB", "ECB SDMX", "ECB"),

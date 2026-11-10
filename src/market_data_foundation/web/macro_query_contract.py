@@ -196,6 +196,23 @@ def contract_app():
     from market_data_foundation.web.claims_api import timeseries_router as claims_router
 
     app.include_router(claims_router(None))
+    from types import SimpleNamespace
+
+    from market_data_foundation.web.worker_control import ASSETS, install_worker_control
+
+    runtime = SimpleNamespace(
+        **{
+            (
+                "timeseries"
+                if asset == "cpi"
+                else "m3_query_host"
+                if asset == "m3"
+                else asset + "_timeseries"
+            ): None
+            for asset in ASSETS
+        }
+    )
+    install_worker_control(app, runtime, None)
     return app
 
 
@@ -327,8 +344,15 @@ def release_openapi():
         "properties": {
             "event_id": string,
             "family": string,
+            "report_stage": {"type": "string", "enum": ["advance", "full"]},
+            "report_number": string,
             "reference_month": string,
             "reference_months": {"type": "array", "items": string},
+            "value_comparisons": {
+                "type": "array",
+                "items": {"type": "object", "additionalProperties": True},
+            },
+            "shared_publication": {"type": "object", "additionalProperties": True},
             "actual_at": nullable,
             "source_version": source,
             "claims": {"type": "array", "items": claim},

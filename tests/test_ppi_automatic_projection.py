@@ -80,6 +80,34 @@ def test_cpi_result_dictionary_is_unchanged():
     }
 
 
+@pytest.mark.parametrize("profile", [CPI_PROFILE, PPI_PROFILE])
+@pytest.mark.parametrize("verified", [True, False, None])
+def test_availability_observation_preserves_explicit_value_and_precedence(
+    profile, verified
+):
+    # A missing stage field must preserve the persisted result's observation.
+    result = {"availability_verified": verified, "readback": {"verified": False}}
+    projected = project(history_stage(result=result), profile=profile)["result"]
+    assert projected == {
+        **result,
+        "summary_scope": "latest_stage_attempt",
+        "scheduler_attempts_total": 2,
+        "actual_http_total": 3,
+    }
+    assert result == {
+        "availability_verified": verified,
+        "readback": {"verified": False},
+    }
+    # An explicit stage observation, including unknown, remains authoritative.
+    projected = project(
+        history_stage(
+            result={"availability_verified": True}, availability_verified=verified
+        ),
+        profile=profile,
+    )["result"]
+    assert projected["availability_verified"] is verified
+
+
 def test_ppi_history_evidence_and_failure_stay_with_their_month():
     missing = [{"series_id": "WPSFD4", "month": "2006-10"}]
     records = automatic_executions(

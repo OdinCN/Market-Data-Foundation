@@ -22,6 +22,10 @@ from market_data_foundation.web.cpi_timeseries_api import (
     admitted_strategy,
 )
 from market_data_foundation.web.cpi_timeseries_host import create_timeseries_preview
+from market_data_foundation.web.financial_daily_api import (
+    FinancialOptions,
+    admitted_financial_job,
+)
 from market_data_foundation.web.gdp_runtime import GdpOptions
 from market_data_foundation.web.jolts_runtime import JoltsOptions
 from market_data_foundation.web.m3_runtime import M3Options
@@ -67,8 +71,12 @@ class TimeSeriesHandler(CandidateHandler):
 
     def request_admitted(self, request):
         if request.method == "POST":
+            from market_data_foundation.web.worker_control import admitted_worker
+
             return (
-                admitted_package_verify(request)
+                admitted_worker(request)
+                or admitted_financial_job(request)
+                or admitted_package_verify(request)
                 or admitted_job(request, prefix="/api/r5/cpi/timeseries")
                 or admitted_job(request, prefix="/api/r5/ppi/timeseries")
                 or admitted_job(request, prefix="/api/r5/pce/timeseries")
@@ -121,6 +129,7 @@ class TimeSeriesHandler(CandidateHandler):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--opt-in-timeseries-web", action="store_true", required=True)
+    parser.add_argument("--worker-window-state", type=Path)
     parser.add_argument("--config-directory", type=Path, required=True)
     parser.add_argument("--package-store-directory", type=Path, required=True)
     parser.add_argument("--environment-id", required=True)
@@ -205,6 +214,11 @@ def main():
     parser.add_argument("--allow-m3-source-query", action="store_true")
     parser.add_argument("--m3-job-directory", type=Path)
     parser.add_argument("--m3-request-control-path", type=Path)
+    parser.add_argument("--financial-job-directory", type=Path)
+    parser.add_argument("--allow-financial-read", action="store_true")
+    parser.add_argument("--allow-financial-collect", action="store_true")
+    parser.add_argument("--financial-state-directory", type=Path)
+    parser.add_argument("--allow-financial-strategy", action="store_true")
     args = parser.parse_args()
     if args.enable_claims_timeseries and (
         args.claims_schedule_path is None or args.claims_job_directory is None
@@ -279,8 +293,13 @@ def main():
             allow_collect=args.allow_m3_collect,
             allow_source=args.allow_m3_source_query,
         )
+    from market_data_foundation.web.worker_control import DevWorkerControl
+
     app = create_timeseries_preview(
         settings,
+        worker_control=DevWorkerControl(args.worker_window_state)
+        if args.worker_window_state
+        else None,
         m3_options=m3_options,
         jolts_options=jolts_options,
         enabled=True,
@@ -307,6 +326,16 @@ def main():
         if args.enable_gdp_timeseries
         else None,
         ui_directory=ui,
+        financial_options=FinancialOptions(
+            args.financial_job_directory,
+            args.allow_financial_read,
+            args.allow_financial_collect,
+            state_directory=args.financial_state_directory,
+            window_path=args.worker_window_state,
+            allow_strategy=args.allow_financial_strategy,
+        )
+        if args.financial_job_directory
+        else None,
         schedule_path=args.schedule_path,
         history_start=args.history_start,
         job_directory=args.job_directory,

@@ -1,3 +1,4 @@
+import { onlineWorkerFixture } from "./workerControlTestFixture";
 import { afterEach, expect, it } from "vitest";
 import {
   cleanup,
@@ -37,6 +38,8 @@ it("JOLTS uses native series, exact HTTP body, zero quantities and percent rates
       profile={profile}
       availability={availability}
       transport={async (path) => {
+        if (String(path).endsWith("/worker"))
+          return new Response(JSON.stringify(onlineWorkerFixture));
         requests.push(String(path));
         return new Response(fixture.query_wire);
       }}
@@ -247,6 +250,8 @@ it("JOLTS strategy toggles with one PUT and no confirmation dialog", async () =>
       profile={profile}
       availability={availability}
       transport={async (path, init) => {
+        if (String(path).endsWith("/worker"))
+          return new Response(JSON.stringify(onlineWorkerFixture));
         if (init?.method === "PUT") {
           puts++;
           enabled = true;
@@ -263,8 +268,8 @@ it("JOLTS strategy toggles with one PUT and no confirmation dialog", async () =>
       }}
     />,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "启动" }));
-  await screen.findByRole("button", { name: "暂停" });
+  fireEvent.click(await screen.findByRole("switch", { checked: false }));
+  await screen.findByRole("switch", { checked: true });
   expect(puts).toBe(1);
   expect(screen.queryByRole("dialog")).toBeNull();
 });

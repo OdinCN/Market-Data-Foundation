@@ -1,4 +1,4 @@
-"""Explicit local binding for five-family release operations; never a GET bootstrap."""
+"""Explicit asset-bound release operations; never a GET bootstrap."""
 
 import argparse
 import importlib
@@ -9,6 +9,7 @@ from market_data_foundation.historical.bls_timeseries_profile import (
     CONSUMPTION_PROFILE,
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
+    JOLTS_PROFILE,
     PCE_PROFILE,
     PPI_PROFILE,
 )
@@ -25,13 +26,14 @@ PROFILES = {
         PCE_PROFILE,
         EMPLOYMENT_PROFILE,
         CONSUMPTION_PROFILE,
+        JOLTS_PROFILE,
     )
 }
 
 
 def main(argv=None, *, service_factory=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--asset", required=True, choices=(*PROFILES, "retail"))
+    parser.add_argument("--asset", required=True, choices=(*PROFILES, "retail", "m3"))
     parser.add_argument(
         "--service-factory",
         help="Trusted local module:callable; service already capability-bound",
@@ -82,8 +84,17 @@ def main(argv=None, *, service_factory=None):
     if args.command == "schema-sql":
         from types import SimpleNamespace
 
-        profile = PROFILES.get(args.asset) or SimpleNamespace(
-            schema="mdf_retail_timeseries_dev_r1", lock_id=78328741642028105
+        from market_data_foundation.historical.m3_capital_goods_store import (
+            LOCK_ID,
+            SCHEMA,
+        )
+
+        profile = PROFILES.get(args.asset) or (
+            SimpleNamespace(schema=SCHEMA, lock_id=LOCK_ID)
+            if args.asset == "m3"
+            else SimpleNamespace(
+                schema="mdf_retail_timeseries_dev_r1", lock_id=78328741642028105
+            )
         )
         print(migration_sql(profile))
         return 0

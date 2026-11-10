@@ -38,7 +38,10 @@ function host(scenario = "default") {
       : existing.transport(input, init);
   return { packages, transport, store_dir };
 }
-function open(transport: Transport) {
+async function open(transport: Transport) {
+  // Establish the isolated Python fixture before testing the UI lifecycle.
+  // This GET changes no configuration and leaves all save assertions intact.
+  await getPackage(transport, "macro", new AbortController().signal);
   location.hash = "ui=r5&view=access&package=macro";
   return render(
     <App
@@ -81,9 +84,139 @@ function enterKey(source = "BLS", value = KEY) {
 }
 const signal = () => new AbortController().signal;
 
+it("saves all eleven capabilities with four credential intents and keeps public/local sources out of authentication", async () => {
+  const h = host();
+  const before = await getPackage(h.transport, "macro", signal());
+  const original = before.capabilities
+    .filter((c) => c.capability_id !== "financial_daily")
+    .map((c) => c.capability_id);
+  await putPackage(h.transport, "macro", {
+    expected_revision: null,
+    enabled_capability_ids: original,
+    source_changes: [],
+  });
+  await open(h.transport);
+  await ready();
+  choose("金融条件日频（十项）");
+  tab("来源配置");
+  const relations = screen.getByRole("region", { name: "能力与来源关系" });
+  const financial = within(relations)
+    .getByText(/金融条件日频（十项） · 数值来源/)
+    .closest("details")!;
+  fireEvent.click(financial.querySelector("summary")!);
+  expect(financial.open).toBe(true);
+  const local = financial.querySelector('[data-source-id="MDF"]')!;
+  expect(local.textContent).toContain("本地派生计算 T10YIE = DGS10 - DFII10");
+  expect(local.textContent).toContain("两条输入均来自美国财政部");
+  expect(local.textContent).toContain("同观测日、同一截止可得版本");
+  expect(local.textContent).toContain("无需配置凭据");
+  const credentials = screen.getByRole("region", { name: "凭据配置" });
+  expect(
+    within(credentials)
+      .getAllByRole("group")
+      .map((group) => group.querySelector("legend")!.textContent)
+      .sort(),
+  ).toEqual(["BEA", "BLS", "Census", "FRED"]);
+  for (const source of [
+    "Federal Reserve Board",
+    "New York Fed",
+    "US Treasury",
+    "Credit archive",
+  ]) {
+    const relation = financial.querySelector(`[data-source-id="${source}"]`)!;
+    expect(relation.textContent).toContain("无需配置凭据");
+    expect(credentials.textContent).not.toContain(source);
+    expect(
+      screen.queryByRole("group", { name: source + " 取数方式" }),
+    ).toBeNull();
+  }
+  expect(credentials.textContent).not.toContain("MDF");
+  expect(
+    financial.querySelector('[data-source-id="Credit archive"]')!.textContent,
+  ).toContain("固定 PStoclet GitHub 归档");
+  expect(
+    financial.querySelector('[data-source-id="FRED"]')!.textContent,
+  ).toContain("归档补尾及显式增量");
+  expect(
+    financial.querySelector('[data-source-id="FRED"]')!.textContent,
+  ).toContain("当前接入通路使用 API Key");
+  const fred = screen.getByRole("group", { name: "FRED" });
+  expect(within(fred).getByText("已配置（仅表示存在）")).toBeTruthy();
+  expect(
+    within(fred).getByRole("button", { name: "替换 FRED 凭据" }),
+  ).toBeTruthy();
+  click("保存配置");
+  await screen.findByText(/配置已保存/);
+  const writes = h.packages.requests.filter((r) => r.method === "PUT");
+  expect(writes).toHaveLength(2);
+  expect(writes[1].body.source_changes).toEqual(
+    ["BEA", "BLS", "Census", "FRED"].map((source_id) => ({
+      source_id,
+      credential_action: "keep",
+    })),
+  );
+  const saved = await getPackage(h.transport, "macro", signal());
+  expect(new Set(saved.enabled_capability_ids)).toEqual(
+    new Set([...original, "financial_daily"]),
+  );
+  click("重读核对配置");
+  await waitFor(() => expect(button("重读核对配置").disabled).toBe(false));
+  tab("能力配置");
+  expect(
+    (
+      screen.getByRole("checkbox", {
+        name: "金融条件日频（十项）",
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+  choose("金融条件日频（十项）");
+  tab("来源配置");
+  click("取消");
+  await ready();
+  expect(
+    (
+      screen.getByRole("checkbox", {
+        name: "金融条件日频（十项）",
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+  expect(h.packages.requests.filter((r) => r.method === "PUT")).toHaveLength(2);
+  choose("金融条件日频（十项）");
+  click("保存配置");
+  await screen.findByText(/配置已保存/);
+  const final = await getPackage(h.transport, "macro", signal());
+  expect(new Set(final.enabled_capability_ids)).toEqual(new Set(original));
+  expect(h.packages.requests.filter((r) => r.method === "PUT")).toHaveLength(3);
+});
+
+it("explains a classified credential save rejection without displaying the input or retrying", async () => {
+  const h = host();
+  const transport: Transport = (input, init) =>
+    init?.method === "PUT"
+      ? Promise.resolve(
+          Response.json(
+            {
+              status: "REJECTED",
+              classification: "invalid_credential",
+              effect: "NONE",
+            },
+            { status: 422 },
+          ),
+        )
+      : h.transport(input, init);
+  await open(transport);
+  await ready();
+  choose("美国 CPI");
+  enterKey();
+  click("保存配置");
+  await screen.findByText(/新凭据格式不正确，本次未保存/);
+  expect(document.body.textContent).not.toContain(KEY);
+  expect(h.packages.requests.filter((r) => r.method === "PUT")).toHaveLength(0);
+});
+
 it("closing or cancelling password drafts sends no PUT and reopening has no stored input", async () => {
   const h = host();
-  open(h.transport);
+  await open(h.transport);
   await ready();
   choose("美国 CPI");
   enterKey();
@@ -109,7 +242,7 @@ it("closing or cancelling password drafts sends no PUT and reopening has no stor
 
 it("one real PUT saves capabilities and replacement, then GET exposes state only across restart", async () => {
   const h = host();
-  const view = open(h.transport);
+  const view = await open(h.transport);
   await ready();
   choose("美国 CPI");
   choose("美国 PCE价格指数");
@@ -151,7 +284,7 @@ it("one real PUT saves capabilities and replacement, then GET exposes state only
     ),
   ).toBe(KEY);
   view.unmount();
-  open(h.transport);
+  await open(h.transport);
   await ready();
   tab("来源配置");
   expect(screen.queryByLabelText("BLS 新凭据")).toBeNull();
@@ -170,7 +303,7 @@ it("one real PUT saves capabilities and replacement, then GET exposes state only
 
 it("removing the last capability for a source discards that source's pending replacement", async () => {
   const h = host();
-  open(h.transport);
+  await open(h.transport);
   await ready();
   choose("美国 CPI");
   enterKey();
@@ -199,7 +332,7 @@ it("removing the last capability for a source discards that source's pending rep
 
 it("blank replacement blocks save and cancelling replacement returns to keep semantics", async () => {
   const h = host();
-  open(h.transport);
+  await open(h.transport);
   await ready();
   choose("美国 CPI");
   tab("来源配置");
@@ -218,7 +351,7 @@ it("blank replacement blocks save and cancelling replacement returns to keep sem
 
 it("real CAS conflict does not publish password and reread requires fresh input", async () => {
   const h = host();
-  open(h.transport);
+  await open(h.transport);
   await ready();
   choose("美国 CPI");
   enterKey();
@@ -254,7 +387,7 @@ it("real CAS conflict does not publish password and reread requires fresh input"
 
 it("lost replacement receipt survives closing; reread never claims to verify the entered value or replays it", async () => {
   const h = host();
-  open(h.transport);
+  await open(h.transport);
   await ready();
   choose("美国 CPI");
   enterKey();
@@ -297,7 +430,7 @@ it("route changes while a replacement is in flight cannot enable a second save o
     }
     return result;
   };
-  open(transport);
+  await open(transport);
   await ready();
   choose("美国 CPI");
   enterKey();
@@ -350,7 +483,7 @@ it("a confirmed rejection drops submitted password and never automatically retri
     }
     return h.transport(input, init);
   };
-  open(transport);
+  await open(transport);
   await ready();
   choose("美国 CPI");
   enterKey();
@@ -374,7 +507,7 @@ it.each(["read_only", "write_unknown"])(
   "%s cannot edit or submit a secret",
   async (scenario) => {
     const h = host(scenario);
-    open(h.transport);
+    await open(h.transport);
     await ready();
     choose("美国 CPI");
     tab("来源配置");
@@ -399,6 +532,7 @@ it("FRED replacement can be cancelled, and verification requires explicit saved 
     enabled_capability_ids: ["claims"],
     source_changes: [],
   });
+  const verifiedSnapshot = await getPackage(h.transport, "macro", signal());
   let requests = 0;
   let release: (() => void) | undefined;
   const transport: Transport = async (input, init) => {
@@ -410,7 +544,7 @@ it("FRED replacement can be cancelled, and verification requires explicit saved 
       await new Promise<void>((resolve) => {
         release = resolve;
       });
-      const body = await getPackage(h.transport, "macro", signal());
+      const body = structuredClone(verifiedSnapshot);
       body.source_verifications = [
         {
           source_id: "FRED",
@@ -426,7 +560,7 @@ it("FRED replacement can be cancelled, and verification requires explicit saved 
     }
     return h.transport(input, init);
   };
-  open(transport);
+  await open(transport);
   await ready();
   tab("来源配置");
   expect(screen.getByRole("region", { name: "能力与来源关系" })).toBeTruthy();
@@ -486,7 +620,7 @@ it("a verification configuration conflict clears old authentication success and 
     }
     return response;
   };
-  open(transport);
+  await open(transport);
   await ready();
   tab("来源配置");
   expect(screen.getByText("认证已确认")).toBeTruthy();
@@ -517,7 +651,7 @@ it("all configured capabilities deduplicate complete relationships without hidin
     }
     return response;
   };
-  open(transport);
+  await open(transport);
   await ready();
   tab("来源配置");
   const region = screen.getByRole("region", { name: "能力与来源关系" });
@@ -552,7 +686,7 @@ it("all configured capabilities deduplicate complete relationships without hidin
 
 it("each adjacent entry shares one atomic save, with cancellation and all pending changes disclosed", async () => {
   const h = host();
-  open(h.transport);
+  await open(h.transport);
   await ready();
   choose("美国 CPI");
   choose("美国 PCE价格指数");
@@ -619,7 +753,7 @@ it.each([
       enabled_capability_ids: [capabilityId],
       source_changes: [],
     });
-    open(h.transport);
+    await open(h.transport);
     await act(async () => {
       location.hash = `ui=r5&view=access&package=${packageId}`;
       window.dispatchEvent(new Event("hashchange"));

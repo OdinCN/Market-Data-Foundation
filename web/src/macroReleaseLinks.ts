@@ -1,4 +1,66 @@
 import type { MacroProfile } from "./macroTimeSeriesProfile";
+
+export type ReleaseMaterialResult = {
+  state?: string;
+  reasons?: string[];
+  event_ids?: string[];
+  evidence_ids?: string[];
+  material_outcomes?: {
+    event_id?: string;
+    evidence_id?: string;
+    evidence_ids?: string[];
+  }[];
+  reports?: Record<string, ReleaseMaterialResult>;
+};
+
+type ReleaseEvidenceLink = {
+  eventId: string;
+  evidenceId: string | undefined;
+  report: string | undefined;
+};
+
+export function releaseEvidenceLinks(
+  material: ReleaseMaterialResult,
+): ReleaseEvidenceLink[] {
+  const events = new Map<string, { evidence: Set<string>; report?: string }>();
+  function event(id: string) {
+    if (!events.has(id)) events.set(id, { evidence: new Set() });
+    return events.get(id)!;
+  }
+  function collect(outcome: ReleaseMaterialResult, report?: string) {
+    const ids = [...new Set(outcome.event_ids ?? [])];
+    for (const id of ids) {
+      const link = event(id);
+      if (report) link.report = report;
+    }
+    // A single-event result can own several proofs. Multi-event aggregate
+    // arrays have independent ordering and cannot establish any pairing.
+    if (ids.length === 1) {
+      for (const proof of outcome.evidence_ids ?? [])
+        event(ids[0]).evidence.add(proof);
+    }
+    for (const proof of outcome.material_outcomes ?? []) {
+      if (!proof.event_id) continue;
+      const link = event(proof.event_id);
+      if (report) link.report = report;
+      for (const id of proof.evidence_ids ?? []) link.evidence.add(id);
+      if (proof.evidence_id) link.evidence.add(proof.evidence_id);
+    }
+    for (const [name, child] of Object.entries(outcome.reports ?? {}))
+      collect(child, name);
+  }
+  collect(material);
+  return [...events].flatMap<ReleaseEvidenceLink>(([eventId, value]) =>
+    value.evidence.size
+      ? [...value.evidence].map((evidenceId) => ({
+          eventId,
+          evidenceId,
+          report: value.report,
+        }))
+      : [{ eventId, evidenceId: undefined, report: value.report }],
+  );
+}
+
 export function releaseLink(
   profile: MacroProfile,
   eventId: string,
@@ -68,6 +130,16 @@ export const releaseReasonText = (reason: string): string =>
     release_http_403: "官方档案拒绝访问，连续数值采集结果另列",
     release_material_calendar_identity_mismatch:
       "取得的网页与所选发布日期或参考月不一致",
+    m3_report_stage_unproven:
+      "取得的M3报告阶段与本次先行/完整报告任务不一致，未绑定事件",
+    numeric_result_not_confirmed:
+      "该报告数值回读尚未确认，本次未取得材料；数值任务结果另列",
+    m3_material_request_control_unavailable:
+      "M3材料请求未绑定既有限流器，未请求来源",
+    release_retained_scope_unconfirmed:
+      "已有材料的阶段或参考月不能对应当前任务，需核对具名材料",
+    m3_material_acquisition_failed:
+      "M3材料日历或留存状态读取失败，数值结果已独立保留",
     release_material_transport_or_storage_failed:
       "发布材料取得或留存失败，数值结果另列",
   })[reason] ?? "该口径的材料、来源或时间证据尚不充分";

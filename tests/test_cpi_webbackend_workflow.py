@@ -377,12 +377,17 @@ def test_enabled_only_preserves_persisted_baseline_and_real_worker(fixture):
         assert response.status_code == 200
         assert response.json()["history_start"] == "2006-10"
         worker = http.get(PREFIX + "/schedule").json()["worker"]
-        assert worker == {
+        assert {
+            key: worker[key] for key in ("state", "enabled", "last_heartbeat_at")
+        } == {
             "state": "idle",
             "enabled": True,
             "last_heartbeat_at": NOW.isoformat(),
         }
-    assert source.calls == 0 and closed == []
+        assert worker["process"]["state"] == "running"
+        assert worker["process"]["pid"] is not None
+    assert source.calls == 0
+    assert closed and all(closed)  # Local collection facts are read, never upstream.
 
 
 def test_executions_only_attempted_stages_and_stable_ids():

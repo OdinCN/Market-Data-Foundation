@@ -286,6 +286,105 @@ def test_actual_acquirer_reuses_bytes_but_imports_each_asset_scope(tmp_path):
     assert replay["evidence_origin"] == "previous_shared_original_material_cache"
 
 
+def test_shared_bea_asset_storage_failure_recovers_after_restart_without_refetch(
+    tmp_path, monkeypatch
+):
+    """Synthetic transport/storage fault; independent asset success stays valid."""
+    from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
+    from market_data_foundation.historical.macro_release_acquisition import (
+        MaterialAcquirer,
+    )
+    from tests.test_macro_release_chain import Raw as ProfileRaw
+
+    _, _, _, consumption = make_host(tmp_path)
+    numeric_before = consumption._history.copy()
+    price = InMemoryTimeSeriesStore(
+        ProfileRaw(PCE_PROFILE), profile=PCE_PROFILE, clock=lambda: NOW
+    )
+    ReleaseRecords(price).prepare()
+    calls = []
+    path = tmp_path / "shared-acquisition.json"
+    selection = dict(
+        source_url=URL, source_date="2026-10-29", reference_month="2026-09"
+    )
+
+    def fetch(*_):
+        calls.append("synthetic_transport")
+        return material()
+
+    retained = MaterialAcquirer(path, fetcher=fetch).capture(price, selection)
+    price_before = ReleaseRecords(price).read()
+    put = consumption.raw_store.put_verified
+
+    def fail(_):
+        raise CpiTimeSeriesError("release_storage_failed")
+
+    monkeypatch.setattr(consumption.raw_store, "put_verified", fail)
+    failed = MaterialAcquirer(path, fetcher=fetch).capture(consumption, selection)
+    assert retained["state"] == "retained" and failed["state"] == "partial"
+    assert failed["reasons"] == ["release_storage_failed"]
+    assert failed["transport_calls"] == 0
+    assert ReleaseRecords(consumption).read()["events"] == []
+    monkeypatch.setattr(consumption.raw_store, "put_verified", put)
+    restarted = MaterialAcquirer(path, fetcher=fetch)
+    cooldown = restarted.capture(consumption, selection)
+    assert cooldown["state"] == "partial" and cooldown["transport_calls"] == 0
+    consumption._clock = lambda: NOW + timedelta(hours=1, seconds=1)
+    recovered = restarted.capture(consumption, selection)
+    event = ReleaseRecords(consumption).read()["events"][0]
+    assert recovered["state"] == "retained" and recovered["transport_calls"] == 0
+    assert event["event_id"] == retained["event_ids"][0]
+    assert event["shared_publication"]["current_asset"] == "consumption"
+    assert event["value_comparisons"]
+    assert recovered["evidence_origin"] == "current_shared_original_material_cache"
+    assert (
+        restarted.capture(consumption, selection)["evidence_ids"]
+        == recovered["evidence_ids"]
+    )
+    assert len(consumption._release_evidence) == 1
+    assert consumption._history == numeric_before
+    assert ReleaseRecords(price).read() == price_before
+    assert calls == ["synthetic_transport"]
+
+
+def test_bea_material_commit_before_state_failure_reconciles_without_duplicate(
+    tmp_path,
+):
+    """Simulate interruption after asset evidence commit, before state receipt."""
+    from market_data_foundation.historical.macro_release_acquisition import (
+        MaterialAcquirer,
+    )
+
+    _, _, _, consumption = make_host(tmp_path)
+    path = tmp_path / "acquisition.json"
+    selection = dict(
+        source_url=URL, source_date="2026-10-29", reference_month="2026-09"
+    )
+
+    class InterruptedReceipt(MaterialAcquirer):
+        saves = 0
+
+        def _save(self, state):
+            self.saves += 1
+            if self.saves == 2:
+                raise OSError("synthetic receipt failure")
+            super()._save(state)
+
+    acquirer = InterruptedReceipt(path, fetcher=lambda *_: material())
+    uncertain = acquirer.capture(consumption, selection)
+    assert uncertain["state"] == "unknown"
+    assert uncertain["reasons"] == ["release_material_state_write_outcome_unknown"]
+    before = ReleaseRecords(consumption).read()
+    restarted = MaterialAcquirer(
+        path, fetcher=lambda *_: pytest.fail("must reconcile retained evidence")
+    )
+    recovered = restarted.capture(consumption, selection)
+    assert recovered["state"] == "retained" and recovered["transport_calls"] == 0
+    assert recovered["evidence_ids"] == uncertain["evidence_ids"]
+    assert len(consumption._release_evidence) == 1
+    assert ReleaseRecords(consumption).read() == before
+
+
 def test_native_postgres_insert_and_serializer_use_correct_column_port():
     from datetime import date
 

@@ -189,6 +189,13 @@
                           "family": {
                             "type": "string"
                           },
+                          "report_stage": {
+                            "type": "string",
+                            "enum": ["advance", "full"]
+                          },
+                          "report_number": {
+                            "type": "string"
+                          },
                           "reference_month": {
                             "type": "string"
                           },
@@ -197,6 +204,17 @@
                             "items": {
                               "type": "string"
                             }
+                          },
+                          "value_comparisons": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          },
+                          "shared_publication": {
+                            "type": "object",
+                            "additionalProperties": true
                           },
                           "actual_at": {
                             "type": ["string", "null"]

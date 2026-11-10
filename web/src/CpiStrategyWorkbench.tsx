@@ -1,3 +1,10 @@
+import {
+  claimsPlanPeriod,
+  claimsActualsVerified,
+  claimsLatestDataText,
+} from "./claimsPeriod";
+import { ExecutionFacts } from "./ExecutionFacts";
+import { planTargetKey, type PlanIssue } from "./autoCollectionDiagnosis";
 import { ClaimsCollectionDetails } from "./ClaimsCollectionDetails";
 import { CodeBlock } from "./CpiQueryDetails";
 import { quarterValid } from "./QuarterField";
@@ -15,8 +22,17 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
 import { formatBeijingTime } from "./beijingTime";
-import { releaseLink, releaseReasonTexts } from "./macroReleaseLinks";
+import {
+  releaseEvidenceLinks,
+  releaseLink,
+  releaseReasonTexts,
+  type ReleaseMaterialResult,
+} from "./macroReleaseLinks";
+import type { ReactNode } from "react";
+import type { Row } from "./WorkflowTable";
 import { Fact, WorkflowTable } from "./WorkflowTable";
+import { useAutoCollection } from "./useAutoCollection";
+import { StrategySwitch } from "./StrategySwitch";
 import { keyOf } from "./workflowModel";
 import { useVisiblePolling } from "./useVisiblePolling";
 import {
@@ -24,7 +40,6 @@ import {
   cpiRequest,
   readCpiStrategy,
   readCpiExecutions,
-  saveCpiStrategy,
   type CpiAvailability,
   type CpiExecution,
 } from "./cpiTimeSeriesApi";
@@ -63,6 +78,12 @@ const states: Record<string, string> = {
 };
 export const cpiStateText = (value?: string | null) =>
   value ? (states[value] ?? "尚未核实") : "未记录";
+export const workerStateText = (value?: string | null) =>
+  value && ["idle", "running", "paused"].includes(value)
+    ? `在线（${cpiStateText(value)}）`
+    : value === "stale"
+      ? "心跳已过期"
+      : cpiStateText(value);
 export function cpiExecutionStateText(
   state: string | undefined,
   result: Record<string, unknown> | null | undefined,
@@ -72,12 +93,12 @@ export function cpiExecutionStateText(
   if (_profile.id === "m3" && state === "waiting") return "等待来源准入";
   if (_profile.id === "claims") {
     const data = (result?.result ?? result) as Record<string, unknown> | null;
-    const c = data?.coverage as Record<string, number> | undefined;
-    return ["complete", "succeeded"].includes(state ?? "") &&
-      c &&
-      c.available < c.expected
-      ? "已完成（各系列存在缺周或提供方缺值）"
-      : cpiStateText(state);
+    if (!["complete", "succeeded"].includes(state ?? ""))
+      return cpiStateText(state);
+    if (claimsActualsVerified(data)) return "执行完成（本次发布参考周已核实）";
+    const material = data?.material as Record<string, unknown> | undefined;
+    if (material?.actual_weeks) return "执行完成（本次发布仍有缺项）";
+    return "执行完成（发布参考周待核实）";
   }
   if (_profile.id === "gdp")
     return gdpExecutionState(state, result) ?? cpiStateText(state);
@@ -162,6 +183,8 @@ type Schedule = {
   calendar_refresh_error?: string | null;
   targets: (Stage & {
     reference_week?: string | null;
+    event_id?: string;
+    source_date?: string;
     reference_month?: string;
     dataset?: "m3" | "advm3";
     reference_quarter?: string;
@@ -193,7 +216,12 @@ function ResultFacts({
     nested = (nested as Record<string, unknown>).result;
   }
   const labels: Record<string, string> = {
-    saved_points: profile?.id === "m3" ? "本次执行新增观测" : "新增观测",
+    saved_points:
+      profile?.id === "claims"
+        ? "保存观测版本（含修订）"
+        : profile?.id === "m3"
+          ? "本次执行新增观测"
+          : "新增观测",
     saved_revisions: profile?.id === "m3" ? "本次执行新增修订" : "新增修订",
     provider_requests: profile?.id === "m3" ? "本次执行来源请求" : "来源请求",
     provider_attempts: profile?.id === "m3" ? "本次执行来源尝试" : "来源尝试",
@@ -333,7 +361,10 @@ function RecentExecution({
               <Fact name="结果分类">{execution.classification}</Fact>
             )}
           </dl>
-          <ResultFacts result={execution.result} />
+          <ResultFacts
+            result={execution.result}
+            profile={profile.id === "claims" ? profile : undefined}
+          />
           <a href={href}>打开对应执行详情</a>
         </>
       )}
@@ -352,12 +383,7 @@ export function CpiExecutionDetail({
       ? (e.result.result as Record<string, unknown>)
       : e.result;
   const material = result?.release_material as
-    | {
-        state?: string;
-        reasons?: string[];
-        event_ids?: string[];
-        evidence_ids?: string[];
-      }
+    | ReleaseMaterialResult
     | undefined;
   return (
     <>
@@ -444,47 +470,41 @@ export function CpiExecutionDetail({
           {releaseReasonTexts(material.reasons).map((reason) => (
             <p key={reason}>{reason}</p>
           ))}
-          {material.event_ids?.map((id, i) => (
-            <p key={id}>
-              <a href={releaseLink(profile, id, material.evidence_ids?.[i])}>
-                打开发布事件与证据
-              </a>
-            </p>
-          ))}
+          {releaseEvidenceLinks(material).map(
+            ({ eventId, evidenceId, report }) => (
+              <p key={`${eventId}:${evidenceId ?? "event"}`}>
+                <a href={releaseLink(profile, eventId, evidenceId)}>
+                  {profile.id === "m3" && report === "advm3"
+                    ? "打开耐用品先行报告事件"
+                    : profile.id === "m3" && report === "m3"
+                      ? "打开制造业完整报告事件"
+                      : "打开发布事件"}
+                  {evidenceId ? "与证据" : ""}
+                </a>
+              </p>
+            ),
+          )}
         </section>
       )}
-      <dl>
-        <Fact name="记录编号">{e.id}</Fact>
-        <Fact name="关联资产">{macroAssetLabel(profile)}</Fact>
-        <Fact name="来源">
-          {e.origin !== "manual" ? "自动策略" : "手动采集"}
-        </Fact>
-        <Fact name="采集方式">
-          {cpiActionText(
-            e.origin !== "manual"
-              ? e.action === "withdraw"
-                ? "withdraw"
-                : (e.stage ?? e.action)
-              : e.action,
-          )}
-        </Fact>
-        <Fact name="范围">
-          {e.start ?? "未记录"} 至 {e.end ?? "未记录"}
-        </Fact>
-        <Fact name="创建时间（北京时间）">
-          {formatBeijingTime(e.created_at, "未记录")}
-        </Fact>
-        <Fact name="开始时间（北京时间）">
-          {formatBeijingTime(e.started_at, "未记录")}
-        </Fact>
-        <Fact name="结束时间（北京时间）">
-          {formatBeijingTime(e.finished_at, "未记录")}
-        </Fact>
-        <Fact name="执行结果">
-          {cpiExecutionStateText(e.state, e.result, profile, e)}
-        </Fact>
-        {e.classification && <Fact name="结果分类">{e.classification}</Fact>}
-      </dl>
+      <ExecutionFacts
+        id={e.id}
+        asset={macroAssetLabel(profile)}
+        source={e.origin !== "manual" ? "自动策略" : "手动采集"}
+        action={cpiActionText(
+          e.origin !== "manual"
+            ? e.action === "withdraw"
+              ? "withdraw"
+              : (e.stage ?? e.action)
+            : e.action,
+        )}
+        start={e.start}
+        end={e.end}
+        createdAt={e.created_at}
+        startedAt={e.started_at}
+        finishedAt={e.finished_at}
+        result={cpiExecutionStateText(e.state, e.result, profile, e)}
+        classification={e.classification}
+      />
       {profile.id === "m3" && (
         <p className="small">
           以下新增和请求数仅属于本次执行；恢复时已确认的分片不会重复请求，范围覆盖包括之前确认的分片。
@@ -505,77 +525,6 @@ export function CpiExecutionDetail({
       )}
     </>
   );
-}
-function useStrategyControl(
-  transport: Transport,
-  generation: number,
-  profile: MacroProfile,
-  availability: CpiAvailability,
-  visible: boolean,
-) {
-  const [saving, setSaving] = useState(false);
-  const [uncertain, setUncertain] = useState(false);
-  const writing = useRef(false);
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-  // No mutation AbortController: navigation or a read refresh cannot cancel a PUT.
-  const resource = useVisiblePolling(
-    async (signal) => {
-      const strategy = await readCpiStrategy(transport, signal, profile);
-      return strategy;
-    },
-    [transport, generation, profile.id],
-    !!availability.data && visible,
-    () => !writing.current,
-  );
-  const data = resource.data;
-  async function toggle() {
-    if (
-      !data ||
-      writing.current ||
-      uncertain ||
-      resource.busy ||
-      resource.stale ||
-      (!data.enabled &&
-        (!availability.data?.web_capabilities.collect ||
-          (profile.id === "gdp" && !!availability.failure)))
-    )
-      return;
-    writing.current = true;
-    resource.invalidate();
-    setSaving(true);
-    try {
-      const value = await saveCpiStrategy(
-        transport,
-        !data.enabled,
-        undefined,
-        profile,
-      );
-      if (mounted.current) resource.commit(value);
-    } catch {
-      if (mounted.current) setUncertain(true);
-    } finally {
-      writing.current = false;
-      if (mounted.current) setSaving(false);
-      resource.refresh();
-    }
-  }
-  // A successful independent read resolves an uncertain PUT, without repeating it.
-  useEffect(() => {
-    if (data) setUncertain(false);
-  }, [data]);
-  return {
-    resource,
-    data,
-    saving,
-    uncertain,
-    toggle,
-  };
 }
 export function CpiStrategyWorkbench(
   props: Parameters<typeof CpiStrategyWorkbenchContent>[0],
@@ -621,10 +570,12 @@ function CpiStrategyWorkbenchContent({
   seventhAvailability,
   seventhVisible = true,
   selectedId,
+  supplement,
   selected: selectedProp,
   onSelect,
 }: {
   transport: Transport;
+  supplement?: { row: Row; detail: ReactNode; refresh: () => void };
   profile?: MacroProfile;
   availability: CpiAvailability;
   generation?: number;
@@ -661,76 +612,104 @@ function CpiStrategyWorkbenchContent({
   selectedId?: string | null;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const layout = useRef<HTMLDivElement>(null);
+  const [locatedIssue, setLocatedIssue] = useState<string | null>(null);
+  useEffect(() => setLocatedIssue(null), [selectedId, selected]);
+  function locateIssue(issue: PlanIssue) {
+    const card = [
+      ...(layout.current?.querySelectorAll<HTMLElement>("[data-plan-key]") ??
+        []),
+    ].find((node) => node.dataset.planKey === issue.targetKey);
+    if (!card) return;
+    if (issue.stage === "历史核实")
+      card
+        .querySelector<HTMLDetailsElement>(".stage-history")
+        ?.setAttribute("open", "");
+    const pane = layout.current?.querySelector<HTMLElement>(".detail-pane");
+    const target =
+      issue.stage === "历史核实"
+        ? (card.querySelector<HTMLElement>(".stage-history") ?? card)
+        : card;
+    if (pane)
+      pane.scrollTop +=
+        target.getBoundingClientRect().top -
+        pane.getBoundingClientRect().top -
+        16;
+    target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+    setLocatedIssue(issue.targetKey ?? null);
+  }
+
   const emptyAvailability: CpiAvailability = {
     data: null,
     legacy: false,
     busy: false,
     failure: null,
   };
-  const primary = useStrategyControl(
+  const primary = useAutoCollection(
     transport,
     generation,
     primaryProfile,
     primaryAvailability,
     visible,
   );
-  const secondary = useStrategyControl(
+  const secondary = useAutoCollection(
     transport,
     generation,
     additionalProfile ?? primaryProfile,
     additionalAvailability ?? emptyAvailability,
     !!additionalProfile && additionalVisible,
   );
-  const third = useStrategyControl(
+  const third = useAutoCollection(
     transport,
     generation,
     thirdProfile ?? primaryProfile,
     thirdAvailability ?? emptyAvailability,
     !!thirdProfile && thirdVisible,
   );
-  const fourth = useStrategyControl(
+  const fourth = useAutoCollection(
     transport,
     generation,
     fourthProfile ?? primaryProfile,
     fourthAvailability ?? emptyAvailability,
     !!fourthProfile && fourthVisible,
   );
-  const fifth = useStrategyControl(
+  const fifth = useAutoCollection(
     transport,
     generation,
     fifthProfile ?? primaryProfile,
     fifthAvailability ?? emptyAvailability,
     !!fifthProfile && fifthVisible,
   );
-  const sixth = useStrategyControl(
+  const sixth = useAutoCollection(
     transport,
     generation,
     sixthProfile ?? primaryProfile,
     sixthAvailability ?? emptyAvailability,
     !!sixthProfile && sixthVisible,
   );
-  const seventh = useStrategyControl(
+  const seventh = useAutoCollection(
     transport,
     generation,
     seventhProfile ?? primaryProfile,
     seventhAvailability ?? emptyAvailability,
     !!seventhProfile && seventhVisible,
   );
-  const tenth = useStrategyControl(
+  const tenth = useAutoCollection(
     transport,
     generation,
     tenthProfile ?? primaryProfile,
     tenthAvailability ?? emptyAvailability,
     !!tenthProfile && tenthVisible,
   );
-  const ninth = useStrategyControl(
+  const ninth = useAutoCollection(
     transport,
     generation,
     ninthProfile ?? primaryProfile,
     ninthAvailability ?? emptyAvailability,
     !!ninthProfile && ninthVisible,
   );
-  const eighth = useStrategyControl(
+  const eighth = useAutoCollection(
     transport,
     generation,
     eighthProfile ?? primaryProfile,
@@ -840,7 +819,8 @@ function CpiStrategyWorkbenchContent({
   const entry =
     entries.find((e) => `${e.profile.id}-auto` === selection) ?? entries[0];
   const { profile, data, resource, uncertain } = entry;
-  const detailVisible = entry.visible;
+  const extraSelected = !!supplement && selection === supplement.row.id;
+  const detailVisible = entry.visible && !extraSelected;
   const calendar = useVisiblePolling(
     async (signal) => {
       const value = await cpiRequest<Schedule>(
@@ -878,32 +858,47 @@ function CpiStrategyWorkbenchContent({
   const periodLabel = weekly ? "周频" : quarterly ? "季度" : "月份";
   const planPeriod = (target: Schedule["targets"][number]) =>
     weekly
-      ? `${target.release_at?.slice(0, 10) ?? "计划日期未知"} · ${target.reference_week ?? "参考周待发布材料确认"}`
+      ? claimsPlanPeriod(target as unknown as Record<string, unknown>)
       : quarterly
         ? target.reference_quarter
         : profile.id === "m3"
           ? `${target.reference_month} · ${target.dataset === "advm3" ? "耐用品先行报告（Advance）" : "制造业完整报告"}`
           : target.reference_month;
   const shown = !!selection;
+  const displayPlan =
+    (data?.schedule as unknown as Schedule | null) ?? calendar.data;
   const currentCalendarError =
-    calendar.data?.calendar?.error ?? calendar.data?.calendar_error;
-  const refresh = calendar.data?.calendar;
+    displayPlan?.calendar?.error ?? displayPlan?.calendar_error;
+  const refresh = displayPlan?.calendar;
   const calendarUsable =
-    calendar.data?.calendar_status === "fresh" ||
-    (calendar.data?.calendar_status === "degraded_cached_calendar" &&
+    displayPlan?.calendar_status === "fresh" ||
+    (displayPlan?.calendar_status === "degraded_cached_calendar" &&
       refresh?.refresh_mode === "cache" &&
       !!refresh.cache_valid_until);
   const calendarTime = (value?: string | null) =>
     formatBeijingTime(value, "未记录").replace(" 北京时间", "");
   return (
-    <>
+    <div className="periodic-layout" ref={layout}>
       {(resource.stale || calendar.stale) && (
         <p role="alert">状态已陈旧，保留上次数据并自动重读。</p>
       )}
-      {uncertain && <p role="alert">策略保存结果未知，正在自动核实。</p>}
+      {uncertain && <p role="alert">自动采集操作结果未知，正在独立核实。</p>}
       <WorkflowTable
         label="周期任务"
-        columns={["策略", "采集目标", "策略状态", "操作"]}
+        className="periodic-workbench"
+        rightDetails
+        columns={["采集目标", "自动采集与运行情况", "数据更新"]}
+        tools={
+          <button
+            onClick={() => {
+              entries.forEach((e) => e.resource.refresh());
+              calendar.refresh();
+              supplement?.refresh();
+            }}
+          >
+            刷新页面
+          </button>
+        }
         selected={selection}
         onSelect={(id) => {
           setSelected(id);
@@ -914,142 +909,289 @@ function CpiStrategyWorkbenchContent({
             ? `正在读取 ${profile.label} 策略…`
             : "此资产暂无可执行的预置策略。"
         }
-        rows={entries
-          .filter((e) => e.visible)
-          .map((e) => ({
-            id: `${e.profile.id}-auto`,
-            search: `${macroAssetLabel(e.profile)} 官方发布自动采集`,
-            cells: [
-              "官方发布自动采集",
-              macroAssetLabel(e.profile),
-              e.data
-                ? e.data.exists
-                  ? cpiStateText(
-                      e.data.state ?? (e.data.enabled ? "enabled" : "paused"),
-                    )
-                  : "未启动"
-                : "尚未核实",
-              <span key="toggle">
-                <button
-                  disabled={
-                    !e.data ||
-                    e.saving ||
-                    e.uncertain ||
-                    e.resource.busy ||
-                    e.resource.stale ||
-                    (!e.data.enabled &&
-                      (!e.availability.data?.web_capabilities.collect ||
-                        (e.profile.id === "gdp" && !!e.availability.failure)))
-                  }
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void e.toggle();
-                  }}
-                >
-                  {e.saving ? "保存中…" : e.data?.enabled ? "暂停" : "启动"}
-                </button>
-                {!e.availability.data?.web_capabilities.collect &&
-                  e.availability.data?.web_capabilities.reason && (
-                    <span>
-                      采集不可用：{e.availability.data.web_capabilities.reason}
+        rows={[
+          ...entries
+            .filter((e) => e.visible)
+            .map((e) => ({
+              id: `${e.profile.id}-auto`,
+              search: `${macroAssetLabel(e.profile)} 官方发布自动采集`,
+              cells: [
+                <span className="strategy-target">
+                  {macroAssetLabel(e.profile)}
+                </span>,
+                <span key="toggle" className="strategy-control">
+                  <span className="auto-control-line">
+                    <span className="small">自动采集</span>
+                    <StrategySwitch
+                      asset={macroAssetLabel(e.profile)}
+                      enabled={e.data?.enabled ?? null}
+                      saving={e.saving}
+                      uncertain={e.uncertain}
+                      disabled={
+                        !e.data ||
+                        e.saving ||
+                        e.uncertain ||
+                        e.resource.stale ||
+                        (!e.data.enabled &&
+                          (!e.availability.data?.web_capabilities.collect ||
+                            (e.profile.id === "gdp" &&
+                              !!e.availability.failure)))
+                      }
+                      onToggle={() => void e.toggle()}
+                    />
+                  </span>
+                  <span className="auto-state">
+                    运行情况：{e.diagnosis.state}
+                  </span>
+                  {e.data?.enabled &&
+                    e.data.control &&
+                    !e.data.control.online &&
+                    e.data.control.registered &&
+                    !e.uncertain && (
+                      <button
+                        className="auto-recover"
+                        disabled={e.saving || e.resource.stale}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void e.recover();
+                        }}
+                      >
+                        恢复自动采集
+                      </button>
+                    )}
+                  {e.notice && (
+                    <span className="strategy-control-note" role="status">
+                      {e.notice}
                     </span>
                   )}
-              </span>,
-            ],
-          }))}
+                  {(!e.data ||
+                    e.data.enabled ||
+                    e.diagnosis.issues.length > 0) && (
+                    <span className="strategy-control-note">
+                      {e.diagnosis.listReason}
+                    </span>
+                  )}
+                  {!e.diagnosis.issues.length && e.diagnosis.advisories[0] && (
+                    <span className="small">
+                      远期提示：{e.diagnosis.advisories[0].summary}
+                    </span>
+                  )}
+                </span>,
+                <span className="strategy-data">
+                  <span>
+                    最近成功采集（北京时间）：
+                    <br />
+                    {formatBeijingTime(
+                      e.data?.last_successful_collection_at,
+                      "未记录",
+                    ).replace(" 北京时间", "")}
+                  </span>
+                  <span>
+                    最新数据期：
+                    {e.profile.id === "claims"
+                      ? claimsLatestDataText(e.data?.latest_data_periods)
+                      : (e.data?.latest_data_period ?? "未知")}
+                  </span>
+                </span>,
+              ],
+            })),
+          ...(supplement ? [supplement.row] : []),
+        ]}
       >
+        {shown && extraSelected && supplement?.detail}
         {shown && detailVisible && !data && (
-          <p role="status">
-            {profile.label} 策略
-            {resource.failure || entry.availability.failure
-              ? "读取失败，等待重读。"
-              : "正在读取…"}
-          </p>
+          <section aria-label="自动采集问题说明">
+            <p role="status">
+              {profile.label} 策略
+              {resource.failure || entry.availability.failure
+                ? "读取失败，等待重读。"
+                : "正在读取…"}
+            </p>
+            {entry.diagnosis.issues.map((issue, index) => (
+              <article className="auto-issue" key={index}>
+                <strong>{issue.summary}</strong>
+                <p>
+                  对象：{issue.period} · {issue.stage}
+                </p>
+                <p>影响：{issue.impact}</p>
+                <p>下一步：{issue.next}</p>
+              </article>
+            ))}
+          </section>
         )}
         {shown && detailVisible && data && (
           <>
             <h3>{profile.label} 策略详情</h3>
+            <p className="auto-summary">
+              自动采集{data.enabled ? "已开启" : "已暂停"} ·{" "}
+              {entry.diagnosis.state}
+            </p>
+            <section className="auto-diagnosis" aria-label="自动采集问题说明">
+              <p>{entry.diagnosis.summary}</p>
+              {entry.diagnosis.issues.map((issue, index) => (
+                <article
+                  key={`${issue.targetKey ?? "asset"}/${issue.stage}/${index}`}
+                  className="auto-issue"
+                >
+                  <strong>{issue.summary}</strong>
+                  <p>
+                    对象：{issue.period} · {issue.stage}
+                  </p>
+                  <p>影响：{issue.impact}</p>
+                  <p>下一步：{issue.next}</p>
+                  {issue.targetKey && (
+                    <button onClick={() => locateIssue(issue)}>
+                      定位{issue.period} · {issue.stage}
+                    </button>
+                  )}
+                </article>
+              ))}
+              {entry.diagnosis.advisories.map((issue, index) => (
+                <article key={`advisory-${index}`} className="auto-advisory">
+                  <strong>远期日历提示：{issue.period}</strong>
+                  <p>{issue.reason}。</p>
+                  <p>{issue.impact}</p>
+                  <p>下一步：{issue.next}</p>
+                  <button onClick={() => locateIssue(issue)}>
+                    定位{issue.period} · {issue.stage}
+                  </button>
+                </article>
+              ))}
+            </section>
+            <p className="small">
+              暂停只停止后续自动触发；已在采集的任务正常收尾，手动采集不受影响。最新数据期不代表所有序列齐全。
+            </p>
             <details>
               <summary>口径与采集说明</summary>
               <p>{profileScopeText(profile)}</p>
               {profile.historyNotice && <p>{profile.historyNotice}</p>}
             </details>
             <dl>
-              <Fact name="策略状态">
-                {data.exists
-                  ? cpiStateText(
-                      data.state ?? (data.enabled ? "enabled" : "paused"),
-                    )
-                  : "未启动"}
+              <Fact name="最近成功采集（北京时间）">
+                {formatBeijingTime(
+                  data.last_successful_collection_at,
+                  "未记录",
+                )}
               </Fact>
-              <Fact name="运行状态">{cpiStateText(data.execution_state)}</Fact>
-              <Fact name="后台进程">{cpiStateText(data.worker.state)}</Fact>
-              <Fact name="最近心跳（北京时间）">
-                {formatBeijingTime(data.worker.last_heartbeat_at, "未记录")}
+              <Fact name="最新数据期">
+                {weekly
+                  ? claimsLatestDataText(data.latest_data_periods)
+                  : (data.latest_data_period ?? "未知")}
               </Fact>
               <Fact name="下次官方日历时间（北京时间）">
                 {formatBeijingTime(data.next_release_at, "未记录")}
               </Fact>
-              <Fact name="后台维护时间（非官方日历时间）">
-                {formatBeijingTime(data.next_due, "未记录")}
-              </Fact>
-              <Fact name="日历状态">
-                {calendarUsable
-                  ? refresh?.refresh_mode === "fallback"
-                    ? "官方备用日历可用"
-                    : refresh?.refresh_mode === "cache"
-                      ? "使用有效缓存"
-                      : "日历可用"
-                  : ((
-                      {
-                        fresh: "日历可用",
-                        stale: "日历已陈旧，尚未确认可用",
-                        expired: "日历已过期，不可用",
-                        missing: "尚无日历",
-                        unavailable: "日历不可用",
-                        degraded_cached_calendar:
-                          "日历来源异常，缓存有效性尚未确认",
-                        clock_reversal: "时间异常",
-                      } as Record<string, string>
-                    )[calendar.data?.calendar_status ?? ""] ?? "尚未核实")}
-              </Fact>
-              <Fact name="日历最后成功获取时间（北京时间）">
-                {formatBeijingTime(
-                  calendar.data?.calendar?.acquired_at ??
-                    calendar.data?.calendar?.fetched_at,
-                  "未记录",
-                )}
-              </Fact>
             </dl>
-            <dl>
-              <Fact name="当前日历入口">
-                {refresh?.source || refresh?.primary_source ? (
-                  <a
-                    href={refresh.source ?? refresh.primary_source}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="calendar-source-link"
-                  >
-                    {refresh.source ?? refresh.primary_source}
-                  </a>
-                ) : (
-                  "未记录"
+            <details className="technical">
+              <summary>技术详情与日历状态</summary>
+              <dl>
+                <Fact name="策略启用意图">
+                  {data.enabled ? "已启用" : "已暂停"}
+                </Fact>
+                <Fact name="服务">
+                  {data.control?.service_state ?? "待核实"}
+                </Fact>
+                <Fact name="PID">{data.control?.process_id ?? "未运行"}</Fact>
+                <Fact name="实际进程状态">
+                  {workerStateText(data.worker.state)}
+                </Fact>
+                <Fact name="心跳（北京时间）">
+                  {formatBeijingTime(data.worker.last_heartbeat_at, "未记录")}
+                </Fact>
+                <Fact name="DEV绝对截止">
+                  {formatBeijingTime(data.control?.expires_at, "未核实")}
+                </Fact>
+                <Fact name="后台维护时间（非官方日历时间）">
+                  {formatBeijingTime(data.next_due, "未记录")}
+                </Fact>
+                <Fact name="日历状态">
+                  {calendarUsable
+                    ? refresh?.refresh_mode === "fallback"
+                      ? "官方备用日历可用"
+                      : refresh?.refresh_mode === "cache"
+                        ? "使用有效缓存"
+                        : "日历可用"
+                    : ((
+                        {
+                          fresh: "日历可用",
+                          stale: "日历已陈旧，尚未确认可用",
+                          expired: "日历已过期，不可用",
+                          missing: "尚无日历",
+                          unavailable: "日历不可用",
+                          degraded_cached_calendar:
+                            "日历来源异常，缓存有效性尚未确认",
+                          clock_reversal: "时间异常",
+                        } as Record<string, string>
+                      )[displayPlan?.calendar_status ?? ""] ?? "尚未核实")}
+                </Fact>
+                <Fact name="日历最后成功获取时间（北京时间）">
+                  {formatBeijingTime(
+                    displayPlan?.calendar?.acquired_at ??
+                      displayPlan?.calendar?.fetched_at,
+                    "未记录",
+                  )}
+                </Fact>
+              </dl>
+              <dl>
+                <Fact name="当前日历入口">
+                  {refresh?.source || refresh?.primary_source ? (
+                    <a
+                      href={refresh.source ?? refresh.primary_source}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="calendar-source-link"
+                    >
+                      {refresh.source ?? refresh.primary_source}
+                    </a>
+                  ) : (
+                    "未记录"
+                  )}
+                </Fact>
+                <Fact name="日历缓存有效期至（北京时间）">
+                  {formatBeijingTime(refresh?.cache_valid_until, "未记录")}
+                </Fact>
+                <Fact name="下次日历刷新（北京时间）">
+                  {formatBeijingTime(refresh?.next_refresh_at, "未记录")}
+                </Fact>
+              </dl>
+            </details>
+            <details>
+              <summary>各序列覆盖与缺口</summary>
+              <p className="small">
+                仅列已取得的各序列最新期；缺少的序列或期间不能据此推定完整，分期覆盖见下方结果。
+              </p>
+              <dl>
+                {" "}
+                <Fact name="各序列最新参考期">
+                  {Object.keys(data.latest_data_periods ?? {}).length ? (
+                    <ul className="strategy-periods">
+                      {Object.entries(data.latest_data_periods ?? {}).map(
+                        ([id, period]) => (
+                          <li key={id}>
+                            <span>{id}</span>
+                            <span>{period ?? "未知"}</span>
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  ) : (
+                    "未知"
+                  )}
+                </Fact>
+                {data.collection_facts_classification && (
+                  <Fact name="采集状态读取">
+                    {data.collection_facts_classification}
+                  </Fact>
                 )}
-              </Fact>
-              <Fact name="日历缓存有效期至（北京时间）">
-                {formatBeijingTime(refresh?.cache_valid_until, "未记录")}
-              </Fact>
-              <Fact name="下次日历刷新（北京时间）">
-                {formatBeijingTime(refresh?.next_refresh_at, "未记录")}
-              </Fact>
-            </dl>
+              </dl>
+            </details>
             {!data.enabled && <p>策略已暂停。</p>}
             {refresh?.refresh_mode === "fallback" ? (
               <p role="status">
                 主日历入口暂不可用，已切换到同一机构的官方备用入口。存在冲突或未覆盖的
                 {periodLabel}暂停自动采集，等待主入口确认。
               </p>
-            ) : calendar.data?.calendar_status === "degraded_cached_calendar" &&
+            ) : displayPlan?.calendar_status === "degraded_cached_calendar" &&
               !calendarUsable ? (
               <p role="status">
                 本次日历刷新失败，保留已缓存计划，等待刷新确认。
@@ -1084,6 +1226,11 @@ function CpiStrategyWorkbenchContent({
                 <p>{currentCalendarError}</p>
               </details>
             )}
+            {entry.diagnosis.issues.length > 0 && (
+              <p className="small">
+                下方最近执行记录与上述事项分别判断；其他期次或手动成功不表示该问题已解决。
+              </p>
+            )}
             <RecentExecution
               transport={transport}
               profile={profile}
@@ -1095,7 +1242,7 @@ function CpiStrategyWorkbenchContent({
               {data.last_result && (
                 <dl>
                   <Fact name="最近执行状态">
-                    {quarterly
+                    {quarterly || weekly
                       ? cpiExecutionStateText(
                           typeof data.last_result.state === "string"
                             ? data.last_result.state
@@ -1133,7 +1280,10 @@ function CpiStrategyWorkbenchContent({
                   )}
                 </dl>
               )}
-              <ResultFacts result={data.last_result} />
+              <ResultFacts
+                result={data.last_result}
+                profile={weekly ? profile : undefined}
+              />
               {weekly ? (
                 <ClaimsCollectionDetails result={data.last_result} />
               ) : quarterly ? (
@@ -1151,7 +1301,7 @@ function CpiStrategyWorkbenchContent({
               role="list"
               aria-label={`${profile.label} ${periodLabel}计划`}
             >
-              {[...(calendar.data?.targets ?? [])]
+              {[...(displayPlan?.targets ?? [])]
                 .sort((a, b) =>
                   quarterly
                     ? (b.reference_quarter ?? "").localeCompare(
@@ -1162,7 +1312,8 @@ function CpiStrategyWorkbenchContent({
                 )
                 .map((target) => (
                   <article
-                    className="month-plan-card"
+                    className={`month-plan-card${locatedIssue === planTargetKey(target) ? " located-plan" : ""}`}
+                    data-plan-key={planTargetKey(target)}
                     role="listitem"
                     key={
                       quarterly || weekly || profile.id === "m3"
@@ -1203,7 +1354,7 @@ function CpiStrategyWorkbenchContent({
                       <div className="month-stage-state">
                         <strong>当期采集</strong>
                         <span>
-                          {quarterly
+                          {quarterly || weekly
                             ? cpiExecutionStateText(
                                 target.target?.state ?? target.state,
                                 target.target?.result,
@@ -1237,6 +1388,7 @@ function CpiStrategyWorkbenchContent({
                         </p>
                         <ResultFacts
                           result={target.target?.result ?? target.result}
+                          profile={weekly ? profile : undefined}
                         />
                         {weekly ? (
                           <ClaimsCollectionDetails
@@ -1261,72 +1413,76 @@ function CpiStrategyWorkbenchContent({
                           </p>
                         )}
                       </div>
-                      <div className="month-stage-state">
-                        <strong>历史核实</strong>
-                        <span>
-                          {target.history?.state === "blocked" &&
-                          [
-                            "pending",
-                            "running",
-                            "awaiting_provider",
-                            "unknown",
-                            "failed",
-                          ].includes(target.target?.state ?? "")
-                            ? "等待当期采集"
-                            : cpiExecutionStateText(
-                                target.history?.state,
-                                target.history,
-                                profile,
-                                {
-                                  start: target.history?.update_start,
-                                  end: target.history?.update_end,
-                                },
-                              )}
-                        </span>
-                      </div>
-                      <div className="month-stage-detail">
-                        <p>
-                          最近尝试：
-                          <time>
-                            {calendarTime(target.history?.last_attempt_at)}
-                          </time>
-                        </p>
-                        <p>
-                          下次核实：
-                          <time>
-                            {calendarTime(target.history?.next_attempt_at)}
-                          </time>
-                        </p>
-                        <ResultFacts
-                          result={
-                            quarterly
-                              ? target.history?.result
-                              : (target.history?.result ?? target.history)
-                          }
-                        />
-                        {weekly ? (
-                          <ClaimsCollectionDetails
-                            result={target.history?.result}
+                      <details className="stage-history">
+                        <summary>历史核实与结果</summary>
+                        <div className="month-stage-state">
+                          <strong>历史核实</strong>
+                          <span>
+                            {target.history?.state === "blocked" &&
+                            [
+                              "pending",
+                              "running",
+                              "awaiting_provider",
+                              "unknown",
+                              "failed",
+                            ].includes(target.target?.state ?? "")
+                              ? "等待当期采集"
+                              : cpiExecutionStateText(
+                                  target.history?.state,
+                                  target.history,
+                                  profile,
+                                  {
+                                    start: target.history?.update_start,
+                                    end: target.history?.update_end,
+                                  },
+                                )}
+                          </span>
+                        </div>
+                        <div className="month-stage-detail">
+                          <p>
+                            最近尝试：
+                            <time>
+                              {calendarTime(target.history?.last_attempt_at)}
+                            </time>
+                          </p>
+                          <p>
+                            下次核实：
+                            <time>
+                              {calendarTime(target.history?.next_attempt_at)}
+                            </time>
+                          </p>
+                          <ResultFacts
+                            profile={weekly ? profile : undefined}
+                            result={
+                              quarterly
+                                ? target.history?.result
+                                : (target.history?.result ?? target.history)
+                            }
                           />
-                        ) : quarterly ? (
-                          <GdpCollectionDetails
-                            result={target.history?.result}
-                          />
-                        ) : (
-                          <MacroSourceCoverage
-                            result={target.history}
-                            start={target.history?.update_start}
-                            end={target.history?.update_end}
-                          />
-                        )}
-                        {target.history?.classification && (
-                          <p>{target.history.classification}</p>
-                        )}
-                      </div>
+                          {weekly ? (
+                            <ClaimsCollectionDetails
+                              result={target.history?.result}
+                            />
+                          ) : quarterly ? (
+                            <GdpCollectionDetails
+                              result={target.history?.result}
+                            />
+                          ) : (
+                            <MacroSourceCoverage
+                              result={target.history}
+                              start={target.history?.update_start}
+                              end={target.history?.update_end}
+                            />
+                          )}
+                          {target.history?.classification && (
+                            <p>{target.history.classification}</p>
+                          )}
+                        </div>
+                      </details>
                     </div>
                   </article>
                 ))}
-              {!calendar.data?.targets.length && (
+              {!displayPlan?.targets.length && (
                 <p>
                   {calendar.failure
                     ? `${periodLabel}计划读取失败，当前计划尚未核实。`
@@ -1337,6 +1493,6 @@ function CpiStrategyWorkbenchContent({
           </>
         )}
       </WorkflowTable>
-    </>
+    </div>
   );
 }

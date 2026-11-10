@@ -707,7 +707,7 @@ it("collection disabled is truthful and calendar reads do not trigger scheduling
     />,
   );
   await act(async () => {});
-  fireEvent.click(screen.getByText("官方发布自动采集"));
+  fireEvent.click(screen.getByRole("button", { name: /选择 美国 CPI/ }));
   expect(screen.getByText("CPI 策略详情")).toBeTruthy();
   expect(screen.queryByText("当前未启用")).toBeNull();
   expect(screen.getByRole("list", { name: "CPI 月份计划" })).toBeTruthy();
@@ -1142,8 +1142,12 @@ it("renders calendar instants across the UTC day boundary in Beijing while prese
     />,
   );
   await act(async () => {});
-  fireEvent.click(screen.getByText("官方发布自动采集"));
-  expect(screen.getByText("2027-03-11 04:30:00")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /选择 美国 CPI/ }));
+  expect(
+    within(screen.getByRole("list", { name: "CPI 月份计划" })).getByText(
+      /2027-03-11 04:30:00/,
+    ),
+  ).toBeTruthy();
   expect(
     within(screen.getByRole("list", { name: "CPI 月份计划" })).getByText(
       "2027-02",

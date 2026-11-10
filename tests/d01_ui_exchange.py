@@ -34,6 +34,7 @@ for name in ("connect", "connect_ex", "bind", "listen"):
 socket.create_connection = forbidden
 
 SCENARIOS = {
+    "financial_manual",
     "default",
     "catalog_denied",
     "read_only",

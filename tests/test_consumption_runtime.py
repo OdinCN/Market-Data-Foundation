@@ -18,9 +18,10 @@ from tests.consumption_fixtures import NOW, make_host
 from tests.test_ppi_worker_history import arguments, worker_module
 
 
-def test_launcher_runs_only_consumption_and_permissions(monkeypatch):
+def test_launcher_runs_only_consumption_and_permissions(monkeypatch, tmp_path):
     module = worker_module()
     host = Mock()
+    host.auto_strategy.strategy_path = tmp_path / "auto-strategy.json"
     constructor = Mock(return_value=SimpleNamespace(consumption_timeseries=host))
     worker = Mock()
     monkeypatch.setattr(module, "TimeSeriesRuntime", constructor)

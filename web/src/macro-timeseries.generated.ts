@@ -970,10 +970,43 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/r5/{asset}/timeseries/worker": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Status */
+    get: operations["status_api_r5__asset__timeseries_worker_get"];
+    put?: never;
+    /** Action */
+    post: operations["action_api_r5__asset__timeseries_worker_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-  schemas: never;
+  schemas: {
+    /** HTTPValidationError */
+    HTTPValidationError: {
+      /** Detail */
+      detail?: components["schemas"]["ValidationError"][];
+    };
+    /** ValidationError */
+    ValidationError: {
+      /** Location */
+      loc: (string | number)[];
+      /** Message */
+      msg: string;
+      /** Error Type */
+      type: string;
+    };
+  };
   responses: never;
   parameters: never;
   requestBodies: never;
@@ -1234,8 +1267,17 @@ export interface operations {
             events: {
               event_id: string;
               family?: string;
+              /** @enum {string} */
+              report_stage?: "advance" | "full";
+              report_number?: string;
               reference_month?: string;
               reference_months: string[];
+              value_comparisons?: {
+                [key: string]: unknown;
+              }[];
+              shared_publication?: {
+                [key: string]: unknown;
+              };
               actual_at?: string | null;
               source_version: {
                 value: string;
@@ -1634,8 +1676,17 @@ export interface operations {
             events: {
               event_id: string;
               family?: string;
+              /** @enum {string} */
+              report_stage?: "advance" | "full";
+              report_number?: string;
               reference_month?: string;
               reference_months: string[];
+              value_comparisons?: {
+                [key: string]: unknown;
+              }[];
+              shared_publication?: {
+                [key: string]: unknown;
+              };
               actual_at?: string | null;
               source_version: {
                 value: string;
@@ -2032,8 +2083,17 @@ export interface operations {
             events: {
               event_id: string;
               family?: string;
+              /** @enum {string} */
+              report_stage?: "advance" | "full";
+              report_number?: string;
               reference_month?: string;
               reference_months: string[];
+              value_comparisons?: {
+                [key: string]: unknown;
+              }[];
+              shared_publication?: {
+                [key: string]: unknown;
+              };
               actual_at?: string | null;
               source_version: {
                 value: string;
@@ -2430,8 +2490,17 @@ export interface operations {
             events: {
               event_id: string;
               family?: string;
+              /** @enum {string} */
+              report_stage?: "advance" | "full";
+              report_number?: string;
               reference_month?: string;
               reference_months: string[];
+              value_comparisons?: {
+                [key: string]: unknown;
+              }[];
+              shared_publication?: {
+                [key: string]: unknown;
+              };
               actual_at?: string | null;
               source_version: {
                 value: string;
@@ -2828,8 +2897,17 @@ export interface operations {
             events: {
               event_id: string;
               family?: string;
+              /** @enum {string} */
+              report_stage?: "advance" | "full";
+              report_number?: string;
               reference_month?: string;
               reference_months: string[];
+              value_comparisons?: {
+                [key: string]: unknown;
+              }[];
+              shared_publication?: {
+                [key: string]: unknown;
+              };
               actual_at?: string | null;
               source_version: {
                 value: string;
@@ -3270,8 +3348,17 @@ export interface operations {
             events: {
               event_id: string;
               family?: string;
+              /** @enum {string} */
+              report_stage?: "advance" | "full";
+              report_number?: string;
               reference_month?: string;
               reference_months: string[];
+              value_comparisons?: {
+                [key: string]: unknown;
+              }[];
+              shared_publication?: {
+                [key: string]: unknown;
+              };
               actual_at?: string | null;
               source_version: {
                 value: string;
@@ -3661,6 +3748,75 @@ export interface operations {
         };
         content: {
           "application/json": unknown;
+        };
+      };
+    };
+  };
+  status_api_r5__asset__timeseries_worker_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        asset: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  action_api_r5__asset__timeseries_worker_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        asset: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** @enum {string} */
+          action: "start" | "recover";
+        };
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };

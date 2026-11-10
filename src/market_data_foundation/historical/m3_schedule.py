@@ -3,7 +3,6 @@
 import calendar
 import hashlib
 import json
-import os
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
@@ -29,6 +28,7 @@ POLICY = {
     "calendar_cache_hours": 24,
     "max_stage_attempts": 3,
     "retry_min_seconds": 300,
+    "material_retry": "same numeric job; material cooldown; at most 3 attempts",
     "history_maintenance": "verify post-release snapshots or refresh history",
     "rolling_24h_max_actual_http": 400,
 }
@@ -206,7 +206,9 @@ class M3Scheduler:
         targets = [
             dict(
                 e,
-                target=value["work"].get(e["key"], {"state": "pending"}),
+                target=self._work_view(
+                    value["work"].get(e["key"], {"state": "pending"}), e
+                ),
                 history=value.get("history_work", {}).get(
                     e["key"], {"state": "pending"}
                 ),
@@ -369,7 +371,99 @@ class M3Scheduler:
         ready = self._ready_check()
         if ready.get("action") == "target_ready":
             return self._execute_target(ready["event"])
+        if ready.get("action") == "material_ready":
+            return self._execute_target(ready["event"], material_only=True)
         return ready
+
+    def _material_retry(self, work, event=None):
+        # Only jobs that explicitly attempted material are eligible. Legacy
+        # numeric completions and old history are never turned into backfill.
+        from market_data_foundation.historical.m3_release_acquisition import (
+            recoverable_material,
+        )
+
+        job = work.get("result") or {}
+        if work.get("state") not in {
+            "complete",
+            "source_unavailable",
+        } or not recoverable_material(job):
+            return None
+        material = job["result"]["release_material"]
+        old = work.get("material_retry") or {}
+        if event:
+            selection = (
+                material.get("reports", {}).get(event["dataset"], {}).get("selection")
+                or {}
+            )
+            at = (
+                datetime.fromisoformat(event["release_at"])
+                if event.get("release_at")
+                else None
+            )
+            date = (
+                at.astimezone(ZoneInfo("America/New_York")).date().isoformat()
+                if at and at.utcoffset() is not None
+                else None
+            )
+            if (
+                selection.get("source_date") != date
+                or selection.get("reference_month") != event["reference_month"]
+                or selection.get("dataset") != event["dataset"]
+                or event.get("status") != "scheduled"
+                or event.get("calendar_execution_blocked")
+                or event.get("cancelled")
+            ):
+                return dict(
+                    state="calendar_changed",
+                    attempts=old.get("attempts", 0),
+                    next_attempt_at=None,
+                    reasons=["m3_material_calendar_changed"],
+                    next_step="该期日历身份已变化，需核对原任务与官方期次；不自动绑定另一发布事件",
+                    numeric_state=work["state"],
+                )
+        outcomes = [
+            o
+            for r in material.get("reports", {}).values()
+            if r.get("state") != "retained"
+            for o in r.get("material_outcomes", [])
+        ]
+        attempts = max(
+            [1, old.get("attempts", 0)] + [o.get("attempts", 0) for o in outcomes]
+        )
+        deadlines = [
+            datetime.fromisoformat(v)
+            for v in [old.get("next_attempt_at")]
+            + [o.get("next_attempt_at") for o in outcomes]
+            if v
+        ]
+        return dict(
+            state="running"
+            if old.get("state") == "running"
+            and deadlines
+            and max(deadlines) > self.clock()
+            else "pending_exhausted"
+            if attempts >= 3
+            else "awaiting_provider",
+            attempts=attempts,
+            last_attempt_at=old.get("last_attempt_at")
+            or (outcomes[-1].get("attempted_at") if outcomes else None),
+            next_attempt_at=None
+            if attempts >= 3
+            else max(deadlines).isoformat()
+            if deadlines
+            else (
+                datetime.fromisoformat(work["started_at"]) + timedelta(hours=1)
+            ).isoformat(),
+            reasons=material.get("reasons", []),
+            next_step="本期材料尝试已达上限，需核实来源和材料尝试记录；数值已确认，不自动重采"
+            if attempts >= 3
+            else "等待材料冷却结束后自动补取同一任务的原文；数值已确认，不重复采集",
+            numeric_state=work["state"],
+        )
+
+    def _work_view(self, work, event):
+        retry = self._material_retry(work, event)
+        return dict(work, material_retry=retry) if retry else work
 
     def _ready_check(self):
         self.refresh_calendar()
@@ -420,8 +514,23 @@ class M3Scheduler:
                     return {"action": "cooldown_wait"}
                 event = min(pending, key=lambda e: e["release_at"])
             if event is None:
-                # History work is dispatched after releasing this lock.
-                pass
+                # Only current latest due stages, never all historical jobs.
+                waiting = False
+                for candidate in sorted(
+                    (e for e in latest.values() if e), key=lambda e: e["release_at"]
+                ):
+                    retry = self._material_retry(
+                        value["work"].get(candidate["key"], {}), candidate
+                    )
+                    if retry and retry["state"] == "awaiting_provider":
+                        if (
+                            datetime.fromisoformat(retry["next_attempt_at"])
+                            <= self.clock()
+                        ):
+                            return {"action": "material_ready", "event": candidate}
+                        waiting = True
+                if waiting:
+                    return {"action": "material_cooldown_wait"}
             else:
                 return self._run_target_unlocked_marker(value, event)
         return self._history_due()
@@ -430,7 +539,7 @@ class M3Scheduler:
         # Marker only; called under lock, external effect delegated after return.
         return {"action": "target_ready", "event": event}
 
-    def _execute_target(self, event):
+    def _execute_target(self, event, *, material_only=False):
         with self._locked():
             value = self._load()
             if not any(
@@ -439,20 +548,40 @@ class M3Scheduler:
             ):
                 return {"action": "calendar_changed"}
             work = value["work"].get(event["key"], {})
+            if material_only:
+                retry = self._material_retry(work, event)
+                if (
+                    not retry
+                    or retry["state"] != "awaiting_provider"
+                    or datetime.fromisoformat(retry["next_attempt_at"]) > self.clock()
+                ):
+                    return {"action": "material_not_due"}
             request_id = work.get("request_id") or str(
                 uuid5(
                     NAMESPACE_URL, "mdf:m3:" + event["key"] + ":" + event["release_at"]
                 )
             )
-            work = dict(
-                work,
-                request_id=request_id,
-                attempts=work.get("attempts", 0) + 1,
-                state="running",
-                dataset=event["dataset"],
-                started_at=self.clock().isoformat(),
-                next_attempt_at=(self.clock() + timedelta(minutes=5)).isoformat(),
-            )
+            if material_only:
+                work = dict(
+                    work,
+                    material_retry=dict(
+                        retry,
+                        state="running",
+                        attempts=retry["attempts"] + 1,
+                        last_attempt_at=self.clock().isoformat(),
+                        next_attempt_at=(self.clock() + timedelta(hours=1)).isoformat(),
+                    ),
+                )
+            else:
+                work = dict(
+                    work,
+                    request_id=request_id,
+                    attempts=work.get("attempts", 0) + 1,
+                    state="running",
+                    dataset=event["dataset"],
+                    started_at=self.clock().isoformat(),
+                    next_attempt_at=(self.clock() + timedelta(minutes=5)).isoformat(),
+                )
             value["work"][event["key"]] = work
             self._save(value)
         if self.submit is None and self.submit_report is None:
@@ -472,7 +601,7 @@ class M3Scheduler:
                     "start": event["reference_month"],
                     "end": event["reference_month"],
                 },
-                resume=work["attempts"] > 1,
+                resume=material_only or work["attempts"] > 1,
             )
         except Exception:
             result = {
@@ -491,6 +620,25 @@ class M3Scheduler:
             pass
         with self._locked():
             value = self._load()
+            if material_only:
+                current = value["work"][event["key"]]
+                if result.get("state") == "complete":
+                    current["result"] = result
+                current["material_retry"]["state"] = "awaiting_provider"
+                retry = self._material_retry(current)
+                current["material_retry"] = retry or dict(
+                    state="retained",
+                    attempts=current["material_retry"]["attempts"],
+                    next_attempt_at=None,
+                    reasons=[],
+                )
+                self._save(value)
+                return {
+                    "action": "material_retry",
+                    "request_id": request_id,
+                    "state": current["state"],
+                    "material_retry": current["material_retry"],
+                }
             value["work"][event["key"]].update(
                 state=(
                     "complete"
@@ -519,18 +667,4 @@ class M3AutoStrategy(CpiAutoStrategy):
         return {**super()._view(value), "policy": POLICY}
 
     def get(self):
-        value = super().get()
-        path = self.strategy_path.with_name("m3-worker.json")
-        if path.exists():
-            try:
-                process = json.loads(path.read_text())
-                value["worker"]["process"] = process
-                if process["state"] == "stopped":
-                    value["worker"]["state"] = "stopped"
-                else:
-                    os.kill(process["pid"], 0)
-            except ProcessLookupError:
-                value["worker"]["state"] = "stopped"
-            except OSError, ValueError, KeyError:
-                value["worker"]["state"] = "unknown"
-        return {**value, "policy": POLICY}
+        return {**super().get(), "policy": POLICY}
