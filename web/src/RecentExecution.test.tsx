@@ -217,8 +217,7 @@ for (const profile of profiles)
         expect(url.get("asset")).toBe(profile.asset.identity);
         expect(url.get("tab")).toBe("executions");
         expect(url.get("execution_schedule")).toBe("all");
-        const savedLabel =
-          profile.id === "claims" ? "保存观测版本（含修订）" : "新增观测";
+        const savedLabel = "保存观测版本（含修订）";
         if (["failed", "running", "cancelled"].includes(scenario)) {
           expect(summary.textContent).toContain(
             { failed: "失败", running: "执行中", cancelled: "已取消" }[
