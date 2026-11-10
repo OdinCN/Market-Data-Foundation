@@ -32,6 +32,8 @@ from market_data_foundation.historical.bls_web_transport import (
 )
 from market_data_foundation.historical.calendar_publications import (
     bls_calendar_publications,
+    record_publication_view,
+    validate_publication_history,
 )
 from market_data_foundation.historical.calendar_resilience import (
     failure,
@@ -732,6 +734,8 @@ class CpiReleaseScheduler:
                 version=2, asset=self.asset_key, history_start=self.history_start
             )
             state.setdefault("signals", self._initial_signals())
+            if "calendar_publication_history" in state:
+                validate_publication_history(state["calendar_publication_history"])
             if self.profile.key != "cpi":
                 if state["signals"].get("events") or state["signals"].get("recovery"):
                     raise CpiScheduleError("schedule_signals_unsupported")
@@ -763,6 +767,20 @@ class CpiReleaseScheduler:
     def _save(self, state):
         self._validate_asset(state)
         state["asset"] = self.asset_key
+        if self.profile.key in {"cpi", "ppi"}:
+            record_publication_view(
+                state,
+                {
+                    "calendar": state["calendar"],
+                    "calendar_publications": bls_calendar_publications(state),
+                    "targets": [
+                        {"reference_month": month, **target}
+                        for month, target in sorted(state["targets"].items())
+                    ],
+                },
+                _aware(self.clock()),
+                self.calendar_url,
+            )
         encoded = json.dumps(state, sort_keys=True, ensure_ascii=False).encode()
         _write_atomic(self.state_path, encoded)
 
@@ -891,6 +909,11 @@ class CpiReleaseScheduler:
             "calendar": state["calendar"],
             "targets": targets,
             "calendar_publications": bls_calendar_publications(state),
+            **(
+                {"calendar_publication_history": state["calendar_publication_history"]}
+                if "calendar_publication_history" in state
+                else {}
+            ),
             "history_start": state["history_start"],
             "signals": signals,
             "revision_status": (
