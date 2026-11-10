@@ -350,6 +350,19 @@ export function autoCollectionDiagnosis(
         obj(target.target).state === "complete"
       )
         continue;
+      // The target stage and its auto envelope can carry the same stopped
+      // attempt. Explain that one cause once; keep genuinely different causes.
+      if (
+        stage === "自动调度" &&
+        state === "stopped" &&
+        text(value.classification) &&
+        text(value.classification) ===
+          text(obj(target.target).classification) &&
+        ["awaiting_provider", "failed", "error"].includes(
+          String(obj(target.target).state),
+        )
+      )
+        continue;
       if (state === "running") running = true;
       const result = obj(value.result);
       const claimsGap =

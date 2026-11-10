@@ -280,6 +280,7 @@ it("shows the stopped employment October target even with an online worker and a
   expect(d.state).not.toContain("重试中");
   expect(d.listReason).toContain("2026-10");
   expect(d.listReason).toContain("自动重试已停止");
+  expect(d.issues).toHaveLength(1);
   expect(d.issues[0].next).toContain("未知预留不释放");
 });
 
