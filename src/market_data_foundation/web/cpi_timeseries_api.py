@@ -654,6 +654,23 @@ class TimeSeriesHost:
             self.journal.save(job)
             return job
 
+    def confirm_target_recovery(
+        self, reference_month, request_id, *, evidence_locator, diagnostic_http=0
+    ):
+        """Local operator port; only this Host's durable journal can supply a job.
+
+        No public route accepts a caller-provided recovery result or starts work.
+        """
+        job = self.journal.read(request_id)
+        if job is None:
+            raise WebError("job_not_found", 404)
+        return self.scheduler.confirm_target_recovery(
+            reference_month,
+            job,
+            evidence_locator=evidence_locator,
+            diagnostic_http=diagnostic_http,
+        )
+
     def finish_retained(self, job, written, material):
         command = job
         read_start, read_end = command["start"], command["end"]

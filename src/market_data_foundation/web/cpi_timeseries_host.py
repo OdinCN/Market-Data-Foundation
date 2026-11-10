@@ -1001,18 +1001,10 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         )
 
     def employment_worker_service(self):
-        host = self.employment_timeseries
-        capabilities = host.capabilities(host.source())
-        if not capabilities["collect"]:
-            raise WebError(capabilities["reason"], 403)
-        return host.write_factory(credential_loader=host.effective_credential)
+        return self._worker_write_service(self.employment_timeseries)
 
     def pce_worker_service(self):
-        host = self.pce_timeseries
-        capabilities = host.capabilities(host.source())
-        if not capabilities["collect"]:
-            raise WebError(capabilities["reason"], 403)
-        return host.write_factory(credential_loader=host.effective_credential)
+        return self._worker_write_service(self.pce_timeseries)
 
     def credential_states(self, environment_id, package_id, record):
         sources = self.packages.catalog.credential_sources(package_id)
@@ -1070,11 +1062,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
         )
 
     def consumption_worker_service(self):
-        host = self.consumption_timeseries
-        capabilities = host.capabilities(host.source())
-        if not capabilities["collect"]:
-            raise WebError(capabilities["reason"], 403)
-        return host.write_factory(credential_loader=host.effective_credential)
+        return self._worker_write_service(self.consumption_timeseries)
 
     def pce_read_service(self):
         return self.read_service(profile=PCE_PROFILE)
@@ -1107,20 +1095,23 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             request_control=self.bea_request_control,
         )
 
-    def worker_service(self):
-        capabilities = self.timeseries.capabilities(self.timeseries.source())
-        if not capabilities["collect"]:
-            raise WebError(capabilities["reason"], 403)
-        return self.timeseries.write_factory(
-            credential_loader=self.timeseries.effective_credential
-        )
-
-    def ppi_worker_service(self):
-        host = self.ppi_timeseries
+    def _worker_write_service(self, host):
         capabilities = host.capabilities(host.source())
         if not capabilities["collect"]:
-            raise WebError(capabilities["reason"], 403)
+            # This is a local admission decision, before a service is opened or
+            # any provider/write operation is invoked. Do not lose this known
+            # zero at the WorkerService -> scheduler exception boundary.
+            error = WebError(capabilities["reason"], 403)
+            error.provider_attempts = 0
+            error.operation_phase = "admission"
+            raise error
         return host.write_factory(credential_loader=host.effective_credential)
+
+    def worker_service(self):
+        return self._worker_write_service(self.timeseries)
+
+    def ppi_worker_service(self):
+        return self._worker_write_service(self.ppi_timeseries)
 
     def ppi_query_service(self, *, credential_loader):
         return self.query_service(
