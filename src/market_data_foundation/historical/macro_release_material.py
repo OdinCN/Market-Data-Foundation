@@ -20,7 +20,7 @@ MONTHS = (
 
 
 class Material(HTMLParser):
-    def __init__(self, raw):
+    def __init__(self, raw, *, family=None, url=""):
         super().__init__(convert_charrefs=True)
         if type(raw) is not bytes or not 0 < len(raw) <= 2_000_000:
             raise CpiTimeSeriesError("release_material_size_invalid")
@@ -34,10 +34,12 @@ class Material(HTMLParser):
             0,
             False,
         )
-        try:
-            self.feed(raw.decode("utf-8-sig"))
-        except UnicodeError:
-            raise CpiTimeSeriesError("release_material_encoding_invalid") from None
+        from market_data_foundation.historical.bls_material_encoding import (
+            decode_material,
+        )
+
+        text, self.parser_input = decode_material(raw, family, url)
+        self.feed(text)
         self.text = " ".join(" ".join(self.parts).split())
 
     def handle_starttag(self, tag, attrs):
@@ -188,7 +190,7 @@ def parse_material(raw, url, family):
         )
 
         return parse_jolts_material(raw, url)
-    m = Material(raw)
+    m = Material(raw, family=family, url=url)
     if family == "employment":
         from market_data_foundation.historical.macro_release_records import (
             parse_employment_release,
@@ -315,6 +317,9 @@ def parse_material(raw, url, family):
         if family == "consumption"
         else "official-five-family-v3"
     )
+    if m.parser_input is not None:
+        doc["parser_input"] = m.parser_input
+        doc["parser_revision"] = "official-five-family-v4-cpi-prose-encoding"
     doc["reference_months"] = sorted(
         {
             *doc.get("reference_months", []),

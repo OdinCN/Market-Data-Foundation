@@ -1,4 +1,9 @@
-"""Offline transport seams: no socket/DNS/HTTP traffic in this module."""
+"""Legacy TLS helper and explicitly injected adapter compatibility, no network.
+
+Current default requests wiring is covered by test_public_web_transport. The
+legacy DEFAULT advertisement still requires TLS1.3; retain every security assertion
+for that helper rather than applying its workaround to modern requests TLS.
+"""
 
 import ssl
 from unittest.mock import Mock
@@ -72,6 +77,12 @@ def wire(monkeypatch):
             pass
 
     monkeypatch.setattr(web, "HTTPSConnection", Connection)
+    # Preserve the legacy injected-port contract independently of the new default.
+    from market_data_foundation.historical import cpi_release_schedule as calendar
+    from market_data_foundation.historical import cpi_revision_signals as signals
+
+    monkeypatch.setattr(calendar, "fetch_bls_page", web.fetch_bls_page)
+    monkeypatch.setattr(signals, "fetch_bls_page", web.fetch_bls_page)
     return scenarios, connections
 
 
@@ -255,7 +266,7 @@ def test_ics_is_default_and_html_reference_has_separate_fixed_path(wire):
 
 
 @pytest.mark.parametrize("tls", ["TLSv1.3", "TLSv1.2"])
-def test_employment_host_default_calendar_binding_uses_verified_transport(
+def test_employment_host_calendar_binding_accepts_verified_legacy_injection(
     wire, tmp_path, monkeypatch, tls
 ):
     from tests.test_employment_web import setup

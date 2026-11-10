@@ -113,3 +113,28 @@ def request_source[Response](
         sleep(retry_delay_after(attempts))
 
     raise AssertionError("source_request_attempts_exhausted")
+
+
+def admitted_exchange(transport, request, ticket):
+    """Keep old API transports unchanged; public documents may expose early heads.
+
+    Status/429 is persisted while the original caller still holds the ticket,
+    even when a subsequent body read times out. Never count a response twice.
+    """
+    early = getattr(transport, "with_response_headers", None)
+    if early is None:
+        response = transport(request)
+        return response, ticket.record_response(response.status, response.headers)
+    seen, retry = False, None
+
+    def record(status, headers):
+        nonlocal seen, retry
+        if seen:
+            raise RuntimeError("duplicate_response_headers")
+        retry = ticket.record_response(status, headers)
+        seen = True
+
+    response = early(request, record)
+    if not seen:
+        raise RuntimeError("response_headers_outcome_unknown")
+    return response, retry

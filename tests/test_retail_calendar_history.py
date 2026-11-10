@@ -262,13 +262,16 @@ def test_current_and_history_calendar_share_census_admission(tmp_path, monkeypat
 
     calls = []
 
-    def get(self, year=None):
+    def get(self, year=None, *, on_headers=None):
         calls.append(year)
-        return (
+        response = (
             HttpResult(200, annual(("October 2025", "December 16, 2025")), {})
             if year
             else HttpResult(429, b"", {"Retry-After": "7200"})
         )
+        if on_headers is not None:
+            on_headers(response.status, response.headers)
+        return response
 
     monkeypatch.setattr(CensusCalendarTransport, "get", get)
     control = CpiRequestControl(

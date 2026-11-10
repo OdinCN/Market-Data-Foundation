@@ -19,6 +19,7 @@ from market_data_foundation.historical.gdp_schedule import (
 )
 from market_data_foundation.web.gdp_jobs import GdpJobRunner, WebError
 from tests.test_gdp_chain import service
+from tests.test_public_web_transport import inline_worker, request_wire  # noqa: F401
 
 AT = datetime(2026, 11, 2, 12, tzinfo=UTC)
 
@@ -339,19 +340,17 @@ def test_budget_stops_before_source_and_unknown_errors_do_not_retry(tmp_path):
     assert "private text" not in str(result)
 
 
-def test_actual_tls_failure_classification_blocks_fallback(monkeypatch):
-    import ssl
-    from urllib.error import URLError
+def test_actual_tls_failure_classification_blocks_fallback(inline_worker):  # noqa: F811
+    import requests
 
     from market_data_foundation.historical import pce_release_schedule as bea
     from market_data_foundation.historical.calendar_resilience import may_fallback
 
-    class Opener:
-        def open(self, *args, **kwargs):
-            raise URLError(ssl.SSLCertVerificationError("private certificate message"))
-
-    monkeypatch.setattr(bea, "build_opener", lambda *args: Opener())
+    wire, starts = inline_worker
+    wire[0].append(requests.exceptions.SSLError("private certificate message"))
     with pytest.raises(GdpScheduleError) as error:
         bea.fetch_official_calendar()
     assert error.value.classification == "bea_calendar_tls_failure"
     assert not may_fallback(error.value)
+    assert len(starts) == 1 and wire[1][0].closed
+    assert "private" not in str(error.value)

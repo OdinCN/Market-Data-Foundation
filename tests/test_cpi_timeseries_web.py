@@ -55,6 +55,17 @@ def no_network(monkeypatch):
     monkeypatch.setattr(socket, "create_connection", forbidden)
     monkeypatch.setattr(psycopg, "connect", forbidden)
 
+    # A supervised material child cannot inherit socket mocks. Numeric-only
+    # fixtures supply an explicit missing-material outcome; document tests inject
+    # their own controlled transport separately.
+    from market_data_foundation.historical import macro_release_acquisition as material
+    from market_data_foundation.historical.bls_web_transport import BlsWebError
+
+    def offline_material(*_):
+        raise BlsWebError("offline_material_not_provided")
+
+    monkeypatch.setattr(material, "fetch_official_material", offline_material)
+
 
 class Source:
     def __init__(self):

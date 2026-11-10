@@ -81,6 +81,7 @@ class _Attempt:
         self.control = control
         self.state = state
         self.failed_write = False
+        self.in_flight_unknown = False
 
     def record_response(
         self,
@@ -340,8 +341,15 @@ class CpiRequestControl:
             try:
                 yielded = True
                 yield attempt
+            except BaseException as error:
+                # A supervised exchange that could not be reaped must not be
+                # converted to a known finished request by context cleanup.
+                attempt.in_flight_unknown = bool(
+                    getattr(error, "request_may_be_in_flight", False)
+                )
+                raise
             finally:
-                if not attempt.failed_write:
+                if not attempt.failed_write and not attempt.in_flight_unknown:
                     state["in_flight_at"] = None
                     attempt._save()
         except OSError:

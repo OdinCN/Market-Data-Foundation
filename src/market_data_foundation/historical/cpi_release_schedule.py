@@ -21,6 +21,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from zoneinfo import ZoneInfo
 
+from market_data_foundation.historical.bls_document_page import fetch_bls_page
 from market_data_foundation.historical.bls_timeseries_profile import (
     CPI_PROFILE,
     EMPLOYMENT_PROFILE,
@@ -28,7 +29,6 @@ from market_data_foundation.historical.bls_timeseries_profile import (
 )
 from market_data_foundation.historical.bls_web_transport import (
     BlsWebError,
-    fetch_bls_page,
 )
 from market_data_foundation.historical.calendar_publications import (
     bls_calendar_publications,

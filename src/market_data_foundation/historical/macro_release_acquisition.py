@@ -5,17 +5,15 @@ reservations/dedup/cooldown survive process restarts; there is no archive backlo
 """
 
 import fcntl
-import http.client
 import json
 import os
 import tempfile
-import time
 from datetime import timedelta
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from market_data_foundation.historical.bls_web_transport import fetch_bls_page
+from market_data_foundation.historical.bls_material_transport import fetch_bls_material
 from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
 from market_data_foundation.historical.macro_release_material import (
     MONTHS,
@@ -26,53 +24,31 @@ from market_data_foundation.historical.macro_release_records import (
     ReleaseRecords,
     instant,
 )
+from market_data_foundation.historical.public_web_transport import (
+    PublicFetchError,
+    fetch_public,
+)
 
 
 def fetch_official_material(url, family):
     official_url(family, url)
-    if family == "jolts":
-        from market_data_foundation.historical.jolts_release_schedule import (
-            fetch_official_page,
-        )
-
-        return fetch_official_page(url)
     if family in {"cpi", "ppi", "employment", "jolts"}:
-        return fetch_bls_page(url, allowed_path=urlsplit(url).path, timeout=5)
-    deadline = time.monotonic() + 20
-    original = urlsplit(url)
-    for hop in range(4):
-        parts = official_url(family, url)
-        if parts.path != original.path:
-            raise CpiTimeSeriesError("release_redirect_rejected")
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise CpiTimeSeriesError("release_transport_timeout")
-        connection = http.client.HTTPSConnection(
-            parts.hostname, timeout=min(5, remaining)
+        return fetch_bls_material(url, family)
+    route = "bea_material" if family in {"pce", "consumption"} else "retail_material"
+    try:
+        response = fetch_public(url, route, timeout=20)
+    except PublicFetchError as error:
+        reason = (
+            "release_material_size_invalid"
+            if error.classification == "payload_too_large"
+            else "release_" + error.classification
         )
-        try:
-            connection.request(
-                "GET",
-                parts.path,
-                headers={"Accept-Encoding": "identity", "Connection": "close"},
-            )
-            response = connection.getresponse()
-            if response.status in {301, 302, 303, 307, 308}:
-                target = response.getheader("Location")
-                if not target or hop == 3:
-                    raise CpiTimeSeriesError("release_redirect_rejected")
-                url = urljoin(url, target)
-                official_url(family, url)
-                continue
-            if response.status != 200:
-                raise CpiTimeSeriesError(f"release_http_{response.status}")
-            raw = response.read(2_000_001)
-            if len(raw) > 2_000_000:
-                raise CpiTimeSeriesError("release_material_size_invalid")
-            return raw
-        finally:
-            connection.close()
-    raise CpiTimeSeriesError("release_redirect_rejected")
+        raise CpiTimeSeriesError(reason) from None
+    if response.status in {301, 302, 303, 307, 308}:
+        raise CpiTimeSeriesError("release_redirect_rejected")
+    if response.status != 200:
+        raise CpiTimeSeriesError(f"release_http_{response.status}")
+    return response.body
 
 
 def select_material(family, snapshot, start, end, now):

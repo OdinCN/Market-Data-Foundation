@@ -46,3 +46,54 @@ def _fuyao_qualification_python_for_deterministic_tests(
     python = Path(sys.executable)
     monkeypatch.setattr(single, "CANONICAL_PYTHON", python)
     monkeypatch.setattr(runner, "CANONICAL_PYTHON", python)
+
+
+@pytest.fixture(autouse=True)
+def _public_document_child_requires_controlled_transport(request, monkeypatch):
+    """Socket monkeypatches cannot cross exec; keep real source IO out of CI."""
+    if request.node.get_closest_marker("live_provider"):
+        return
+    import subprocess
+
+    real = subprocess.Popen
+    workers = {
+        "market_data_foundation.historical.bls_material_transport",
+        "market_data_foundation.historical.public_web_transport",
+    }
+
+    def controlled_only(args, *positional, **options):
+        if (
+            isinstance(args, (list, tuple))
+            and len(args) > 2
+            and args[1] == "-m"
+            and args[2] in workers
+        ):
+            pytest.fail(
+                "public HTTP worker requires a controlled fixture "
+                "or live_provider opt-in"
+            )
+        return real(args, *positional, **options)
+
+    monkeypatch.setattr(subprocess, "Popen", controlled_only)
+
+
+@pytest.fixture(autouse=True)
+def _host_request_ledgers_are_not_deterministic_fixtures(request, monkeypatch):
+    """Fail before mkdir/flock on bound DEV paths; never reset a real budget."""
+    if request.node.get_closest_marker("live_provider"):
+        return
+    from market_data_foundation.historical.cpi_request_control import CpiRequestControl
+
+    original = CpiRequestControl.attempt
+
+    def isolated_only(control):
+        value = str(control.state_path.resolve())
+        if value.startswith(
+            ("/srv/market-data-foundation/", "/srv/market-data-foundation-control/")
+        ):
+            pytest.fail(
+                "host request ledger requires isolated fixture or live_provider"
+            )
+        return original(control)
+
+    monkeypatch.setattr(CpiRequestControl, "attempt", isolated_only)
