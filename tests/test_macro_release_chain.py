@@ -873,3 +873,38 @@ def test_successful_transport_replaces_prior_operator_origin_without_rewriting_p
     again = acquirer.capture(repo.store, selection)
     assert again["transport_calls"] == 0 and len(calls) == 1
     assert again["evidence_origin"] == "previous_bounded_official_transport"
+
+
+@pytest.mark.parametrize(
+    "family,name",
+    [
+        ("cpi", "cpi_10142026.html"),
+        ("employment", "empsit_10022026.html"),
+        ("pce", "bea-pio-202609.html"),
+    ],
+)
+def test_retained_original_receipt_matches_storage(tmp_path, family, name):
+    repo = repository(family)
+    raw, url = material(name)
+    doc = parse_material(raw, url, family)
+    selection = dict(
+        source_url=url,
+        source_date=doc["source_version"]["value"],
+        reference_month=doc["reference_month"],
+    )
+    acquirer = MaterialAcquirer(
+        tmp_path / "state.json",
+        acquisition_method="retained_official_material_cache",
+        cached_original=raw,
+        fetcher=lambda *_: pytest.fail("unexpected transport call"),
+    )
+    result = acquirer.capture(repo.store, selection)
+    assert result["state"] == "retained"
+    proof = repo.read()["events"][0]
+    assert result["evidence_origin"] == proof["retention"]["acquisition_method"]
+    assert result["evidence_origin"] == "retained_official_material_cache"
+    assert result["provider_requests"] == result["transport_calls"] == 0
+    repeat = acquirer.capture(repo.store, selection)
+    assert repeat["evidence_origin"] == "previous_retained_official_material_cache"
+    assert repeat["evidence_ids"] == result["evidence_ids"]
+    assert repeat["provider_requests"] == repeat["transport_calls"] == 0
