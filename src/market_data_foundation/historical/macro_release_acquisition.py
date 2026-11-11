@@ -417,8 +417,11 @@ class MaterialAcquirer:
                 transport_calls=0 if local_original else 1,
             )
             try:
+                acquisition_method = self.acquisition_method
+                evidence_origin = "current_bounded_official_transport"
                 if local_original:
                     raw = self.cached_original
+                    evidence_origin = "retained_official_material_cache"
                 elif family in {"pce", "consumption"}:
                     from market_data_foundation.historical.bea_shared_material import (
                         cached_material,
@@ -439,6 +442,9 @@ class MaterialAcquirer:
                     base.update(
                         provider_requests=int(fetched), transport_calls=int(fetched)
                     )
+                    if not fetched:
+                        acquisition_method = "shared_original_material_cache"
+                        evidence_origin = "current_shared_original_material_cache"
                     attempt["raw_material_origin"] = (
                         "bounded_transport"
                         if fetched
@@ -458,11 +464,7 @@ class MaterialAcquirer:
                     raw,
                     selection["source_url"],
                     material_format="original_http_body",
-                    acquisition_method=(
-                        "shared_original_material_cache"
-                        if family in {"pce", "consumption"} and not fetched
-                        else self.acquisition_method
-                    ),
+                    acquisition_method=acquisition_method,
                     original_obtained_at=self.original_obtained_at,
                 )
                 attempt.update(
@@ -477,11 +479,7 @@ class MaterialAcquirer:
                     state="retained",
                     event_ids=[saved["event_id"]],
                     evidence_ids=[saved["evidence_id"]],
-                    evidence_origin=(
-                        "current_shared_original_material_cache"
-                        if family in {"pce", "consumption"} and not fetched
-                        else "current_bounded_official_transport"
-                    ),
+                    evidence_origin=evidence_origin,
                     reasons=saved["missing"],
                 )
             except Exception as error:
