@@ -55,6 +55,16 @@ def no_network(monkeypatch):
     monkeypatch.setattr(socket, "create_connection", forbidden)
     monkeypatch.setattr(psycopg, "connect", forbidden)
 
+    # Numeric-only fixtures do not exercise material HTTP or shared admission.
+    # Material tests supply their own controlled transport explicitly.
+    from market_data_foundation.historical import macro_release_acquisition as material
+    from market_data_foundation.historical.bls_web_transport import BlsWebError
+
+    def offline_material(*_):
+        raise BlsWebError("offline_material_not_provided")
+
+    monkeypatch.setattr(material, "fetch_official_material", offline_material)
+
 
 class Source:
     def __init__(self):
