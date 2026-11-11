@@ -1,10 +1,18 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useAutoCollection, autoCollectionState } from "./useAutoCollection";
 import { CPI_PROFILE } from "./macroTimeSeriesProfile";
 import type { Transport } from "./api";
 import type { CpiAvailability } from "./cpiTimeSeriesApi";
-afterEach(cleanup);
+beforeEach(() => {
+  // Freeze the release comparison only; polling and request timers stay real.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-10T13:29:59Z"));
+});
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 const availability = {
   data: { web_capabilities: { collect: true } },
 } as CpiAvailability;
@@ -188,27 +196,35 @@ it("source capability refusal has no runtime or policy effects", async () => {
   expect(result.current.notice).toContain("binding_missing");
 });
 
-it("distinguishes real task activity from loop heartbeat, retry and unknown outcomes", () => {
-  const value = {
-    data: {
-      enabled: true,
-      worker: { state: "running" },
-      control: { online: true },
-      next_release_at: "2026-11-10T13:30:00Z",
-      schedule: { calendar_status: "fresh", targets: [] },
-    },
-    saving: false,
-    uncertain: false,
-    resource: { stale: false },
-  } as unknown as Parameters<typeof autoCollectionState>[0];
-  expect(autoCollectionState(value)).toBe("待发布");
-  for (const [state, next_attempt_at, expected] of [
-    ["running", null, "采集中"],
-    ["failed", "2026-11-05T00:00:00Z", "重试中"],
-    ["outcome_unknown", null, "待核实"],
-    ["failed", null, "需处理"],
-  ]) {
-    value.data!.schedule!.targets = [{ target: { state, next_attempt_at } }];
-    expect(autoCollectionState(value)).toBe(expected);
-  }
-});
+it.each([
+  ["2026-11-10T13:29:59Z", "待发布"],
+  ["2026-11-10T13:30:00Z", "待核实（下次发布未确认）"],
+  ["2026-11-11T00:00:00Z", "待核实（下次发布未确认）"],
+])(
+  "at %s distinguishes real task activity from loop heartbeat, retry and unknown outcomes",
+  (now, idleState) => {
+    vi.setSystemTime(new Date(now));
+    const value = {
+      data: {
+        enabled: true,
+        worker: { state: "running" },
+        control: { online: true },
+        next_release_at: "2026-11-10T13:30:00Z",
+        schedule: { calendar_status: "fresh", targets: [] },
+      },
+      saving: false,
+      uncertain: false,
+      resource: { stale: false },
+    } as unknown as Parameters<typeof autoCollectionState>[0];
+    expect(autoCollectionState(value)).toBe(idleState);
+    for (const [state, next_attempt_at, expected] of [
+      ["running", null, "采集中"],
+      ["failed", "2026-11-05T00:00:00Z", "重试中"],
+      ["outcome_unknown", null, "待核实"],
+      ["failed", null, "需处理"],
+    ]) {
+      value.data!.schedule!.targets = [{ target: { state, next_attempt_at } }];
+      expect(autoCollectionState(value)).toBe(expected);
+    }
+  },
+);
