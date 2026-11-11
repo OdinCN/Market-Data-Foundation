@@ -357,9 +357,8 @@ def test_jolts_redirects_each_count_and_429_prevents_next_exchange(wire, tmp_pat
     assert all(r.closed for r in wire[2])
 
 
-def test_jolts_worker_composition_uses_shared_default_only_for_jolts(
-    monkeypatch, wire, tmp_path
-):
+@pytest.fixture
+def local_jolts_worker(monkeypatch, wire, tmp_path):
     path = tmp_path / "shared.json"
     monkeypatch.setattr(transport, "DEFAULT_REQUEST_CONTROL_PATH", path)
     monkeypatch.setattr(
@@ -385,6 +384,13 @@ def test_jolts_worker_composition_uses_shared_default_only_for_jolts(
         return real([sys.executable, "-c", "pass"], **options)
 
     monkeypatch.setattr(transport.subprocess, "Popen", local_worker)
+    return path, args_seen
+
+
+def test_jolts_worker_composition_uses_shared_default_only_for_jolts(
+    wire, local_jolts_worker
+):
+    path, args_seen = local_jolts_worker
     wire[0].append(dict(status=429, headers={"Retry-After": "3600"}))
     url = URL.replace("cpi_", "jolts_")
     with pytest.raises(BlsWebError, match="http_429"):
