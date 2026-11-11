@@ -158,6 +158,10 @@ def test_initialize_refreshes_240_months_with_buffer_and_calendar_split(
     request = command("initialize", start="2006-10", end="2026-09")
     result = host.submit(request)
     assert result["action"] == "initialize" and result["state"] == "complete"
+    assert result["result"]["release_material"]["state"] == "partial"
+    assert result["result"]["release_material"]["reasons"] == [
+        "offline_material_not_provided"
+    ]
     assert result["result"]["readback"]["refresh_coverage_complete"]
     assert (
         result["result"]["readback"]["expected_points"]

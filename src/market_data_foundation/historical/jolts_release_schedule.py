@@ -1,10 +1,12 @@
 """National JOLTS calendar and bounded maintenance over shared execution ports."""
 
+from contextlib import contextmanager
 from datetime import timedelta
 from urllib.parse import urlsplit
 from uuid import NAMESPACE_URL, uuid5
 
 from market_data_foundation.historical.bls_timeseries_profile import JOLTS_PROFILE
+from market_data_foundation.historical.bls_web_transport import BlsWebError
 from market_data_foundation.historical.cpi_release_schedule import (
     ICS_URL,
     CpiReleaseScheduler,
@@ -18,7 +20,10 @@ from market_data_foundation.historical.cpi_release_schedule import (
 from market_data_foundation.historical.cpi_release_schedule import (
     parse_official_ics as _parse_ics,
 )
-from market_data_foundation.historical.cpi_request_control import CpiRequestControl
+from market_data_foundation.historical.cpi_request_control import (
+    CpiRequestControl,
+    CpiRequestControlError,
+)
 from market_data_foundation.historical.cpi_timeseries import (
     DEFAULT_REQUEST_CONTROL_PATH,
 )
@@ -44,13 +49,32 @@ POLICY = {
 }
 
 
+class _PageAdmission:
+    """Keep shared-control refusals classified across the calendar adapter."""
+
+    def __init__(self, control):
+        self.control = control
+
+    @contextmanager
+    def attempt(self):
+        try:
+            with self.control.attempt() as ticket:
+                yield ticket
+        except CpiRequestControlError as error:
+            raise BlsWebError(
+                error.classification,
+                http_status=error.http_status,
+                retry_at=error.retry_at,
+            ) from None
+
+
 def fetch_official_page(url, *, observer=None):
     return _fetch_calendar(
         url,
         "text/calendar" if url == ICS_URL else "text/html",
         title="JOLTS",
         allowed_path=urlsplit(url).path,
-        request_control=CpiRequestControl(DEFAULT_REQUEST_CONTROL_PATH),
+        request_control=_PageAdmission(CpiRequestControl(DEFAULT_REQUEST_CONTROL_PATH)),
         observer=observer,
     )
 

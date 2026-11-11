@@ -494,6 +494,7 @@ class ReleaseRecords:
         material_format="retained_document",
         acquisition_method="explicit_operator_import",
         supersedes_evidence=None,
+        original_obtained_at=None,
     ):
         from market_data_foundation.historical.macro_release_material import (
             parse_material,
@@ -530,6 +531,15 @@ class ReleaseRecords:
             if material_format == "official_selected_projection"
             else "caller_supplied_document",
         }
+        if original_obtained_at is not None:
+            original = instant(original_obtained_at)
+            if (
+                acquisition_method != "retained_official_material_cache"
+                or self.profile.key != "jolts"
+                or original > obtained_at
+            ):
+                raise CpiTimeSeriesError("release_original_obtained_at_invalid")
+            doc["retention"]["original_obtained_at"] = original.isoformat()
         sha = digest(raw)
         eid = digest(
             canonical(

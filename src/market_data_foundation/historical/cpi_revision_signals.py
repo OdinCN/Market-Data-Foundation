@@ -13,10 +13,10 @@ from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlsplit
 
+from market_data_foundation.historical.bls_document_page import fetch_bls_page
 from market_data_foundation.historical.bls_timeseries_profile import CPI_PROFILE
 from market_data_foundation.historical.bls_web_transport import (
     BlsWebError,
-    fetch_bls_page,
 )
 from market_data_foundation.historical.cpi_timeseries_source import validate_month
 

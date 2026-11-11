@@ -1,6 +1,5 @@
 """M3 job material outcomes, independent of numeric success and source snapshots."""
 
-import http.client
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -8,6 +7,10 @@ from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
 from market_data_foundation.historical.m3_schedule import CALENDAR_URL
 from market_data_foundation.historical.macro_release_acquisition import MaterialAcquirer
 from market_data_foundation.historical.macro_release_material import official_url
+from market_data_foundation.historical.public_web_transport import (
+    PublicFetchError,
+    fetch_public,
+)
 
 
 def select_m3_material(snapshot, dataset, start, end, now):
@@ -46,27 +49,30 @@ def select_m3_material(snapshot, dataset, start, end, now):
 
 
 def fetch_m3_material(url, control):
-    parts = official_url("m3", url)
+    official_url("m3", url)
     if control is None:
         raise CpiTimeSeriesError("m3_material_request_control_unavailable")
-    connection = http.client.HTTPSConnection(parts.hostname, timeout=10)
-    try:
-        with control.attempt() as admission:
-            connection.request(
-                "GET",
-                parts.path,
-                headers={"Accept": "application/pdf", "Accept-Encoding": "identity"},
+    with control.attempt() as admission:
+        try:
+            response = fetch_public(
+                url,
+                "m3_pdf",
+                timeout=10,
+                accept="application/pdf",
+                on_headers=admission.record_response,
             )
-            response = connection.getresponse()
-            admission.record_response(response.status, dict(response.getheaders()))
-            if response.status != 200:
-                raise CpiTimeSeriesError(f"release_http_{response.status}")
-            raw = response.read(2_000_001)
-            if len(raw) > 2_000_000:
-                raise CpiTimeSeriesError("release_material_size_invalid")
-            return raw
-    finally:
-        connection.close()
+        except PublicFetchError as error:
+            reason = (
+                "release_material_size_invalid"
+                if error.classification == "payload_too_large"
+                else "release_" + error.classification
+            )
+            failure = CpiTimeSeriesError(reason)
+            failure.request_may_be_in_flight = error.request_may_be_in_flight
+            raise failure from None
+        if response.status != 200:
+            raise CpiTimeSeriesError(f"release_http_{response.status}")
+        return response.body
 
 
 def numeric_ready(result):

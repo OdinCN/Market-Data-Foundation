@@ -26,6 +26,7 @@ from market_data_foundation.historical.cpi_request_control import (
 )
 from market_data_foundation.historical.fred_alfred_vintage_live import load_api_key
 from market_data_foundation.source_request_policy import (
+    admitted_exchange,
     classify_source_exception,
     retry_delay_after,
     retryable_http_status,
@@ -248,11 +249,10 @@ class ClaimsFredSource:
                         with self._control.attempt() as control:
                             attempts += 1
                             self.attempts += 1
-                            response = self._transport(request)
-                            last_status = response.status
-                            retry_at = control.record_response(
-                                response.status, response.headers
+                            response, retry_at = admitted_exchange(
+                                self._transport, request, control
                             )
+                            last_status = response.status
                         break
                     except CpiRequestControlError as error:
                         delay = (

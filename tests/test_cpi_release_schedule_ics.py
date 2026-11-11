@@ -473,6 +473,13 @@ def test_cli_refresh_default_factory_fetches_ics_and_html_without_data_service(
         pytest.fail("calendar refresh must not initialize PG/Garage/data transport")
 
     monkeypatch.setattr(schedule, "fetch_bls_page", fetch)
+    # The unmapped fixture event must still be in the future. Freeze only the
+    # constructor clock, retaining the actual CLI default factory and assertions.
+    monkeypatch.setitem(
+        schedule.CpiReleaseScheduler.__init__.__kwdefaults__,
+        "clock",
+        lambda: datetime.fromisoformat("2026-10-28T20:00:00+00:00"),
+    )
     code = main(
         ["--schedule-state", str(tmp_path / "cli.json"), "schedule", "refresh"],
         service_factory=forbidden_service,

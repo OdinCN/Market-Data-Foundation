@@ -27,6 +27,7 @@ from market_data_foundation.historical.financial_daily import (
     series_ids,
 )
 from market_data_foundation.source_request_policy import (
+    admitted_exchange,
     classify_source_exception,
     retry_delay_after,
     retryable_http_status,
@@ -261,9 +262,8 @@ class DailyFredSource:
                         with self._control.attempt() as admitted:
                             attempts += 1
                             self.request_count += 1
-                            response = self._transport(request)
-                            retry = admitted.record_response(
-                                response.status, response.headers
+                            response, retry = admitted_exchange(
+                                self._transport, request, admitted
                             )
                         break
                     except CpiRequestControlError as error:

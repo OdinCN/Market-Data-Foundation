@@ -5,17 +5,15 @@ reservations/dedup/cooldown survive process restarts; there is no archive backlo
 """
 
 import fcntl
-import http.client
 import json
 import os
 import tempfile
-import time
 from datetime import timedelta
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from market_data_foundation.historical.bls_web_transport import fetch_bls_page
+from market_data_foundation.historical.bls_material_transport import fetch_bls_material
 from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
 from market_data_foundation.historical.macro_release_material import (
     MONTHS,
@@ -26,53 +24,31 @@ from market_data_foundation.historical.macro_release_records import (
     ReleaseRecords,
     instant,
 )
+from market_data_foundation.historical.public_web_transport import (
+    PublicFetchError,
+    fetch_public,
+)
 
 
 def fetch_official_material(url, family):
     official_url(family, url)
-    if family == "jolts":
-        from market_data_foundation.historical.jolts_release_schedule import (
-            fetch_official_page,
-        )
-
-        return fetch_official_page(url)
     if family in {"cpi", "ppi", "employment", "jolts"}:
-        return fetch_bls_page(url, allowed_path=urlsplit(url).path, timeout=5)
-    deadline = time.monotonic() + 20
-    original = urlsplit(url)
-    for hop in range(4):
-        parts = official_url(family, url)
-        if parts.path != original.path:
-            raise CpiTimeSeriesError("release_redirect_rejected")
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise CpiTimeSeriesError("release_transport_timeout")
-        connection = http.client.HTTPSConnection(
-            parts.hostname, timeout=min(5, remaining)
+        return fetch_bls_material(url, family)
+    route = "bea_material" if family in {"pce", "consumption"} else "retail_material"
+    try:
+        response = fetch_public(url, route, timeout=20)
+    except PublicFetchError as error:
+        reason = (
+            "release_material_size_invalid"
+            if error.classification == "payload_too_large"
+            else "release_" + error.classification
         )
-        try:
-            connection.request(
-                "GET",
-                parts.path,
-                headers={"Accept-Encoding": "identity", "Connection": "close"},
-            )
-            response = connection.getresponse()
-            if response.status in {301, 302, 303, 307, 308}:
-                target = response.getheader("Location")
-                if not target or hop == 3:
-                    raise CpiTimeSeriesError("release_redirect_rejected")
-                url = urljoin(url, target)
-                official_url(family, url)
-                continue
-            if response.status != 200:
-                raise CpiTimeSeriesError(f"release_http_{response.status}")
-            raw = response.read(2_000_001)
-            if len(raw) > 2_000_000:
-                raise CpiTimeSeriesError("release_material_size_invalid")
-            return raw
-        finally:
-            connection.close()
-    raise CpiTimeSeriesError("release_redirect_rejected")
+        raise CpiTimeSeriesError(reason) from None
+    if response.status in {301, 302, 303, 307, 308}:
+        raise CpiTimeSeriesError("release_redirect_rejected")
+    if response.status != 200:
+        raise CpiTimeSeriesError(f"release_http_{response.status}")
+    return response.body
 
 
 def select_material(family, snapshot, start, end, now):
@@ -211,9 +187,25 @@ def select_material(family, snapshot, start, end, now):
 
 
 class MaterialAcquirer:
-    def __init__(self, state_path, *, fetcher=None):
+    def __init__(
+        self,
+        state_path,
+        *,
+        fetcher=None,
+        acquisition_method="bounded_official_transport",
+        cached_original=None,
+        original_obtained_at=None,
+    ):
         self.path = Path(state_path)
         self.fetcher = fetcher or fetch_official_material
+        self.acquisition_method = acquisition_method
+        self.cached_original = cached_original
+        self.original_obtained_at = original_obtained_at
+        if (
+            cached_original is not None
+            and acquisition_method != "retained_official_material_cache"
+        ):
+            raise CpiTimeSeriesError("release_cached_original_method_invalid")
 
     def _save(self, state):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -331,7 +323,11 @@ class MaterialAcquirer:
             r
             for r in retained
             if r.get("retention", {}).get("acquisition_method")
-            in {"bounded_official_transport", "shared_original_material_cache"}
+            in {
+                "bounded_official_transport",
+                "shared_original_material_cache",
+                "retained_official_material_cache",
+            }
         ]
         if acquired:
             return dict(
@@ -340,7 +336,13 @@ class MaterialAcquirer:
                 event_ids=[identity],
                 evidence_ids=[r["evidence_id"] for r in acquired],
                 evidence_origin=(
-                    "previous_shared_original_material_cache"
+                    "previous_retained_official_material_cache"
+                    if all(
+                        r.get("retention", {}).get("acquisition_method")
+                        == "retained_official_material_cache"
+                        for r in acquired
+                    )
+                    else "previous_shared_original_material_cache"
                     if all(
                         r.get("retention", {}).get("acquisition_method")
                         == "shared_original_material_cache"
@@ -375,6 +377,7 @@ class MaterialAcquirer:
             except ValueError, OSError:
                 return dict(base, reasons=["release_material_state_unknown"])
             old = state.get(key, {})
+            local_original = self.cached_original is not None
             if old.get("state") == "retained":
                 if family in {"m3", "jolts"} and not retained:
                     return dict(base, reasons=["release_retained_scope_unconfirmed"])
@@ -388,6 +391,8 @@ class MaterialAcquirer:
                     reasons=old.get("missing", []),
                 )
             if (
+                not local_original or "outcome_unknown" in str(old.get("reason", ""))
+            ) and (
                 old.get("attempts", 0) >= 3
                 or old.get("next_attempt_at")
                 and instant(old["next_attempt_at"]) > now
@@ -401,15 +406,20 @@ class MaterialAcquirer:
             attempt = dict(
                 selection,
                 state="running",
-                attempts=old.get("attempts", 0) + 1,
+                attempts=old.get("attempts", 0) + (0 if local_original else 1),
                 attempted_at=now.isoformat(),
                 next_attempt_at=(now + timedelta(hours=1)).isoformat(),
             )
             state[key] = attempt
             self._save(state)
-            base.update(provider_requests=1, transport_calls=1)
+            base.update(
+                provider_requests=0 if local_original else 1,
+                transport_calls=0 if local_original else 1,
+            )
             try:
-                if family in {"pce", "consumption"}:
+                if local_original:
+                    raw = self.cached_original
+                elif family in {"pce", "consumption"}:
                     from market_data_foundation.historical.bea_shared_material import (
                         cached_material,
                     )
@@ -451,8 +461,9 @@ class MaterialAcquirer:
                     acquisition_method=(
                         "shared_original_material_cache"
                         if family in {"pce", "consumption"} and not fetched
-                        else "bounded_official_transport"
+                        else self.acquisition_method
                     ),
+                    original_obtained_at=self.original_obtained_at,
                 )
                 attempt.update(
                     state="retained",
@@ -526,6 +537,21 @@ def capture_for_execution(
         )
         if numeric_result.get("collection_id"):
             ids.append(numeric_result["collection_id"])
+        if repo.profile.key == "jolts":
+            from market_data_foundation.historical.jolts_historical_material import (
+                capture,
+            )
+
+            return capture(
+                service.store,
+                snapshot,
+                start,
+                end,
+                state_path,
+                fetcher=fetcher or fetch_official_material,
+                batch_ids=ids,
+                selection=selection,
+            )
         return MaterialAcquirer(state_path, fetcher=fetcher).capture(
             service.store, selection, batch_ids=ids
         )

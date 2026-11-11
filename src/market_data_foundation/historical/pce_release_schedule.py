@@ -11,13 +11,11 @@ import hashlib
 import json
 import os
 import re
-import ssl
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler
 from zoneinfo import ZoneInfo
 
 from market_data_foundation.historical.bls_timeseries_profile import PCE_PROFILE
@@ -45,6 +43,10 @@ from market_data_foundation.historical.cpi_timeseries_source import (
     CpiSourceError,
     validate_month,
 )
+from market_data_foundation.historical.public_web_transport import (
+    PublicFetchError,
+    fetch_public,
+)
 
 CALENDAR_URL = "https://www.bea.gov/news/schedule/full"
 ICS_URL = "https://www.bea.gov/news/schedule/ics/online-calendar-subscription.ics"
@@ -71,27 +73,33 @@ def fetch_official_html():
 
 
 def _fetch_calendar(url, accept):
-    request = Request(url, headers={"Accept": accept})
     try:
-        with build_opener(_NoRedirect()).open(request, timeout=15) as response:
-            raw = response.read(MAX_CALENDAR_BYTES + 1)
-    except PceScheduleError:
-        raise
-    except HTTPError as error:
+        response = fetch_public(
+            url, "bea_calendar", max_bytes=MAX_CALENDAR_BYTES, timeout=15, accept=accept
+        )
+    except PublicFetchError as error:
+        suffix = {
+            "tls_failed": "tls_failure",
+            "payload_too_large": "payload_invalid",
+            "worker_cleanup_unknown": "request_outcome_unknown",
+            "worker_outcome_unknown": "request_outcome_unknown",
+        }.get(error.classification, error.classification)
         raise PceScheduleError(
-            f"bea_calendar_http_{error.code}",
-            http_status=error.code,
+            "bea_calendar_" + suffix,
+            http_status=error.http_status,
             retry_at=retry_after(error.headers.get("Retry-After")),
         ) from None
-    except (ssl.SSLError, URLError) as error:
-        if isinstance(error, ssl.SSLError) or isinstance(error.reason, ssl.SSLError):
-            raise PceScheduleError("bea_calendar_tls_failure") from None
-        raise PceScheduleError("bea_calendar_fetch_failed") from None
-    except Exception:
-        raise PceScheduleError("bea_calendar_fetch_failed") from None
-    if not raw or len(raw) > MAX_CALENDAR_BYTES:
+    if response.status != 200:
+        if response.status in {301, 302, 303, 307, 308}:
+            raise PceScheduleError("bea_calendar_redirect_rejected")
+        raise PceScheduleError(
+            f"bea_calendar_http_{response.status}",
+            http_status=response.status,
+            retry_at=retry_after(response.headers.get("Retry-After")),
+        )
+    if not response.body:
         raise PceScheduleError("bea_calendar_payload_invalid")
-    return raw
+    return response.body
 
 
 def _reference_months(title):

@@ -2,7 +2,6 @@
 
 import copy
 import hashlib
-import http.client
 import random
 from datetime import timedelta
 from pathlib import Path
@@ -37,6 +36,10 @@ from market_data_foundation.historical.cpi_request_control import (
 )
 from market_data_foundation.historical.cpi_timeseries import month_at, month_number
 from market_data_foundation.historical.pce_release_schedule import PceReleaseScheduler
+from market_data_foundation.historical.public_web_transport import (
+    PublicFetchError,
+    fetch_public,
+)
 
 RETAIL_PROFILE = SimpleNamespace(key="retail", label="零售销售", earliest_month=None)
 RETRY_SECONDS = (15, 30, 60, 120, 300, 900, 1800, 3600)
@@ -51,8 +54,12 @@ class CensusControlledTransport:
     def get(self, *args, **kwargs):
         try:
             with self.control.attempt() as attempt:
-                response = self.transport.get(*args, **kwargs)
-                attempt.record_response(response.status, response.headers)
+                early = getattr(self.transport, "get_with_headers", None)
+                if early is not None:
+                    response = early(attempt.record_response, *args, **kwargs)
+                else:
+                    response = self.transport.get(*args, **kwargs)
+                    attempt.record_response(response.status, response.headers)
                 return response
         except CpiRequestControlError as error:
             raise RetailSourceError(
@@ -63,25 +70,31 @@ class CensusControlledTransport:
 
 
 class CensusCalendarTransport:
-    def get(self, year=None):
+    def get_with_headers(self, callback, year=None):
+        return self.get(year, on_headers=callback)
+
+    def get(self, year=None, *, on_headers=None):
         from market_data_foundation.historical.census_retail_live import HttpResult
 
-        connection = http.client.HTTPSConnection("www.census.gov", timeout=20)
+        url = annual_calendar_url(year) if year is not None else CALENDAR_URL
         try:
-            connection.request(
-                "GET",
-                annual_calendar_url(year).removeprefix("https://www.census.gov")
-                if year is not None
-                else "/retail/release_schedule.html",
-                headers={"Accept-Encoding": "identity"},
+            response = fetch_public(
+                url,
+                "retail_calendar",
+                timeout=20,
+                max_bytes=MAX_CALENDAR_BYTES,
+                on_headers=on_headers,
             )
-            response = connection.getresponse()
-            body = response.read(MAX_CALENDAR_BYTES + 1)
-            if len(body) > MAX_CALENDAR_BYTES:
-                raise RetailSourceError("census_retail_calendar_too_large")
-            return HttpResult(response.status, body, dict(response.getheaders()))
-        finally:
-            connection.close()
+        except PublicFetchError as error:
+            if error.classification == "payload_too_large":
+                raise RetailSourceError("census_retail_calendar_too_large") from None
+            failure = RetailSourceError(
+                "census_retail_calendar_" + error.classification,
+                http_status=error.http_status,
+            )
+            failure.request_may_be_in_flight = error.request_may_be_in_flight
+            raise failure from None
+        return HttpResult(response.status, response.body, response.headers)
 
 
 def calendar_fetcher(control):

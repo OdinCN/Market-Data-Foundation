@@ -299,6 +299,10 @@ def test_real_host_release_waits_for_target_then_accepts_zero(setup, target_valu
     job = host.journal.list()[0]
     assert job["state"] == "complete"
     assert job["result"]["readback"]["verified"] is True
+    assert job["result"]["release_material"]["state"] == "partial"
+    assert job["result"]["release_material"]["reasons"] == [
+        "offline_material_not_provided"
+    ]
     assert len(job["result"]["source_missing"]) == 8
     assert not first["targets"][0]["target_available"]
     assert host.scheduler.due_check()["action"] == "not_due"

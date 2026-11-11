@@ -25,6 +25,12 @@ from market_data_foundation.historical.financial_daily import (
     series_ids,
 )
 from market_data_foundation.historical.financial_daily_source import DailyFredSource
+from market_data_foundation.historical.public_web_transport import (
+    PublicFetchError,
+    fetch_public,
+    header_aware,
+    raise_io,
+)
 
 BOARD = "https://www.federalreserve.gov/monetarypolicy/openmarket.htm"
 NYFED = "https://markets.newyorkfed.org/api/rates/"
@@ -435,7 +441,8 @@ def validate(batch):
         raise FinancialError("financial_origin_batch_invalid")
 
 
-def direct_transport(request):
+@header_aware
+def direct_transport(request, *, on_headers=None):
     u = urlsplit(request.url)
     if (
         u.scheme != "https"
@@ -447,6 +454,32 @@ def direct_transport(request):
         not in {"www.federalreserve.gov", "markets.newyorkfed.org", "home.treasury.gov"}
     ):
         raise FinancialError("financial_origin_endpoint_rejected")
+    if u.hostname != "markets.newyorkfed.org":
+        url = request.url + (
+            "?" + urlencode(request.parameters) if request.parameters else ""
+        )
+        try:
+            response = fetch_public(
+                url,
+                "board" if u.hostname == "www.federalreserve.gov" else "treasury",
+                timeout=30,
+                accept="text/html"
+                if u.hostname == "www.federalreserve.gov"
+                else "application/xml",
+                on_headers=on_headers,
+            )
+        except PublicFetchError as error:
+            try:
+                raise_io(error)
+            except PublicFetchError:
+                reason = (
+                    "financial_origin_response_too_large"
+                    if error.classification == "payload_too_large"
+                    else "financial_origin_" + error.classification
+                )
+                raise FinancialError(reason) from None
+        return ClaimsResponse(response.status, response.body, response.headers)
+    # Existing NY Fed numeric JSON API: keep its headers and wire contract.
     c = http.client.HTTPSConnection(u.hostname, timeout=30)
     try:
         c.request(
@@ -464,7 +497,10 @@ def direct_transport(request):
         raw = r.read(2_000_001)
         if len(raw) > 2_000_000:
             raise FinancialError("financial_origin_response_too_large")
-        return ClaimsResponse(r.status, raw, dict(r.getheaders()))
+        headers = dict(r.getheaders())
+        if on_headers is not None:
+            on_headers(r.status, headers)
+        return ClaimsResponse(r.status, raw, headers)
     finally:
         c.close()
 

@@ -5,8 +5,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.error import HTTPError
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler
 
 from market_data_foundation.historical.calendar_resilience import AcquiredCalendar
 from market_data_foundation.historical.claims_calendar import (
@@ -20,6 +19,12 @@ from market_data_foundation.historical.claims_source import (
     ClaimsResponse,
 )
 from market_data_foundation.historical.cpi_release_schedule import _write_atomic
+from market_data_foundation.historical.public_web_transport import (
+    PublicFetchError,
+    fetch_public,
+    header_aware,
+    raise_io,
+)
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -27,22 +32,36 @@ class _NoRedirect(HTTPRedirectHandler):
         raise ClaimsError("claims_dol_redirect_rejected")
 
 
-def public_transport(request):
+@header_aware
+def public_transport(request, *, on_headers=None):
     if request.url not in {PRIMARY_URL, BACKUP_URL, CURRENT_REPORT_URL}:
         raise ClaimsError("claims_dol_url_invalid")
     try:
-        response = build_opener(_NoRedirect()).open(
-            Request(request.url, headers={"Accept-Encoding": "identity"}), timeout=12
+        response = fetch_public(
+            request.url,
+            "dol",
+            max_bytes=8 * 1024 * 1024,
+            timeout=12,
+            accept="application/pdf"
+            if request.url == CURRENT_REPORT_URL
+            else "text/html",
+            on_headers=on_headers,
         )
-    except HTTPError as error:
-        response = error
-    with response:
-        if response.headers.get("Content-Encoding", "identity").lower() != "identity":
-            raise ClaimsError("claims_dol_encoding_rejected")
-        raw = response.read(8 * 1024 * 1024 + 1)
-        if not raw or len(raw) > 8 * 1024 * 1024:
-            raise ClaimsError("claims_dol_size_invalid")
-        return ClaimsResponse(response.status, raw, dict(response.headers))
+    except PublicFetchError as error:
+        try:
+            raise_io(error)
+        except PublicFetchError:
+            reason = (
+                "claims_dol_size_invalid"
+                if error.classification == "payload_too_large"
+                else "claims_dol_" + error.classification
+            )
+            raise ClaimsError(reason) from None
+    if response.status in {301, 302, 303, 307, 308}:
+        raise ClaimsError("claims_dol_redirect_rejected")
+    if not response.body:
+        raise ClaimsError("claims_dol_size_invalid")
+    return ClaimsResponse(response.status, response.body, response.headers)
 
 
 def material_fetcher(

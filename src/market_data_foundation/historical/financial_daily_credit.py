@@ -1,10 +1,8 @@
 """Owner-bound pinned credit archive and explicit FRED credit-only DEV tail."""
 
 import csv
-import http.client
 import io
 from types import SimpleNamespace
-from urllib.parse import urlsplit
 
 from market_data_foundation.historical.claims_source import ClaimsResponse
 from market_data_foundation.historical.cpi_request_control import CpiRequestControl
@@ -17,6 +15,12 @@ from market_data_foundation.historical.financial_daily import (
     instant,
 )
 from market_data_foundation.historical.financial_daily_source import DailyFredSource
+from market_data_foundation.historical.public_web_transport import (
+    PublicFetchError,
+    fetch_public,
+    header_aware,
+    raise_io,
+)
 
 CREDIT = ("BAMLC0A0CM", "BAMLH0A0HYM2")
 ARCHIVE_COMMIT = "5f63f9ad367be0e9d28aac6a7b982500c23ffaa6"
@@ -157,23 +161,32 @@ def validate_archive(batch):
         raise FinancialError("financial_credit_archive_batch_invalid")
 
 
-def archive_transport(request):
+@header_aware
+def archive_transport(request, *, on_headers=None):
     if (
         request.url not in {ARCHIVE_ROOT + f for f in FILES.values()}
         or request.parameters
     ):
         raise FinancialError("financial_archive_endpoint_rejected")
-    u = urlsplit(request.url)
-    c = http.client.HTTPSConnection(u.hostname, timeout=30)
     try:
-        c.request("GET", u.path, headers={"Accept-Encoding": "identity"})
-        r = c.getresponse()
-        raw = r.read(2_000_001)
-        if len(raw) > 2_000_000:
-            raise FinancialError("financial_archive_response_too_large")
-        return ClaimsResponse(r.status, raw, dict(r.getheaders()))
-    finally:
-        c.close()
+        response = fetch_public(
+            request.url,
+            "credit_archive",
+            timeout=30,
+            accept="text/csv",
+            on_headers=on_headers,
+        )
+    except PublicFetchError as error:
+        try:
+            raise_io(error)
+        except PublicFetchError:
+            reason = (
+                "financial_archive_response_too_large"
+                if error.classification == "payload_too_large"
+                else "financial_archive_" + error.classification
+            )
+            raise FinancialError(reason) from None
+    return ClaimsResponse(response.status, response.body, response.headers)
 
 
 class CreditArchiveSource(DailyFredSource):
