@@ -865,6 +865,11 @@ it("E: real fixture plan → child execution → same plan/asset and accepted fa
   );
   fireEvent.click(btn("创建采集任务"));
   await screen.findByText(/意图已持久接收/);
+  await ready();
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(screen.getByText(/意图已持久接收/)).toBeTruthy();
   expect(
     screen.getByRole("tab", { name: "执行记录" }).getAttribute("aria-selected"),
   ).toBe("true");

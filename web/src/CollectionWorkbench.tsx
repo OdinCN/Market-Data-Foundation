@@ -175,6 +175,12 @@ export function CollectionWorkbench({
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const acceptedReceiptScope = useRef<{
+    asset: string;
+    operation: string | undefined;
+    job: string | null;
+    plan: string | null;
+  } | null>(null);
   const [uncertain, setUncertain] = useState(false);
   const reservedIntents = useRef(new Set<string>());
   const rangeEdited = useRef(false);
@@ -800,9 +806,29 @@ export function CollectionWorkbench({
   }, [mode, backingJob?.id, backingJob?.reference]);
   useEffect(() => {
     setConfirmed(false);
-    setNotice(null);
     setUncertain(false);
   }, [asset && keyOf(asset.key), context?.source?.id, mode, jobId]);
+  useEffect(() => {
+    const receipt = acceptedReceiptScope.current;
+    if (
+      !receipt ||
+      tab !== "executions" ||
+      receipt.asset !== (asset && keyOf(asset.key)) ||
+      receipt.operation !== context?.source?.id ||
+      receipt.job !== jobId ||
+      receipt.plan !== scheduleId
+    ) {
+      setNotice(null);
+      acceptedReceiptScope.current = null;
+    }
+  }, [
+    asset && keyOf(asset.key),
+    context?.source?.id,
+    mode,
+    jobId,
+    scheduleId,
+    tab,
+  ]);
   const matches =
     isCpi &&
     jobs.data?.asset_identity === asset?.key.identity &&
@@ -1156,6 +1182,12 @@ export function CollectionWorkbench({
           throw new Error("invalid_receipt");
       }
       if (active.current) {
+        acceptedReceiptScope.current = {
+          asset: keyOf(asset!.key),
+          operation: context?.source?.id,
+          job: acceptedJob,
+          plan: acceptedJob ? null : parent!.identity,
+        };
         setNotice("意图已持久接收，执行结果以独立回查为准。");
         setConfirmed(false);
         setRefresh((n) => n + 1);
