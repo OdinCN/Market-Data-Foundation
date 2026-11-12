@@ -643,10 +643,11 @@ export function DateField({
                       value={timeParts[index] ?? "00"}
                       onChange={(event) => {
                         const parts = [...timeParts];
+                        const [whole, fraction] = event.target.value.split(".");
                         parts[index] =
-                          event.target.value === ""
+                          whole === ""
                             ? ""
-                            : event.target.value.padStart(2, "0");
+                            : `${whole.padStart(2, "0")}${fraction === undefined ? "" : `.${fraction}`}`;
                         setDraft(
                           `${normalize(draft.slice(0, 10), "date") || beijingToday()}T${parts.join(":")}`,
                         );

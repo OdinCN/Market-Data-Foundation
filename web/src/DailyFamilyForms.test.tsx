@@ -318,3 +318,34 @@ it("shows the job origin returned by the API", () => {
   expect(tdxJobOrigin({ ...job, origin: undefined })).toBe("触发来源待核实");
   expect(tdxJobOrigin(job)).toBe("手动采集");
 });
+it.each(["金融日频", "TDX"])(
+  "%s rejects a history response that differs by one microsecond",
+  async (family) => {
+    const f = fixture(family, async (url) =>
+      Response.json({
+        ...response(family, url),
+        as_of: new URL(url, "http://fixture").searchParams
+          .get("as_of")!
+          .replace("123456", "123457"),
+      }),
+    );
+    mountQuery(family, f.transport);
+    if (family === "TDX")
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText("结束日期") as HTMLInputElement).value,
+        ).toBe(date),
+      );
+    change("开始日期", date);
+    change("结束日期", date);
+    fireEvent.click(screen.getByRole("checkbox", { name: "历史截止查询" }));
+    change("截止时间（北京时间）", "2026-11-12T15:00:00.123456");
+    fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
+    await screen.findByRole("alert");
+    expect(screen.queryByRole("region", { name: "日线结果" })).toBeNull();
+    expect(
+      screen.queryByRole("table", { name: "金融条件日频 范围数据" }),
+    ).toBeNull();
+    expect(f.calls.filter((c) => c.url.includes("/query?"))).toHaveLength(1);
+  },
+);

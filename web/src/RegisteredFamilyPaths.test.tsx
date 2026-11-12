@@ -186,6 +186,17 @@ it.each([TDX_FAMILY, future])(
     );
     expect(screen.getByLabelText("搜索数据资产")).toBeTruthy();
     expect(screen.getByLabelText("接入包筛选")).toBeTruthy();
+    const scope = new URLSearchParams(location.hash.slice(1));
+    expect(scope.has("as_of")).toBe(false);
+    expect(scope.has("reference")).toBe(false);
+    if (family === TDX_FAMILY)
+      expect(
+        (
+          screen.getByRole("checkbox", {
+            name: "历史截止查询",
+          }) as HTMLInputElement
+        ).checked,
+      ).toBe(false);
     expect(
       screen.queryByRole("navigation", { name: "TDX 日线操作" }),
     ).toBeNull();

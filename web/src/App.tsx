@@ -165,6 +165,20 @@ export default function App({
       !("reference" in fields)
     )
       hash.set("reference", PCE_REFERENCE);
+    // Selecting a registered asset opens its current data. A dated link can
+    // supply its own scope; the legacy monthly reader's default is unrelated.
+    if (
+      hash.get("view") === "assets" &&
+      fields.asset &&
+      runtimeFamilies.some(
+        (family) => family.asset.identity === fields.asset,
+      ) &&
+      !("as_of" in fields) &&
+      !("reference" in fields)
+    ) {
+      hash.delete("as_of");
+      hash.delete("reference");
+    }
     location.hash = hash.toString();
     setPage(appRoute());
     const selectingStrategy =
