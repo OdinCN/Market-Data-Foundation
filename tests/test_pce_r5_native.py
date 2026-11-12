@@ -43,9 +43,9 @@ def client(app, origin=CANDIDATE_ORIGIN):
 
 
 def assert_financial_inventory(entries):
-    # Six explicitly registered paths extend the original 21-entry inventory;
+    # Six financial paths and TDX daily extend the original 21-entry inventory;
     # registration does not qualify a source or activate a runtime binding.
-    assert len(entries) == 27
+    assert len(entries) == 28
     financial = [
         e
         for e in entries

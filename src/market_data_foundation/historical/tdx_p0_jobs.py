@@ -271,6 +271,10 @@ class DailyJobs:
             if record["state"] == "COMPLETE":
                 return record
             record["resume_count"] += 1
+            if record.get("finished_at"):
+                record["last_attempt_finished_at"] = record["finished_at"]
+            record["finished_at"] = None
+            record["resumed_at"] = now()
             for step in record["steps"]:
                 pending = step.get("pending")
                 terminal_overlap = False
@@ -728,6 +732,7 @@ def coverage(store, day, *, as_of=None, job=None):
             post_delisting=0,
             market_closed=0,
             confirmed_suspended=0,
+            suspended_with_bars=0,
             active_count=0,
             lifecycle_unknown=0,
         )
@@ -763,11 +768,12 @@ def coverage(store, day, *, as_of=None, job=None):
             )
             if state == "ACTIVE" and calendar and not calendar["is_open"]:
                 counts["market_closed"] += 1
+            elif state == "ACTIVE" and suspended:
+                counts["confirmed_suspended"] += 1
+                counts["suspended_with_bars"] += int(key in rows)
             elif key in rows:
                 counts["valid_bars"] += 1
                 counts["zero_volume_bars"] += int(rows[key]["volume"] == 0)
-            elif state == "ACTIVE" and suspended:
-                counts["confirmed_suspended"] += 1
             else:
                 classification = (
                     failures[key]["classification"]

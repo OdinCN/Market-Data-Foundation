@@ -264,6 +264,16 @@ def test_coverage_can_prove_complete_and_respects_evidence_time_and_job_scope():
     assert report["complete"] is True
     assert report["markets"][0]["confirmed_suspended"] == 0
     assert report["markets"][2]["confirmed_suspended"] == 1
+    # A native zero-volume projection cannot override dated exchange evidence.
+    snapshot["details"]["suspensions"].append(
+        dict(snapshot["details"]["suspensions"][0], market=0)
+    )
+    report = coverage(Store(), day, as_of=cutoff)
+    assert report["complete"] is True
+    assert report["markets"][0]["valid_bars"] == 0
+    assert report["markets"][0]["confirmed_suspended"] == 1
+    assert report["markets"][0]["suspended_with_bars"] == 1
+    assert report["markets"][0]["expected_trading_count"] == 0
     snapshot["details"]["suspensions"][0]["available_at"] = "2026-11-12T10:00:00+00:00"
     job = dict(
         command=dict(start="2025-01-01", end="2025-01-02"),

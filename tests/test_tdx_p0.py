@@ -229,7 +229,10 @@ def test_commit_unknown_cold_resume_uses_original_page_without_refetch(tmp_path)
     assert failed["state"] == "PARTIAL" and pending
     assert len(store.oracle.current) == 800
     rebuilt = DailyJobs(host.directory, store, host.source_factory, workers=1)
-    rebuilt.resume(command["request_id"], launch=False)
+    queued = rebuilt.resume(command["request_id"], launch=False)
+    assert queued["finished_at"] is None
+    assert queued["last_attempt_finished_at"] == failed["finished_at"]
+    assert queued["resumed_at"] >= failed["finished_at"]
     completed = rebuilt.run(command["request_id"])
     assert completed["state"] == "COMPLETE"
     assert sources[1].offsets == [799]

@@ -61,6 +61,7 @@ type Market = {
   pre_listing?: number;
   post_delisting?: number;
   confirmed_suspended?: number;
+  suspended_with_bars?: number;
   calendar_state?: string;
   complete?: boolean;
 };
@@ -439,6 +440,7 @@ export function TdxDailyWorkbench({
                   "未上市",
                   "已退市",
                   "已证实停牌",
+                  "停牌但来源有线",
                   "交易日证据",
                 ]}
                 rows={coverage.markets.map((m) => ({
@@ -454,6 +456,7 @@ export function TdxDailyWorkbench({
                     m.pre_listing ?? "未知",
                     m.post_delisting ?? "未知",
                     m.confirmed_suspended ?? 0,
+                    m.suspended_with_bars ?? 0,
                     m.calendar_state ?? "UNKNOWN",
                   ],
                 }))}
