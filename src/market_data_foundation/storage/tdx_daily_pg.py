@@ -48,7 +48,7 @@ class Bar:
     units: str = UNITS
 
     def __post_init__(self):
-        require(type(self.market) is int and self.market in (0, 1), "market_invalid")
+        require(type(self.market) is int and self.market in (0, 1, 2), "market_invalid")
         require(
             type(self.instrument) is str
             and re.fullmatch(r"[0-9]{6}", self.instrument) is not None,
@@ -287,9 +287,12 @@ POLICY_CHECK = """WITH scopes AS (
     SELECT * FROM jsonb_to_recordset(%(scopes)s::jsonb)
         AS s(market smallint, instrument text)
 ), persisted AS (
-    SELECT c.value_source AS source,c.source_priority
-    FROM mdf_tdx_daily.bars_daily_current c JOIN scopes s USING (market,instrument)
-    WHERE c.period='1d' AND c.basis='native_projection'
+    SELECT c.value_source AS source,c.source_priority FROM scopes s
+    CROSS JOIN LATERAL (
+        SELECT value_source,source_priority FROM mdf_tdx_daily.bars_daily_current c
+        WHERE c.market=s.market AND c.instrument=s.instrument
+          AND c.period='1d' AND c.basis='native_projection' OFFSET 0
+    ) c
     UNION ALL
     SELECT r.source,r.source_priority
     FROM mdf_tdx_daily.source_refresh_batches r JOIN scopes s USING (market,instrument)
@@ -300,7 +303,7 @@ WHERE (%(registry)s::jsonb ->> source)::integer IS DISTINCT FROM source_priority
 LIMIT 1"""
 
 
-def write_batch(conn, batch: Batch):
+def write_batch(conn, batch: Batch, *, independent_instruments: bool = False):
     """Future authorized caller supplies a fresh idle psycopg3 connection.
 
     A complete transaction owns COPY, classification, changes, log and receipt.
@@ -336,9 +339,23 @@ def write_batch(conn, batch: Batch):
         cur.execute("SET LOCAL search_path = pg_catalog, pg_temp")
         cur.execute("SET LOCAL lock_timeout = '5s'")
         cur.execute("SET LOCAL statement_timeout = '30s'")
-        # One fixed lock for this small native daily namespace, all sources.
-        # Next statement takes its snapshot AFTER acquiring this xact lock.
-        cur.execute("SELECT pg_advisory_xact_lock(721603, 1)")
+        cur.execute("SET LOCAL jit = off")
+        if independent_instruments:
+            # The shared lock still excludes the original global B1 writer and DDL.
+            cur.execute("SELECT pg_advisory_xact_lock_shared(721603, 1)")
+            cur.execute(
+                "SELECT pg_advisory_xact_lock(721604, hashtext(%s))",
+                (batch.source + ":" + batch.batch_id,),
+            )
+            # Acquire overlapping scopes in the same order across writers.
+            for market, instrument in sorted({bar.key[:2] for bar in batch.bars}):
+                cur.execute(
+                    "SELECT pg_advisory_xact_lock(721605, %s)",
+                    (market * 1000000 + int(instrument),),
+                )
+        else:
+            cur.execute("SELECT pg_advisory_xact_lock(721603, 1)")
+
         cur.execute(POLICY_CHECK, params)
         require(cur.fetchone() is None, "persisted_source_rank_mismatch")
         cur.execute(
@@ -362,11 +379,13 @@ def write_batch(conn, batch: Batch):
                 copy.write_row(
                     (*bar.copy_row(), batch.request_index(bar), batch.received_at(bar))
                 )
+        cur.execute("ANALYZE pg_temp.tdx_daily_stage")
         cur.execute(RANGE_CHECK, params)
         require(cur.fetchone() is None, "sql_batch_range_invalid")
         cur.execute(DUPLICATES)
         require(cur.fetchone() is None, "conflicting_duplicate_key")
         cur.execute(sql_file("003_classify.sql"), params)
+        cur.execute("ANALYZE pg_temp.tdx_daily_delta")
         cur.execute("""SELECT disposition,count(*) FROM pg_temp.tdx_daily_delta
             GROUP BY disposition""")
         counts = dict(cur.fetchall())
@@ -389,7 +408,7 @@ def write_batch(conn, batch: Batch):
 
 def cold_read(conn, *, market, instrument, day_start, day_end):
     """Bounded current facts; projections remain source native integers."""
-    require(type(market) is int and market in (0, 1), "market_invalid")
+    require(type(market) is int and market in (0, 1, 2), "market_invalid")
     require(
         type(instrument) is str and re.fullmatch(r"[0-9]{6}", instrument),
         "instrument_invalid",

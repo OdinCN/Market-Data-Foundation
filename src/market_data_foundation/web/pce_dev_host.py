@@ -74,7 +74,18 @@ def _readonly_review_origin():
 
 def admitted(request: Request, *, origin=ORIGIN):
     try:
-        if origin not in {ORIGIN, CANDIDATE_ORIGIN}:
+        # The isolated TDX composition declares its read origin on the same app.
+        # Existing read gates consume that declaration; mutation gates keep
+        # their explicit origin checks.
+        state = getattr(request.scope.get("app"), "state", None)
+        if origin == CANDIDATE_ORIGIN and request.method in {"GET", "HEAD"}:
+            origin = getattr(state, "mdf_dev_read_origin", origin)
+        if origin not in {
+            ORIGIN,
+            CANDIDATE_ORIGIN,
+            "http://192.168.10.20:18766",
+            "http://192.168.10.20:18767",
+        }:
             return False
         peer = ipaddress.ip_address(request.client.host)
         review_origin = _readonly_review_origin()

@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+from zoneinfo import ZoneInfo
 
 from market_data_foundation.canonical.model import require
 from market_data_foundation.qualification.tdx_market_evidence import admit_line
@@ -55,7 +56,9 @@ def native_bar(market, instrument, native):
     """Native daily projection only; Last never enters the economic fact."""
     clock = datetime.fromisoformat(native["Time"])
     require(
-        clock.utcoffset() == timedelta(hours=8)
+        # Receipts may use fixed Beijing time or the historical Shanghai civil offset.
+        clock.utcoffset()
+        in (timedelta(hours=8), ZoneInfo("Asia/Shanghai").utcoffset(clock))
         and (clock.hour, clock.minute, clock.second, clock.microsecond)
         == (15, 0, 0, 0),
         "sdk_date_projection_invalid",

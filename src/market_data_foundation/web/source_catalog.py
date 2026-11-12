@@ -93,6 +93,15 @@ from market_data_foundation.historical.m3_contract import (
     M3_SOURCE,
 )
 from market_data_foundation.historical.sdmx_official import _contracts as sdmx_contracts
+from market_data_foundation.historical.tdx_p0_contract import (
+    BINDING as TDX_P0_BINDING,
+)
+from market_data_foundation.historical.tdx_p0_contract import (
+    DEFINITION as TDX_P0_DEFINITION,
+)
+from market_data_foundation.historical.tdx_p0_contract import (
+    SOURCE as TDX_P0_SOURCE,
+)
 from market_data_foundation.historical.tdx_recent_daily import (
     RECENT_BINDING,
     RECENT_SOURCE,
@@ -401,6 +410,17 @@ def directory(query: DirectoryQuery) -> DirectoryDTO:
         ),
     )
     entries = [_entry(*spec) for spec in specs]
+    entries.append(
+        _entry(
+            "TDX",
+            "TDX",
+            "tdx_p0_contract",
+            "SOURCE",
+            TDX_P0_SOURCE,
+            TDX_P0_BINDING,
+            TDX_P0_DEFINITION,
+        )
+    )
     entries.extend(
         _entry(
             "Macro",

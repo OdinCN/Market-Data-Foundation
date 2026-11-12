@@ -1,3 +1,4 @@
+import { TdxDailyWorkbench, TDX_DAILY } from "./TdxDailyWorkbench";
 import { FINANCIAL, FinancialDailyWorkbench } from "./FinancialDailyWorkbench";
 import {
   M3_PROFILE,
@@ -497,6 +498,10 @@ export default function App({
   );
   const source = model.interfaces.find((i) => i.id === operation);
   const asset = model.assets.find((a) => sameKey(a.key, key));
+  const tdxExact =
+    identity === TDX_DAILY.identity &&
+    (!revision || revision === TDX_DAILY.revision) &&
+    (!operation || source?.asset?.identity === TDX_DAILY.identity);
   const financialExact =
     identity === FINANCIAL.identity &&
     (!revision || revision === FINANCIAL.revision) &&
@@ -744,7 +749,16 @@ export default function App({
                       changed={() => setGeneration((g) => g + 1)}
                     />
                   )}
-                  {page.view === "assets" && (
+                  {tdxExact &&
+                    !invalidIdentity &&
+                    ["assets", "collection"].includes(page.view) && (
+                      <TdxDailyWorkbench
+                        transport={transport}
+                        route={page}
+                        navigate={navigate}
+                      />
+                    )}
+                  {page.view === "assets" && !tdxExact && (
                     <RuntimeAssets
                       profile={macroProfile}
                       financial={
@@ -875,7 +889,7 @@ export default function App({
                       ordinary={ordinaryQuery}
                     />
                   )}
-                  {page.view === "collection" && (
+                  {page.view === "collection" && !tdxExact && (
                     <CollectionWorkbench
                       key={`${identity}:${revision}:${operation}`}
                       assets={model.assets}

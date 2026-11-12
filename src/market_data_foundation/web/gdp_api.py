@@ -39,11 +39,11 @@ def failure(error):
     return JSONResponse({"status": "ERROR", "classification": code}, status)
 
 
-async def body(request):
+async def body(request, *, max_size=4096):
     raw = bytearray()
     async for part in request.stream():
         raw.extend(part)
-        if len(raw) > 4096:
+        if len(raw) > max_size:
             raise WebError("request_body_too_large", 413)
     try:
         return json.loads(

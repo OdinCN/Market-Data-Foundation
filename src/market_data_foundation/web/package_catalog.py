@@ -32,6 +32,9 @@ from market_data_foundation.historical.gdp_contract import GDP_DEFINITION
 from market_data_foundation.historical.jolts_contract import JOLTS_DEFINITION
 from market_data_foundation.historical.m3_contract import M3_DEFINITION
 from market_data_foundation.historical.retail_contract import CENSUS_RETAIL
+from market_data_foundation.historical.tdx_p0_contract import (
+    DEFINITION as TDX_P0_DEFINITION,
+)
 from market_data_foundation.web.dto import DTO
 from market_data_foundation.web.source_catalog import (
     ContractKeyDTO,
@@ -211,8 +214,14 @@ PACKAGES = (
         "tdx",
         "TDX 日线接入包",
         "TDX",
-        "原始日线；保留两个具名来源变体，禁止静默互换。",
+        "沪深北原生日线与历史原始日线变体；价基和来源独立，禁止静默互换。",
         (
+            CapabilityView(
+                capability_id="daily_native",
+                title="沪深北 A 股原生日线",
+                definition_ref=ref(TDX_P0_DEFINITION),
+                required_sources=["TDX"],
+            ),
             CapabilityView(
                 capability_id="daily_raw",
                 title="原始日线",

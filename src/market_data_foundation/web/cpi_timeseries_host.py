@@ -85,6 +85,36 @@ class TimeSeriesPackages(PackageHost):
 
     def project(self, package_id, record, access):
         view = super().project(package_id, record, access)
+        if package_id == "tdx":
+            tdx = getattr(self, "tdx_runtime", None)
+            assets = []
+            for asset in view.assets:
+                revisions = []
+                for revision in asset.revisions:
+                    if (
+                        revision.definition_ref.identity
+                        == "mdf.market.tdx.stock.daily.native"
+                    ):
+                        revision = revision.model_copy(
+                            update={
+                                "collect": Eligibility(
+                                    allowed=bool(tdx and tdx.options.allow_collect),
+                                    reasons=["tdx_dev_explicit_opt_in"],
+                                ),
+                                "plan": Eligibility(
+                                    allowed=bool(
+                                        tdx and tdx.strategy.read()["worker_online"]
+                                    ),
+                                    reasons=["tdx_resident_executor_observed"],
+                                ),
+                                "upstream_read": Eligibility(
+                                    allowed=False, reasons=["tdx_queries_local_only"]
+                                ),
+                            }
+                        )
+                    revisions.append(revision)
+                assets.append(asset.model_copy(update={"revisions": revisions}))
+            return view.model_copy(update={"assets": assets})
         if package_id != "macro":
             return view
         hosts = self.timeseries_hosts
@@ -1267,6 +1297,37 @@ class TimeSeriesRuntime(ReadonlyRuntime):
 
     def history(self, environment_id, package_id, record):
         result = super().history(environment_id, package_id, record)
+        if package_id == "tdx" and getattr(self, "tdx_runtime", None):
+            definition = next(
+                c.definition_ref
+                for c in self.packages.catalog.package("tdx").capabilities
+                if c.capability_id == "daily_native"
+            )
+            holding = "unknown"
+            try:
+                holding = (
+                    "present"
+                    if self.tdx_runtime.store.summary()["markets"]
+                    else "absent"
+                )
+            except Exception:
+                pass
+            evidence = HistoryEvidence(
+                manual_registered=True,
+                definition_ref=definition,
+                holding=holding,
+                metadata_view_permission="allowed",
+                read_permission="allowed",
+                publication_readable=holding == "present",
+            )
+            return result.model_copy(
+                update={
+                    "history": [
+                        evidence if h.definition_ref == definition else h
+                        for h in result.history
+                    ]
+                }
+            )
         if package_id != "macro":
             return result
         capabilities = {
@@ -1310,16 +1371,21 @@ def create_timeseries_preview(
     ui_directory=None,
     worker_control=None,
     financial_options=None,
+    tdx_runtime=None,
+    dev_origin=CANDIDATE_ORIGIN,
     **options,
 ):
     if enabled is not True:
         raise ValueError("cpi_timeseries_web_opt_in_required")
     runtime = TimeSeriesRuntime(settings, **options)
+    runtime.tdx_runtime = tdx_runtime
+    runtime.packages.tdx_runtime = tdx_runtime
     runtime.financial_options = financial_options
     runtime.packages.financial_options = financial_options
     # No legacy CPI scope is installed. Its old endpoint remains unconfigured;
     # new data never traverses the old canonical schema or publication model.
     app = create_app(package_host=runtime.packages)
+    app.state.mdf_dev_read_origin = dev_origin
     add_read_routes(app, runtime.scopes["pce"], runtime.clock, write_eligible=False)
 
     def prune(application):
@@ -1390,6 +1456,10 @@ def create_timeseries_preview(
     from market_data_foundation.web.financial_daily_api import financial_router
 
     app.include_router(financial_router(financial_options))
+    from market_data_foundation.web.tdx_daily_api import admitted_tdx_write, tdx_router
+
+    app.include_router(tdx_router(tdx_runtime))
+    app.state.tdx_runtime = tdx_runtime
     app.state.timeseries_runtime = runtime
 
     @app.middleware("http")
@@ -1406,6 +1476,7 @@ def create_timeseries_preview(
             "/api/r5/jolts/timeseries",
             "/api/r5/m3/timeseries",
             "/api/r5/financial/timeseries",
+            "/api/r5/tdx/daily",
         )
         job_post = admitted_worker(request) or any(
             admitted_job(request, prefix=prefix) for prefix in prefixes
@@ -1414,7 +1485,14 @@ def create_timeseries_preview(
             admitted_financial_job,
         )
 
-        job_post = job_post or admitted_financial_job(request)
+        job_post = (
+            job_post
+            or admitted_financial_job(request)
+            or (
+                tdx_runtime is not None
+                and admitted_tdx_write(request, origin=tdx_runtime.options.origin)
+            )
+        )
         if request.url.path == "/api/r5/m3/timeseries/jobs/resume":
             job_post = admitted_job(
                 Request(dict(request.scope, path="/api/r5/m3/timeseries/jobs")),
@@ -1436,7 +1514,7 @@ def create_timeseries_preview(
         ):
             error = (405, "method_not_allowed")
         elif not (config_put or job_post or strategy_put) and not admitted(
-            request, origin=CANDIDATE_ORIGIN
+            request, origin=dev_origin
         ):
             error = (403, "operator_not_authorized")
         else:
