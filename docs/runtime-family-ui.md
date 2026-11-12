@@ -61,10 +61,11 @@ current validated request. Edits cancel in-flight queries and clear their result
 controls never trigger an implicit query. Row and missing-item pages remain
 separate. Pending summaries do not gate the form or appear as empty holdings.
 
-TDX legacy jobs have no mandatory origin field. `tdxJobOrigin` honors an explicit
-origin and can prove an automatic slot by matching the resident strategy's exact
-UUIDv5 namespace/name contract. Other legacy origins remain unverified rather
-than being labeled manual from an action or UUID version.
+`tdxJobOrigin` presents the origin returned by the jobs API. The API records new
+manual/periodic intents explicitly and qualifies old automatic slots by the
+resident strategy's exact UUIDv5 namespace/name contract. Other legacy origins
+remain unverified rather than being labeled manual from an action or UUID
+version; the frontend does not duplicate that provenance derivation.
 `DailyFamilyForms.test.tsx` exercises the same actual query/collection interactions
 for financial daily and TDX, including precision, previews, cancellation, result
 views, independent drafts, exact submitted ranges and recent-job navigation.
