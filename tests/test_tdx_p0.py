@@ -572,3 +572,40 @@ def test_write_origin_and_job_id_replay_conflict(tmp_path):
             ).status_code
             == 400
         )
+
+
+def test_summary_reuses_terminal_legacy_journal_and_refreshes_after_save(
+    tmp_path, monkeypatch
+):
+    jobs = DailyJobs(tmp_path, None, None)
+    identity = str(uuid4())
+    step = dict(market=1, instrument="600519", state="COMPLETE")
+    record = dict(
+        request_id=identity,
+        command={"action": "init"},
+        created_at="t",
+        state="COMPLETE",
+        steps=[step],
+    )
+    jobs.save(record, step=step)
+    path = jobs.path(identity)
+    legacy = json.loads(path.read_bytes())
+    legacy.pop("completed_step_count")
+    path.write_text(json.dumps(legacy))
+    reads = []
+    original_read = jobs.read
+
+    def counted(key):
+        reads.append(key)
+        return original_read(key)
+
+    monkeypatch.setattr(jobs, "read", counted)
+    first = jobs.summaries()
+    assert first == jobs.summaries() and reads == [identity]
+    assert first[0]["step_count"] == first[0]["complete_steps"] == 1
+    step["state"] = "FAILED"
+    record["state"] = "PARTIAL"
+    jobs.save(record, step=step)
+    assert jobs.summaries()[0]["complete_steps"] == 0
+    assert reads == [identity]
+    assert "completed_step_count" not in original_read(identity)

@@ -2,6 +2,8 @@ import {
   DailyDateRange,
   HistoryCutoffFields,
   QueryResultTabs,
+  LocalQuerySummary,
+  QueryPagination,
 } from "./DailyFormControls";
 import { RequestPreview, HttpExchangePanel } from "./CpiQueryDetails";
 import { requestCpiJson, type CpiHttpExchange } from "./cpiTimeSeriesApi";
@@ -12,7 +14,6 @@ import {
   formatBeijingTime,
   toBeijingIso,
   beijingInstantKey,
-  beijingToday,
   beijingInputToIso,
 } from "./beijingTime";
 import { useVisiblePolling } from "./useVisiblePolling";
@@ -144,7 +145,15 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
     [market, setMarket] = useState("1"),
     [instrument, setInstrument] = useState("600519");
   const [start, setStart] = useState("1990-01-01"),
-    [end, setEnd] = useState(beijingToday);
+    [end, setEnd] = useState(() => {
+      const wall = toBeijingIso(new Date().toISOString());
+      const day = wall.slice(0, 10);
+      return wall.slice(11, 16) >= "15:05"
+        ? day
+        : new Date(Date.parse(day + "T00:00:00Z") - 86400000)
+            .toISOString()
+            .slice(0, 10);
+    });
   const [history, setHistory] = useState(Boolean(initialAsOf)),
     [cutoff, setCutoff] = useState(
       toBeijingIso(initialAsOf).replace(/\+08:00$/, "") || initialAsOf,
@@ -155,9 +164,11 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
   const [exchange, setExchange] = useState<CpiHttpExchange | null>(null),
     [resultTab, setResultTab] = useState("table");
   const [busy, setBusy] = useState(false),
+    [coverageBusy, setCoverageBusy] = useState(false),
     [error, setError] = useState(""),
     [coverageError, setCoverageError] = useState(false);
   const active = useRef<AbortController | null>(null),
+    coverageActive = useRef<AbortController | null>(null),
     editedEnd = useRef(false);
   const summary = useVisiblePolling(
     (signal) => tdxCall<{ markets: Market[] }>(transport, "/summary", signal),
@@ -181,13 +192,17 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
   useEffect(
     () => () => {
       active.current?.abort();
+      coverageActive.current?.abort();
     },
     [],
   );
   function change(edit: () => void) {
     active.current?.abort();
+    coverageActive.current?.abort();
     active.current = null;
+    coverageActive.current = null;
     setBusy(false);
+    setCoverageBusy(false);
     setResult(null);
     setCoverage(null);
     setExchange(null);
@@ -224,6 +239,7 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
     });
     if (direction === "history") {
       q.set("market", market);
+      q.set("order", "desc");
       q.set("instrument", instrument);
       q.set("start", start);
       q.set("end", end);
@@ -252,11 +268,16 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
     active.current = controller;
     setBusy(true);
     setError("");
-    setCoverageError(false);
     setResult(null);
     setExchange(null);
     setOffset(nextOffset);
-    if (nextOffset === 0) setCoverage(null);
+    if (nextOffset === 0) {
+      coverageActive.current?.abort();
+      coverageActive.current = null;
+      setCoverage(null);
+      setCoverageBusy(false);
+      setCoverageError(false);
+    }
     try {
       const rows = await requestCpiJson<Result>(
         transport,
@@ -278,20 +299,9 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
         throw Error("tdx_local_query_contract");
       if (active.current !== controller || controller.signal.aborted) return;
       setResult(rows);
-      if (nextOffset === 0 || !coverage) {
-        try {
-          const report = await tdxCall<Coverage>(
-            transport,
-            coveragePath(),
-            controller.signal,
-          );
-          if (active.current === controller && !controller.signal.aborted)
-            setCoverage(report);
-        } catch {
-          if (active.current === controller && !controller.signal.aborted)
-            setCoverageError(true);
-        }
-      }
+      // Coverage is a separate local read. A slow reconciliation must not
+      // hold returned rows or their pager, nor restart when rows are paged.
+      if (nextOffset === 0) void readCoverage(0);
     } catch {
       if (active.current === controller && !controller.signal.aborted)
         setError("本次查询结果尚未核实，请核实本地服务后重新查询。");
@@ -302,27 +312,27 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
       }
     }
   }
-  async function pageCoverage() {
-    if (!coverage || active.current) return;
+  async function readCoverage(nextOffset: number) {
+    if (coverageActive.current) return;
     const controller = new AbortController();
-    active.current = controller;
-    setBusy(true);
+    coverageActive.current = controller;
+    setCoverageBusy(true);
     setCoverageError(false);
     try {
       const report = await tdxCall<Coverage>(
         transport,
-        coveragePath((coverage.offset ?? 0) + coverage.missing.length),
+        coveragePath(nextOffset),
         controller.signal,
       );
-      if (active.current === controller && !controller.signal.aborted)
+      if (coverageActive.current === controller && !controller.signal.aborted)
         setCoverage(report);
     } catch {
-      if (active.current === controller && !controller.signal.aborted)
+      if (coverageActive.current === controller && !controller.signal.aborted)
         setCoverageError(true);
     } finally {
-      if (active.current === controller) {
-        active.current = null;
-        setBusy(false);
+      if (coverageActive.current === controller) {
+        coverageActive.current = null;
+        setCoverageBusy(false);
       }
     }
   }
@@ -435,8 +445,7 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
       ) : (
         <p role="status">参数未完成，未生成或执行请求。</p>
       )}
-      <details>
-        <summary>本地市场汇总</summary>
+      <LocalQuerySummary>
         <button disabled={summary.busy} onClick={summary.refresh}>
           刷新本地汇总
         </button>
@@ -465,8 +474,11 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
             onSelect={(value) => change(() => setMarket(value))}
           />
         )}
-      </details>
-      {busy && <p role="status">正在读取本地日线或覆盖证据…</p>}
+      </LocalQuerySummary>
+      {busy && <p role="status">正在读取本地日线…</p>}
+      {coverageBusy && (
+        <p role="status">正在读取覆盖证据；已有日线可继续查看与翻页。</p>
+      )}
       {error && <p role="alert">{error}</p>}
       {(result || exchange) && (
         <QueryResultTabs
@@ -488,6 +500,7 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
             <WorkflowTable
               singlePane
               label="日线结果"
+              className="query-result-rows"
               columns={[
                 "交易日",
                 "交易所",
@@ -517,16 +530,16 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
                 ],
               }))}
               onSelect={() => {}}
-              pageSize={25}
             />
-            {result.next_offset !== null && (
-              <button
-                disabled={busy}
-                onClick={() => void read(result.next_offset!)}
-              >
-                下一页
-              </button>
-            )}
+            <QueryPagination
+              label="TDX 日线"
+              offset={offset}
+              total={result.total}
+              pageSize={100}
+              nextOffset={result.next_offset}
+              pending={busy}
+              onPage={(value) => void read(value)}
+            />
           </>
         )}
         {coverageError && (
@@ -600,7 +613,14 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
             />
             {(coverage.offset ?? 0) + coverage.missing.length <
               coverage.missing_total && (
-              <button disabled={busy} onClick={() => void pageCoverage()}>
+              <button
+                disabled={coverageBusy}
+                onClick={() =>
+                  void readCoverage(
+                    (coverage.offset ?? 0) + coverage.missing.length,
+                  )
+                }
+              >
                 下一页缺项
               </button>
             )}
@@ -625,7 +645,8 @@ export function TdxApiHelp({ transport }: FamilyProps) {
       <p>
         证券历史和单日横截面共用查询入口，仅本地读取。价基为
         native_projection（原生价基）；收益口径待核验。as_of 必须包含时区，表示
-        MDF 实际保存版本的可用截止。limit / offset 为结果分页；coverage
+        MDF 实际保存版本的可用截止。单股历史默认按交易日倒序展示，接口参数 order
+        支持 asc 和 desc，省略时按升序返回。limit / offset 为结果分页；coverage
         使用独立缺项分页。
       </p>
       {help.failure && <p role="alert">API说明读取失败，请刷新核实。</p>}

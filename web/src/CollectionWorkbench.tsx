@@ -694,6 +694,16 @@ export function CollectionWorkbench({
     operation: HISTORY_OPERATION,
   };
   function recordState(kind: "plans" | "jobs") {
+    const family = families.find(
+      (candidate) => keyOf(candidate.asset) === filter,
+    );
+    if (kind === "jobs" && family) {
+      const records = familyRecords.executions;
+      if (records.failure) return `${family.title}执行记录读取失败。`;
+      if (records.busy || !records.data)
+        return `正在读取${family.title}执行记录…`;
+      return "当前筛选范围内没有执行记录。";
+    }
     if (kind === "jobs" && filter === keyOf(FINANCIAL)) {
       if (!financialRegistered)
         return "金融日频人工接入尚未核实，执行记录尚未查询。";

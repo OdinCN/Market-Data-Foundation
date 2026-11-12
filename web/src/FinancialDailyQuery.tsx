@@ -2,6 +2,8 @@ import {
   DailyDateRange,
   HistoryCutoffFields,
   QueryResultTabs,
+  LocalQuerySummary,
+  QueryPagination,
 } from "./DailyFormControls";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
@@ -188,7 +190,9 @@ export function FinancialDailyQuery({
           当前查询优先读取本地，缺口自动向已绑定的具名来源临时补足，不保存；历史截止查询只读已入库记录。页面加载与摘要刷新不采集。
         </p>
         {summary && (
-          <>
+          <LocalQuerySummary
+            title={`本地持有汇总 · 已保存观测 ${summary.observation_count?.toLocaleString() ?? "未知"} 条`}
+          >
             <p>
               已保存观测 {summary.observation_count?.toLocaleString() ?? "未知"}{" "}
               条；各指标最新有值观测日：
@@ -203,7 +207,7 @@ export function FinancialDailyQuery({
                 </li>
               ))}
             </ul>
-          </>
+          </LocalQuerySummary>
         )}
         <form
           onSubmit={(e) => {
@@ -308,7 +312,7 @@ export function FinancialDailyQuery({
               <p className="small">
                 按观测日倒序，同日按所选指标顺序排列；信用bp=百分比原值×100，其他系列bp不适用。临时来源值尚未保存，无本地版本或确认可用时间。
               </p>
-              <div className="table-wrap">
+              <div className="table-wrap query-result-rows">
                 <table
                   className="macro-result-table"
                   aria-label="金融条件日频 范围数据"
@@ -362,27 +366,15 @@ export function FinancialDailyQuery({
                 </table>
               </div>
               {!result.rows.length && <p>当前范围没有可显示记录。</p>}
-              <div className="actions" aria-label="金融条件日频 结果分页">
-                <button
-                  disabled={pending || offset === 0}
-                  onClick={() =>
-                    void read(Math.max(0, offset - FINANCIAL_PAGE_SIZE))
-                  }
-                >
-                  上一页
-                </button>
-                <span>
-                  第 {Math.floor(offset / FINANCIAL_PAGE_SIZE) + 1} /{" "}
-                  {Math.max(1, Math.ceil(result.total / FINANCIAL_PAGE_SIZE))}{" "}
-                  页，每页最多 {FINANCIAL_PAGE_SIZE} 条
-                </span>
-                <button
-                  disabled={pending || result.next_offset === null}
-                  onClick={() => void read(result.next_offset!)}
-                >
-                  下一页
-                </button>
-              </div>
+              <QueryPagination
+                label="金融条件日频"
+                offset={offset}
+                total={result.total}
+                pageSize={FINANCIAL_PAGE_SIZE}
+                nextOffset={result.next_offset}
+                pending={pending}
+                onPage={(value) => void read(value)}
+              />
               <details onToggle={(e) => setSourcesOpen(e.currentTarget.open)}>
                 <summary>来源与时间详情</summary>
                 <p>

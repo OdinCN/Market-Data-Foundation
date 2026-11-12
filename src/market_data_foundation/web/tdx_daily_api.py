@@ -164,6 +164,7 @@ def tdx_router(runtime=None):
                     "basis",
                     "period",
                     "security_type",
+                    "order",
                 },
             )
             q = request.query_params
@@ -189,6 +190,7 @@ def tdx_router(runtime=None):
                 as_of=datetime.fromisoformat(q["as_of"]) if "as_of" in q else None,
                 offset=int(q.get("offset", "0")),
                 limit=int(q.get("limit", "100")),
+                order=q.get("order", "asc"),
             )
         except Exception as error:
             return fail(error)
@@ -231,15 +233,8 @@ def tdx_router(runtime=None):
             ready()
             return dict(
                 jobs=[
-                    {
-                        **{k: v for k, v in j.items() if k != "steps"},
-                        "origin": job_origin(j),
-                        "step_count": len(j["steps"]),
-                        "complete_steps": sum(
-                            s["state"] == "COMPLETE" for s in j["steps"]
-                        ),
-                    }
-                    for j in runtime.jobs.list()
+                    {**job, "origin": job_origin(job)}
+                    for job in runtime.jobs.summaries()
                 ]
             )
         except Exception as error:

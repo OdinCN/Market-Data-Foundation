@@ -89,6 +89,7 @@ GET /api/r5/tdx/daily/help
 ```
 
 查询严格本地读取，返回 `provider_requests=0`；`as_of` 可指定带时区的截止时刻。
+页面单股历史按交易日倒序，传入 `order=desc`。API 省略 `order` 时沿用升序。
 分页 `offset/limit` 上限 10000。成员按所查日期的上市/退市有效期过滤。
 覆盖区分有效行情、零量行情、已证明停牌、交易所休市、上市前、退市后、来源失败及未知。
 零量、空响应或来源穷尽都不证明停牌。缺口列表可分页，包含可恢复日窗。
@@ -127,6 +128,8 @@ POST `/jobs` 的 JSON 为 `request_id` UUID、`action`（`universe/init/update`�
 --tdx-dev-port 18767
 --tdx-workers 4
 ```
+
+18766 统一 DEV 预览使用 `--allow-unified-dev-macro-operations`，继承既有 Macro 数据族的权限、作业目录、策略目录与执行窗口。该开关仅在 18766 生效，各族仍沿用各自的能力开关和同源校验。
 
 沿用既有 Macro 配置与参数。TDX 仅接受 DEV 18766 或隔离 18767，默认每作业四个采集
 worker，上限八个；同时运行多作业会叠加预算，应结合来源、PG 和磁盘实测配置。

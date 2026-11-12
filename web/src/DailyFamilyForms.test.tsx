@@ -178,6 +178,7 @@ it.each(["金融日频", "TDX"])(
     expect(queries).toHaveLength(1);
     const q = new URL(queries[0].url, "http://fixture").searchParams;
     expect(q.get("local_only")).toBe("true");
+    expect(q.get("order")).toBe("desc");
     expect(q.get("as_of")).toContain(".123456");
     expect(q.get("as_of")).toBe(
       family === "TDX"
@@ -349,3 +350,134 @@ it.each(["金融日频", "TDX"])(
     expect(f.calls.filter((c) => c.url.includes("/query?"))).toHaveLength(1);
   },
 );
+
+it.each(["金融日频", "TDX"])(
+  "%s pages through one server cursor in both directions without a second client pager or extra coverage reads",
+  async (family) => {
+    const size = family === "TDX" ? 100 : 40;
+    const f = fixture(family, async (url) => {
+      const offset = Number(
+        new URL(url, "http://fixture").searchParams.get("offset"),
+      );
+      return Response.json({
+        ...response(family, url),
+        total: family === "TDX" ? size + 1 : response(family, url).total,
+        next_offset: offset === 0 ? size : null,
+      });
+    });
+    mountQuery(family, f.transport);
+    if (family === "TDX")
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText("结束日期") as HTMLInputElement).value,
+        ).toBe(date),
+      );
+    change("开始日期", family === "TDX" ? date : "2026-11-06");
+    change("结束日期", date);
+    fireEvent.click(screen.getByRole("button", { name: /^查询数据$/ }));
+    const label = `${family === "TDX" ? "TDX 日线" : "金融条件日频"} 结果分页`;
+    await screen.findByLabelText(label);
+    const button = (name: string) =>
+      within(screen.getByLabelText(label)).getByRole("button", {
+        name,
+      }) as HTMLButtonElement;
+    await waitFor(() => expect(button("下一页").disabled).toBe(false));
+    expect(button("上一页").disabled).toBe(true);
+    fireEvent.click(button("下一页"));
+    await waitFor(() => expect(button("上一页").disabled).toBe(false));
+    expect(button("下一页").disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "后一页记录" })).toBeNull();
+    fireEvent.click(button("上一页"));
+    await waitFor(() => expect(button("下一页").disabled).toBe(false));
+    expect(
+      f.calls
+        .filter((c) => c.url.includes("/query?"))
+        .map((c) =>
+          new URL(c.url, "http://fixture").searchParams.get("offset"),
+        ),
+    ).toEqual(["0", String(size), "0"]);
+    expect(f.calls.filter((c) => c.url.includes("/coverage?")).length).toBe(
+      family === "TDX" ? 2 : 0,
+    );
+  },
+);
+
+it("TDX keeps row paging usable while independent coverage is pending, and cancels stale coverage on edits", async () => {
+  const base = fixture("TDX");
+  let coverageSignal: AbortSignal | null | undefined;
+  let finishCoverage: (response: Response) => void = () => {};
+  const calls: string[] = [];
+  const transport: Transport = async (input, init) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.includes("/coverage?")) {
+      coverageSignal = init?.signal;
+      return new Promise<Response>((resolve) => {
+        finishCoverage = resolve;
+      });
+    }
+    if (url.includes("/query?"))
+      return Response.json({
+        ...response("TDX", url),
+        total: 101,
+        next_offset: url.includes("offset=100") ? null : 100,
+      });
+    return base.transport(input, init);
+  };
+  mountQuery("TDX", transport);
+  await waitFor(() =>
+    expect((screen.getByLabelText("结束日期") as HTMLInputElement).value).toBe(
+      date,
+    ),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: /^下一页$/ }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
+  expect(
+    screen.getByText("正在读取覆盖证据；已有日线可继续查看与翻页。"),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: /^下一页$/ }));
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: /^上一页$/ }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
+  expect(calls.filter((url) => url.includes("/query?"))).toHaveLength(2);
+  expect(calls.filter((url) => url.includes("/coverage?"))).toHaveLength(1);
+  expect(coverageSignal?.aborted).toBe(false);
+  change("证券代码", "000001");
+  expect(coverageSignal?.aborted).toBe(true);
+  await act(async () =>
+    finishCoverage(
+      Response.json({
+        markets: [],
+        missing: [],
+        missing_total: 0,
+        complete: true,
+      }),
+    ),
+  );
+  expect(screen.queryByText(/覆盖结论/)).toBeNull();
+});
+
+it("TDX uses the Beijing post-close boundary while status is pending", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-12T16:20:00Z"));
+  try {
+    mountQuery("TDX", async () => new Promise<Response>(() => {}));
+    expect((screen.getByLabelText("结束日期") as HTMLInputElement).value).toBe(
+      "2026-11-12",
+    );
+    expect(
+      (screen.getByRole("button", { name: "查询数据" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
+});

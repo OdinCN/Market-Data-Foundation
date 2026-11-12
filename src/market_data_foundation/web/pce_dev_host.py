@@ -72,6 +72,20 @@ def _readonly_review_origin():
     return None
 
 
+UNIFIED_DEV_ORIGIN = "http://192.168.10.20:18766"
+
+
+def macro_write_origin(request: Request):
+    """Use the declared DEV composition, never a client-supplied authority."""
+    state = getattr(request.scope.get("app"), "state", None)
+    if (
+        getattr(state, "mdf_unified_dev_macro_operations", False) is True
+        and getattr(state, "mdf_dev_read_origin", None) == UNIFIED_DEV_ORIGIN
+    ):
+        return UNIFIED_DEV_ORIGIN
+    return CANDIDATE_ORIGIN
+
+
 def admitted(request: Request, *, origin=ORIGIN):
     try:
         # The isolated TDX composition declares its read origin on the same app.

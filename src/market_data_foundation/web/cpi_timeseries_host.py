@@ -1373,10 +1373,17 @@ def create_timeseries_preview(
     financial_options=None,
     tdx_runtime=None,
     dev_origin=CANDIDATE_ORIGIN,
+    allow_unified_dev_macro_operations=False,
     **options,
 ):
     if enabled is not True:
         raise ValueError("cpi_timeseries_web_opt_in_required")
+    from market_data_foundation.web.pce_dev_host import UNIFIED_DEV_ORIGIN
+
+    if type(allow_unified_dev_macro_operations) is not bool or (
+        allow_unified_dev_macro_operations and dev_origin != UNIFIED_DEV_ORIGIN
+    ):
+        raise ValueError("unified_dev_macro_operations_require_18766")
     runtime = TimeSeriesRuntime(settings, **options)
     runtime.tdx_runtime = tdx_runtime
     runtime.packages.tdx_runtime = tdx_runtime
@@ -1386,6 +1393,7 @@ def create_timeseries_preview(
     # new data never traverses the old canonical schema or publication model.
     app = create_app(package_host=runtime.packages)
     app.state.mdf_dev_read_origin = dev_origin
+    app.state.mdf_unified_dev_macro_operations = allow_unified_dev_macro_operations
     add_read_routes(app, runtime.scopes["pce"], runtime.clock, write_eligible=False)
 
     def prune(application):

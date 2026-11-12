@@ -223,6 +223,7 @@ class PgStore:
         as_of=None,
         offset=0,
         limit=100,
+        order="asc",
     ):
         require(
             type(start) is date
@@ -249,6 +250,8 @@ class PgStore:
             and 1 <= limit <= 10000,
             "tdx_query_page",
         )
+        require(order in {"asc", "desc"}, "tdx_query_order")
+        ordering = "trading_day DESC" if order == "desc" else "trading_day ASC"
         cutoff = as_of or datetime.now(UTC)
         require(cutoff.utcoffset() is not None, "tdx_query_cutoff")
         params = dict(
@@ -280,8 +283,8 @@ class PgStore:
             cur.execute(
                 cte
                 + (
-                    " SELECT * FROM versions ORDER BY trading_day,market,instrument O"
-                    "FFSET %(offset)s LIMIT %(limit)s"
+                    f" SELECT * FROM versions ORDER BY {ordering}, market, instrument"
+                    " OFFSET %(offset)s LIMIT %(limit)s"
                 ),
                 params,
             )

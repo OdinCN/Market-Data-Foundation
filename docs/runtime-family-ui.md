@@ -69,3 +69,30 @@ version; the frontend does not duplicate that provenance derivation.
 `DailyFamilyForms.test.tsx` exercises the same actual query/collection interactions
 for financial daily and TDX, including precision, previews, cancellation, result
 views, independent drafts, exact submitted ranges and recent-job navigation.
+
+DEV 18766 may compose the existing Macro capabilities using the explicit
+`--allow-unified-dev-macro-operations` flag together with `--tdx-state-directory`
+and `--tdx-dev-port 18766`. Other listeners reject this opt-in before constructing
+runtimes. The socket adapter and ASGI routes use the same server-owned policy;
+they validate the actual private peer, Host, Origin, framing and existing exact
+path/method allowlists. No request authority is rewritten or forwarded. Existing
+per-capability collection, strategy, source and package flags remain mandatory.
+Use the existing Macro job/schedule directories and worker window configuration;
+this flag starts no Macro worker and changes no strategy intent.
+
+`QueryPagination` is the actual shared financial/TDX result pager. Each displayed
+page corresponds to one API cursor; there is no additional client pager inside
+the TDX result table. Previous/next navigation remains available at terminal pages.
+`LocalQuerySummary` retains holding details without pushing the query form below
+a long metric list. Both components live in `DailyFormControls`.
+
+For read-only deployed acceptance, run `web/scripts/check-live-workbench.mjs`
+with the origin and an evidence directory. Set `MDF_PLAYWRIGHT_MODULE` to an
+installed Playwright module and `MDF_BROWSER_EXECUTABLE` to Chromium. The default
+cases exercise financial daily, CPI and (on 18766) TDX through the actual catalog,
+query/results/raw response, API help, collection target, real recent jobs,
+global execution deep links and periodic details. Every mutation is blocked.
+Query 4xx, absent result rows and missing-only results fail. The checker respects
+CPI's `points` schema and daily families' `rows` schema. A JSON case array supplied
+by `MDF_WORKBENCH_CASES` can register another family's row selector, exact asset,
+API prefix, row/value properties and form parameters without another page script.

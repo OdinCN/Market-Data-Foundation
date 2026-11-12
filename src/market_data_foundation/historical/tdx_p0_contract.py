@@ -108,7 +108,7 @@ HELP = dict(
         history=PREFIX
         + (
             "/query?market=1&instrument=600519&start=1990-01-01&end=2026-11-1"
-            "2&local_only=true&limit=100"
+            "2&local_only=true&order=desc&limit=100"
         ),
         cross_section=PREFIX + "/query?day=2026-11-12&local_only=true&limit=100",
         coverage=PREFIX + "/coverage?day=2026-11-12",
@@ -123,6 +123,7 @@ HELP = dict(
         strategy={"enabled": True},
     ),
     notes=[
+        "历史日线可用 order=desc 按交易日倒序读取；省略时使用 asc。",
         (
             "Queries are local only and perform zero source requests; local_o"
             "nly=false is rejected."

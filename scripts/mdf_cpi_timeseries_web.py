@@ -73,14 +73,22 @@ class TimeSeriesHandler(CandidateHandler):
         from market_data_foundation.historical.tdx_p0_contract import (
             ORIGIN as TDX_ORIGIN,
         )
-        from market_data_foundation.web.pce_dev_host import admitted
+        from market_data_foundation.web.pce_dev_host import admitted, macro_write_origin
         from market_data_foundation.web.tdx_daily_api import admitted_tdx_write
 
+        # The socket gate sees the same server-owned policy as the ASGI routes.
+        # Retain the actual Host, Origin, peer and request framing unchanged.
+        app = getattr(getattr(self, "server", None), "app", None)
+        if app is not None:
+            request = Request(dict(request.scope, app=app))
         if self.origin in {TDX_ORIGIN, "http://192.168.10.20:18767"}:
-            return admitted_tdx_write(request, origin=self.origin) or (
+            if admitted_tdx_write(request, origin=self.origin) or (
                 request.method in {"GET", "HEAD"}
                 and admitted(request, origin=self.origin)
-            )
+            ):
+                return True
+            if self.origin != TDX_ORIGIN or macro_write_origin(request) != TDX_ORIGIN:
+                return False
         if request.method == "POST":
             from market_data_foundation.web.worker_control import admitted_worker
 
@@ -144,6 +152,11 @@ def main():
     parser.add_argument("--tdx-driver", type=Path)
     parser.add_argument("--tdx-endpoint")
     parser.add_argument("--allow-tdx-collect", action="store_true")
+    parser.add_argument(
+        "--allow-unified-dev-macro-operations",
+        action="store_true",
+        help="Opt in to existing capability-gated Macro operations on TDX DEV 18766",
+    )
     parser.add_argument(
         "--tdx-dev-port", type=int, choices=(18766, 18767), default=18766
     )
@@ -239,6 +252,10 @@ def main():
     parser.add_argument("--financial-state-directory", type=Path)
     parser.add_argument("--allow-financial-strategy", action="store_true")
     args = parser.parse_args()
+    if args.allow_unified_dev_macro_operations and (
+        args.tdx_state_directory is None or args.tdx_dev_port != 18766
+    ):
+        raise ValueError("unified_dev_macro_operations_require_18766")
     if args.enable_claims_timeseries and (
         args.claims_schedule_path is None or args.claims_job_directory is None
     ):
@@ -335,6 +352,7 @@ def main():
     app = create_timeseries_preview(
         settings,
         tdx_runtime=tdx_runtime,
+        allow_unified_dev_macro_operations=args.allow_unified_dev_macro_operations,
         dev_origin=tdx_runtime.options.origin
         if tdx_runtime
         else "http://192.168.10.20:18761",

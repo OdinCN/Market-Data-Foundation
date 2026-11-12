@@ -159,6 +159,8 @@ class DailyJobs:
         require(type(workers) is int and 1 <= workers <= 8, "tdx_worker_budget")
         self.workers = workers
         self.save_lock = threading.RLock()
+        self._summary_lock = threading.Lock()
+        self._terminal_summaries = {}
 
     def path(self, identity):
         require(str(UUID(identity)) == identity, "tdx_request_id")
@@ -181,6 +183,7 @@ class DailyJobs:
         if not path.exists():
             raise TdxError("job_not_found")
         record = json.loads(path.read_bytes())
+        record.pop("completed_step_count", None)
         if "step_refs" in record:
             directory = self.directory / identity
             base_path = directory / "base.json"
@@ -196,6 +199,9 @@ class DailyJobs:
                 else item
                 for key, item in zip(refs, base)
             ]
+        return self._with_recovery_state(identity, record)
+
+    def _with_recovery_state(self, identity, record):
         if record["state"] in {"RUNNING", "QUEUED"}:
             try:
                 with self.lock(identity):
@@ -217,6 +223,39 @@ class DailyJobs:
             reverse=True,
         )
 
+    def summaries(self):
+        # Concurrent workbench tabs often request the same legacy journals. Only
+        # one reader rebuilds their terminal summaries per atomic header version.
+        with self._summary_lock:
+            rows = [
+                self._summary(path)
+                for path in self.directory.glob("*.json")
+                if path.stem != "strategy"
+            ]
+        return sorted(rows, key=lambda row: row["created_at"], reverse=True)
+
+    def _summary(self, path):
+        stat = path.stat()
+        version = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
+        cached = self._terminal_summaries.get(path.stem)
+        if cached and cached[0] == version:
+            return cached[1]
+        record = json.loads(path.read_bytes())
+        if "step_refs" in record and "completed_step_count" not in record:
+            record = self.read(path.stem)
+        if "step_refs" in record:
+            count = len(record.pop("step_refs"))
+            complete = record.pop("completed_step_count")
+        else:
+            steps = record.pop("steps")
+            count = len(steps)
+            complete = sum(step["state"] == "COMPLETE" for step in steps)
+        row = self._with_recovery_state(path.stem, record)
+        row.update(step_count=count, complete_steps=complete)
+        if row["state"] in {"COMPLETE", "PARTIAL"}:
+            self._terminal_summaries[path.stem] = (version, row)
+        return row
+
     def save(self, record, step=None):
         with self.save_lock:
             self._save(record, step)
@@ -233,6 +272,9 @@ class DailyJobs:
             for item in selected:
                 atomic(directory / f"{item['market']}-{item['instrument']}.json", item)
             value = {k: v for k, v in record.items() if k != "steps"}
+            value["completed_step_count"] = sum(
+                item["state"] == "COMPLETE" for item in record["steps"]
+            )
             value["step_refs"] = [
                 f"{item['market']}-{item['instrument']}" for item in record["steps"]
             ]

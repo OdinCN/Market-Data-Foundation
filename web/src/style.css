@@ -1430,6 +1430,20 @@ footer {
   max-width: 100%;
   overflow-x: auto;
 }
+.cpi-timeseries .query-result-rows.table-wrap,
+.cpi-timeseries .query-result-rows .table-wrap {
+  max-height: 60vh;
+  overflow: auto;
+}
+.cpi-timeseries .query-result-rows table {
+  width: max-content;
+  min-width: 100%;
+}
+.cpi-timeseries .query-result-rows td {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
 .cpi-api-help td {
   min-width: 140px;
 }

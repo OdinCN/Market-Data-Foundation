@@ -128,6 +128,58 @@ export function QueryResultTabs({
     />
   );
 }
+export function LocalQuerySummary({
+  title = "本地市场汇总",
+  children,
+}: {
+  title?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <details className="local-query-summary">
+      <summary>{title}</summary>
+      {children}
+    </details>
+  );
+}
+export function QueryPagination({
+  label,
+  offset,
+  total,
+  pageSize,
+  nextOffset,
+  pending,
+  onPage,
+}: {
+  label: string;
+  offset: number;
+  total: number;
+  pageSize: number;
+  nextOffset: number | null;
+  pending: boolean;
+  onPage: (offset: number) => void;
+}) {
+  return (
+    <div className="actions" aria-label={`${label} 结果分页`}>
+      <button
+        disabled={pending || offset === 0}
+        onClick={() => onPage(Math.max(0, offset - pageSize))}
+      >
+        上一页
+      </button>
+      <span>
+        第 {Math.floor(offset / pageSize) + 1} /{" "}
+        {Math.max(1, Math.ceil(total / pageSize))} 页，每页最多 {pageSize} 条
+      </span>
+      <button
+        disabled={pending || nextOffset === null}
+        onClick={() => nextOffset !== null && onPage(nextOffset)}
+      >
+        下一页
+      </button>
+    </div>
+  );
+}
 export function CollectionColumns({
   children,
   briefs,
