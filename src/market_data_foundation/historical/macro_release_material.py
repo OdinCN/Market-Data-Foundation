@@ -319,7 +319,11 @@ def parse_material(raw, url, family):
     )
     if m.parser_input is not None:
         doc["parser_input"] = m.parser_input
-        doc["parser_revision"] = "official-five-family-v4-cpi-prose-encoding"
+        doc["parser_revision"] = (
+            "employment-annual-table-missing-dashes-v1"
+            if family == "employment"
+            else "official-five-family-v4-cpi-prose-encoding"
+        )
     doc["reference_months"] = sorted(
         {
             *doc.get("reference_months", []),
