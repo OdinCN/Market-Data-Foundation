@@ -481,3 +481,90 @@ it("TDX uses the Beijing post-close boundary while status is pending", async () 
     vi.useRealTimers();
   }
 });
+
+it.each(["金融日频", "TDX"])(
+  "%s fills untouched fields when status arrives after an early edit in each collection mode",
+  async (family) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-12T16:20:00Z"));
+    try {
+      const f = fixture(family);
+      let resolveStatus: (response: Response) => void = () => {};
+      const transport: Transport = (input, init) =>
+        String(input).endsWith("/status")
+          ? new Promise<Response>((resolve) => {
+              resolveStatus = resolve;
+            })
+          : f.transport(input, init);
+      const status = {
+        defaults: { start: "2006-11-11", end: date },
+        update_defaults: { start: "2026-10-29", end: date },
+        series: [],
+        cutoff_semantics: "fixture",
+      };
+      const financial = (ready: boolean) => (
+        <FinancialCollection
+          transport={transport}
+          generation={0}
+          status={ready ? status : null}
+          onExecution={vi.fn()}
+        />
+      );
+      const view = render(
+        family === "TDX" ? (
+          <TdxDailyCollection {...props} transport={transport} />
+        ) : (
+          financial(false)
+        ),
+      );
+      if (family === "TDX")
+        expect(
+          (screen.getByLabelText("采集结束日期") as HTMLInputElement).value,
+        ).toBe("2026-11-12");
+      change("采集开始日期", "2026-11-09");
+      change("采集方式", "init");
+      change("采集开始日期", "2020-01-01");
+      if (family === "TDX")
+        await act(async () =>
+          resolveStatus(
+            Response.json({
+              enabled: true,
+              collect: true,
+              defaults: status.defaults,
+            }),
+          ),
+        );
+      else view.rerender(financial(true));
+      await waitFor(() =>
+        expect(
+          (screen.getByLabelText("采集结束日期") as HTMLInputElement).value,
+        ).toBe(date),
+      );
+      expect(
+        (screen.getByLabelText("采集开始日期") as HTMLInputElement).value,
+      ).toBe("2020-01-01");
+      change("采集方式", "update");
+      expect(
+        (screen.getByLabelText("采集开始日期") as HTMLInputElement).value,
+      ).toBe("2026-11-09");
+      expect(
+        (screen.getByLabelText("采集结束日期") as HTMLInputElement).value,
+      ).toBe(date);
+      fireEvent.click(
+        screen.getByRole("checkbox", {
+          name: "我确认将以上范围采集到开发测试库",
+        }),
+      );
+      expect(
+        (
+          screen.getByRole("button", {
+            name: /^提交 .* 采集$/,
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+      expect(f.calls.some((c) => c.method === "POST")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);

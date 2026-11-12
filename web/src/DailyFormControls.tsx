@@ -3,6 +3,17 @@ import { DateField } from "./DateField";
 import { Tabs } from "./WorkflowTable";
 import { formatBeijingTime, beijingInputToIso } from "./beijingTime";
 
+export function rangeWithDefaults(
+  draft: { start: string; end: string },
+  defaults: { start: string; end: string },
+  edited: { start: boolean; end: boolean },
+) {
+  return {
+    start: edited.start ? draft.start : defaults.start,
+    end: edited.end ? draft.end : defaults.end,
+  };
+}
+
 export function dailyRangeError(
   range: { start: string; end: string },
   maxDays: number,

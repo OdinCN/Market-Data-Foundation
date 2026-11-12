@@ -3,6 +3,7 @@ import {
   CollectionColumns,
   ExecutionBriefCard,
   dailyRangeError,
+  rangeWithDefaults,
 } from "./DailyFormControls";
 import { useEffect, useRef, useState } from "react";
 import { beijingToday } from "./beijingTime";
@@ -39,7 +40,10 @@ export function FinancialCollection({
     init: { start: "", end: "" },
   });
   const [confirmed, setConfirmed] = useState(false);
-  const edited = useRef({ update: false, init: false });
+  const edited = useRef({
+    update: { start: false, end: false },
+    init: { start: false, end: false },
+  });
   const jobs = useVisiblePolling(
     (signal) =>
       financialCall<{ jobs: FinancialJob[] }>(transport, "/jobs", signal),
@@ -66,17 +70,19 @@ export function FinancialCollection({
       .toISOString()
       .slice(0, 10);
     setDrafts((old) => ({
-      update: edited.current.update
-        ? old.update
-        : (status.update_defaults ?? { start, end }),
-      init: edited.current.init ? old.init : status.defaults,
+      update: rangeWithDefaults(
+        old.update,
+        status.update_defaults ?? { start, end },
+        edited.current.update,
+      ),
+      init: rangeWithDefaults(old.init, status.defaults, edited.current.init),
     }));
   }, [status]);
   useEffect(() => {
     const command = pending?.command;
     if (!command || !["init", "update"].includes(command.action)) return;
     const mode = command.action as "init" | "update";
-    edited.current[mode] = true;
+    edited.current[mode] = { start: true, end: true };
     setAction(mode);
     setConfirmed(false);
     setDrafts((old) => ({
@@ -90,7 +96,7 @@ export function FinancialCollection({
   const latest = status?.collection_limits?.latest_end ?? beijingToday();
   const error = dailyRangeError(range, maxDays, latest);
   function change(key: keyof Range, value: string) {
-    edited.current[action] = true;
+    edited.current[action][key] = true;
     setConfirmed(false);
     setDrafts((old) => ({
       ...old,

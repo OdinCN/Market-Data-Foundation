@@ -96,3 +96,12 @@ Query 4xx, absent result rows and missing-only results fail. The checker respect
 CPI's `points` schema and daily families' `rows` schema. A JSON case array supplied
 by `MDF_WORKBENCH_CASES` can register another family's row selector, exact asset,
 API prefix, row/value properties and form parameters without another page script.
+
+`rangeWithDefaults` merges daily collection defaults per untouched field. An
+operator may edit a start date while status is loading, switch collection modes,
+and receive the remaining end-date default without losing either draft. Pending
+financial receipts pin both submitted fields. TDX's immediate fallback follows
+the same Beijing 15:05 boundary as its backend; server defaults still qualify the
+untouched fields. Daily row reads and coverage reads have independent loading
+and cancellation states: returned rows remain pageable during reconciliation,
+and paging rows does not duplicate an in-flight coverage request.

@@ -139,21 +139,23 @@ export async function tdxCall<T>(
     );
   return value as T;
 }
+export function tdxLatestClosedDay() {
+  const wall = toBeijingIso(new Date().toISOString());
+  const day = wall.slice(0, 10);
+  return wall.slice(11, 16) >= "15:05"
+    ? day
+    : new Date(Date.parse(day + "T00:00:00Z") - 86400000)
+        .toISOString()
+        .slice(0, 10);
+}
+
 export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
   const initialAsOf = route.fields.get("as_of") ?? "";
   const [direction, setDirection] = useState("history"),
     [market, setMarket] = useState("1"),
     [instrument, setInstrument] = useState("600519");
   const [start, setStart] = useState("1990-01-01"),
-    [end, setEnd] = useState(() => {
-      const wall = toBeijingIso(new Date().toISOString());
-      const day = wall.slice(0, 10);
-      return wall.slice(11, 16) >= "15:05"
-        ? day
-        : new Date(Date.parse(day + "T00:00:00Z") - 86400000)
-            .toISOString()
-            .slice(0, 10);
-    });
+    [end, setEnd] = useState(tdxLatestClosedDay);
   const [history, setHistory] = useState(Boolean(initialAsOf)),
     [cutoff, setCutoff] = useState(
       toBeijingIso(initialAsOf).replace(/\+08:00$/, "") || initialAsOf,

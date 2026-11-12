@@ -3,6 +3,7 @@ import {
   CollectionColumns,
   ExecutionBriefCard,
   dailyRangeError,
+  rangeWithDefaults,
 } from "./DailyFormControls";
 import { tdxJobOrigin } from "./tdxJobPresentation";
 import { useEffect, useRef, useState } from "react";
@@ -13,6 +14,7 @@ import {
   TdxApiHelp,
   tdxCall,
   tdxStateLabel,
+  tdxLatestClosedDay,
   type TdxJob,
 } from "./TdxDailyWorkbench";
 import { requestId } from "./CpiTimeSeriesCollection";
@@ -33,6 +35,14 @@ const fields = {
   operation: null,
 };
 const strategyId = "tdx-daily-auto";
+function updateRange(end: string) {
+  return {
+    start: new Date(Date.parse(end + "T00:00:00Z") - 14 * 86400000)
+      .toISOString()
+      .slice(0, 10),
+    end,
+  };
+}
 type Status = {
   enabled: boolean;
   collect: boolean;
@@ -53,14 +63,20 @@ export function TdxDailyCollection({
   const [action, setAction] = useState<"init" | "update" | "universe">(
     "update",
   );
-  const [drafts, setDrafts] = useState({
-    init: { start: "1990-01-01", end: "" },
-    update: { start: "", end: "" },
+  const [drafts, setDrafts] = useState(() => {
+    const end = tdxLatestClosedDay();
+    return {
+      init: { start: "1990-01-01", end },
+      update: updateRange(end),
+    };
   });
   const [confirmed, setConfirmed] = useState(false),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState("");
-  const edited = useRef({ init: false, update: false }),
+  const edited = useRef({
+      init: { start: false, end: false },
+      update: { start: false, end: false },
+    }),
     writing = useRef(false),
     intent = useRef<string | null>(null);
   const status = useVisiblePolling(
@@ -74,14 +90,18 @@ export function TdxDailyCollection({
   useEffect(() => {
     const end = status.data?.defaults.end;
     if (!end) return;
-    const start = new Date(Date.parse(end + "T00:00:00Z") - 14 * 86400000)
-      .toISOString()
-      .slice(0, 10);
+    const { start } = updateRange(end);
     setDrafts((old) => ({
-      init: edited.current.init
-        ? old.init
-        : { start: status.data?.defaults.start ?? "1990-01-01", end },
-      update: edited.current.update ? old.update : { start, end },
+      init: rangeWithDefaults(
+        old.init,
+        { start: status.data?.defaults.start ?? "1990-01-01", end },
+        edited.current.init,
+      ),
+      update: rangeWithDefaults(
+        old.update,
+        { start, end },
+        edited.current.update,
+      ),
     }));
   }, [status.data]);
   const range = drafts[action === "universe" ? "update" : action];
@@ -98,7 +118,7 @@ export function TdxDailyCollection({
           );
   function change(key: "start" | "end", value: string) {
     if (action === "universe") return;
-    edited.current[action] = true;
+    edited.current[action][key] = true;
     setConfirmed(false);
     setDrafts((old) => ({
       ...old,
