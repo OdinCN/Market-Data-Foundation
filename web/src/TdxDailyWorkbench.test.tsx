@@ -143,6 +143,16 @@ it("queries BJ history and a three-market day locally with an explicit availabil
   expect(query.get("day")).toBe("2026-11-11");
   expect(query.has("market")).toBe(false);
   expect(query.has("instrument")).toBe(false);
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "查询本地日线",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false),
+  );
+  expect(calls.filter((c) => c.url.endsWith("/summary"))).toHaveLength(1);
   expect(calls.every((c) => c.method === "GET")).toBe(true);
 });
 it("submits on the actual HTTP LAN origin using secure random values and the after-close default", async () => {

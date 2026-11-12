@@ -152,7 +152,7 @@ export function TdxDailyWorkbench({
   const selected = route.fields.get("job");
   const summary = useVisiblePolling(
     (signal) => call<{ markets: Market[] }>(transport, "/summary", signal),
-    [transport, generation],
+    [transport],
     tab === "query",
     () => true,
     false,
