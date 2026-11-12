@@ -2015,6 +2015,13 @@ button.strategy-switch::before {
   display: none;
 }
 
+.tdx-daily-workbench .workbench {
+  grid-template-columns: minmax(0, 1fr);
+}
+.tdx-daily-workbench .workbench > .detail-pane {
+  display: none;
+}
+
 /* The active manual request remains prominent while the form tracks it. */
 .execution-brief-card[aria-current="true"] {
   border-color: var(--accent);
