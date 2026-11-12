@@ -230,6 +230,23 @@ export default function App({
   const identity = page.fields.get("asset");
   const revision = page.fields.get("asset_revision");
   const operation = page.fields.get("operation");
+  // Reset a new form when its target changes. Selecting a row in a global
+  // list must preserve its filters, and leaving a form must preserve its receipt.
+  const targetScope = JSON.stringify([
+    identity,
+    revision,
+    operation,
+    page.fields.get("mode"),
+  ]);
+  const [collectionScope, setCollectionScope] = useState(targetScope);
+  if (
+    page.view === "collection" &&
+    (page.fields.get("tab") ?? "new") === "new" &&
+    collectionScope !== targetScope
+  ) {
+    setCollectionScope(targetScope);
+  }
+
   const operationEntry = directory.data?.entries.find(
     (e) => e.identity === operation,
   );
@@ -930,13 +947,7 @@ export default function App({
                   )}
                   {page.view === "collection" && (
                     <CollectionWorkbench
-                      key={
-                        ["periodic", "executions"].includes(
-                          page.fields.get("tab") ?? "new",
-                        )
-                          ? "global-lists"
-                          : `${identity}:${revision}:${operation}`
-                      }
+                      key={collectionScope}
                       assets={model.assets}
                       families={registeredFamilies}
                       financialRegistered={
