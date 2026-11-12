@@ -4,10 +4,9 @@ import fcntl
 import json
 import threading
 from datetime import UTC, datetime
-from uuid import NAMESPACE_URL, uuid5
 from zoneinfo import ZoneInfo
 
-from market_data_foundation.historical.tdx_p0_jobs import atomic, now
+from market_data_foundation.historical.tdx_p0_jobs import atomic, now, strategy_slot_id
 
 
 class DailyStrategy:
@@ -91,9 +90,12 @@ class DailyStrategy:
                 return
             day = local.date().isoformat()
             for action in ("universe", "update"):
-                identity = str(uuid5(NAMESPACE_URL, "mdf-tdx-p0:" + day + ":" + action))
+                identity = strategy_slot_id(day, action)
                 if not self.jobs.path(identity).exists():
-                    self.jobs.submit(dict(request_id=identity, action=action, end=day))
+                    self.jobs.submit(
+                        dict(request_id=identity, action=action, end=day),
+                        origin="periodic",
+                    )
                     return
                 record = self.jobs.read(identity)
                 if record["state"] != "COMPLETE":

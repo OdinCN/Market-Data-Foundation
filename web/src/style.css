@@ -2027,3 +2027,7 @@ button.strategy-switch::before {
   border-color: var(--accent);
   background: var(--selected);
 }
+
+.workbench.single-pane {
+  grid-template-columns: minmax(0, 1fr);
+}

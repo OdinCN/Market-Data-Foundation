@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
-import { DateField } from "./DateField";
 import {
-  beijingToday,
-  beijingInputToIso,
-  formatBeijingTime,
-} from "./beijingTime";
+  DailyDateRange,
+  CollectionColumns,
+  ExecutionBriefCard,
+  dailyRangeError,
+} from "./DailyFormControls";
+import { useEffect, useRef, useState } from "react";
+import { beijingToday } from "./beijingTime";
 import {
   financialJobOrigin,
   financialJobResult,
@@ -20,21 +21,7 @@ import { useFinancialSubmission } from "./useFinancialSubmission";
 import type { Transport } from "./api";
 
 type Range = { start: string; end: string };
-export function financialRangeError(
-  range: Range,
-  maxDays: number,
-  latestEnd: string,
-) {
-  const a = beijingInputToIso(range.start + "T00:00:00"),
-    b = beijingInputToIso(range.end + "T00:00:00");
-  if (!a || !b) return "请填写合法的采集开始和结束日期。";
-  if (range.start > range.end) return "采集开始日期不得晚于结束日期。";
-  if ((Date.parse(b) - Date.parse(a)) / 86400000 + 1 > maxDays)
-    return `采集范围不得超过 ${maxDays} 个日历日。`;
-  if (range.end > latestEnd)
-    return `采集结束日期不得晚于 ${latestEnd}（北京时间当日边界）。`;
-  return "";
-}
+export { dailyRangeError as financialRangeError } from "./DailyFormControls";
 export function FinancialCollection({
   transport,
   generation,
@@ -101,7 +88,7 @@ export function FinancialCollection({
   useEffect(() => setConfirmed(false), [action, range.start, range.end]);
   const maxDays = status?.collection_limits?.max_calendar_days ?? 366 * 30;
   const latest = status?.collection_limits?.latest_end ?? beijingToday();
-  const error = financialRangeError(range, maxDays, latest);
+  const error = dailyRangeError(range, maxDays, latest);
   function change(key: keyof Range, value: string) {
     edited.current[action] = true;
     setConfirmed(false);
@@ -129,226 +116,191 @@ export function FinancialCollection({
     setConfirmed(false);
   }
   return (
-    <div className="workbench cpi-collection-workbench">
-      <div className="collection-input-pane">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (
-              !error &&
-              confirmed &&
-              status &&
-              e.currentTarget.checkValidity()
-            )
-              void submission.submit({ action, ...range });
-          }}
-        >
-          <label>
-            采集方式
-            <select
-              aria-label="采集方式"
-              value={action}
-              disabled={busy || !!pending}
-              onChange={(e) => {
-                setConfirmed(false);
-                setAction(e.target.value as "init" | "update");
-              }}
-            >
-              <option value="update">更新指定范围</option>
-              <option value="init">初始化采集</option>
-            </select>
-          </label>
-          <div className="field-grid">
-            <DateField
-              key={`${action}-start`}
-              label="采集开始日期"
-              type="date"
-              value={range.start}
-              onChange={(v) => change("start", v)}
-              required
-              disabled={busy || !!pending}
-              max={latest}
-            />
-            <DateField
-              key={`${action}-end`}
-              label="采集结束日期"
-              type="date"
-              value={range.end}
-              onChange={(v) => change("end", v)}
-              required
-              disabled={busy || !!pending}
-              max={latest}
-            />
-          </div>
-          {action === "init" ? (
-            <>
-              <p>初始化服务预置范围：20日历年，可自行修改</p>
-              <p>
-                服务预置日期：
-                {status
-                  ? `${status.defaults.start} 至 ${status.defaults.end}`
-                  : "正在读取…"}
-              </p>
-            </>
-          ) : (
-            <p className="small">
-              更新默认范围：
-              {status?.update_default_basis ??
-                "回看近14个日历日，与周期维护范围一致，可编辑。"}{" "}
-              不沿用初始化草稿。
-            </p>
-          )}
+    <CollectionColumns
+      briefs={
+        <aside className="detail-pane execution-briefs" aria-label="执行简报">
+          <h3>执行简报</h3>
           <p className="small">
-            范围依据：美国东部当前观测日 {status?.defaults.end ?? "正在读取…"}
-            ，不代表来源已经公布。尾部未公布独立留缺，已有历史仍可取得；当前最多{" "}
-            {maxDays} 个日历日。
+            时间基准：北京时间（UTC+08:00）。以下为手动采集；自动作业见周期任务与执行记录。
           </p>
-          {error && range.start && range.end && <p role="alert">{error}</p>}
-          <label className="cpi-collection-confirm">
-            <input
-              type="checkbox"
-              checked={confirmed}
-              disabled={busy || !!pending}
-              onChange={(e) => setConfirmed(e.target.checked)}
-            />
-            <span>我确认将以上范围采集到开发测试库</span>
-          </label>
-          <button
-            type="submit"
-            className="primary"
-            disabled={
-              !status ||
-              !confirmed ||
-              !!error ||
-              busy ||
-              !!pending ||
-              storageFailed
-            }
-          >
-            {busy ? "正在提交…" : "提交 金融条件日频 采集"}
-          </button>
-        </form>
-        {failure && <p role="alert">{failure}</p>}
-        {storageFailed && (
-          <p role="alert">本机请求记录无法核实，已阻止提交。</p>
-        )}
-      </div>
-      <aside className="detail-pane execution-briefs" aria-label="执行简报">
-        <h3>执行简报</h3>
-        <p className="small">
-          时间基准：北京时间（UTC+08:00）。以下为手动采集；自动作业见周期任务与执行记录。
-        </p>
-        {jobs.busy && !jobs.data && <p role="status">正在读取执行简报…</p>}
-        {jobs.failure && <p role="alert">执行简报读取失败，已有记录待核实。</p>}
-        {jobs.data && !briefs.length && !pending && (
-          <p>暂无手动采集记录；尚未提交本次采集。</p>
-        )}
-        <ol className="execution-brief-list">
-          {pending && !receipt && (
-            <li>
-              <div className="execution-brief-card" role="status">
-                <strong>
-                  金融条件日频 ·{" "}
-                  {pending.command?.action === "init"
-                    ? "初始化采集"
-                    : "更新指定范围"}
-                </strong>
-                <dl>
-                  <div>
-                    <dt>请求编号</dt>
-                    <dd className="request-id">{pending.request_id}</dd>
-                  </div>
-                  <div>
-                    <dt>创建时间</dt>
-                    <dd>未核实（本机保留意图）</dd>
-                  </div>
-                  <div>
-                    <dt>采集范围</dt>
-                    <dd>
-                      {pending.command?.start ?? "待核实"} 至{" "}
-                      {pending.command?.end ?? "待核实"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>结果</dt>
-                    <dd>
-                      {busy
-                        ? "正在提交，尚未确认任务创建。"
-                        : rejected
-                          ? failure
-                          : "结果未知，保留请求并自动跟踪，请勿重复提交；尚未确认任务创建。"}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-              {canRelease && (
-                <button disabled={busy || storageFailed} onClick={newIntent}>
-                  开始另一项采集
+          {jobs.busy && !jobs.data && <p role="status">正在读取执行简报…</p>}
+          {jobs.failure && (
+            <p role="alert">执行简报读取失败，已有记录待核实。</p>
+          )}
+          {jobs.data && !briefs.length && !pending && (
+            <p>暂无手动采集记录；尚未提交本次采集。</p>
+          )}
+          <ol className="execution-brief-list">
+            {pending && !receipt && (
+              <li>
+                <div className="execution-brief-card" role="status">
+                  <strong>
+                    金融条件日频 ·{" "}
+                    {pending.command?.action === "init"
+                      ? "初始化采集"
+                      : "更新指定范围"}
+                  </strong>
+                  <dl>
+                    <div>
+                      <dt>请求编号</dt>
+                      <dd className="request-id">{pending.request_id}</dd>
+                    </div>
+                    <div>
+                      <dt>创建时间</dt>
+                      <dd>未核实（本机保留意图）</dd>
+                    </div>
+                    <div>
+                      <dt>采集范围</dt>
+                      <dd>
+                        {pending.command?.start ?? "待核实"} 至{" "}
+                        {pending.command?.end ?? "待核实"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>结果</dt>
+                      <dd>
+                        {busy
+                          ? "正在提交，尚未确认任务创建。"
+                          : rejected
+                            ? failure
+                            : "结果未知，保留请求并自动跟踪，请勿重复提交；尚未确认任务创建。"}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+                {canRelease && (
+                  <button disabled={busy || storageFailed} onClick={newIntent}>
+                    开始另一项采集
+                  </button>
+                )}
+              </li>
+            )}
+            {pending && uncertain && !busy && (
+              <li>
+                <p role="status">
+                  同一请求的回执尚未核实或已陈旧，保留请求并自动跟踪，请勿重复提交。
+                </p>
+                <button
+                  disabled={busy || storageFailed}
+                  onClick={() => submission.verify()}
+                >
+                  核实原请求
                 </button>
-              )}
-            </li>
-          )}
-          {pending && uncertain && !busy && (
-            <li>
-              <p role="status">
-                同一请求的回执尚未核实或已陈旧，保留请求并自动跟踪，请勿重复提交。
-              </p>
-              <button
-                disabled={busy || storageFailed}
-                onClick={() => submission.verify()}
-              >
-                核实原请求
-              </button>
-            </li>
-          )}
-          {briefs.map((j) => (
-            <li
-              key={j.request_id}
-              aria-current={
-                pending?.request_id === j.request_id ? "true" : undefined
-              }
-            >
-              <button
-                type="button"
-                className="execution-brief-card"
+              </li>
+            )}
+            {briefs.map((j) => (
+              <li
+                key={j.request_id}
                 aria-current={
                   pending?.request_id === j.request_id ? "true" : undefined
                 }
-                onClick={() => onExecution(j.request_id)}
               >
-                <strong>{financialJobTitle(j)}</strong>
-                <dl>
-                  <div>
-                    <dt>请求编号</dt>
-                    <dd className="request-id">{j.request_id}</dd>
-                  </div>
-                  <div>
-                    <dt>创建时间</dt>
-                    <dd>
-                      {formatBeijingTime(j.created_at).replace(" 北京时间", "")}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>采集范围</dt>
-                    <dd>
-                      {j.command.start} 至 {j.command.end}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>结果</dt>
-                    <dd>{financialJobResult(j)}</dd>
-                  </div>
-                </dl>
-              </button>
-              {pending?.request_id === j.request_id && canRelease && (
-                <button disabled={busy || storageFailed} onClick={newIntent}>
-                  开始另一项采集
-                </button>
-              )}
-            </li>
-          ))}
-        </ol>
-      </aside>
-    </div>
+                <ExecutionBriefCard
+                  id={j.request_id}
+                  title={financialJobTitle(j)}
+                  createdAt={j.created_at}
+                  start={j.command.start}
+                  end={j.command.end}
+                  result={financialJobResult(j)}
+                  current={pending?.request_id === j.request_id}
+                  onSelect={() => onExecution(j.request_id)}
+                />
+
+                {pending?.request_id === j.request_id && canRelease && (
+                  <button disabled={busy || storageFailed} onClick={newIntent}>
+                    开始另一项采集
+                  </button>
+                )}
+              </li>
+            ))}
+          </ol>
+        </aside>
+      }
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!error && confirmed && status && e.currentTarget.checkValidity())
+            void submission.submit({ action, ...range });
+        }}
+      >
+        <label>
+          采集方式
+          <select
+            aria-label="采集方式"
+            value={action}
+            disabled={busy || !!pending}
+            onChange={(e) => {
+              setConfirmed(false);
+              setAction(e.target.value as "init" | "update");
+            }}
+          >
+            <option value="update">更新指定范围</option>
+            <option value="init">初始化采集</option>
+          </select>
+        </label>
+        <div className="field-grid">
+          <DailyDateRange
+            key={action}
+            collection
+            start={range.start}
+            end={range.end}
+            onStart={(v) => change("start", v)}
+            onEnd={(v) => change("end", v)}
+            disabled={busy || !!pending}
+            max={latest}
+          />
+        </div>
+        {action === "init" ? (
+          <>
+            <p>初始化服务预置范围：20日历年，可自行修改</p>
+            <p>
+              服务预置日期：
+              {status
+                ? `${status.defaults.start} 至 ${status.defaults.end}`
+                : "正在读取…"}
+            </p>
+          </>
+        ) : (
+          <p className="small">
+            更新默认范围：
+            {status?.update_default_basis ??
+              "回看近14个日历日，与周期维护范围一致，可编辑。"}{" "}
+            不沿用初始化草稿。
+          </p>
+        )}
+        <p className="small">
+          范围依据：美国东部当前观测日 {status?.defaults.end ?? "正在读取…"}
+          ，不代表来源已经公布。尾部未公布独立留缺，已有历史仍可取得；当前最多{" "}
+          {maxDays} 个日历日。
+        </p>
+        {error && range.start && range.end && <p role="alert">{error}</p>}
+        <label className="cpi-collection-confirm">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            disabled={busy || !!pending}
+            onChange={(e) => setConfirmed(e.target.checked)}
+          />
+          <span>我确认将以上范围采集到开发测试库</span>
+        </label>
+        <button
+          type="submit"
+          className="primary"
+          disabled={
+            !status ||
+            !confirmed ||
+            !!error ||
+            busy ||
+            !!pending ||
+            storageFailed
+          }
+        >
+          {busy ? "正在提交…" : "提交 金融条件日频 采集"}
+        </button>
+      </form>
+      {failure && <p role="alert">{failure}</p>}
+      {storageFailed && <p role="alert">本机请求记录无法核实，已阻止提交。</p>}
+    </CollectionColumns>
   );
 }

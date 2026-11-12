@@ -1,3 +1,4 @@
+import { toBeijingIso } from "./beijingTime";
 import type { Transport } from "./api";
 import { requestCpiJson, type CpiHttpExchange } from "./cpiTimeSeriesApi";
 
@@ -98,7 +99,14 @@ export function financialQuerySuffix({
   });
   if (history) {
     if (!cutoff) throw new Error("financial_history_cutoff_required");
-    params.set("as_of", new Date(cutoff).toISOString());
+    const precise = toBeijingIso(cutoff);
+    if (!precise) throw new Error("financial_history_cutoff_required");
+    const fraction = precise.match(/\.(\d+)\+08:00$/)?.[1];
+    const utc = new Date(precise).toISOString();
+    params.set(
+      "as_of",
+      fraction ? utc.replace(/\.\d+Z$/, `.${fraction}Z`) : utc,
+    );
   }
   return `/query?${params}`;
 }

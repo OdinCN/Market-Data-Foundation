@@ -1,4 +1,5 @@
-import { TdxDailyWorkbench, TDX_DAILY } from "./TdxDailyWorkbench";
+import { FamilyAssetReader, type RuntimeFamily } from "./RuntimeFamily";
+import { RUNTIME_FAMILIES } from "./runtimeFamilies";
 import { FINANCIAL, FinancialDailyWorkbench } from "./FinancialDailyWorkbench";
 import {
   M3_PROFILE,
@@ -83,9 +84,11 @@ function appRoute() {
 export default function App({
   transport = fetch,
   initialQuery,
+  runtimeFamilies = RUNTIME_FAMILIES,
 }: {
   transport?: Transport;
   initialQuery?: Query;
+  runtimeFamilies?: readonly RuntimeFamily[];
 }) {
   const [page, setPage] = useState(appRoute);
   const [collapsed, setCollapsed] = useState(false);
@@ -498,10 +501,19 @@ export default function App({
   );
   const source = model.interfaces.find((i) => i.id === operation);
   const asset = model.assets.find((a) => sameKey(a.key, key));
-  const tdxExact =
-    identity === TDX_DAILY.identity &&
-    (!revision || revision === TDX_DAILY.revision) &&
-    (!operation || source?.asset?.identity === TDX_DAILY.identity);
+  const family = runtimeFamilies.find(
+    (f) =>
+      identity === f.asset.identity &&
+      (!revision || revision === f.asset.revision) &&
+      (!operation || sameKey(source?.asset, f.asset)),
+  );
+  const registeredFamilies = runtimeFamilies.filter((f) =>
+    packages.data?.packages.some((p) =>
+      p.assets.some((a) =>
+        a.revisions.some((r) => sameKey(r.definition_ref, f.asset)),
+      ),
+    ),
+  );
   const financialExact =
     identity === FINANCIAL.identity &&
     (!revision || revision === FINANCIAL.revision) &&
@@ -521,7 +533,8 @@ export default function App({
           !sameKey(key, M3) &&
           !sameKey(key, JOLTS) &&
           !sameKey(key, CLAIMS) &&
-          !sameKey(key, FINANCIAL)) ||
+          !sameKey(key, FINANCIAL) &&
+          !runtimeFamilies.some((f) => sameKey(key, f.asset))) ||
           (!revision &&
             (page.view !== "assets" ||
               !!operation ||
@@ -749,17 +762,25 @@ export default function App({
                       changed={() => setGeneration((g) => g + 1)}
                     />
                   )}
-                  {tdxExact &&
-                    !invalidIdentity &&
-                    ["assets", "collection"].includes(page.view) && (
-                      <TdxDailyWorkbench
-                        transport={transport}
-                        route={page}
-                        navigate={navigate}
-                      />
-                    )}
-                  {page.view === "assets" && !tdxExact && (
+                  {page.view === "assets" && (
                     <RuntimeAssets
+                      family={
+                        family && !invalidIdentity
+                          ? {
+                              title: family.title,
+                              content: (
+                                <FamilyAssetReader
+                                  key={keyOf(family.asset)}
+                                  family={family}
+                                  transport={transport}
+                                  route={page}
+                                  navigate={navigate}
+                                  generation={generation}
+                                />
+                              ),
+                            }
+                          : undefined
+                      }
                       profile={macroProfile}
                       financial={
                         financialExact && !invalidIdentity ? (
@@ -822,12 +843,16 @@ export default function App({
                         <button
                           onClick={() =>
                             navigate("collection", {
-                              asset: financialExact
-                                ? FINANCIAL.identity
-                                : macroProfile.asset.identity,
-                              asset_revision: financialExact
-                                ? FINANCIAL.revision
-                                : macroProfile.asset.revision,
+                              asset: family
+                                ? family.asset.identity
+                                : financialExact
+                                  ? FINANCIAL.identity
+                                  : macroProfile.asset.identity,
+                              asset_revision: family
+                                ? family.asset.revision
+                                : financialExact
+                                  ? FINANCIAL.revision
+                                  : macroProfile.asset.revision,
                               operation: null,
                               tab: "new",
                             })
@@ -889,19 +914,26 @@ export default function App({
                       ordinary={ordinaryQuery}
                     />
                   )}
-                  {page.view === "collection" && !tdxExact && (
+                  {page.view === "collection" && (
                     <CollectionWorkbench
-                      key={`${identity}:${revision}:${operation}`}
+                      key={
+                        ["periodic", "executions"].includes(
+                          page.fields.get("tab") ?? "new",
+                        )
+                          ? "global-lists"
+                          : `${identity}:${revision}:${operation}`
+                      }
                       assets={model.assets}
+                      families={registeredFamilies}
                       financialRegistered={
                         packages.data?.packages.some((p) =>
                           p.assets.some(
                             (a) =>
                               a.identity === FINANCIAL.identity &&
-                              a.revisions.some((r) =>
-                                r.visibility_basis.includes(
-                                  "REGISTERED_MANUAL",
-                                ),
+                              a.revisions.some(
+                                (r) =>
+                                  r.definition_ref.revision ===
+                                  FINANCIAL.revision,
                               ),
                           ),
                         ) ?? false

@@ -1336,7 +1336,7 @@ it.each(["PPI", "TDX"])(
       (e) =>
         e.asset &&
         (family === "TDX"
-          ? e.domain === "TDX"
+          ? e.asset.identity === "mdf.market.bars.daily.raw"
           : e.asset.identity === "mdf.macro.bls.ppi.final-demand"),
     )!;
     for (const tab of ["periodic", "executions"]) {

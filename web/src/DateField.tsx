@@ -45,7 +45,7 @@ function normalize(value: string, type: Precision): string {
       ? value
       : "";
   }
-  return beijingInputToIso(value).slice(0, 19);
+  return beijingInputToIso(value).replace(/\+08:00$/, "");
 }
 
 // UTC is used only for calendar arithmetic; statistical dates never shift zones.
@@ -321,7 +321,7 @@ export function DateField({
   ): string {
     if (type !== "datetime-local") return day;
     const start = `${day}T00:00:00`;
-    const end = `${day}T23:59:59`;
+    const end = `${day}T23:59:59${step === "any" ? ".999999999" : ""}`;
     const earliest = lower && lower > start ? lower : start;
     const latest = upper && upper < end ? upper : end;
     if (earliest > latest) return "";
@@ -632,8 +632,14 @@ export function DateField({
                       type="number"
                       inputMode="numeric"
                       min={0}
-                      max={index === 0 ? 23 : 59}
-                      step={1}
+                      max={
+                        index === 0
+                          ? 23
+                          : index === 2 && step === "any"
+                            ? 59.999999999
+                            : 59
+                      }
+                      step={index === 2 && step === "any" ? "any" : 1}
                       value={timeParts[index] ?? "00"}
                       onChange={(event) => {
                         const parts = [...timeParts];

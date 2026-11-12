@@ -11,7 +11,7 @@ from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 from queue import Empty, Queue
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 from zoneinfo import ZoneInfo
 
 from market_data_foundation.canonical.model import require
@@ -31,6 +31,10 @@ PATTERNS = {
     1: r"(600|601|603|605|688)[0-9]{3}",
     2: r"(4[0-9]{5}|8[0-9]{5}|92[0-9]{4})",
 }
+
+
+def strategy_slot_id(day, action):
+    return str(uuid5(NAMESPACE_URL, f"mdf-tdx-p0:{day}:{action}"))
 
 
 def now():
@@ -234,7 +238,7 @@ class DailyJobs:
             ]
         atomic(self.path(record["request_id"]), value)
 
-    def submit(self, command, *, launch=True):
+    def submit(self, command, *, launch=True, origin=None):
         command = validate(command)
         identity = command["request_id"]
         with self.lock(identity):
@@ -246,6 +250,7 @@ class DailyJobs:
                 request_id=identity,
                 command=command,
                 state="QUEUED",
+                origin=origin,
                 created_at=now(),
                 updated_at=now(),
                 steps=[],

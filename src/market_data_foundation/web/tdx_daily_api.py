@@ -13,6 +13,7 @@ from market_data_foundation.historical.tdx_p0_jobs import (
     DailyJobs,
     coverage,
     latest_day,
+    strategy_slot_id,
 )
 from market_data_foundation.historical.tdx_p0_source import GoDailySource, TdxError
 from market_data_foundation.historical.tdx_p0_strategy import DailyStrategy
@@ -214,6 +215,16 @@ def tdx_router(runtime=None):
         except Exception as error:
             return fail(error)
 
+    def job_origin(job):
+        if job.get("origin") in {"manual", "periodic"}:
+            return job["origin"]
+        command = job["command"]
+        if command["action"] in {"universe", "update"} and job[
+            "request_id"
+        ] == strategy_slot_id(command["end"], command["action"]):
+            return "periodic"
+        return "unknown"
+
     @router.get("/jobs")
     def jobs():
         try:
@@ -222,6 +233,7 @@ def tdx_router(runtime=None):
                 jobs=[
                     {
                         **{k: v for k, v in j.items() if k != "steps"},
+                        "origin": job_origin(j),
                         "step_count": len(j["steps"]),
                         "complete_steps": sum(
                             s["state"] == "COMPLETE" for s in j["steps"]
@@ -237,7 +249,8 @@ def tdx_router(runtime=None):
     def detail(identity: str):
         try:
             ready()
-            return runtime.jobs.read(identity)
+            job = runtime.jobs.read(identity)
+            return {**job, "origin": job_origin(job)}
         except Exception as error:
             return fail(error)
 
@@ -247,7 +260,9 @@ def tdx_router(runtime=None):
             ready(True)
             if not admitted_tdx_write(request, origin=runtime.options.origin):
                 raise TdxError("operator_not_authorized")
-            return runtime.jobs.submit(await body(request, max_size=160000))
+            return runtime.jobs.submit(
+                await body(request, max_size=160000), origin="manual"
+            )
         except Exception as error:
             return fail(error)
 

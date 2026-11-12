@@ -1,3 +1,8 @@
+import {
+  familyRowId,
+  useFamilyRecords,
+  type RuntimeFamily,
+} from "./RuntimeFamily";
 import { claimsExecutionPeriod } from "./claimsPeriod";
 import { executionCreatedOrder } from "./executionOrder";
 import {
@@ -107,6 +112,7 @@ export function CollectionWorkbench({
   transport,
   generation,
   financialRegistered = false,
+  families = [],
   invalidIdentity,
   cpiAvailability,
   ppiAvailability,
@@ -127,6 +133,7 @@ export function CollectionWorkbench({
   transport: Transport;
   generation: number;
   financialRegistered?: boolean;
+  families?: readonly RuntimeFamily[];
   invalidIdentity: boolean;
   m3Availability?: CpiAvailability;
   joltsAvailability?: CpiAvailability;
@@ -154,6 +161,7 @@ export function CollectionWorkbench({
     route.fields.get("mode") === "backfill" ? "指定范围回补" : "一次性初始化",
   );
   const [refresh, setRefresh] = useState(0);
+  const manuallySelected = useRef(false);
   const [briefTarget, setBriefTarget] = useState<string | null>(null);
   const [start, setStart] = useState(
     sameKey(asset?.key, PCE) ? PCE_REFERENCE : "",
@@ -418,6 +426,16 @@ export function CollectionWorkbench({
       financialRegistered &&
       !invalidIdentity &&
       (filter === "all" || filter === keyOf(FINANCIAL)),
+  );
+  const familyProps = { transport, route, navigate, generation };
+  const familyRecords = useFamilyRecords(
+    families,
+    familyProps,
+    invalidIdentity,
+  );
+  const selectedFamily = familyRecords.selected;
+  const familyRows = (familyRecords.executions.data ?? []).filter(
+    (row) => executionSchedule === "all" || row.schedule === executionSchedule,
   );
   const jobId = route.fields.get("job");
   const financialExecution =
@@ -1170,6 +1188,8 @@ export function CollectionWorkbench({
     operation: context?.source?.id ?? null,
   };
   const calendar = `${frequency === "daily" ? "每天" : frequency === "weekly" ? `每周 ${day}` : frequency === "monthly" ? `每月 ${day} 日` : `每年 ${month} 月 ${day} 日`} ${time}（${zone}）`;
+  const familyAssetTitle = (key: { identity: string; revision: string }) =>
+    families.find((f) => sameKey(f.asset, key))?.title ?? assetTitle(key);
   const targetControl = (
     <label>
       采集目标
@@ -1180,6 +1200,7 @@ export function CollectionWorkbench({
           const key =
             assets.find((a) => keyOf(a.key) === e.target.value)?.key ??
             [
+              ...families.map((f) => f.asset),
               CPI,
               PPI,
               PCE,
@@ -1208,16 +1229,23 @@ export function CollectionWorkbench({
           ...assets,
           ...[
             ...new Map(
-              [CPI, PPI, PCE, EMPLOYMENT, CLAIMS, GDP, macroProfile.asset].map(
-                (key) => [keyOf(key), key],
-              ),
+              [
+                CPI,
+                PPI,
+                PCE,
+                EMPLOYMENT,
+                CLAIMS,
+                GDP,
+                macroProfile.asset,
+                ...families.map((f) => f.asset),
+              ].map((key) => [keyOf(key), key]),
             ).values(),
           ]
             .filter((k) => !assets.some((a) => sameKey(a.key, k)))
             .map((key) => ({ key })),
         ].map((a) => (
           <option key={keyOf(a.key)} value={keyOf(a.key)}>
-            {assetTitle(a.key)}
+            {familyAssetTitle(a.key)}
           </option>
         ))}
       </select>
@@ -1267,11 +1295,19 @@ export function CollectionWorkbench({
               )}
               {assets.map((a) => (
                 <option key={keyOf(a.key)} value={keyOf(a.key)}>
-                  {assetTitle(a.key)}
+                  {familyAssetTitle(a.key)}
                 </option>
               ))}
+              {families
+                .filter((f) => !assets.some((a) => sameKey(a.key, f.asset)))
+                .map((f) => (
+                  <option key={keyOf(f.asset)} value={keyOf(f.asset)}>
+                    {f.title}
+                  </option>
+                ))}
               {filter !== "all" &&
                 !assets.some((a) => keyOf(a.key) === filter) &&
+                !families.some((f) => keyOf(f.asset) === filter) &&
                 filter !== keyOf(GDP) &&
                 filter !== keyOf(CLAIMS) &&
                 filter !== keyOf(PPI) &&
@@ -1318,9 +1354,15 @@ export function CollectionWorkbench({
         gdpRecords.failure ||
         claimsRecords.failure ||
         joltsRecords.failure ||
-        financialRecords.failure) && (
+        financialRecords.failure ||
+        familyRecords.executions.failure ||
+        familyRecords.periodic.failure) && (
         <div role="alert">
           采集记录已陈旧，保留上次数据并自动重读。
+          {(familyRecords.executions.failure ||
+            familyRecords.periodic.failure) && (
+            <p>登记资产任务读取失败，当前记录尚未核实。</p>
+          )}
           {financialRecords.failure && (
             <p>金融日频执行记录读取失败，当前结果尚未核实。</p>
           )}
@@ -1345,7 +1387,12 @@ export function CollectionWorkbench({
           )}
         </div>
       )}
-      {tab === "new" && financialTarget ? (
+      {tab === "new" && selectedFamily ? (
+        <>
+          {targetControl}
+          <selectedFamily.Collection {...familyProps} />
+        </>
+      ) : tab === "new" && financialTarget ? (
         <>
           {targetControl}
           <FinancialDailyWorkbench
@@ -1716,7 +1763,9 @@ export function CollectionWorkbench({
           </aside>
         </div>
       ) : tab === "periodic" &&
-        (financialRegistered ||
+        (familyRecords.periodicEntries.length > 0 ||
+          families.some((family) => filter === keyOf(family.asset)) ||
+          financialRegistered ||
           newCpi ||
           newPpi ||
           newPce ||
@@ -1734,6 +1783,7 @@ export function CollectionWorkbench({
           (filter === keyOf(RETAIL) && retailAvailability) ||
           (filter === keyOf(CONSUMPTION) && consumptionAvailability)) ? (
         <CpiStrategyWorkbench
+          supplements={familyRecords.periodicEntries}
           supplement={
             financialRegistered &&
             !invalidIdentity &&
@@ -1926,29 +1976,52 @@ export function CollectionWorkbench({
             columns={["任务名称", "创建时间（北京时间）", "采集范围", "结果"]}
             pageSize={20}
             locateId={
-              financialTarget && jobId
-                ? `financial:${jobId}`
-                : (m3Target ||
-                      joltsTarget ||
-                      claimsTarget ||
-                      gdpTarget ||
-                      consumptionTarget ||
-                      retailTarget ||
-                      employmentTarget ||
-                      isPpi ||
-                      (pceTarget && newPce)) &&
-                    (briefTarget || jobId)
-                  ? `${macroProfile.id}:${briefTarget || jobId}`
-                  : briefTarget
+              manuallySelected.current
+                ? null
+                : selectedFamily && jobId
+                  ? familyRowId(selectedFamily, jobId)
+                  : financialTarget && jobId
+                    ? `financial:${jobId}`
+                    : (m3Target ||
+                          joltsTarget ||
+                          claimsTarget ||
+                          gdpTarget ||
+                          consumptionTarget ||
+                          retailTarget ||
+                          employmentTarget ||
+                          isPpi ||
+                          (pceTarget && newPce)) &&
+                        (briefTarget || jobId)
+                      ? `${macroProfile.id}:${briefTarget || jobId}`
+                      : briefTarget
             }
             selected={
-              financialExecution
-                ? `financial:${financialExecution.request_id}`
-                : (cpiExecution?.rowId ?? execution?.id)
+              selectedFamily && jobId
+                ? familyRowId(selectedFamily, jobId)
+                : financialExecution
+                  ? `financial:${financialExecution.request_id}`
+                  : (cpiExecution?.rowId ?? execution?.id)
             }
             empty={recordState("jobs")}
             onSelect={(job) => {
               setBriefTarget(null);
+              manuallySelected.current = true;
+              const familyRow = familyRows.find(
+                (row) => familyRowId(row.family, row.id) === job,
+              );
+              if (familyRow) {
+                navigate(
+                  "collection",
+                  {
+                    asset: familyRow.family.asset.identity,
+                    asset_revision: familyRow.family.asset.revision,
+                    operation: null,
+                    job: familyRow.id,
+                  },
+                  true,
+                );
+                return;
+              }
               const financial = financialRecords.data?.jobs.find(
                 (j) => `financial:${j.request_id}` === job,
               );
@@ -1966,20 +2039,48 @@ export function CollectionWorkbench({
                 return;
               }
               const macro = macroRecords.find((e) => e.rowId === job);
+              const legacy = rows.find((e) => e.id === job);
               navigate(
                 "collection",
-                macro && (macro.profile.id !== "cpi" || isPpi || pceTarget)
+                macro &&
+                  (macro.profile.id !== "cpi" ||
+                    isPpi ||
+                    pceTarget ||
+                    !!selectedFamily ||
+                    financialTarget)
                   ? {
                       job: macro.id,
                       asset: macro.profile.asset.identity,
                       asset_revision: macro.profile.asset.revision,
                       operation: null,
                     }
-                  : { job: macro?.id ?? job },
+                  : legacy && (selectedFamily || financialTarget)
+                    ? {
+                        job,
+                        asset: legacy.asset.identity,
+                        asset_revision: legacy.asset.revision,
+                        operation: legacy.operation,
+                      }
+                    : { job: macro?.id ?? job },
                 true,
               );
             }}
             rows={[
+              ...familyRows.map((row) => ({
+                id: familyRowId(row.family, row.id),
+                createdAt: row.createdAt,
+                search: row.search,
+                cells: [
+                  row.title,
+                  <ExecutionCreatedAt value={row.createdAt} />,
+                  <span className="execution-range">
+                    <span>{row.start ?? "未记录"}</span>
+                    <span>至</span>
+                    <span>{row.end ?? "未记录"}</span>
+                  </span>,
+                  <span className="execution-result">{row.result}</span>,
+                ],
+              })),
               ...(financialRecords.data?.jobs ?? [])
                 .filter(() => executionSchedule === "all")
                 .map((j) => ({
@@ -2038,7 +2139,9 @@ export function CollectionWorkbench({
               })),
             ].sort(executionCreatedOrder)}
           >
-            {financialTarget && jobId ? (
+            {selectedFamily && jobId ? (
+              <selectedFamily.ExecutionDetail {...familyProps} />
+            ) : financialTarget && jobId ? (
               <FinancialDailyWorkbench
                 route={route}
                 navigate={navigate}
@@ -2087,7 +2190,8 @@ export function CollectionWorkbench({
             !consumptionRecords.busy &&
             !execution &&
             !cpiExecution &&
-            !financialTarget && (
+            !financialTarget &&
+            !selectedFamily && (
               <p role="status">
                 请求的具名执行记录当前不可核实，未改选其他任务。
               </p>

@@ -1,6 +1,7 @@
 """Deterministic pages, retained recovery, local API and coverage failures."""
 
 import base64
+import json
 import os
 import stat
 import struct
@@ -495,6 +496,18 @@ def test_strategy_actual_executor_dispatches_slot_and_pause_stops_new_jobs(tmp_p
     runtime.store.snapshots.append(snapshot)
     runtime.strategy.tick(at)
     assert len(launched) == 1
+    assert runtime.jobs.read(launched[0])["origin"] == "periodic"
+    path = runtime.jobs.path(launched[0])
+    record = json.loads(path.read_text())
+    record.pop("origin")
+    path.write_text(json.dumps(record))
+    app = FastAPI()
+    app.include_router(tdx_router(runtime))
+    with TestClient(app) as client:
+        assert client.get(PREFIX + "/jobs").json()["jobs"][0]["origin"] == "periodic"
+        assert (
+            client.get(PREFIX + "/jobs/" + launched[0]).json()["origin"] == "periodic"
+        )
     snapshot["details"]["calendar"][0]["is_open"] = False
     runtime.strategy.tick(at)
     assert runtime.strategy.read()["calendar_state"] == "CLOSED"
@@ -543,6 +556,8 @@ def test_write_origin_and_job_id_replay_conflict(tmp_path):
         assert client.post(PREFIX + "/jobs", json=command).status_code == 403
         first = client.post(PREFIX + "/jobs", json=command, headers={"Origin": ORIGIN})
         assert first.status_code == 202
+        assert first.json()["origin"] == "manual"
+        assert client.get(PREFIX + "/jobs").json()["jobs"][0]["origin"] == "manual"
         assert (
             client.post(
                 PREFIX + "/jobs", json=command, headers={"Origin": ORIGIN}

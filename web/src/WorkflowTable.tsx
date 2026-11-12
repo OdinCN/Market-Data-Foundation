@@ -13,6 +13,7 @@ export function WorkflowTable({
   locateId,
   className,
   rightDetails = false,
+  singlePane = false,
 }: {
   label: string;
   columns: string[];
@@ -26,6 +27,7 @@ export function WorkflowTable({
   locateId?: string | null;
   className?: string;
   rightDetails?: boolean;
+  singlePane?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -93,7 +95,10 @@ export function WorkflowTable({
     ? visible.slice(currentPage * pageSize, (currentPage + 1) * pageSize)
     : visible;
   return (
-    <div ref={root} className={`workbench${className ? ` ${className}` : ""}`}>
+    <div
+      ref={root}
+      className={`workbench${singlePane ? " single-pane" : ""}${className ? ` ${className}` : ""}`}
+    >
       <section aria-label={label} className="list-pane">
         <div className="searchbar">
           <input
@@ -186,54 +191,56 @@ export function WorkflowTable({
           onClick={closeDetails}
         />
       )}
-      <aside
-        ref={detail}
-        tabIndex={rightDetails ? -1 : undefined}
-        className={`detail-pane${rightDetails && detailOpen ? " right-details-open" : ""}`}
-        role={rightDetails && narrow && detailOpen ? "dialog" : undefined}
-        aria-modal={rightDetails && narrow && detailOpen ? true : undefined}
-        onKeyDown={(event) => {
-          if (!rightDetails || !narrow || !detailOpen) return;
-          if (event.key === "Escape") {
-            event.stopPropagation();
-            closeDetails();
-          }
-          if (event.key === "Tab") {
-            const buttons = [
-              ...(detail.current?.querySelectorAll<HTMLElement>(
-                'button:not(:disabled),a[href],input:not(:disabled),[tabindex="0"]',
-              ) ?? []),
-            ].filter((el) => el.getClientRects().length);
-            const first = buttons[0],
-              last = buttons.at(-1);
-            if (
-              event.shiftKey &&
-              (document.activeElement === first ||
-                document.activeElement === detail.current)
-            ) {
-              event.preventDefault();
-              last?.focus();
-            } else if (!event.shiftKey && document.activeElement === last) {
-              event.preventDefault();
-              first?.focus();
+      {!singlePane && (
+        <aside
+          ref={detail}
+          tabIndex={rightDetails ? -1 : undefined}
+          className={`detail-pane${rightDetails && detailOpen ? " right-details-open" : ""}`}
+          role={rightDetails && narrow && detailOpen ? "dialog" : undefined}
+          aria-modal={rightDetails && narrow && detailOpen ? true : undefined}
+          onKeyDown={(event) => {
+            if (!rightDetails || !narrow || !detailOpen) return;
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              closeDetails();
             }
-          }
-        }}
-        aria-label={`${label}详情`}
-      >
-        {rightDetails && (
-          <button className="detail-close" onClick={closeDetails}>
-            关闭详情
-          </button>
-        )}
-        {children ?? (
-          <div className="empty detail-empty">
-            <span aria-hidden="true">▦</span>
-            <h3>选择一项查看详情</h3>
-            <p>详细信息与关联操作将在此显示。</p>
-          </div>
-        )}
-      </aside>
+            if (event.key === "Tab") {
+              const buttons = [
+                ...(detail.current?.querySelectorAll<HTMLElement>(
+                  'button:not(:disabled),a[href],input:not(:disabled),[tabindex="0"]',
+                ) ?? []),
+              ].filter((el) => el.getClientRects().length);
+              const first = buttons[0],
+                last = buttons.at(-1);
+              if (
+                event.shiftKey &&
+                (document.activeElement === first ||
+                  document.activeElement === detail.current)
+              ) {
+                event.preventDefault();
+                last?.focus();
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first?.focus();
+              }
+            }
+          }}
+          aria-label={`${label}详情`}
+        >
+          {rightDetails && (
+            <button className="detail-close" onClick={closeDetails}>
+              关闭详情
+            </button>
+          )}
+          {children ?? (
+            <div className="empty detail-empty">
+              <span aria-hidden="true">▦</span>
+              <h3>选择一项查看详情</h3>
+              <p>详细信息与关联操作将在此显示。</p>
+            </div>
+          )}
+        </aside>
+      )}
     </div>
   );
 }

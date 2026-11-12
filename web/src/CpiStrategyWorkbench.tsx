@@ -567,11 +567,13 @@ function CpiStrategyWorkbenchContent({
   seventhVisible = true,
   selectedId,
   supplement,
+  supplements = [],
   selected: selectedProp,
   onSelect,
 }: {
   transport: Transport;
   supplement?: { row: Row; detail: ReactNode; refresh: () => void };
+  supplements?: { row: Row; detail: ReactNode; refresh: () => void }[];
   profile?: MacroProfile;
   availability: CpiAvailability;
   generation?: number;
@@ -815,7 +817,9 @@ function CpiStrategyWorkbenchContent({
   const entry =
     entries.find((e) => `${e.profile.id}-auto` === selection) ?? entries[0];
   const { profile, data, resource, uncertain } = entry;
-  const extraSelected = !!supplement && selection === supplement.row.id;
+  const extraEntries = [...(supplement ? [supplement] : []), ...supplements];
+  const extraEntry = extraEntries.find((entry) => selection === entry.row.id);
+  const extraSelected = !!extraEntry;
   const detailVisible = entry.visible && !extraSelected;
   const calendar = useVisiblePolling(
     async (signal) => {
@@ -889,7 +893,7 @@ function CpiStrategyWorkbenchContent({
             onClick={() => {
               entries.forEach((e) => e.resource.refresh());
               calendar.refresh();
-              supplement?.refresh();
+              extraEntries.forEach((entry) => entry.refresh());
             }}
           >
             刷新页面
@@ -991,10 +995,10 @@ function CpiStrategyWorkbenchContent({
                 </span>,
               ],
             })),
-          ...(supplement ? [supplement.row] : []),
+          ...extraEntries.map((entry) => entry.row),
         ]}
       >
-        {shown && extraSelected && supplement?.detail}
+        {shown && extraSelected && extraEntry?.detail}
         {shown && detailVisible && !data && (
           <section aria-label="自动采集问题说明">
             <p role="status">

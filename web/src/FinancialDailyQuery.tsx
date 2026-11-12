@@ -1,7 +1,11 @@
+import {
+  DailyDateRange,
+  HistoryCutoffFields,
+  QueryResultTabs,
+} from "./DailyFormControls";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
 import type { CpiHttpExchange } from "./cpiTimeSeriesApi";
-import { DateField } from "./DateField";
 import { MultiSelect } from "./MultiSelect";
 import {
   CodeBlock,
@@ -9,10 +13,9 @@ import {
   RequestPreview,
 } from "./CpiQueryDetails";
 import { FinancialApiHelp, type FinancialHelp } from "./FinancialApiHelp";
-import { Tabs } from "./WorkflowTable";
 import {
   beijingInputToIso,
-  toBeijingInput,
+  toBeijingIso,
   formatBeijingTime,
 } from "./beijingTime";
 import { financialStateText } from "./financialJobPresentation";
@@ -68,7 +71,7 @@ export function FinancialDailyQuery({
     );
   const [history, setHistory] = useState(Boolean(initialAsOf)),
     [cutoff, setCutoff] = useState(
-      initialAsOf ? toBeijingInput(initialAsOf) : "",
+      initialAsOf ? toBeijingIso(initialAsOf).replace(/\+08:00$/, "") : "",
     );
   const [offset, setOffset] = useState(0),
     [result, setResult] = useState<FinancialQueryResult | null>(null),
@@ -100,7 +103,9 @@ export function FinancialDailyQuery({
     cancel();
     setOffset(0);
     setHistory(Boolean(initialAsOf));
-    setCutoff(initialAsOf ? toBeijingInput(initialAsOf) : "");
+    setCutoff(
+      initialAsOf ? toBeijingIso(initialAsOf).replace(/\+08:00$/, "") : "",
+    );
   }, [initialAsOf]);
   const validDates =
     /^\d{4}-\d{2}-\d{2}$/.test(start) &&
@@ -133,8 +138,7 @@ export function FinancialDailyQuery({
     /* Invalid draft has no fabricated preview. */
   }
   async function read(nextOffset = 0) {
-    if (!valid) return;
-    active.current?.abort();
+    if (!valid || active.current) return;
     const controller = new AbortController();
     active.current = controller;
     setPending(true);
@@ -208,19 +212,11 @@ export function FinancialDailyQuery({
           }}
         >
           <div className="field-grid">
-            <DateField
-              label="开始日期"
-              type="date"
-              value={start}
-              required
-              onChange={(v) => change(() => setStart(v))}
-            />
-            <DateField
-              label="结束日期"
-              type="date"
-              value={end}
-              required
-              onChange={(v) => change(() => setEnd(v))}
+            <DailyDateRange
+              start={start}
+              end={end}
+              onStart={(v) => change(() => setStart(v))}
+              onEnd={(v) => change(() => setEnd(v))}
             />
             <MultiSelect
               label="金融指标"
@@ -238,28 +234,12 @@ export function FinancialDailyQuery({
               onChange={setFields}
             />
           </div>
-          <label className="cpi-history-toggle">
-            <input
-              type="checkbox"
-              checked={history}
-              onChange={(e) => change(() => setHistory(e.target.checked))}
-            />
-            <span>历史截止查询</span>
-          </label>
-          {history && (
-            <div className="cpi-history-fields">
-              <p className="small">
-                按 MDF 确认可用时间查看截止时已保存的数据。
-              </p>
-              <DateField
-                label="截止时间（北京时间）"
-                type="datetime-local"
-                value={cutoff}
-                required
-                onChange={(v) => change(() => setCutoff(v))}
-              />
-            </div>
-          )}
+          <HistoryCutoffFields
+            enabled={history}
+            value={cutoff}
+            onEnabled={(v) => change(() => setHistory(v))}
+            onChange={(v) => change(() => setCutoff(v))}
+          />
           {!series.length && <p role="alert">请至少选择一项金融指标。</p>}
           {!fields.length && <p role="alert">请至少选择一项显示指标。</p>}
           {!validDates && (
@@ -288,12 +268,8 @@ export function FinancialDailyQuery({
           </p>
         )}
         {(result || exchange) && (
-          <Tabs
-            label="金融条件日频 结果视图"
-            values={[
-              ["table", "表格"],
-              ["raw", "原始响应"],
-            ]}
+          <QueryResultTabs
+            label="金融条件日频"
             value={resultTab}
             onChange={setResultTab}
           />

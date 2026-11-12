@@ -30,6 +30,7 @@ export function RuntimeAssets({
   cpi,
   cpiAction,
   financial,
+  family,
   profile = CPI_PROFILE,
 }: {
   data: Packages | null;
@@ -43,6 +44,7 @@ export function RuntimeAssets({
   cpi?: ReactNode;
   cpiAction?: ReactNode;
   financial?: ReactNode;
+  family?: { title: string; content: ReactNode };
   profile?: MacroProfile;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -167,7 +169,7 @@ export function RuntimeAssets({
           )}
           <WorkflowTable
             className={
-              (cpiSelected || financialSelected) && expanded
+              (cpiSelected || financialSelected || !!family) && expanded
                 ? "cpi-asset-expanded"
                 : undefined
             }
@@ -226,7 +228,7 @@ export function RuntimeAssets({
               <>
                 <div className="toolbar cpi-asset-title">
                   <h3>{selected.title}</h3>
-                  {(cpiSelected || financialSelected) && (
+                  {(cpiSelected || financialSelected || !!family) && (
                     <>
                       {cpiAction}
                       <button
@@ -238,6 +240,7 @@ export function RuntimeAssets({
                     </>
                   )}
                 </div>
+                {family?.content}
                 {cpiSelected && cpi}
                 {financialSelected && (
                   <>
@@ -249,7 +252,8 @@ export function RuntimeAssets({
                     {financial}
                   </>
                 )}
-                {!cpiSelected &&
+                {!family &&
+                  !cpiSelected &&
                   !financialSelected &&
                   selected.revisions.length > 1 && (
                     <label>
@@ -285,7 +289,7 @@ export function RuntimeAssets({
                       </select>
                     </label>
                   )}
-                {!cpiSelected && !financialSelected && revision && (
+                {!family && !cpiSelected && !financialSelected && revision && (
                   <>
                     <dl>
                       <Fact name="能力状态">
@@ -401,7 +405,8 @@ export function RuntimeAssets({
           {cpi}
         </section>
       )}
-      {!cpiSelected &&
+      {!family &&
+        !cpiSelected &&
         !financialSelected &&
         !revision &&
         (!filter ||
