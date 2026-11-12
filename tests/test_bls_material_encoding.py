@@ -209,3 +209,39 @@ def test_temporary_material_failure_retries_material_only_with_existing_cooldown
         and len(calls) == 2
     )
     assert not repo.store._history
+
+
+def test_employment_missing_cells_preserve_official_dashes_and_original_evidence():
+    url = "https://www.bls.gov/news.release/archives/empsit_01092026.htm"
+    base, _ = material("empsit_10022026.html")
+    base = base.replace(b"SEPTEMBER 2026", b"DECEMBER 2025").replace(
+        b"October 2, 2026", b"January 9, 2026"
+    )
+    extra = (
+        b"<pre>Table A. Seasonally adjusted unemployment rates in 2025"
+        b" and changes due to revision\n"
+        b"October.............\t  \x97\t  \x97\t  \x97\n"
+        b"NOTE: Data for October 2025 were not collected"
+        b" due to the federal government shutdown.</pre>"
+    )
+    raw = base + extra
+    expected = parse_material(raw.replace(b"\x97", "—".encode()), url, "employment")
+    doc = parse_material(raw, url, "employment")
+    audit = doc.pop("parser_input")
+    assert doc.pop("parser_revision") == "employment-annual-table-missing-dashes-v1"
+    expected.pop("parser_revision")
+    assert doc == expected
+    assert audit["retained_raw_sha256"] == hashlib.sha256(raw).hexdigest()
+    assert all(change["replacement"] == "U+2014" for change in audit["transformations"])
+    assert [change["byte_start"] for change in audit["transformations"]] == [
+        i for i, byte in enumerate(raw) if byte == 0x97
+    ]
+    for damaged in (
+        raw + b"12\x973",
+        raw.replace(b"October......", b"July......"),
+        raw.replace(b"\x97\t", b"\x971\t", 1),
+    ):
+        with pytest.raises(
+            CpiTimeSeriesError, match="release_material_encoding_invalid"
+        ):
+            parse_material(damaged, url, "employment")

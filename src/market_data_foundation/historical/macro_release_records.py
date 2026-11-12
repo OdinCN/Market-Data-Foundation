@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import psycopg
 from psycopg.types.json import Jsonb
 
+from market_data_foundation.historical.bls_material_encoding import decode_material
 from market_data_foundation.historical.cpi_timeseries import CpiTimeSeriesError
 from market_data_foundation.historical.cpi_timeseries_store import (
     CpiStorageError,
@@ -223,9 +224,10 @@ def parse_employment_release(raw, source_url):
         raise CpiTimeSeriesError("employment_release_material_size_invalid")
     try:
         parser = _Text()
-        parser.feed(raw.decode("utf-8-sig"))
+        text, _ = decode_material(raw, "employment", source_url)
+        parser.feed(text)
         text = re.sub(r"\s+", " ", "".join(parser.parts)).strip()
-    except UnicodeError, ValueError:
+    except CpiTimeSeriesError, UnicodeError, ValueError:
         raise CpiTimeSeriesError("employment_release_material_invalid") from None
     title = re.search(
         r"THE EMPLOYMENT SITUATION\s*[-–—]{1,2}\s*("

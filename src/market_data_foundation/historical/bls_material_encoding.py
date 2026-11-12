@@ -1,9 +1,4 @@
-"""Narrow, auditable parser-only treatment of one proven CPI prose defect.
-
-No generic replacement or alternate-codepage fallback: all other invalid UTF-8
-is rejected, including damage in numbers, dates, headings and statistical tables.
-The original entity bytes remain the sole retained original and hash input.
-"""
+"""Parser-only handling of verified encoding defects in official BLS archives."""
 
 import hashlib
 import re
@@ -28,11 +23,56 @@ class _Context(HTMLParser):
         self.open[tag] = max(0, self.open.get(tag, 0) - 1)
 
 
+def _employment_missing_row(raw):
+    # In the January 2026 archive, only the three empty cells in the
+    # October row of the 2025 annual revision table use Windows-1252.
+    heading = (
+        b"Table A. Seasonally adjusted unemployment rates in 2025"
+        b" and changes due to revision"
+    )
+    note = (
+        b"NOTE: Data for October 2025 were not collected"
+        b" due to the federal government shutdown."
+    )
+    start = raw.find(heading)
+    end = raw.find(note, start)
+    table = raw[start:end]
+    row = re.search(rb"(?m)^October[.]+(?:[ \t]+\x97){3}[ \t]*\r?$", table)
+    if start < 0 or end < 0 or row is None or b"<" in table:
+        raise CpiTimeSeriesError("release_material_encoding_invalid")
+    offsets = [start + row.start() + i for i, byte in enumerate(row[0]) if byte == 0x97]
+    lower, upper = offsets[0], offsets[-1] + 1
+    derived = (
+        raw[:lower] + raw[lower:upper].replace(b"\x97", "—".encode()) + raw[upper:]
+    )
+    try:
+        text = derived.decode("utf-8-sig")
+    except UnicodeError:
+        raise CpiTimeSeriesError("release_material_encoding_invalid") from None
+    return text, dict(
+        policy="employment-20260109-october-missing-cells-v1",
+        input_encoding="utf-8-with-three-windows-1252-em-dashes",
+        retained_raw_unchanged=True,
+        retained_raw_sha256=hashlib.sha256(raw).hexdigest(),
+        derived_utf8_sha256=hashlib.sha256(derived).hexdigest(),
+        transformations=[
+            dict(byte_start=i, byte_end=i + 1, original_hex="97", replacement="U+2014")
+            for i in offsets
+        ],
+        scope="October 2025 missing cells in annual unemployment revision Table A",
+    )
+
+
 def decode_material(raw, family, url):
     try:
         return raw.decode("utf-8-sig"), None
     except UnicodeError:
         pass
+    if (
+        family == "employment"
+        and url == "https://www.bls.gov/news.release/archives/empsit_01092026.htm"
+    ):
+        return _employment_missing_row(raw)
     # Exact published prose, not a general tolerance for misplaced punctuation.
     # A changed future notice needs independent evidence and review.
     if family != "cpi" or not url.endswith("/archives/cpi_11102026.htm"):
