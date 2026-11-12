@@ -25,7 +25,8 @@ def main():
     require(provider is not None, "tdx_provider_snapshot_required")
     snapshot = build_roster(manifest, provider)
     snapshot.update(
-        snapshot_id="exchange-" + sha256(raw).hexdigest()[:32],
+        snapshot_id="exchange-"
+        + sha256(raw + b"\0" + provider["snapshot_id"].encode()).hexdigest()[:32],
         observed_at=max(s["received_at"] for s in manifest["sources"]),
         available_at=datetime.now(UTC).isoformat(),
     )

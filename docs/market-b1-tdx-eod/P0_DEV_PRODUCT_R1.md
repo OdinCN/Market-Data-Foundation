@@ -72,7 +72,8 @@ uv run --locked python scripts/mdf_tdx_roster_import.py \
   --provider-snapshot PROVIDER_SNAPSHOT_ID --dev-opt-in
 ```
 
-导入快照身份绑定 manifest 摘要，重放保留首次可用时刻。正式产品优先选择三市成功的
+导入快照身份绑定 manifest 原字节及指定 Provider 快照身份，重放保留首次可用时刻。
+更换 Provider 对账样本不会冒充同一次导入。正式产品优先选择三市成功的
 交易所快照。目录失败或局部结果不能覆盖成功名册；新的 TDX 目录只增加对账证据，
 未经交易所确认的候选不会进入正式分母。689 CDR 不属于本资产。
 上市日包含、退市日排除。历史分母包含已知退市证券；今日名册的完整性不外推到历史。
