@@ -11,6 +11,7 @@ import type { FamilyProps } from "./RuntimeFamily";
 import {
   formatBeijingTime,
   toBeijingIso,
+  beijingInstantKey,
   beijingToday,
   beijingInputToIso,
 } from "./beijingTime";
@@ -270,7 +271,9 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
       if (
         !Array.isArray(rows.rows) ||
         rows.provider_requests !== 0 ||
-        !Number.isInteger(rows.total)
+        !Number.isInteger(rows.total) ||
+        !beijingInstantKey(rows.as_of) ||
+        (history && beijingInstantKey(rows.as_of) !== beijingInstantKey(asOf))
       )
         throw Error("tdx_local_query_contract");
       if (active.current !== controller || controller.signal.aborted) return;

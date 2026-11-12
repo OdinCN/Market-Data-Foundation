@@ -1,4 +1,4 @@
-import { toBeijingIso } from "./beijingTime";
+import { toBeijingIso, beijingInstantKey } from "./beijingTime";
 import type { Transport } from "./api";
 import { requestCpiJson, type CpiHttpExchange } from "./cpiTimeSeriesApi";
 
@@ -146,7 +146,7 @@ export async function readFinancialQuery(
     result.provider_requests < 0 ||
     (history &&
       (result.provider_requests !== 0 ||
-        Date.parse(result.as_of) !== Date.parse(scope.cutoff))) ||
+        beijingInstantKey(result.as_of) !== beijingInstantKey(scope.cutoff))) ||
     result.rows.some((r, i) => {
       const index = offset + i;
       const at = new Date(end - Math.floor(index / selected.length) * 86400000)
