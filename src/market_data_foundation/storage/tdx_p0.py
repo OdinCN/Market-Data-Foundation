@@ -305,6 +305,18 @@ class PgStore:
             .get("historical_membership", "UNKNOWN_CURRENT_ROSTER_SURVIVOR_BIAS"),
         )
 
+    def has_data(self, as_of=None):
+        cutoff = as_of or datetime.now(UTC)
+        require(cutoff.utcoffset() is not None, "tdx_query_cutoff")
+        snapshot = self.universe(as_of=cutoff)
+        with self.connector() as conn, conn.transaction():
+            conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            return conn.execute(
+                visible_versions(member_scope(snapshot is not None))
+                + " SELECT EXISTS(SELECT 1 FROM versions)",
+                {"cutoff": cutoff, "snapshot": (snapshot or {}).get("snapshot_id")},
+            ).fetchone()[0]
+
     def summary(self, as_of=None):
         cutoff = as_of or datetime.now(UTC)
         require(cutoff.utcoffset() is not None, "tdx_query_cutoff")

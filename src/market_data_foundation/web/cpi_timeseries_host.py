@@ -1307,7 +1307,7 @@ class TimeSeriesRuntime(ReadonlyRuntime):
             try:
                 holding = (
                     "present"
-                    if self.tdx_runtime.store.summary()["markets"]
+                    if self.tdx_runtime.store.has_data(as_of=self.clock())
                     else "absent"
                 )
             except Exception:

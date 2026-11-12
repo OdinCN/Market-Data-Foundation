@@ -1,6 +1,8 @@
 """Deterministic pages, retained recovery, local API and coverage failures."""
 
 import base64
+import os
+import stat
 import struct
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
@@ -28,6 +30,7 @@ from market_data_foundation.historical.tdx_p0_source import (
     verify_wire,
 )
 from market_data_foundation.qualification.tdx_market_evidence import request_wire
+from market_data_foundation.runtime.tdx_watchlist import V100_DRIVER_SDK_RELEASE
 from market_data_foundation.storage.tdx_daily_pg import OfflineCurrent
 from market_data_foundation.web.tdx_daily_api import (
     DailyRuntime,
@@ -194,6 +197,83 @@ def jobs(tmp_path, store=None, **source_options):
         return source
 
     return DailyJobs(tmp_path / "jobs", store, factory, workers=1), store, sources
+
+
+def test_retention_sync_failure_cannot_admit_a_source_page(tmp_path, monkeypatch):
+    source = GoDailySource("unused", "fixture.invalid:1", tmp_path, live_opt_in=True)
+    sent = {}
+    monkeypatch.setattr(source, "_connect", lambda: None)
+    monkeypatch.setattr(source, "_send", lambda kind, request: sent.update(request))
+
+    def receive():
+        row = Source(tmp_path).request("GetCount", 0)["row"]
+        row.update(
+            request=dict(sent),
+            requested_at=row["received_at"],
+            sdk_release=V100_DRIVER_SDK_RELEASE,
+        )
+        return row
+
+    monkeypatch.setattr(source, "_receive", receive)
+    real_fsync = os.fsync
+    failed = False
+
+    def fail_first_file(fd):
+        nonlocal failed
+        if not failed and stat.S_ISREG(os.fstat(fd).st_mode):
+            failed = True
+            raise OSError("synthetic disk failure must not escape into observations")
+        real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fail_first_file)
+    with pytest.raises(TdxError, match="^OSError$"):
+        source.request("GetCount", 0)
+    assert failed and source.requests == 1
+    raw = next(tmp_path.glob("*.observation.json")).read_text()
+    assert '"success":false' in raw
+    assert "synthetic disk failure" not in raw
+
+
+@pytest.mark.parametrize("present", [False, True])
+def test_normal_asset_directory_uses_visible_existence_not_full_summary(
+    monkeypatch, present
+):
+    from market_data_foundation.web.cpi_timeseries_host import TimeSeriesRuntime
+    from market_data_foundation.web.package_catalog import (
+        HistoryEvidence,
+        PackageCatalog,
+        PackageHistory,
+    )
+    from market_data_foundation.web.readonly_host import ReadonlyRuntime
+
+    runtime = object.__new__(TimeSeriesRuntime)
+    runtime.packages = SimpleNamespace(catalog=PackageCatalog())
+    definition = next(
+        c.definition_ref
+        for c in runtime.packages.catalog.package("tdx").capabilities
+        if c.capability_id == "daily_native"
+    )
+    monkeypatch.setattr(
+        ReadonlyRuntime,
+        "history",
+        lambda *_: PackageHistory(
+            history=[HistoryEvidence(definition_ref=definition, holding="unknown")]
+        ),
+    )
+    cutoff = datetime(2026, 11, 12, 9, tzinfo=UTC)
+    runtime.clock = lambda: cutoff
+    calls = []
+
+    def has_data(*, as_of):
+        calls.append(as_of)
+        return present
+
+    # No summary method: opening the normal directory must not scan all facts.
+    runtime.tdx_runtime = SimpleNamespace(store=SimpleNamespace(has_data=has_data))
+    result = runtime.history("fixture", "tdx", None)
+    assert calls == [cutoff]
+    assert result.history[0].holding == ("present" if present else "absent")
+    assert result.history[0].publication_readable is present
 
 
 def test_bj_long_history_overlap_and_fresh_rerun_only_confirms(tmp_path):

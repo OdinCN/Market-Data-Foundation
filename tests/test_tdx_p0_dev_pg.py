@@ -117,6 +117,7 @@ def test_dev_b1_bj_cold_asof_corrections_confirmations_and_late_block():
             )
 
         store = PgStore(lambda: Connection(connect(), schema))
+        assert store.has_data() is False
         first = batch("controlled-first", 0, 1100)
         # The all-market writer can progress while an unrelated instrument is locked.
         with Connection(connect(), schema) as holding, holding.transaction():
@@ -144,6 +145,8 @@ def test_dev_b1_bj_cold_asof_corrections_confirmations_and_late_block():
             )
 
         assert query(first_visible - timedelta(microseconds=1))["total"] == 0
+        assert store.has_data(as_of=first_visible - timedelta(microseconds=1)) is False
+        assert store.has_data(as_of=first_visible) is True
         history = query(first_visible, market=2, instrument="920002")
         assert history["rows"][0]["close"] == 1100
         current = query(changed_visible)

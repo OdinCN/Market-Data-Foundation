@@ -154,6 +154,8 @@ export function TdxDailyWorkbench({
     (signal) => call<{ markets: Market[] }>(transport, "/summary", signal),
     [transport, generation],
     tab === "query",
+    () => true,
+    false,
   );
   const status = useVisiblePolling(
     (signal) =>
@@ -284,6 +286,9 @@ export function TdxDailyWorkbench({
       )}
       {tab === "query" && (
         <>
+          <button disabled={summary.busy} onClick={() => summary.refresh()}>
+            刷新本地汇总
+          </button>
           <WorkflowTable
             label="本地市场范围"
             columns={["交易所", "证券", "日线数", "最早", "最近"]}

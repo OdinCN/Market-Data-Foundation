@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 import select
 import struct
 import subprocess
@@ -47,6 +48,22 @@ def classify(error):
 
 def encoded(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+
+
+def sync_directory(path):
+    descriptor = os.open(path, os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def retain(path, raw):
+    with path.open("xb") as stream:
+        stream.write(raw)
+        stream.flush()
+        os.fsync(stream.fileno())
+    sync_directory(path.parent)
 
 
 def frames(raw, response=False):
@@ -111,7 +128,14 @@ class GoDailySource:
         self.binary = Path(binary)
         self.endpoint = endpoint
         self.directory = Path(directory)
+        created = []
+        parent = self.directory
+        while not parent.exists():
+            created.append(parent)
+            parent = parent.parent
         self.directory.mkdir(parents=True, exist_ok=True)
+        for parent in reversed(created):
+            sync_directory(parent.parent)
         self.timeout = timeout
         self.process = None
         self.requests = 0
@@ -199,7 +223,7 @@ class GoDailySource:
             row = self._receive()
             raw = encoded(row)
             path = self.directory / (request["id"] + ".json")
-            path.write_bytes(raw)
+            retain(path, raw)
             outcome.update(path=str(path), sha256=sha256(raw).hexdigest(), row=row)
             require(
                 row.get("request") == request
@@ -252,8 +276,8 @@ class GoDailySource:
             execute,
             allow_live=True,
         )
-        (self.directory / (request["id"] + ".observation.json")).write_bytes(
-            encoded(observation)
+        retain(
+            self.directory / (request["id"] + ".observation.json"), encoded(observation)
         )
         if (
             not outcome.get("row")
