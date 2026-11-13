@@ -104,6 +104,24 @@ def tdx_failure(error):
     )
 
 
+def present_tdx_job(job):
+    command = job["command"]
+    action = command["action"]
+    day = command["end"]
+    slot = None
+    if action in {"universe", "update"}:
+        if job["request_id"] == strategy_slot_id(day, action):
+            slot = action
+        elif action == "update" and job["request_id"] == strategy_slot_id(
+            day, "review"
+        ):
+            slot = "review"
+    origin = job.get("origin")
+    if origin not in {"manual", "periodic"}:
+        origin = "periodic" if slot else "unknown"
+    return {**job, "origin": origin, "strategy_slot": slot}
+
+
 def tdx_router(runtime=None):
     fail = tdx_failure
     router = APIRouter(prefix=PREFIX, tags=["tdx-stock-daily"])
@@ -244,26 +262,11 @@ def tdx_router(runtime=None):
         except Exception as error:
             return fail(error)
 
-    def job_origin(job):
-        if job.get("origin") in {"manual", "periodic"}:
-            return job["origin"]
-        command = job["command"]
-        if command["action"] in {"universe", "update"} and job[
-            "request_id"
-        ] == strategy_slot_id(command["end"], command["action"]):
-            return "periodic"
-        return "unknown"
-
     @router.get("/jobs")
     def jobs():
         try:
             ready()
-            return dict(
-                jobs=[
-                    {**job, "origin": job_origin(job)}
-                    for job in runtime.jobs.summaries()
-                ]
-            )
+            return dict(jobs=[present_tdx_job(job) for job in runtime.jobs.summaries()])
         except Exception as error:
             return fail(error)
 
@@ -272,7 +275,7 @@ def tdx_router(runtime=None):
         try:
             ready()
             job = runtime.jobs.read(identity)
-            return {**job, "origin": job_origin(job)}
+            return present_tdx_job(job)
         except Exception as error:
             return fail(error)
 

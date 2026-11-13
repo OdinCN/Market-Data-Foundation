@@ -235,6 +235,10 @@ class DailyJobs:
             ]
         return sorted(rows, key=lambda row: row["created_at"], reverse=True)
 
+    def summary(self, identity):
+        with self._summary_lock:
+            return self._summary(self.path(identity))
+
     def _summary(self, path):
         stat = path.stat()
         version = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
@@ -281,13 +285,18 @@ class DailyJobs:
             ]
         atomic(self.path(record["request_id"]), value)
 
-    def submit(self, command, *, launch=True, origin=None):
+    def submit(self, command, *, launch=True, origin=None, admission=None):
         command = validate(command)
         identity = command["request_id"]
         with self.lock(identity):
             if self.path(identity).exists():
                 record = self.read(identity)
                 require(record["command"] == command, "tdx_request_identity_conflict")
+                if admission is not None:
+                    require(
+                        record.get("admission") == admission,
+                        "tdx_receipt_manifest_conflict",
+                    )
                 return record
             record = dict(
                 request_id=identity,
@@ -300,6 +309,8 @@ class DailyJobs:
                 provider_requests=0,
                 resume_count=0,
             )
+            if admission is not None:
+                record["admission"] = admission
             self.save(record)
         if launch:
             self.launch(identity)
@@ -669,7 +680,11 @@ class DailyJobs:
                         step["market"],
                         step["instrument"],
                         step["offset"],
-                        800 if command["action"] == "init" else 32,
+                        getattr(
+                            source,
+                            "page_size",
+                            800 if command["action"] == "init" else 32,
+                        ),
                     )
                     step["pending"] = dict(
                         path=outcome["path"],
@@ -679,6 +694,10 @@ class DailyJobs:
                         start=command["start"],
                         end=command["end"],
                     )
+                    if outcome.get("retained"):
+                        record["retained_responses"] = (
+                            record.get("retained_responses", 0) + 1
+                        )
                     # Persist immutable write identity BEFORE commit.
                     self.save(record, step)
                 pending = step["pending"]
@@ -754,7 +773,7 @@ class DailyJobs:
 
 def coverage(store, day, *, as_of=None, job=None):
     cutoff = as_of or datetime.now(UTC)
-    snapshot = store.universe(as_of=cutoff)
+    snapshot = store.universe(as_of=cutoff, day=day)
     data = store.query(start=day, end=day, as_of=cutoff, limit=10000)
     rows = {(r["market"], r["instrument"]): r for r in data["rows"]}
     cutoff = data["as_of"]

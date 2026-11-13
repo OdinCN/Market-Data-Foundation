@@ -58,6 +58,8 @@ const cases = process.env.MDF_WORKBENCH_CASES
               row: "沪深北 A 股原生日线",
               asset: "mdf.market.tdx.stock.daily.native@r1",
               prefix: "/api/r5/tdx/daily",
+              summary: true,
+              periodicContains: ["15:10", "16:00", "只复核同一交易日"],
               result: "日线结果",
               paging: "TDX 日线",
               collection: true,
@@ -68,6 +70,7 @@ const cases = process.env.MDF_WORKBENCH_CASES
               row: "沪深北 A 股基础名册",
               asset: "mdf.market.tdx.stock.roster@r1",
               prefix: "/api/r5/tdx/roster",
+              periodicCollectionButton: "新建名册刷新",
               dates: { 名册日期: "2026-11-12" },
               valueProperty: "instrument",
               result: "名册结果",
@@ -159,6 +162,14 @@ async function query(c) {
     `${c.name}: expected actual values, not missing placeholders`,
   );
   assert.equal(data.provider_requests, 0, `${c.name}: expected local data`);
+  for (const expected of c.expectedRows ?? []) {
+    assert(
+      rows.some((row) =>
+        Object.entries(expected).every(([key, value]) => row[key] === value),
+      ),
+      `${c.name}: expected actual row ${JSON.stringify(expected)}`,
+    );
+  }
   const table = c.result
     ? page
         .getByRole("region", { name: c.result, exact: true })
@@ -180,10 +191,19 @@ try {
   for (const c of cases) {
     const item = { name: c.name, asset: c.asset, checks: [] };
     report.cases.push(item);
+    const priorQueries = report.responses.filter(
+      (r) => new URL(r.url).pathname === c.prefix + "/query",
+    ).length;
     console.log("Checking " + c.name + " at " + origin);
     await page.goto(origin + "/pce#ui=r5&view=assets", {
       waitUntil: "domcontentloaded",
     });
+    const summaryResponse = c.summary
+      ? page.waitForResponse(
+          (r) => new URL(r.url()).pathname === c.prefix + "/summary",
+          { timeout: 90000 },
+        )
+      : null;
     await page
       .getByRole("button", { name: new RegExp("^选择 " + c.row) })
       .click();
@@ -195,6 +215,10 @@ try {
       "Asset must use the normal catalog renderer",
     );
     for (const [label, value] of Object.entries(c.dates ?? {}))
+      await page.getByLabel(label, { exact: true }).fill(value);
+    for (const [label, value] of Object.entries(c.selects ?? {}))
+      await page.getByLabel(label, { exact: true }).selectOption(value);
+    for (const [label, value] of Object.entries(c.fields ?? {}))
       await page.getByLabel(label, { exact: true }).fill(value);
     if (c.history) {
       await page
@@ -212,6 +236,23 @@ try {
     await page.getByRole("heading", { name: /范围查询/ }).click();
     item.query = await query(c);
     item.checks.push("catalog -> real nonempty local query");
+    if (summaryResponse) {
+      const response = await summaryResponse;
+      assert.equal(
+        response.status(),
+        200,
+        `${c.name}: summary must be available`,
+      );
+      const summary = await response.json();
+      assert(
+        summary.markets?.length > 0 && summary.markets.some((m) => m.rows > 0),
+        `${c.name}: expected real local holdings`,
+      );
+      item.summary = summary.markets;
+      item.checks.push(
+        "operable query while summary loads -> real nonempty summary",
+      );
+    }
     await page.getByRole("tab", { name: "原始响应", exact: true }).click();
     assert(
       (
@@ -283,15 +324,20 @@ try {
         name: "执行记录详情",
         exact: true,
       });
-      await detail.waitFor();
-      assert(await detail.innerText(), "Real job details required");
       const link = page.url();
-      assert(
-        new URLSearchParams(new URL(link).hash.slice(1)).get("job"),
-        "Named job deep link required",
-      );
+      const job = new URLSearchParams(new URL(link).hash.slice(1)).get("job");
+      assert(job, "Named job deep link required");
+      // Both the normal detail and the collapsed technical detail retain the
+      // selected execution ID. Loading and empty panes have neither its facts nor ID.
+      async function verifySelectedJob() {
+        await detail.locator("dl dd").first().waitFor();
+        await detail.getByText(job, { exact: false }).last().waitFor({
+          state: "attached",
+        });
+      }
+      await verifySelectedJob();
       await page.reload();
-      await detail.waitFor();
+      await verifySelectedJob();
       assert.equal(page.url(), link);
       await snapshot(c.name + "-execution");
       item.checks.push(
@@ -312,14 +358,44 @@ try {
       await page
         .getByRole("complementary", { name: "周期任务详情", exact: true })
         .waitFor();
+      for (const text of c.periodicContains ?? [])
+        assert(
+          (
+            await page
+              .getByRole("complementary", { name: "周期任务详情", exact: true })
+              .innerText()
+          ).includes(text),
+          `${c.name}: missing actual periodic fact ${text}`,
+        );
       await snapshot(c.name + "-periodic");
       item.checks.push(
         "global periodic filter -> actual details (no switches changed)",
       );
+      if (c.periodicCollectionButton) {
+        await page
+          .getByRole("button", {
+            name: c.periodicCollectionButton,
+            exact: true,
+          })
+          .click();
+        assert.equal(
+          new URLSearchParams(new URL(page.url()).hash.slice(1)).get("tab"),
+          "new",
+          `${c.name}: periodic action must use the normal collection route`,
+        );
+        assert.equal(
+          await page.getByLabel("采集目标", { exact: true }).inputValue(),
+          c.asset,
+        );
+        item.checks.push(
+          "periodic -> normal new collection with asset preserved",
+        );
+      }
     }
-    item.queryCount = report.responses.filter(
-      (r) => new URL(r.url).pathname === c.prefix + "/query",
-    ).length;
+    item.queryCount =
+      report.responses.filter(
+        (r) => new URL(r.url).pathname === c.prefix + "/query",
+      ).length - priorQueries;
     assert.equal(
       item.queryCount,
       c.requirePaging ? 3 : 1,
@@ -329,6 +405,11 @@ try {
   }
   assert.equal(report.errors.length, 0, "No browser exceptions");
   assert.equal(report.mutations.length, 0, "No attempted business mutations");
+  assert.deepEqual(
+    report.responses.filter((response) => response.status >= 400),
+    [],
+    "Expected workbench functions must not return HTTP errors",
+  );
   report.passed = true;
 } catch (error) {
   report.passed = false;

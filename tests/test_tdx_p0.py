@@ -615,3 +615,83 @@ def test_summary_reuses_terminal_legacy_journal_and_refreshes_after_save(
     assert jobs.summaries()[0]["complete_steps"] == 0
     assert reads == [identity]
     assert "completed_step_count" not in original_read(identity)
+
+
+def test_strategy_two_slots_restart_and_late_review_only_target_day(
+    tmp_path, monkeypatch
+):
+    from market_data_foundation.historical.tdx_p0_jobs import strategy_slot_id
+    from market_data_foundation.historical.tdx_p0_strategy import DailyStrategy
+
+    store = Store()
+    store.strategy_calendar = lambda **_: [
+        dict(
+            market=m,
+            day="2026-01-05",
+            is_open=True,
+            available_at="2026-01-01T00:00:00+00:00",
+        )
+        for m in range(3)
+    ]
+    store.universe = lambda **_: pytest.fail("scheduler must not load membership")
+    jobs = DailyJobs(tmp_path, store, lambda _: None)
+    launched = []
+    jobs.launch = launched.append
+    monkeypatch.setattr(
+        jobs, "read", lambda _: pytest.fail("scheduler must not read shards")
+    )
+    strategy = DailyStrategy(jobs)
+    strategy.set(True)
+    early = datetime(2026, 1, 5, 7, 9, tzinfo=UTC)
+    strategy.tick(early)
+    assert launched == []
+
+    def complete(identity):
+        record = json.loads(jobs.path(identity).read_bytes())
+        record["state"] = "COMPLETE"
+        record["step_refs"] = ["must-not-be-opened"]
+        record["completed_step_count"] = 1
+        record.pop("steps", None)
+        jobs.path(identity).write_text(json.dumps(record))
+
+    strategy.tick(early + timedelta(minutes=1))
+    universe = strategy_slot_id("2026-01-05", "universe")
+    assert launched == [universe]
+    complete(universe)
+    strategy.tick(early + timedelta(minutes=2))
+    first = strategy_slot_id("2026-01-05", "update")
+    assert launched[-1] == first
+    command = json.loads(jobs.path(first).read_bytes())["command"]
+    assert command["start"] == "2025-12-22"
+    strategy.tick(datetime(2026, 1, 5, 8, tzinfo=UTC))
+    assert launched == [universe, first]  # first run still unfinished
+    complete(first)
+    # Restart after the window, on the following morning; review stays on Jan 5.
+    restarted = DailyStrategy(jobs)
+    restarted.tick(datetime(2026, 1, 6, 0, tzinfo=UTC))
+    review = strategy_slot_id("2026-01-05", "review")
+    assert launched == [universe, first, review]
+    command = json.loads(jobs.path(review).read_bytes())["command"]
+    assert command["action"] == "update"
+    assert command["start"] == command["end"] == "2026-01-05"
+    complete(review)
+    for _ in range(3):
+        DailyStrategy(jobs).tick(datetime(2026, 1, 10, 8, tzinfo=UTC))
+    assert launched == [universe, first, review]
+    # The persisted Jan 5 run is terminal. After two missed open days start
+    # the next evidenced day, and a failed Jan 6 must not starve Jan 7.
+    calendar = store.strategy_calendar(as_of=early)
+    store.strategy_calendar = lambda **_: [
+        dict(c, day=f"2026-01-{d:02}") for c in calendar for d in (5, 6, 7)
+    ]
+    late = datetime(2026, 1, 7, 9, tzinfo=UTC)
+    restarted.tick(late)
+    jan6 = strategy_slot_id("2026-01-06", "universe")
+    assert launched[-1] == jan6
+    header = json.loads(jobs.path(jan6).read_bytes())
+    header["state"] = "PARTIAL"
+    jobs.path(jan6).write_text(json.dumps(header))
+    restarted.tick(late)
+    restarted.tick(late)
+    assert launched[-1] == strategy_slot_id("2026-01-07", "universe")
+    assert json.loads(jobs.path(jan6).read_bytes())["state"] == "PARTIAL"

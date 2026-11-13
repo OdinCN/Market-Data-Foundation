@@ -62,6 +62,10 @@ BINDING = replace(
 )
 
 
+def _timestamp(value):
+    return value.isoformat() if isinstance(value, datetime) else value
+
+
 def facts(snapshot, day):
     details = (snapshot or {}).get("details", {})
     through = details.get("valid_through")
@@ -100,8 +104,8 @@ def facts(snapshot, day):
             "CURRENT_DIRECTORY_ONLY": "tdx_roster_historical_membership_unverified",
         }.get(state),
         snapshot_id=(snapshot or {}).get("snapshot_id"),
-        observed_at=(snapshot or {}).get("observed_at"),
-        available_at=(snapshot or {}).get("available_at"),
+        observed_at=_timestamp((snapshot or {}).get("observed_at")),
+        available_at=_timestamp((snapshot or {}).get("available_at")),
         requested_day=day.isoformat(),
         valid_through=through,
         directory_observed_day=(refreshed_day or observed_day).isoformat()
@@ -116,7 +120,7 @@ def facts(snapshot, day):
 
 
 def published(store, day, *, snapshot_id=None, as_of=None, require_current=False):
-    options = dict(as_of=as_of)
+    options = dict(as_of=as_of, day=day)
     if snapshot_id is not None:
         options["snapshot_id"] = snapshot_id
     snapshot = store.universe(**options)

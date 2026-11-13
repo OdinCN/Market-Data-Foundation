@@ -50,13 +50,16 @@ def migrate(conn, *, dev_opt_in=False):
             conn.execute((SQL_DIR / "008_p0_read_index.sql").read_text())
 
 
-def visible_versions(scope):
+def visible_versions(scope, *, materialize_members=False):
     """Select the newest fact version whose batch was confirmed in PostgreSQL."""
     patterns = " OR ".join(
         f"(market={m} AND instrument ~ '^{pattern}$')"
         for m, pattern in PATTERNS.items()
     )
-    return f"""WITH members AS MATERIALIZED (
+    # Selective queries retain the membership index; broad summaries evaluate
+    # lifecycle dates once per member instead of once per historical bar.
+    membership = "MATERIALIZED" if materialize_members else "NOT MATERIALIZED"
+    return f"""WITH members AS {membership} (
         SELECT market,instrument,(evidence->>'listing_date')::date AS listing_date,
                (evidence->>'delist_date')::date AS delist_date
         FROM mdf_tdx_daily.p0_members WHERE snapshot_id=%(snapshot)s AND ({patterns})
@@ -113,6 +116,8 @@ class PgStore:
     def __init__(self, connector=connect):
         self.connector = connector
         self.writers = threading.local()
+        self._summary_lock = threading.Lock()
+        self._summary_cache = None
 
     def close_writer(self):
         connection = getattr(self.writers, "connection", None)
@@ -184,8 +189,27 @@ class PgStore:
                             Jsonb(member["evidence"]),
                         )
                     )
+            # Each publication introduces a new snapshot_id. Until statistics
+            # know it, PostgreSQL can estimate one member and perform millions
+            # of publication-index probes for a full local summary.
+            conn.execute("ANALYZE mdf_tdx_daily.p0_members")
 
-    def universe(self, snapshot_id=None, as_of=None):
+    def strategy_calendar(self, *, as_of):
+        # The scheduler needs dated calendar evidence, never the thousands of
+        # membership rows or execution shards needed by an actual collection.
+        with self.connector() as conn:
+            row = conn.execute(
+                "SELECT details->'calendar' FROM mdf_tdx_daily.p0_universes "
+                "WHERE available_at <= %s AND "
+                "(SELECT count(*)=3 AND bool_and(s->>'state'='COMPLETE') "
+                "FROM jsonb_array_elements(details->'markets') s) "
+                "ORDER BY (details->>'roster_kind'='exchange_lifecycle') "
+                "DESC NULLS LAST, available_at DESC LIMIT 1",
+                (as_of,),
+            ).fetchone()
+            return row[0] or [] if row else []
+
+    def universe(self, snapshot_id=None, as_of=None, *, day=None):
         with self.connector() as conn, conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 (
@@ -194,11 +218,18 @@ class PgStore:
                     "AND (%s::text IS NOT NULL OR "
                     "(SELECT count(*)=3 AND bool_and(s->>'state'='COMPLETE') "
                     "FROM jsonb_array_elements(details->'markets') s)) "
-                    "ORDER BY (details->>'roster_kind'='exchange_lifecycle') "
+                    "ORDER BY (details->>'valid_through'=%s::text) DESC NULLS LAST, "
+                    " (details->>'roster_kind'='exchange_lifecycle') "
                     "DESC NULLS LAST, "
                     "available_at DESC LIMIT 1"
                 ),
-                (as_of or datetime.now(UTC), snapshot_id, snapshot_id, snapshot_id),
+                (
+                    as_of or datetime.now(UTC),
+                    snapshot_id,
+                    snapshot_id,
+                    snapshot_id,
+                    day.isoformat() if day else None,
+                ),
             )
             snapshot = cur.fetchone()
             if snapshot is None:
@@ -268,7 +299,7 @@ class PgStore:
             "int IS NULL OR market=%(market)s) AND (%(instrument)s::text IS N"
             "ULL OR instrument=%(instrument)s)"
         )
-        snapshot = self.universe(as_of=cutoff)
+        snapshot = self.universe(as_of=cutoff, day=start if start == end else None)
         params["snapshot"] = (snapshot or {}).get("snapshot_id")
         scope += " AND " + member_scope(snapshot is not None)
         cte = visible_versions(scope)
@@ -321,9 +352,31 @@ class PgStore:
             ).fetchone()[0]
 
     def summary(self, as_of=None):
+        if as_of is not None:
+            return self._summary(as_of)
+        # Coalesce expensive default summaries in this existing request host.
+        # Append-only publications and immutable roster identity invalidate the
+        # result even when another process writes. Retain its actual as_of clock.
+        with self._summary_lock:
+            cutoff = datetime.now(UTC)
+            snapshot = self.universe(as_of=cutoff)
+            with self.connector() as conn:
+                publications = conn.execute(
+                    "SELECT count(*),max(available_at) "
+                    "FROM mdf_tdx_daily.p0_batch_publications WHERE available_at<=%s",
+                    (cutoff,),
+                ).fetchone()
+            key = (snapshot or {}).get("snapshot_id"), *publications
+            if self._summary_cache and self._summary_cache[0] == key:
+                return self._summary_cache[1]
+            value = self._summary(cutoff, snapshot=snapshot)
+            self._summary_cache = key, value
+            return value
+
+    def _summary(self, as_of, *, snapshot=None):
         cutoff = as_of or datetime.now(UTC)
         require(cutoff.utcoffset() is not None, "tdx_query_cutoff")
-        snapshot = self.universe(as_of=cutoff)
+        snapshot = snapshot or self.universe(as_of=cutoff)
         with (
             self.connector() as conn,
             conn.transaction(),
@@ -333,7 +386,9 @@ class PgStore:
             cur.execute("SET LOCAL statement_timeout = '30s'")
             cur.execute("SET LOCAL jit = off")
             cur.execute(
-                visible_versions(member_scope(snapshot is not None))
+                visible_versions(
+                    member_scope(snapshot is not None), materialize_members=True
+                )
                 + """
                 , instruments AS (
                 SELECT market,instrument,count(*) AS rows,

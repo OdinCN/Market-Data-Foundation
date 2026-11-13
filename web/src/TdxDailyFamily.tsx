@@ -26,10 +26,15 @@ import { Fact, Technical, WorkflowTable } from "./WorkflowTable";
 import { StrategySwitch } from "./StrategySwitch";
 const title = "沪深北 A 股盘后日线";
 const exchanges = ["深市", "沪市", "北交所"];
-const actionTitle = (action: string) =>
-  ({ init: "历史初始化", update: "盘后增量", universe: "刷新三市名册" })[
-    action
-  ] ?? action;
+function actionTitle(job: TdxJob) {
+  if (job.strategy_slot === "review") return "16:00 盘后复核";
+  if (job.strategy_slot === "update") return "15:10 盘后首采";
+  return (
+    { init: "历史初始化", update: "盘后增量", universe: "刷新三市名册" }[
+      job.command.action
+    ] ?? job.command.action
+  );
+}
 const fields = {
   asset: TDX_DAILY.identity,
   asset_revision: TDX_DAILY.revision,
@@ -178,7 +183,7 @@ export function TdxDailyCollection({
                 <li key={j.request_id}>
                   <ExecutionBriefCard
                     id={j.request_id}
-                    title={`${title} · ${tdxJobOrigin(j)} · ${actionTitle(j.command.action)}`}
+                    title={`${title} · ${tdxJobOrigin(j)} · ${actionTitle(j)}`}
                     createdAt={j.created_at}
                     start={j.command.start}
                     end={j.command.end}
@@ -364,7 +369,7 @@ export function TdxExecutionDetail({
         {job.command.action === "universe"
           ? "沪深北 A 股基础名册"
           : familyTitle}{" "}
-        · {actionTitle(job.command.action)}
+        · {actionTitle(job)}
       </h3>
       {detail.failure && <p role="alert">执行详情已陈旧，请重读核实。</p>}
       <dl>
@@ -387,6 +392,9 @@ export function TdxExecutionDetail({
             : `${job.command.start} 至 ${job.command.end}`}
         </Fact>
         <Fact name="来源请求">{job.provider_requests}</Fact>
+        {job.admission?.mode === "retained_qualified_receipts" && (
+          <Fact name="已读取留存响应">{job.retained_responses ?? 0}</Fact>
+        )}
         {job.command.action !== "universe" && (
           <Fact name="价基">原生价基（native_projection），收益口径待核验</Fact>
         )}
@@ -530,8 +538,8 @@ export const TDX_FAMILY: RuntimeFamily = {
       .map((j) => ({
         id: j.request_id,
         createdAt: j.created_at,
-        title: `${title} · ${actionTitle(j.command.action)}`,
-        search: `${title} ${j.request_id} ${actionTitle(j.command.action)} ${tdxStateLabel[j.state] ?? j.state}`,
+        title: `${title} · ${actionTitle(j)}`,
+        search: `${title} ${j.request_id} ${actionTitle(j)} ${tdxStateLabel[j.state] ?? j.state}`,
         start: j.command.start ?? "三市名册",
         end: j.command.end ?? "提交时点",
         result: `${tdxStateLabel[j.state] ?? j.state} · 完成分片 ${j.complete_steps ?? "未记录"}/${j.step_count ?? "未记录"} · 来源请求 ${j.provider_requests}`,
@@ -567,8 +575,10 @@ export const TDX_FAMILY: RuntimeFamily = {
           <p>
             策略{data.strategy.enabled ? "已启用" : "已暂停"}；执行器
             {data.strategy.worker_online ? "在线" : "离线"}。工作日候选窗口
-            15:10（北京时间）后刷新名册并更新最近 14
-            日；实际开市与停牌另需证据。
+            15:10（北京时间）首采，刷新名册并更新最近 14 日；16:00
+            只复核同一交易日，接收盘后更正。错过窗口或重启后复用固定作业身份，
+            完成后不重复；未完成作业保留原状态供续跑。复核不代表来源最终封账，
+            实际开市与停牌另需证据。
           </p>
           <p>
             交易日证据：{data.strategy.calendar_state ?? "未知"}；最近心跳：

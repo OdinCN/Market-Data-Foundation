@@ -265,6 +265,14 @@ def build_roster(manifest, provider_snapshot):
     for item in manifest["sources"]:
         raw = Path(item["path"]).read_bytes()
         require(sha256(raw).hexdigest() == item["sha256"], "tdx_exchange_digest")
+        if item["kind"] in {"sz_current", "sh_main", "sh_star"}:
+            require(
+                datetime.fromisoformat(item["received_at"])
+                .astimezone(ZoneInfo("Asia/Shanghai"))
+                .date()
+                >= through,
+                "tdx_exchange_census_observation_day",
+            )
         sources[item["kind"]] = (raw, item)
     members = {}
 
@@ -291,7 +299,9 @@ def build_roster(manifest, provider_snapshot):
 
     for kind in ("sz_current", "sz_terminated"):
         raw, proof = sources[kind]
-        for row in xlsx_rows(raw):
+        rows = xlsx_rows(raw)
+        require(bool(rows), "tdx_exchange_census_empty")
+        for row in rows:
             current = kind == "sz_current"
             code = row["A股代码" if current else "证券代码"]
             if not code:
@@ -308,6 +318,7 @@ def build_roster(manifest, provider_snapshot):
         raw, proof = sources[kind]
         data = json.loads(raw)
         rows = data["result"]
+        require(bool(rows), "tdx_exchange_census_empty")
         require(
             len(rows) == int(data["pageHelp"]["total"]), "tdx_exchange_page_missing"
         )
@@ -389,6 +400,13 @@ def build_roster(manifest, provider_snapshot):
             old_code=old,
             listing_evidence=mapping_proof,
         )
+    # A current census must not erase separately evidenced retired securities.
+    # Their own lifecycle evidence and validity clocks remain unchanged.
+    for member in provider_snapshot.get("historical_members", []):
+        key = member["market"], member["instrument"]
+        delisted = member.get("evidence", {}).get("delist_date")
+        if key not in members and delisted and date.fromisoformat(delisted) <= through:
+            members[key] = member
     market_details = []
     provider_keys = {
         (m["market"], m["instrument"]) for m in provider_snapshot["members"]

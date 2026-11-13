@@ -138,7 +138,9 @@ def test_originals_replay_cdr_retired_and_bj_selected_layer_boundary(tmp_path):
             ]
         ),
         sh_main=json.dumps(sh).encode(),
-        sh_star=b'{"result":[],"pageHelp":{"total":0}}',
+        sh_star=json.dumps(
+            dict(result=[sh["result"][1]], pageHelp=dict(total=1))
+        ).encode(),
         bj_mapping=b"<table><tr><td>1</td><td>fixture</td><td>2020/7/27</td><td>830002</td><td>920002</td></tr></table>",
     )
     sources = []
@@ -170,6 +172,17 @@ def test_originals_replay_cdr_retired_and_bj_selected_layer_boundary(tmp_path):
     assert lifecycle(members[2, "920002"], date(2020, 7, 27)) == "NOT_YET_LISTED"
     assert lifecycle(members[2, "920002"], date(2026, 11, 13)) == "UNKNOWN"
     assert members[2, "920002"]["evidence"]["old_code"] == "830002"
+    with pytest.raises(ContractError, match="tdx_exchange_census_observation_day"):
+        build_roster(dict(manifest, valid_through="2026-11-13"), provider)
+    empty = b'{"result":[],"pageHelp":{"total":0}}'
+    original_star = (tmp_path / "sh_star").read_bytes()
+    (tmp_path / "sh_star").write_bytes(empty)
+    star = next(s for s in sources if s["kind"] == "sh_star")
+    star["sha256"] = sha256(empty).hexdigest()
+    with pytest.raises(ContractError, match="tdx_exchange_census_empty"):
+        build_roster(manifest, provider)
+    (tmp_path / "sh_star").write_bytes(original_star)
+    star["sha256"] = sha256(original_star).hexdigest()
     (tmp_path / "sz_current").write_bytes(b"changed")
     with pytest.raises(ContractError, match="tdx_exchange_digest"):
         build_roster(manifest, provider)

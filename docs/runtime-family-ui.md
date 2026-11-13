@@ -96,6 +96,12 @@ Query 4xx, absent result rows and missing-only results fail. The checker respect
 CPI's `points` schema and daily families' `rows` schema. A JSON case array supplied
 by `MDF_WORKBENCH_CASES` can register another family's row selector, exact asset,
 API prefix, row/value properties and form parameters without another page script.
+Cases can also provide `selects` / `fields` by actual control label,
+`expectedRows` with exact returned field values, and `periodicContains` for
+required schedule facts. Register the same asset at several `history` / `cutoff`
+values to check a correction immediately before and at its actual publication;
+query counts are independent per case. Keep live sample values and receipts in
+the transaction evidence directory.
 
 `rangeWithDefaults` merges daily collection defaults per untouched field. An
 operator may edit a start date while status is loading, switch collection modes,
@@ -108,7 +114,7 @@ and paging rows does not duplicate an in-flight coverage request.
 
 The stock roster is a separate base registration:
 `mdf.market.tdx.stock.roster@r1`, `/api/r5/tdx/roster`. Its query, refresh form,
-execution records, deep links and shared 15:10 periodic facts use the existing
+execution records, deep links and shared 15:10 initial / 16:00 same-day review facts use the existing
 family renderers. The API and daily collector consume `tdx_roster.published`;
 refresh uses the same `DailyJobs` implementation, journal and lock with the
 legacy `action=universe`. The old daily universe/job routes remain compatible.

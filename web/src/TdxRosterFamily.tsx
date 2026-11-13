@@ -462,7 +462,7 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
             onClick={() =>
               props.navigate("collection", {
                 ...fields,
-                tab: "create",
+                tab: "new",
                 job: null,
                 schedule: null,
               })

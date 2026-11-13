@@ -9,7 +9,11 @@ from market_data_foundation.historical import tdx_roster
 from market_data_foundation.historical.tdx_p0_jobs import latest_day
 from market_data_foundation.historical.tdx_p0_source import TdxError
 from market_data_foundation.web.gdp_api import body
-from market_data_foundation.web.tdx_daily_api import admitted_tdx_write, tdx_failure
+from market_data_foundation.web.tdx_daily_api import (
+    admitted_tdx_write,
+    present_tdx_job,
+    tdx_failure,
+)
 
 
 def roster_router(runtime):
@@ -108,7 +112,7 @@ def roster_router(runtime):
             ready()
             return dict(
                 jobs=[
-                    j
+                    present_tdx_job(j)
                     for j in runtime.jobs.summaries()
                     if j["command"]["action"] == "universe"
                 ]
@@ -120,7 +124,7 @@ def roster_router(runtime):
         job = runtime.jobs.read(identity)
         if job["command"]["action"] != "universe":
             raise TdxError("job_not_found")
-        return job
+        return present_tdx_job(job)
 
     @router.get("/jobs/{identity}")
     def detail(identity: str):

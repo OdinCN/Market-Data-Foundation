@@ -39,6 +39,9 @@ type Step = {
   rows?: number;
 };
 export type TdxJob = {
+  strategy_slot?: string | null;
+  admission?: { mode?: string };
+  retained_responses?: number;
   snapshot_id?: string;
   classification?: string;
   started_at?: string;
@@ -175,7 +178,12 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
     coverageActive = useRef<AbortController | null>(null),
     editedEnd = useRef(false);
   const summary = useVisiblePolling(
-    (signal) => tdxCall<{ markets: Market[] }>(transport, "/summary", signal),
+    (signal) =>
+      tdxCall<{ markets: Market[]; as_of?: string }>(
+        transport,
+        "/summary",
+        signal,
+      ),
     [transport, generation],
     true,
     () => true,
@@ -460,23 +468,31 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
           <p role="alert">本地汇总读取失败，持有状态待核实。</p>
         )}
         {summary.data && (
-          <WorkflowTable
-            singlePane
-            label="本地市场范围"
-            columns={["交易所", "证券", "日线数", "最早", "最近"]}
-            rows={summary.data.markets.map((m) => ({
-              id: String(m.market),
-              search: exchanges[m.market],
-              cells: [
-                exchanges[m.market],
-                m.instruments,
-                m.rows,
-                m.first ?? "未知",
-                m.last ?? "未知",
-              ],
-            }))}
-            onSelect={(value) => change(() => setMarket(value))}
-          />
+          <>
+            {summary.data.as_of && (
+              <p className="small">
+                本地汇总截止（北京时间）：
+                {formatBeijingTime(summary.data.as_of)}
+              </p>
+            )}
+            <WorkflowTable
+              singlePane
+              label="本地市场范围"
+              columns={["交易所", "证券", "日线数", "最早", "最近"]}
+              rows={summary.data.markets.map((m) => ({
+                id: String(m.market),
+                search: exchanges[m.market],
+                cells: [
+                  exchanges[m.market],
+                  m.instruments,
+                  m.rows,
+                  m.first ?? "未知",
+                  m.last ?? "未知",
+                ],
+              }))}
+              onSelect={(value) => change(() => setMarket(value))}
+            />
+          </>
         )}
       </LocalQuerySummary>
       {busy && <p role="status">正在读取本地日线…</p>}

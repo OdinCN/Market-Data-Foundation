@@ -173,3 +173,22 @@ it("recalls the original roster UUID after a lost write and prevents duplicate d
   expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
   expect(calls.some((c) => c.path.endsWith("/jobs/" + id))).toBe(true);
 });
+
+it("opens roster refresh from periodic facts through the normal new collection route", () => {
+  const navigate = vi.fn();
+  const entry = TDX_ROSTER_FAMILY.periodic(
+    { enabled: true, worker_online: true },
+    { ...props, navigate, transport: fixture().transport },
+    vi.fn(),
+  );
+  render(<>{entry.detail}</>);
+  fireEvent.click(screen.getByRole("button", { name: "新建名册刷新" }));
+  expect(navigate).toHaveBeenCalledWith(
+    "collection",
+    expect.objectContaining({
+      tab: "new",
+      asset: "mdf.market.tdx.stock.roster",
+      asset_revision: "r1",
+    }),
+  );
+});

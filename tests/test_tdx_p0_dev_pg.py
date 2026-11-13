@@ -229,6 +229,23 @@ def test_dev_b1_bj_cold_asof_corrections_confirmations_and_late_block():
         assert store.universe(snapshot_id="failed")["members"] == []
         assert store.query(start=date(2020, 5, 19), end=date(2020, 5, 19))["total"] == 1
         assert store.summary()["markets"][0]["rows"] == 1
+
+        # A newer census must not erase qualification for an earlier census day.
+        for census_day in ("2020-05-18", "2020-05-19"):
+            saved_at = datetime.now(UTC)
+            store.save_universe(
+                dict(
+                    snapshot,
+                    snapshot_id=census_day,
+                    available_at=saved_at,
+                    details=dict(snapshot["details"], valid_through=census_day),
+                )
+            )
+        prev_day = date(2020, 5, 18)
+        assert store.universe(day=prev_day)["snapshot_id"] == "2020-05-18"
+        assert store.universe()["snapshot_id"] == "2020-05-19"
+        assert store.universe(day=prev_day, as_of=stamp)["snapshot_id"] == "complete"
+        assert store.query(start=prev_day, end=prev_day)["snapshot_id"] == "2020-05-18"
     finally:
         with connect() as conn:
             conn.execute("DROP SCHEMA " + schema + " CASCADE")

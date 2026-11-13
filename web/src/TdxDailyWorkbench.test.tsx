@@ -10,7 +10,11 @@ import {
 import type { Transport } from "./api";
 import type { Route } from "./workflowRoute";
 import { TDX_DAILY, TdxDailyQuery } from "./TdxDailyWorkbench";
-import { TdxDailyCollection, TdxExecutionDetail } from "./TdxDailyFamily";
+import {
+  TDX_FAMILY,
+  TdxDailyCollection,
+  TdxExecutionDetail,
+} from "./TdxDailyFamily";
 
 afterEach(() => {
   cleanup();
@@ -350,4 +354,25 @@ it("keeps an uncertain submission disabled and recalls the same request identity
     }),
   );
   expect(base.calls.filter((c) => c.method === "POST")).toHaveLength(1);
+});
+
+it("shows the actual first and review roles in the shared periodic detail", () => {
+  const { transport } = fixture();
+  const entry = TDX_FAMILY.periodic(
+    { strategy: { enabled: true, worker_online: true }, status: {} },
+    {
+      generation: 0,
+      transport,
+      route: route("collection", "periodic"),
+      navigate: vi.fn(),
+    },
+    vi.fn(),
+  );
+  render(<>{entry.detail}</>);
+  const detail = screen.getByRole("region", { name: "TDX 周期任务详情" });
+  expect(detail.textContent).toContain("15:10");
+  expect(detail.textContent).toContain("16:00");
+  expect(detail.textContent).toContain("只复核同一交易日");
+  expect(detail.textContent).toContain("完成后不重复");
+  expect(detail.textContent).toContain("复核不代表来源最终封账");
 });

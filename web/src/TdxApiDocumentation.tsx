@@ -90,7 +90,7 @@ export function TdxApiDocumentation({
           ],
           [
             "GET /api/r5/tdx/daily/strategy；POST 同路径",
-            "实际15:10盘后策略；POST体为enabled布尔值",
+            "北京时间15:10首采最近14日，16:00仅复核同交易日；POST体为enabled布尔值",
             "名册刷新与日线共用此策略，不启动另一worker",
           ],
         ]}
