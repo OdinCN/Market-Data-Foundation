@@ -90,6 +90,14 @@ HELP = dict(
     period="1d",
     basis="native_projection",
     units=dict(price="0.001 CNY", amount="0.001 CNY", volume="hand"),
+    field_semantics={
+        "open/high/low/close": "Integer milliyuan per share; CNY = raw / 1000",
+        "amount": "SDK integer milliyuan; display CNY = raw / 1000",
+        "volume": "SDK integer hands; hands * 100 is a 100-share-step conversion",
+        "Last": "SDK page decoder context; page head may be zero; excluded from facts",
+        "Order/UpCount/DownCount": "retained SDK projection only; excluded from facts",
+        "returns/adjustments": "no return, adjusted price or factor in daily facts",
+    },
     base_roster="/api/r5/tdx/roster",
     query_parameters={
         "day": "YYYY-MM-DD cross-section; mutually exclusive with start/end",

@@ -531,7 +531,8 @@ function PackageEditor({
         <p className="muted">选择需要启用的能力，来源配置会随选择更新。</p>
         {!!snapshot.configuration_readonly_capability_ids?.length && (
           <p className="package-save-note">
-            基础名册与原生日线在此入口保存；旧原始日线沿用基准入口配置。保存将保留其他接入包、旧能力及已有凭据。
+            本页管理 injoyai/tdx 的基础名册与原生日线。旧版 tdx-python 能力由
+            18761 管理。
           </p>
         )}
         {snapshot.write_eligible !== true && (
@@ -585,7 +586,8 @@ function PackageEditor({
                 {c.title}
                 {snapshot.configuration_readonly_capability_ids?.includes(
                   c.capability_id,
-                ) && "（沿用基准入口配置）"}
+                ) &&
+                  `（旧版 tdx-python · ${enabled.includes(c.capability_id) ? "已启用" : "未启用"} · 只读）`}
               </label>
             ))}
           </fieldset>
@@ -659,6 +661,20 @@ function PackageEditor({
                 </details>
               ))}
             </section>
+            {required.includes("TDX") &&
+              snapshot.source_access?.some(
+                (s) =>
+                  s.source_id === "TDX" &&
+                  s.credential_requirement === "host_managed",
+              ) && (
+                <section aria-label="TDX 行情连接">
+                  <h3>TDX 行情连接</h3>
+                  <p>
+                    连接由 MDF 宿主管理，本页无需填写 API
+                    Key。实际请求结果可在采集任务的执行记录中查看。
+                  </p>
+                </section>
+              )}
             <section aria-label="凭据配置">
               <h3>需要凭据的来源</h3>
               <p>
@@ -879,7 +895,10 @@ function credentialRequired(snapshot: Package | null, source: string) {
   const requirement = snapshot?.source_access?.find(
     (item) => item.source_id === source,
   )?.credential_requirement;
-  return requirement === "api_key" || requirement === "host_managed";
+  return (
+    requirement === "api_key" ||
+    (requirement === "host_managed" && source !== "TDX")
+  );
 }
 
 function credentialDescription(snapshot: Package, source: string) {
@@ -891,6 +910,8 @@ function credentialDescription(snapshot: Package, source: string) {
     return "当前公开取数通路，无需配置凭据。";
   if (access?.credential_requirement === "api_key")
     return `当前接入通路使用 API Key；在下方共用 ${source} 凭据卡片配置。`;
+  if (access?.credential_requirement === "host_managed" && source === "TDX")
+    return "TDX 行情连接由宿主管理。";
   if (access?.credential_requirement === "host_managed")
     return "当前通路使用宿主配置，配置状态见下方共用凭据卡片。";
   return "当前通路的凭据需求尚未核实，不提供凭据操作。";

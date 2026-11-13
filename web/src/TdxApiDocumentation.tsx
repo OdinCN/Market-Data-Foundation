@@ -212,9 +212,19 @@ export function TdxApiDocumentation({
                 ]
               : [
                   [
-                    "rows[].open/high/low/close / amount / volume",
+                    "rows[].open / high / low / close",
                     "integer",
-                    "价格与金额均为0.001 CNY，成交量为手；显示价格除1000，不得将金额再按元误读",
+                    "每个整数单位为 0.001 CNY/股（人民币元/股）。显示价 = 原值 ÷ 1000。",
+                  ],
+                  [
+                    "rows[].amount / volume",
+                    "integer / integer",
+                    "成交额每单位 0.001 元，显示金额 = amount ÷ 1000；volume 原值为手。手数 × 100 为百股粒度的换算，无法还原零股尾数。",
+                  ],
+                  [
+                    "SDK 投射中的 Last / Order / UpCount / DownCount",
+                    "保留在来源证据",
+                    "Last 是分页解码的前收上下文，页首允许为 0。以上字段均未进入日线事实表；涨跌幅、复权价及复权因子也不在这六个行情字段中。",
                   ],
                   [
                     "rows[].trading_day / market / instrument",
