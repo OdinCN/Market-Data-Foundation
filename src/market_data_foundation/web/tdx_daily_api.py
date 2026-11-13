@@ -17,6 +17,8 @@ from market_data_foundation.historical.tdx_p0_jobs import (
 )
 from market_data_foundation.historical.tdx_p0_source import GoDailySource, TdxError
 from market_data_foundation.historical.tdx_p0_strategy import DailyStrategy
+from market_data_foundation.historical.tdx_roster import PREFIX as ROSTER_PREFIX
+from market_data_foundation.historical.tdx_roster import published
 from market_data_foundation.storage.tdx_p0 import PgStore
 from market_data_foundation.web.gdp_api import body
 from market_data_foundation.web.pce_dev_host import admitted
@@ -37,7 +39,13 @@ def admitted_tdx_write(request, *, origin=ORIGIN):
     return (
         request.method == "POST"
         and request.url.path
-        in {PREFIX + "/jobs", PREFIX + "/jobs/resume", PREFIX + "/strategy"}
+        in {
+            PREFIX + "/jobs",
+            PREFIX + "/jobs/resume",
+            PREFIX + "/strategy",
+            ROSTER_PREFIX + "/jobs",
+            ROSTER_PREFIX + "/jobs/resume",
+        }
         and not request.url.query
         and request.headers.getlist("origin") == [origin]
         and request.headers.getlist("content-type") == ["application/json"]
@@ -72,7 +80,32 @@ class DailyRuntime:
         )
 
 
+def tdx_failure(error):
+    classification = getattr(error, "classification", None) or (
+        str(error)
+        if isinstance(error, ContractError)
+        else "tdx_missing_parameter"
+        if isinstance(error, KeyError)
+        else "tdx_invalid_parameter"
+        if isinstance(error, (ValueError, TypeError))
+        else type(error).__name__
+    )
+    return JSONResponse(
+        dict(status="NOT_AVAILABLE", classification=classification),
+        400
+        if isinstance(error, (ContractError, ValueError, KeyError, TypeError))
+        else 409
+        if classification == "job_running"
+        else 404
+        if classification == "job_not_found"
+        else 403
+        if classification.endswith(("not_enabled", "not_authorized"))
+        else 503,
+    )
+
+
 def tdx_router(runtime=None):
+    fail = tdx_failure
     router = APIRouter(prefix=PREFIX, tags=["tdx-stock-daily"])
 
     def ready(write=False):
@@ -83,21 +116,6 @@ def tdx_router(runtime=None):
             and not runtime.options.allow_collect
         ):
             raise TdxError("tdx_capability_not_enabled")
-
-    def fail(error):
-        classification = getattr(error, "classification", type(error).__name__)
-        return JSONResponse(
-            dict(status="NOT_AVAILABLE", classification=classification),
-            400
-            if isinstance(error, (ContractError, ValueError, KeyError, TypeError))
-            else 409
-            if classification == "job_running"
-            else 404
-            if classification == "job_not_found"
-            else 403
-            if classification.endswith(("not_enabled", "not_authorized"))
-            else 503,
-        )
 
     def parameters(request, allowed):
         require(
@@ -114,15 +132,24 @@ def tdx_router(runtime=None):
 
     @router.get("/status")
     def status():
-        return dict(
-            dataset_id=HELP["dataset_id"],
-            enabled=bool(runtime and runtime.options.allow_read),
-            collect=bool(runtime and runtime.options.allow_collect),
-            defaults=dict(start="1990-01-01", end=latest_day().isoformat()),
-            price_basis="native_projection",
-            return_qualification="NOT_QUALIFIED",
-            provider_requests=0,
-        )
+        try:
+            roster = (
+                published(runtime.store, latest_day())[1]
+                if runtime and runtime.options.allow_read
+                else None
+            )
+            return dict(
+                dataset_id=HELP["dataset_id"],
+                enabled=bool(runtime and runtime.options.allow_read),
+                collect=bool(runtime and runtime.options.allow_collect),
+                defaults=dict(start="1990-01-01", end=latest_day().isoformat()),
+                price_basis="native_projection",
+                return_qualification="NOT_QUALIFIED",
+                provider_requests=0,
+                roster=roster,
+            )
+        except Exception as error:
+            return fail(error)
 
     @router.get("/summary")
     def summary():

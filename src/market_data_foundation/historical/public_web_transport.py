@@ -175,7 +175,11 @@ def _exchange(url, route, directory, max_bytes, timeout, accept):
         with session.get(
             url,
             headers={**HEADERS, "Accept": accept},
-            timeout=(min(5, timeout), min(5, timeout)),
+            # Treasury XML can take most of the admitted deadline to produce headers.
+            timeout=(
+                min(5, timeout),
+                timeout if route == "treasury" else min(5, timeout),
+            ),
             stream=True,
             verify=True,
             allow_redirects=False,

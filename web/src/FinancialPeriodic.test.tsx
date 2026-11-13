@@ -306,3 +306,54 @@ it("execution loading, failed read and an observed empty result remain distinct"
   await screen.findByText("执行记录读取失败，最近执行待核实。");
   expect(screen.queryByText("尚无真实执行记录。")).toBeNull();
 });
+
+it.each(["complete", "failed"])(
+  "uses latest group %s for current state and retains older exhausted failure",
+  async (latestState) => {
+    const old = {
+      group: "treasury",
+      slot: "2026-11-11T23:30:00Z",
+      state: "failed",
+      request_id: "old-treasury",
+      attempts: 3,
+      classification: "financial_periodic_partial_failure",
+      retry_at: "2026-11-12T00:05:00Z",
+      failures: [
+        {
+          series_id: "DGS10",
+          state: "failed",
+          classification: "financial_timeout",
+        },
+      ],
+    };
+    const current = {
+      ...old,
+      request_id: "current-treasury",
+      slot: "2026-11-12T23:30:00Z",
+      state: latestState,
+    };
+    const data = {
+      ...base,
+      enabled: true,
+      control: { ...base.control, online: true },
+      tasks: [old, current],
+    };
+    const transport: Transport = async (url) =>
+      Response.json(
+        String(url).endsWith("/jobs")
+          ? { jobs: [] }
+          : String(url).endsWith("/summary")
+            ? { series: [] }
+            : data,
+      );
+    render(<Page transport={transport} />);
+    await screen.findByText(
+      `运行情况：${latestState === "complete" ? "等待下次检查" : "需处理"}`,
+    );
+    expect(screen.getAllByText("old-treasury")).toHaveLength(1);
+    expect(screen.getAllByText(/旧维护时点；不将旧 retry_at/)).toHaveLength(1);
+    expect(
+      screen.getAllByText(/financial_timeout|请求超时/).length,
+    ).toBeGreaterThan(0);
+  },
+);

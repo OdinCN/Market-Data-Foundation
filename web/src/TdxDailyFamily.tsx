@@ -1,3 +1,4 @@
+import { TdxRosterFacts, type RosterStatus } from "./TdxRosterFacts";
 import {
   DailyDateRange,
   CollectionColumns,
@@ -44,6 +45,7 @@ function updateRange(end: string) {
   };
 }
 type Status = {
+  roster?: RosterStatus | null;
   enabled: boolean;
   collect: boolean;
   defaults: { start?: string; end: string };
@@ -60,9 +62,7 @@ export function TdxDailyCollection({
   navigate,
   generation,
 }: FamilyProps) {
-  const [action, setAction] = useState<"init" | "update" | "universe">(
-    "update",
-  );
+  const [action, setAction] = useState<"init" | "update">("update");
   const [drafts, setDrafts] = useState(() => {
     const end = tdxLatestClosedDay();
     return {
@@ -104,20 +104,17 @@ export function TdxDailyCollection({
       ),
     }));
   }, [status.data]);
-  const range = drafts[action === "universe" ? "update" : action];
+  const range = drafts[action];
   useEffect(() => setConfirmed(false), [action, range.start, range.end]);
   const error =
-    action === "universe"
-      ? ""
-      : range.start && range.start < "1990-01-01"
-        ? "采集开始日期不得早于 1990-01-01。"
-        : dailyRangeError(
-            range,
-            366 * 200,
-            status.data?.defaults.end ?? beijingToday(),
-          );
+    range.start && range.start < "1990-01-01"
+      ? "采集开始日期不得早于 1990-01-01。"
+      : dailyRangeError(
+          range,
+          366 * 200,
+          status.data?.defaults.end ?? beijingToday(),
+        );
   function change(key: "start" | "end", value: string) {
-    if (action === "universe") return;
     edited.current[action][key] = true;
     setConfirmed(false);
     setDrafts((old) => ({
@@ -136,6 +133,7 @@ export function TdxDailyCollection({
     });
   }
   const recent = [...(jobs.data?.jobs ?? [])]
+    .filter((job) => job.command.action !== "universe")
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .slice(0, 5);
   return (
@@ -144,6 +142,23 @@ export function TdxDailyCollection({
       aria-label="TDX 日频 受控采集"
     >
       <h3>{title} · 受控采集</h3>
+      {status.data?.roster && (
+        <details>
+          <summary>日线使用的基础名册</summary>
+          <TdxRosterFacts value={status.data.roster} />
+          <button
+            onClick={() =>
+              navigate("assets", {
+                asset: "mdf.market.tdx.stock.roster",
+                asset_revision: "r1",
+                operation: null,
+              })
+            }
+          >
+            查询基础名册
+          </button>
+        </details>
+      )}
       <CollectionColumns
         briefs={
           <aside className="detail-pane execution-briefs" aria-label="执行简报">
@@ -203,7 +218,7 @@ export function TdxDailyCollection({
                   {
                     request_id: intent.current,
                     action,
-                    ...(action === "universe" ? {} : range),
+                    ...range,
                   },
                 );
                 open(job.request_id);
@@ -229,30 +244,25 @@ export function TdxDailyCollection({
             >
               <option value="update">更新指定范围（盘后增量）</option>
               <option value="init">初始化采集</option>
-              <option value="universe">刷新三市名册</option>
             </select>
           </label>
-          {action !== "universe" && (
-            <div className="field-grid">
-              <DailyDateRange
-                key={action}
-                collection
-                start={range.start}
-                end={range.end}
-                onStart={(v) => change("start", v)}
-                onEnd={(v) => change("end", v)}
-                min="1990-01-01"
-                max={status.data?.defaults.end}
-                disabled={busy || !!intent.current}
-              />
-            </div>
-          )}
+          <div className="field-grid">
+            <DailyDateRange
+              key={action}
+              collection
+              start={range.start}
+              end={range.end}
+              onStart={(v) => change("start", v)}
+              onEnd={(v) => change("end", v)}
+              min="1990-01-01"
+              max={status.data?.defaults.end}
+              disabled={busy || !!intent.current}
+            />
+          </div>
           <p className="small">
             {action === "init"
               ? "初始化服务预置范围：1990 年至最近盘后日，可自行修改。"
-              : action === "update"
-                ? "更新默认回看 14 日，与既有盘后策略一致；起止日期可编辑，不沿用初始化草稿。"
-                : "刷新三市完整来源名册，不采集历史日线。"}
+              : "更新默认回看 14 日，可编辑起止日期。"}
           </p>
           <p className="small">
             沪深北三市；原生价基（native_projection），收益口径待核验。逐页持久保存，中断后在执行记录续跑未完成分片。日期按北京时间盘后窗口核定。
@@ -305,20 +315,39 @@ export function TdxExecutionDetail({
   route,
   navigate,
   generation,
-}: FamilyProps) {
+  familyAsset = TDX_DAILY,
+  apiPrefix = "/api/r5/tdx/daily",
+  familyTitle = title,
+}: FamilyProps & {
+  familyAsset?: typeof TDX_DAILY;
+  apiPrefix?: string;
+  familyTitle?: string;
+}) {
+  const fields = {
+    asset: familyAsset.identity,
+    asset_revision: familyAsset.revision,
+    operation: null,
+  };
   const id = route.fields.get("job");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const writing = useRef(false);
   const detail = useVisiblePolling(
     (signal) =>
-      tdxCall<TdxJob>(transport, "/jobs/" + encodeURIComponent(id!), signal),
-    [transport, generation, id],
+      tdxCall<TdxJob>(
+        transport,
+        "/jobs/" + encodeURIComponent(id!),
+        signal,
+        undefined,
+        apiPrefix,
+      ),
+    [transport, generation, id, apiPrefix],
     !!id,
   );
   const status = useVisiblePolling(
-    (signal) => tdxCall<Status>(transport, "/status", signal),
-    [transport, generation],
+    (signal) =>
+      tdxCall<Status>(transport, "/status", signal, undefined, apiPrefix),
+    [transport, generation, apiPrefix],
   );
   if (!detail.data)
     return (
@@ -332,18 +361,35 @@ export function TdxExecutionDetail({
   return (
     <section aria-label="TDX 执行详情">
       <h3>
-        {title} · {actionTitle(job.command.action)}
+        {job.command.action === "universe"
+          ? "沪深北 A 股基础名册"
+          : familyTitle}{" "}
+        · {actionTitle(job.command.action)}
       </h3>
       {detail.failure && <p role="alert">执行详情已陈旧，请重读核实。</p>}
       <dl>
         <Fact name="执行状态">{tdxStateLabel[job.state] ?? job.state}</Fact>
         <Fact name="触发来源">{tdxJobOrigin(job)}</Fact>
         <Fact name="创建时间">{formatBeijingTime(job.created_at)}</Fact>
+        <Fact name="开始时间">
+          {formatBeijingTime(job.started_at, "未记录")}
+        </Fact>
+        <Fact name="结束时间">
+          {formatBeijingTime(job.finished_at, "尚未结束或未记录")}
+        </Fact>
+        <Fact name="发布名册">{job.snapshot_id ?? "尚未发布或未记录"}</Fact>
+        {job.classification && (
+          <Fact name="结果分类">{job.classification}</Fact>
+        )}
         <Fact name="采集范围">
-          {job.command.start ?? "三市名册"} 至 {job.command.end ?? "提交时点"}
+          {job.command.action === "universe"
+            ? "沪深北三市完整来源名册（不采集日线）"
+            : `${job.command.start} 至 ${job.command.end}`}
         </Fact>
         <Fact name="来源请求">{job.provider_requests}</Fact>
-        <Fact name="价基">原生价基（native_projection），收益口径待核验</Fact>
+        {job.command.action !== "universe" && (
+          <Fact name="价基">原生价基（native_projection），收益口径待核验</Fact>
+        )}
       </dl>
       <Technical>{job.request_id}</Technical>
       <button
@@ -359,9 +405,15 @@ export function TdxExecutionDetail({
           writing.current = true;
           setBusy(true);
           setNotice("");
-          void tdxCall(transport, "/jobs/resume", undefined, {
-            request_id: job.request_id,
-          })
+          void tdxCall(
+            transport,
+            "/jobs/resume",
+            undefined,
+            {
+              request_id: job.request_id,
+            },
+            apiPrefix,
+          )
             .catch(() =>
               setNotice("续跑回执未核实，请回查当前任务；不会自动重试。"),
             )
@@ -473,15 +525,17 @@ export const TDX_FAMILY: RuntimeFamily = {
       "/jobs",
       signal,
     );
-    return jobs.map((j) => ({
-      id: j.request_id,
-      createdAt: j.created_at,
-      title: `${title} · ${actionTitle(j.command.action)}`,
-      search: `${title} ${j.request_id} ${actionTitle(j.command.action)} ${tdxStateLabel[j.state] ?? j.state}`,
-      start: j.command.start ?? "三市名册",
-      end: j.command.end ?? "提交时点",
-      result: `${tdxStateLabel[j.state] ?? j.state} · 完成分片 ${j.complete_steps ?? "未记录"}/${j.step_count ?? "未记录"} · 来源请求 ${j.provider_requests}`,
-    }));
+    return jobs
+      .filter((j) => j.command.action !== "universe")
+      .map((j) => ({
+        id: j.request_id,
+        createdAt: j.created_at,
+        title: `${title} · ${actionTitle(j.command.action)}`,
+        search: `${title} ${j.request_id} ${actionTitle(j.command.action)} ${tdxStateLabel[j.state] ?? j.state}`,
+        start: j.command.start ?? "三市名册",
+        end: j.command.end ?? "提交时点",
+        result: `${tdxStateLabel[j.state] ?? j.state} · 完成分片 ${j.complete_steps ?? "未记录"}/${j.step_count ?? "未记录"} · 来源请求 ${j.provider_requests}`,
+      }));
   },
   async readPeriodic(transport, signal) {
     const [strategy, status] = await Promise.all([

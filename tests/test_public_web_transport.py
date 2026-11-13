@@ -79,6 +79,17 @@ def test_complete_verified_entity_no_private_headers_or_automatic_redirect(
     assert wire[1][0].closed and wire[2][0].closed
 
 
+def test_treasury_waits_for_xml_within_the_existing_deadline(inline_worker):
+    wire, _ = inline_worker
+    wire[0].append(dict(blocks=[b"<feed/>"]))
+    url = (
+        "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/"
+        "pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value_month=202611"
+    )
+    assert web.fetch_public(url, "treasury", timeout=30).status == 200
+    assert wire[1][0].calls[0][1]["timeout"] == (5, 30)
+
+
 @pytest.mark.parametrize(
     "url,route",
     [

@@ -23,6 +23,7 @@ from market_data_foundation.domain_contracts.macro import (
     BLS_CPI_SOURCE_CANDIDATE,
     BLS_PPI_FINAL_DEMAND,
 )
+from market_data_foundation.historical import tdx_roster
 from market_data_foundation.historical.bea_pce import (
     PCE_BINDING_CANDIDATE,
     PCE_DEFINITION,
@@ -410,6 +411,17 @@ def directory(query: DirectoryQuery) -> DirectoryDTO:
         ),
     )
     entries = [_entry(*spec) for spec in specs]
+    entries.append(
+        _entry(
+            "TDX",
+            "TDX",
+            "tdx_roster",
+            "SOURCE",
+            tdx_roster.SOURCE,
+            tdx_roster.BINDING,
+            tdx_roster.DEFINITION,
+        )
+    )
     entries.append(
         _entry(
             "TDX",

@@ -38,6 +38,19 @@ const cases = process.env.MDF_WORKBENCH_CASES
         history: true,
         collection: true,
       },
+      {
+        name: "初请与续请",
+        row: "美国初请与续请失业金",
+        asset: "mdf.macro.dol.claims@r1",
+        prefix: "/api/r5/claims/timeseries",
+        dates: {
+          "开始日期（截止周范围）": "2026-10-01",
+          "结束日期（截止周范围）": "2026-11-12",
+        },
+        history: true,
+        cutoff: "2026-11-13T00:00:00",
+        collection: true,
+      },
       ...(origin.endsWith(":18766")
         ? [
             {
@@ -47,6 +60,19 @@ const cases = process.env.MDF_WORKBENCH_CASES
               prefix: "/api/r5/tdx/daily",
               result: "日线结果",
               paging: "TDX 日线",
+              collection: true,
+              requirePaging: true,
+            },
+            {
+              name: "TDX基础名册",
+              row: "沪深北 A 股基础名册",
+              asset: "mdf.market.tdx.stock.roster@r1",
+              prefix: "/api/r5/tdx/roster",
+              dates: { 名册日期: "2026-11-12" },
+              valueProperty: "instrument",
+              result: "名册结果",
+              history: true,
+              paging: "TDX 名册",
               collection: true,
               requirePaging: true,
             },

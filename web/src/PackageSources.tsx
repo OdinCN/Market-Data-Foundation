@@ -529,6 +529,11 @@ function PackageEditor({
     >
       <section aria-label="接入包配置">
         <p className="muted">选择需要启用的能力，来源配置会随选择更新。</p>
+        {!!snapshot.configuration_readonly_capability_ids?.length && (
+          <p className="package-save-note">
+            基础名册与原生日线在此入口保存；旧原始日线沿用基准入口配置。保存将保留其他接入包、旧能力及已有凭据。
+          </p>
+        )}
         {snapshot.write_eligible !== true && (
           <p role="status" className="package-save-note">
             {reason}
@@ -554,6 +559,9 @@ function PackageEditor({
                 <input
                   type="checkbox"
                   checked={enabled.includes(c.capability_id)}
+                  disabled={snapshot.configuration_readonly_capability_ids?.includes(
+                    c.capability_id,
+                  )}
                   onChange={(e) => {
                     setNotice("");
                     const next = e.target.checked
@@ -575,6 +583,9 @@ function PackageEditor({
                   }}
                 />
                 {c.title}
+                {snapshot.configuration_readonly_capability_ids?.includes(
+                  c.capability_id,
+                ) && "（沿用基准入口配置）"}
               </label>
             ))}
           </fieldset>
@@ -886,6 +897,8 @@ function credentialDescription(snapshot: Package, source: string) {
 }
 
 function sourcePurpose(cap: Package["capabilities"][number], source: string) {
+  if (cap.capability_id === "stock_roster")
+    return "用于沪深北证券名册与生命周期核定；不采集日线数值。";
   if (cap.capability_id !== "financial_daily")
     return `用于${cap.title}的数值采集。`;
   const purposes: Record<string, string> = {
@@ -903,6 +916,8 @@ function sourcePurpose(cap: Package["capabilities"][number], source: string) {
 }
 
 const saveFailureReasons: Record<string, string> = {
+  legacy_capability_managed_by_reference_host:
+    "旧原始日线由基准入口管理；请重读并保留其当前选择，再保存基础名册或原生日线。",
   too_many_credential_changes:
     "凭据操作数量超出限制，本次未保存；仅对需要凭据的来源提交配置。请重读后重试。",
   invalid_source_changes:

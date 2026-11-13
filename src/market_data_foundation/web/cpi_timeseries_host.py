@@ -91,10 +91,10 @@ class TimeSeriesPackages(PackageHost):
             for asset in view.assets:
                 revisions = []
                 for revision in asset.revisions:
-                    if (
-                        revision.definition_ref.identity
-                        == "mdf.market.tdx.stock.daily.native"
-                    ):
+                    if revision.definition_ref.identity in {
+                        "mdf.market.tdx.stock.daily.native",
+                        "mdf.market.tdx.stock.roster",
+                    }:
                         revision = revision.model_copy(
                             update={
                                 "collect": Eligibility(
@@ -1298,32 +1298,32 @@ class TimeSeriesRuntime(ReadonlyRuntime):
     def history(self, environment_id, package_id, record):
         result = super().history(environment_id, package_id, record)
         if package_id == "tdx" and getattr(self, "tdx_runtime", None):
-            definition = next(
-                c.definition_ref
-                for c in self.packages.catalog.package("tdx").capabilities
-                if c.capability_id == "daily_native"
-            )
-            holding = "unknown"
-            try:
-                holding = (
-                    "present"
-                    if self.tdx_runtime.store.has_data(as_of=self.clock())
-                    else "absent"
+            evidence = {}
+            for cap in self.packages.catalog.package("tdx").capabilities:
+                if cap.capability_id not in {"daily_native", "stock_roster"}:
+                    continue
+                holding = "unknown"
+                try:
+                    present = (
+                        self.tdx_runtime.store.universe(as_of=self.clock()) is not None
+                        if cap.capability_id == "stock_roster"
+                        else self.tdx_runtime.store.has_data(as_of=self.clock())
+                    )
+                    holding = "present" if present else "absent"
+                except Exception:
+                    pass
+                evidence[cap.definition_ref.identity] = HistoryEvidence(
+                    manual_registered=True,
+                    definition_ref=cap.definition_ref,
+                    holding=holding,
+                    metadata_view_permission="allowed",
+                    read_permission="allowed",
+                    publication_readable=holding == "present",
                 )
-            except Exception:
-                pass
-            evidence = HistoryEvidence(
-                manual_registered=True,
-                definition_ref=definition,
-                holding=holding,
-                metadata_view_permission="allowed",
-                read_permission="allowed",
-                publication_readable=holding == "present",
-            )
             return result.model_copy(
                 update={
                     "history": [
-                        evidence if h.definition_ref == definition else h
+                        evidence.get(h.definition_ref.identity, h)
                         for h in result.history
                     ]
                 }
@@ -1385,6 +1385,12 @@ def create_timeseries_preview(
     ):
         raise ValueError("unified_dev_macro_operations_require_18766")
     runtime = TimeSeriesRuntime(settings, **options)
+    if tdx_runtime is not None and dev_origin == UNIFIED_DEV_ORIGIN:
+        from market_data_foundation.web.native_package_store import NativePackageStore
+
+        runtime.packages.store = NativePackageStore(
+            settings.package_store_directory, runtime.packages.catalog
+        )
     runtime.tdx_runtime = tdx_runtime
     runtime.packages.tdx_runtime = tdx_runtime
     runtime.financial_options = financial_options
@@ -1467,6 +1473,9 @@ def create_timeseries_preview(
     from market_data_foundation.web.tdx_daily_api import admitted_tdx_write, tdx_router
 
     app.include_router(tdx_router(tdx_runtime))
+    from market_data_foundation.web.tdx_roster_api import roster_router
+
+    app.include_router(roster_router(tdx_runtime))
     app.state.tdx_runtime = tdx_runtime
     app.state.timeseries_runtime = runtime
 

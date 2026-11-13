@@ -35,6 +35,9 @@ from market_data_foundation.historical.retail_contract import CENSUS_RETAIL
 from market_data_foundation.historical.tdx_p0_contract import (
     DEFINITION as TDX_P0_DEFINITION,
 )
+from market_data_foundation.historical.tdx_roster import (
+    DEFINITION as TDX_ROSTER_DEFINITION,
+)
 from market_data_foundation.web.dto import DTO
 from market_data_foundation.web.source_catalog import (
     ContractKeyDTO,
@@ -216,6 +219,12 @@ PACKAGES = (
         "TDX",
         "沪深北原生日线与历史原始日线变体；价基和来源独立，禁止静默互换。",
         (
+            CapabilityView(
+                capability_id="stock_roster",
+                title="沪深北 A 股基础名册",
+                definition_ref=ref(TDX_ROSTER_DEFINITION),
+                required_sources=["TDX"],
+            ),
             CapabilityView(
                 capability_id="daily_native",
                 title="沪深北 A 股原生日线",
@@ -488,6 +497,7 @@ class PackageView(DTO):
     config_revision: str | None
     enabled_capability_ids: list[str]
     required_sources: list[str]
+    configuration_readonly_capability_ids: list[str] = Field(default_factory=list)
     source_access: list[SourceAccess] = Field(default_factory=list)
     credential_states: list[CredentialState]
     source_verifications: list[SourceVerification] = Field(default_factory=list)

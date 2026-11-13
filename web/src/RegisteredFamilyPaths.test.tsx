@@ -16,6 +16,7 @@ import App from "./App";
 import type { Transport } from "./api";
 import type { RuntimeFamily } from "./RuntimeFamily";
 import { TDX_FAMILY } from "./TdxDailyFamily";
+import { TDX_ROSTER_FAMILY } from "./TdxRosterFamily";
 import { TDX_DAILY } from "./TdxDailyWorkbench";
 import { asgi, closeBridges } from "./workflowTestBridge";
 import { keyOf } from "./workflowModel";
@@ -68,6 +69,7 @@ const future: RuntimeFamily = {
 let root = "";
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   closeBridges();
   if (root) rmSync(root, { recursive: true, force: true });
   location.hash = "";
@@ -79,10 +81,12 @@ function nav(name: string) {
   );
 }
 async function setup(family: RuntimeFamily = TDX_FAMILY) {
+  if (family === TDX_ROSTER_FAMILY)
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(id);
   root = mkdtempSync(join(tmpdir(), "mdf-d01-family-path-"));
   const b = asgi("financial_manual", "d01_ui_exchange.py", { store_dir: root });
   for (const [name, capabilities] of [
-    ["tdx", ["daily_native"]],
+    ["tdx", [family === TDX_ROSTER_FAMILY ? "stock_roster" : "daily_native"]],
     ["macro", ["cpi"]],
   ] as const) {
     const saved = await b.exchange({
@@ -105,7 +109,11 @@ async function setup(family: RuntimeFamily = TDX_FAMILY) {
     provider_requests: 2,
     step_count: 1,
     complete_steps: 0,
-    command: { action: "init", start: "1990-01-01", end: "2026-11-11" },
+    command: {
+      action: family === TDX_ROSTER_FAMILY ? "universe" : "init",
+      start: "1990-01-01",
+      end: "2026-11-11",
+    },
     steps: [],
   };
   const transport: Transport = async (input, init) => {
@@ -117,7 +125,10 @@ async function setup(family: RuntimeFamily = TDX_FAMILY) {
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
     if (url.startsWith("/fixture/")) return Response.json({});
-    if (url.startsWith("/api/r5/tdx/daily")) {
+    if (
+      url.startsWith("/api/r5/tdx/daily") ||
+      url.startsWith("/api/r5/tdx/roster")
+    ) {
       if (method === "POST") {
         return Response.json(job);
       }
@@ -172,17 +183,25 @@ async function setup(family: RuntimeFamily = TDX_FAMILY) {
   return { transport, calls, app, b };
 }
 // This same path must work for a new registration without another App route.
-it.each([TDX_FAMILY, future])(
+it.each([TDX_FAMILY, future, TDX_ROSTER_FAMILY])(
   "keeps $title in the catalog, standard form, global execution table and periodic details",
   async (family) => {
     const h = await setup(family);
+    const catalogTitle =
+      family === TDX_ROSTER_FAMILY
+        ? "沪深北 A 股基础名册"
+        : "沪深北 A 股原生日线";
     nav("数据资产");
-    await screen.findByRole("button", { name: /选择 沪深北 A 股原生日线/ });
+    await screen.findByRole("button", {
+      name: new RegExp(`选择 ${catalogTitle}`),
+    });
     fireEvent.change(screen.getByLabelText("接入包筛选"), {
       target: { value: "tdx" },
     });
     fireEvent.click(
-      await screen.findByRole("button", { name: /选择 沪深北 A 股原生日线/ }),
+      await screen.findByRole("button", {
+        name: new RegExp(`选择 ${catalogTitle}`),
+      }),
     );
     expect(screen.getByLabelText("搜索数据资产")).toBeTruthy();
     expect(screen.getByLabelText("接入包筛选")).toBeTruthy();
@@ -204,6 +223,10 @@ it.each([TDX_FAMILY, future])(
     if (family === TDX_FAMILY)
       await screen.findByRole("heading", {
         name: "GET /api/r5/tdx/daily/query",
+      });
+    else if (family === TDX_ROSTER_FAMILY)
+      await screen.findByRole("heading", {
+        name: "GET /api/r5/tdx/roster/query",
       });
     else await screen.findByText("未来登记族 API 合同");
     fireEvent.click(screen.getByRole("tab", { name: "查询数据" }));
@@ -231,6 +254,13 @@ it.each([TDX_FAMILY, future])(
       fireEvent.click(
         screen.getByRole("button", { name: "提交 TDX 日线 采集" }),
       );
+    } else if (family === TDX_ROSTER_FAMILY) {
+      fireEvent.click(
+        screen.getByRole("checkbox", {
+          name: "我确认刷新三市名册到开发测试库",
+        }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "提交采集任务" }));
     } else
       fireEvent.click(screen.getByRole("button", { name: "提交未来族采集" }));
     const table = await screen.findByRole("region", { name: "执行记录" });
@@ -240,7 +270,9 @@ it.each([TDX_FAMILY, future])(
     await within(detail).findByText(
       family === TDX_FAMILY
         ? /原生价基（native_projection）/
-        : "未来登记族执行详情",
+        : family === TDX_ROSTER_FAMILY
+          ? /三市完整来源名册/
+          : "未来登记族执行详情",
     );
     expect(h.calls.filter((c) => c.method === "POST")).toHaveLength(1);
     fireEvent.change(screen.getByLabelText("执行资产筛选"), {
@@ -265,7 +297,9 @@ it.each([TDX_FAMILY, future])(
     ).findByText(
       family === TDX_FAMILY
         ? /原生价基（native_projection）/
-        : "未来登记族执行详情",
+        : family === TDX_ROSTER_FAMILY
+          ? /三市完整来源名册/
+          : "未来登记族执行详情",
     );
     expect(location.hash).toBe(deepLink);
     fireEvent.click(screen.getByRole("tab", { name: "周期任务" }));
@@ -280,7 +314,13 @@ it.each([TDX_FAMILY, future])(
     );
     await within(
       screen.getByRole("complementary", { name: "周期任务详情" }),
-    ).findByText(family === TDX_FAMILY ? /交易日证据/ : "未来登记族周期详情");
+    ).findByText(
+      family === TDX_FAMILY
+        ? /交易日证据/
+        : family === TDX_ROSTER_FAMILY
+          ? /15:10 Asia/
+          : "未来登记族周期详情",
+    );
     expect(screen.getAllByLabelText("搜索周期任务")).toHaveLength(1);
   },
 );

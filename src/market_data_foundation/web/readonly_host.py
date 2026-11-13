@@ -229,6 +229,8 @@ class ReadonlyRuntime:
         return states
 
     def authorize_package(self, request, package_id):
+        from market_data_foundation.web.pce_dev_host import macro_write_origin
+
         allowed = (
             request.method in {"GET", "HEAD"}
             and admitted(request, origin=CANDIDATE_ORIGIN)
@@ -236,11 +238,17 @@ class ReadonlyRuntime:
             self.settings.package_config_save
             and (admitted_package_save(request) or admitted_package_verify(request))
         )
+        write_host = request.headers.getlist("host") == [
+            macro_write_origin(request).removeprefix("http://")
+        ]
+        write_eligible = allowed and self.settings.package_config_save and write_host
         return PackageAccess(
             metadata_view_permission="allowed" if allowed else "denied",
-            write_eligible=allowed and self.settings.package_config_save,
+            write_eligible=write_eligible,
             write_reasons=[
                 "dev_package_config_only"
+                if write_eligible
+                else "package_admin_origin_not_enabled"
                 if self.settings.package_config_save
                 else "readonly_host"
             ],

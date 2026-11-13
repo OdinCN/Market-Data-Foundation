@@ -105,3 +105,41 @@ the same Beijing 15:05 boundary as its backend; server defaults still qualify th
 untouched fields. Daily row reads and coverage reads have independent loading
 and cancellation states: returned rows remain pageable during reconciliation,
 and paging rows does not duplicate an in-flight coverage request.
+
+The stock roster is a separate base registration:
+`mdf.market.tdx.stock.roster@r1`, `/api/r5/tdx/roster`. Its query, refresh form,
+execution records, deep links and shared 15:10 periodic facts use the existing
+family renderers. The API and daily collector consume `tdx_roster.published`;
+refresh uses the same `DailyJobs` implementation, journal and lock with the
+legacy `action=universe`. The old daily universe/job routes remain compatible.
+Daily reads/receipts retain the exact publication identity; a new collection
+without a roster or beyond its dated validity fails before provider requests.
+Resume retains the original publication for already-created shards. Provider
+refresh never extends exchange lifecycle validity or upgrades unverified code
+lineage. The UI reports current-directory-only, missing and stale evidence.
+
+18766 package administration additionally requires the existing
+`--allow-package-config-save`; unified DEV admission does not grant it.
+`NativePackageStore` preserves shared `packages.json` byte-for-byte when editing
+native TDX capabilities. An atomic `tdx-capabilities.json` in the same private
+configuration directory holds only `daily_native` and `stock_roster`, under the
+same configuration flock. The public CAS revision binds the legacy and native
+snapshots, so a legacy TDX edit invalidates a pending native save. Other packages
+and credential references remain in their original store. The old `daily_raw`
+capability remains managed by the reference host and is visibly read-only in
+this composition; it is never silently enabled as a native alias. No runtime
+configuration or secret belongs in Git.
+
+Financial periodic status uses each source group's latest maintenance slot;
+older exhausted failures remain in execution history and do not permanently
+poison a later successful slot. A current exhausted failure remains actionable,
+with its actual reason, attempts and times. Claims separates a completed local
+readback from an unverified publication report, rolling HTTP budget deferral,
+and history waiting for target verification. Read-model annotations do not
+rewrite durable failures, release a reservation or change retry policies.
+
+The deployed checker now includes Claims and the roster. It still requires real
+nonempty local values, HTTP 200 and visible rows, then visits help, collection,
+real job details and periodic details from the same catalog. A pre-roster host
+fails rather than passing a form-only check. Use `MDF_WORKBENCH_CASES` to select
+reference-host families or another registered case.

@@ -22,6 +22,7 @@ from market_data_foundation.historical.tdx_p0_source import (
     encoded,
     verify_wire,
 )
+from market_data_foundation.historical.tdx_roster import published, require_usable
 from market_data_foundation.integration.tdx_daily_ingest import native_bar
 from market_data_foundation.storage.tdx_daily_pg import PRIMARY_SOURCE, Batch
 
@@ -510,12 +511,25 @@ class DailyJobs:
 
     def _daily(self, record, source):
         command = record["command"]
-        universe = self.store.universe()
+        universe, roster_status = published(
+            self.store,
+            date.fromisoformat(command["end"]),
+            snapshot_id=record.get("snapshot_id") if record["steps"] else None,
+        )
+        record["roster"] = roster_status
+        if not record["steps"]:
+            record["snapshot_id"] = (universe or {}).get("snapshot_id")
+            require_usable(universe, roster_status)
         require(universe is not None, "tdx_universe_required")
         if not record["steps"]:
+            candidates = (
+                universe["details"].get("directory_only_candidates", [])
+                if roster_status.get("same_day_directory")
+                else []
+            )
             members = [
                 m
-                for m in universe["members"]
+                for m in [*universe["members"], *candidates]
                 if m["market"] in command["markets"]
                 and lifecycle(m, date.fromisoformat(command["end"])) != "NOT_YET_LISTED"
                 and (

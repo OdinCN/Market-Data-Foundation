@@ -417,6 +417,9 @@ class PackageHost:
             configuration_state="PRESENT" if record else "ABSENT",
             config_revision=record.revision if record else None,
             enabled_capability_ids=list(enabled),
+            configuration_readonly_capability_ids=getattr(
+                self.store, "configuration_readonly_capabilities", {}
+            ).get(package_id, []),
             required_sources=required,
             source_access=self.catalog.source_access(package_id),
             credential_states=credentials,

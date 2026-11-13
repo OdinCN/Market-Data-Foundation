@@ -165,7 +165,11 @@ def test_real_identities_source_variants_and_other_code_catalog_are_preserved(tm
         }
         directory = client.get("/api/r5/sources").json()
         assert directory["evidence_mode"] == "CODE_CONTRACTS_ONLY"
-        assert len(directory["entries"]) == 28
+        assert len(directory["entries"]) == 29
+        assert any(
+            e["asset"] == {"identity": "mdf.market.tdx.stock.roster", "revision": "r1"}
+            for e in directory["entries"]
+        )
         assert any(
             e["identity"] == "mdf.source.census.m3.capital-goods@r1"
             for e in directory["entries"]
@@ -178,7 +182,7 @@ def test_real_identities_source_variants_and_other_code_catalog_are_preserved(tm
                     if e["asset"]
                 }
             )
-            == 18
+            == 19
         )
 
 

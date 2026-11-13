@@ -90,6 +90,48 @@ HELP = dict(
     period="1d",
     basis="native_projection",
     units=dict(price="0.001 CNY", amount="0.001 CNY", volume="hand"),
+    base_roster="/api/r5/tdx/roster",
+    query_parameters={
+        "day": "YYYY-MM-DD cross-section; mutually exclusive with start/end",
+        "start/end": "inclusive; 1990-01-01 <= start <= end <= 2100-12-31",
+        "market": "optional integer 0=SZ, 1=SH, 2=BJ",
+        "instrument": "optional six ASCII digits; requires market",
+        "as_of": "aware ISO8601 with microseconds; MDF availability",
+        "local_only": "true only; default true; GET never acquires upstream",
+        "basis": "native_projection only; default native_projection",
+        "period/security_type": "1d/stock only",
+        "order": "asc or desc; default asc, history form explicitly desc",
+        "offset/limit": "nonnegative offset; 1 <= limit <= 10000; defaults 0/100",
+    },
+    response_fields={
+        "rows": "market/instrument/trading_day, integer OHLCV/amount, source/batch_id",
+        "received_at/available_at": "actual receipt / confirmed local publication",
+        "total/next_offset": "count / next cursor or null; not universe coverage",
+        "snapshot_id/membership": "base-roster identity / history qualification",
+        "provider_requests": "0 for all local GET reads",
+        "source_event_time": "null; SDK date does not establish absolute source time",
+    },
+    errors={
+        "400": [
+            "tdx_query_parameters",
+            "tdx_query_direction",
+            "tdx_query_contract",
+            "tdx_query_page",
+            "tdx_query_cutoff",
+            "tdx_invalid_parameter",
+            "tdx_missing_parameter",
+        ],
+        "403": ["operator_not_authorized", "tdx_capability_not_enabled"],
+        "404": ["job_not_found"],
+        "409": ["job_running"],
+        "503": ["classified source or storage unavailability"],
+        "job_PARTIAL": [
+            "tdx_universe_required",
+            "tdx_roster_stale",
+            "commit_outcome_unknown",
+            "tdx_page_offset_exhausted",
+        ],
+    },
     endpoints={
         name: PREFIX + suffix
         for name, suffix in dict(
@@ -113,7 +155,7 @@ HELP = dict(
         cross_section=PREFIX + "/query?day=2026-11-12&local_only=true&limit=100",
         coverage=PREFIX + "/coverage?day=2026-11-12",
         job={
-            "request_id": "canonical UUID",
+            "request_id": "8c9604c4-3281-4f14-9f08-939a7a362d11",
             "action": "universe | init | update",
             "start": "YYYY-MM-DD (init default 1990-01-01)",
             "end": "YYYY-MM-DD (latest after-close day default)",

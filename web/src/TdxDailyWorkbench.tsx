@@ -1,3 +1,4 @@
+import { TdxApiDocumentation } from "./TdxApiDocumentation";
 import {
   DailyDateRange,
   HistoryCutoffFields,
@@ -38,6 +39,10 @@ type Step = {
   rows?: number;
 };
 export type TdxJob = {
+  snapshot_id?: string;
+  classification?: string;
+  started_at?: string;
+  finished_at?: string;
   request_id: string;
   state: string;
   created_at: string;
@@ -100,10 +105,6 @@ type Coverage = {
     classification: string;
   }[];
 };
-type Help = {
-  examples: { history: string; cross_section: string; coverage: string };
-  notes: string[];
-};
 export const tdxStateLabel: Record<string, string> = {
   QUEUED: "已排队",
   INTERRUPTED: "执行中断，可续跑",
@@ -118,8 +119,9 @@ export async function tdxCall<T>(
   path: string,
   signal?: AbortSignal,
   command?: unknown,
+  apiPrefix = prefix,
 ): Promise<T> {
-  const response = await transport(prefix + path, {
+  const response = await transport(apiPrefix + path, {
     method: command === undefined ? "GET" : "POST",
     cache: "no-store",
     signal,
@@ -634,40 +636,5 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
 }
 
 export function TdxApiHelp({ transport }: FamilyProps) {
-  const help = useVisiblePolling(
-    (signal) => tdxCall<Help>(transport, "/help", signal),
-    [transport],
-    true,
-    () => true,
-    false,
-  );
-  return (
-    <section aria-label="TDX API说明">
-      <h3>GET /api/r5/tdx/daily/query</h3>
-      <p>
-        证券历史和单日横截面共用查询入口，仅本地读取。价基为
-        native_projection（原生价基）；收益口径待核验。as_of 必须包含时区，表示
-        MDF 实际保存版本的可用截止。单股历史默认按交易日倒序展示，接口参数 order
-        支持 asc 和 desc，省略时按升序返回。limit / offset 为结果分页；coverage
-        使用独立缺项分页。
-      </p>
-      {help.failure && <p role="alert">API说明读取失败，请刷新核实。</p>}
-      {help.data && (
-        <>
-          <pre>
-            {help.data.examples.history}
-            {"\n"}
-            {help.data.examples.cross_section}
-            {"\n"}
-            {help.data.examples.coverage}
-          </pre>
-          <ul>
-            {help.data.notes.map((note) => (
-              <li key={note}>{note}</li>
-            ))}
-          </ul>
-        </>
-      )}
-    </section>
-  );
+  return <TdxApiDocumentation transport={transport} />;
 }

@@ -5126,6 +5126,13 @@
             "type": "array",
             "title": "Required Sources"
           },
+          "configuration_readonly_capability_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Configuration Readonly Capability Ids"
+          },
           "source_access": {
             "items": {
               "$ref": "#/components/schemas/SourceAccess"

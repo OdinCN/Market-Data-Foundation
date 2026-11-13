@@ -145,6 +145,11 @@ export const cpiActionText = (value: string) =>
     signal: "修订信号核实",
   })[value.startsWith("signal:") ? "signal" : value] ?? "尚未核实";
 type Stage = {
+  waiting_for?: string;
+  effective_next_attempt_at?: string | null;
+  budget_blocked_until?: string | null;
+  attempts?: number;
+  max_attempts?: number;
   state?: string;
   update_start?: string;
   update_end?: string;
@@ -1366,6 +1371,20 @@ function CpiStrategyWorkbenchContent({
                         </span>
                       </div>
                       <div className="month-stage-detail">
+                        {weekly && target.target?.budget_blocked_until && (
+                          <p>
+                            滚动 HTTP 预算等待至{" "}
+                            {calendarTime(target.target.budget_blocked_until)}
+                            ；不是 worker 离线，也不代表来源已公布。
+                          </p>
+                        )}
+                        {weekly && target.target?.attempts != null && (
+                          <p>
+                            当期尝试：{target.target.attempts}/
+                            {target.target.max_attempts ?? 8}
+                            ；原数值回读与发布原件核实分开保留。
+                          </p>
+                        )}
                         <p>
                           最近尝试：
                           <time>
@@ -1418,24 +1437,27 @@ function CpiStrategyWorkbenchContent({
                         <div className="month-stage-state">
                           <strong>历史核实</strong>
                           <span>
-                            {target.history?.state === "blocked" &&
-                            [
-                              "pending",
-                              "running",
-                              "awaiting_provider",
-                              "unknown",
-                              "failed",
-                            ].includes(target.target?.state ?? "")
-                              ? "等待当期采集"
-                              : cpiExecutionStateText(
-                                  target.history?.state,
-                                  target.history,
-                                  profile,
-                                  {
-                                    start: target.history?.update_start,
-                                    end: target.history?.update_end,
-                                  },
-                                )}
+                            {target.history?.waiting_for ===
+                            "target_verification"
+                              ? "等待当期发布参考周核实后再开始"
+                              : target.history?.state === "blocked" &&
+                                  [
+                                    "pending",
+                                    "running",
+                                    "awaiting_provider",
+                                    "unknown",
+                                    "failed",
+                                  ].includes(target.target?.state ?? "")
+                                ? "等待当期采集"
+                                : cpiExecutionStateText(
+                                    target.history?.state,
+                                    target.history,
+                                    profile,
+                                    {
+                                      start: target.history?.update_start,
+                                      end: target.history?.update_end,
+                                    },
+                                  )}
                           </span>
                         </div>
                         <div className="month-stage-detail">
@@ -1448,7 +1470,13 @@ function CpiStrategyWorkbenchContent({
                           <p>
                             下次核实：
                             <time>
-                              {calendarTime(target.history?.next_attempt_at)}
+                              {target.history?.waiting_for ===
+                              "target_verification"
+                                ? "当期核实后安排；原候选时刻不代表已获执行准入"
+                                : calendarTime(
+                                    target.history?.effective_next_attempt_at ??
+                                      target.history?.next_attempt_at,
+                                  )}
                             </time>
                           </p>
                           <ResultFacts

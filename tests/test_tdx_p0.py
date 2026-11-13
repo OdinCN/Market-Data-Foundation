@@ -76,7 +76,9 @@ class Store:
             else dict(
                 snapshot_id="roster",
                 members=[dict(market=2, instrument="920002", name="fixture")],
-                details=dict(markets=[dict(market=2, state="COMPLETE")]),
+                details=dict(
+                    markets=[dict(market=m, state="COMPLETE") for m in (0, 1, 2)]
+                ),
             )
         )
 
@@ -414,7 +416,11 @@ def test_retained_tamper_rejected_before_write(tmp_path):
 
 
 def test_native_bj_zero_volume_does_not_prove_suspension_or_historical_membership():
-    result = coverage(Store(), date(2025, 1, 1))
+    store = Store()
+    snapshot = store.universe()
+    snapshot["details"]["markets"] = [dict(market=2, state="COMPLETE")]
+    store.snapshots.append(snapshot)
+    result = coverage(store, date(2025, 1, 1))
     assert result["complete"] is False
     assert result["markets"][2]["roster_count"] == 1
     assert result["markets"][2]["unknown"] == 1

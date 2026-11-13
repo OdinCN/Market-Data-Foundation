@@ -89,6 +89,7 @@ const reasons: Record<string, string> = {
   source_unavailable: "来源尚未提供该期数据",
   claims_current_actuals_missing:
     "该次回读尚未核实本次报告的初请/续请参考周数值",
+  claims_timeout: "官方报告获取超时，发布参考周尚未核实",
   claims_material_unconfirmed: "本次官方报告材料尚未核实",
   claims_rolling_http_budget:
     "滚动24小时HTTP额度已占用，等待已核实消耗结算或额度到期",
@@ -401,7 +402,8 @@ export function autoCollectionDiagnosis(
                 : null;
       if (!kind) continue;
       const detail = obj(value.last_error);
-      const reason = diagnosisReason(
+      const sourceCode = text(obj(result.material).classification);
+      const primaryReason = diagnosisReason(
         code,
         kind === "unknown"
           ? "该次执行未取得可确认结果"
@@ -409,6 +411,10 @@ export function autoCollectionDiagnosis(
             ? "来源暂未就绪或上次尝试失败，正在等待重试"
             : "该阶段执行失败，尚无成功回执",
       );
+      const reason =
+        sourceCode && sourceCode !== code
+          ? `${primaryReason}；发布原件：${diagnosisReason(sourceCode, sourceCode)}`
+          : primaryReason;
       const issue: PlanIssue = {
         kind,
         period,
