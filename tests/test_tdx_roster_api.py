@@ -170,3 +170,21 @@ def test_same_day_directory_allows_collection_with_dated_exchange_evidence():
     assert status["same_day_directory"]
     with pytest.raises(ContractError, match="tdx_roster_stale"):
         tdx_roster.published(store, date(2026, 11, 14), require_current=True)
+
+
+def test_pg_datetime_and_current_directory_do_not_upgrade_stale_exchange_census():
+    from datetime import datetime
+
+    store = published_store()
+    snapshot = store.snapshots[0]
+    snapshot["observed_at"] = datetime.fromisoformat(snapshot["observed_at"])
+    assert (
+        tdx_roster.facts(snapshot, date(2026, 11, 12))["directory_observed_day"]
+        == "2026-11-12"
+    )
+    snapshot["details"]["directory_refreshed_at"] = "2026-11-13T08:00:00+00:00"
+    _, status = tdx_roster.published(store, date(2026, 11, 13), require_current=True)
+    assert status["same_day_directory"] is True
+    assert status["state"] == "STALE"
+    assert status["classification"] == "tdx_roster_stale"
+    assert status["valid_through"] == "2026-11-12"

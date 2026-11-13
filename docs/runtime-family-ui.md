@@ -112,8 +112,11 @@ execution records, deep links and shared 15:10 periodic facts use the existing
 family renderers. The API and daily collector consume `tdx_roster.published`;
 refresh uses the same `DailyJobs` implementation, journal and lock with the
 legacy `action=universe`. The old daily universe/job routes remain compatible.
-Daily reads/receipts retain the exact publication identity; a new collection
-without a roster or beyond its dated validity fails before provider requests.
+Daily reads/receipts retain the exact publication identity. Missing or incomplete
+rosters fail before provider requests. Stale exchange evidence remains explicitly
+unqualified for full-market coverage; a published complete same-day provider
+directory can still support acquisition under the existing daily policy. Its
+directory-only candidates remain separately identified and traceable.
 Resume retains the original publication for already-created shards. Provider
 refresh never extends exchange lifecycle validity or upgrades unverified code
 lineage. The UI reports current-directory-only, missing and stale evidence.
@@ -143,3 +146,9 @@ nonempty local values, HTTP 200 and visible rows, then visits help, collection,
 real job details and periodic details from the same catalog. A pre-roster host
 fails rather than passing a form-only check. Use `MDF_WORKBENCH_CASES` to select
 reference-host families or another registered case.
+
+Roster pagination pins the returned `snapshot_id` for forward/back navigation.
+A new explicit query chooses a new publication; edits clear the prior result.
+The actual request preview and cURL include the page cursor and pinned identity.
+The native configuration store accepts the product form's single TDX `keep`
+intent, while rejecting replacements, unrelated sources and duplicates.

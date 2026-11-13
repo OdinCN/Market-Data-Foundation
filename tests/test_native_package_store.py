@@ -193,3 +193,39 @@ def test_real_unified_host_http_save_keeps_legacy_snapshot_readable(
         assert client.get("/api/r5/packages/macro").json()[
             "enabled_capability_ids"
         ] == ["cpi"]
+
+
+def test_native_browser_keep_does_not_allow_credential_replacement(tmp_path):
+    old, new = stores(tmp_path)
+    first = new.save(
+        "dev",
+        "tdx",
+        SaveCommand.model_validate(
+            dict(
+                expected_revision=None,
+                enabled_capability_ids=["daily_native"],
+                source_changes=[dict(source_id="TDX", credential_action="keep")],
+            )
+        ),
+    )
+    before = old.path.read_bytes()
+    with pytest.raises(PackageError, match="source_credentials_not_applicable"):
+        new.save(
+            "dev",
+            "tdx",
+            SaveCommand.model_validate(
+                dict(
+                    expected_revision=first.revision,
+                    enabled_capability_ids=["daily_native"],
+                    source_changes=[
+                        dict(
+                            source_id="TDX",
+                            credential_action="replace",
+                            credential_value="isolated-dummy-value",
+                        )
+                    ],
+                )
+            ),
+        )
+    assert old.path.read_bytes() == before
+    assert new.read("dev", "tdx") == first
