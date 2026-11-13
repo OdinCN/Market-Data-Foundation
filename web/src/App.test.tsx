@@ -387,7 +387,11 @@ it("D: projection keeps components/interfaces/assets/materials/services separate
   ).body as Catalog;
   const model = project(d, c, null);
   expect(model.components.map((c) => c.id)).toEqual(["Macro", "TDX", "KD"]);
-  expect(model.interfaces).toHaveLength(28);
+  expect(model.interfaces).toHaveLength(29);
+  expect(
+    model.assets.find((a) => a.key.identity === "mdf.market.tdx.stock.roster")
+      ?.interfaces,
+  ).toHaveLength(1);
   expect(
     model.assets.find(
       (a) => a.key.identity === "mdf.market.tdx.stock.daily.native",

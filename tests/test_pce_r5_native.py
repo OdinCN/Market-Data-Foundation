@@ -43,9 +43,14 @@ def client(app, origin=CANDIDATE_ORIGIN):
 
 
 def assert_financial_inventory(entries):
-    # Six financial paths and TDX daily extend the original 21-entry inventory;
+    # Six financial paths, TDX daily and its independent roster extend the inventory;
     # registration does not qualify a source or activate a runtime binding.
-    assert len(entries) == 28
+    assert len(entries) == 29
+    assert [
+        e["identity"]
+        for e in entries
+        if (e["asset"] or {}).get("identity") == "mdf.market.tdx.stock.roster"
+    ] == ["mdf.source.tdx-v100.stock.roster@p0-r1"]
     financial = [
         e
         for e in entries
