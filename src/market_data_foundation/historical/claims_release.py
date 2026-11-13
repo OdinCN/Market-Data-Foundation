@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 from psycopg.types.json import Jsonb
 from pypdf import PdfReader
+from pypdf import __version__ as PYPDF_VERSION
 
 from market_data_foundation.historical.claims_contract import (
     BY_ID,
@@ -25,7 +26,7 @@ from market_data_foundation.historical.claims_contract import (
 from market_data_foundation.historical.claims_store import storage_boundary
 from market_data_foundation.historical.cpi_timeseries_store import canonical, digest
 
-PARSER = "dol-regular-state-claims-v3"
+PARSER = "dol-regular-state-claims-v4"
 NUMBER = r"[0-9][0-9,]*(?:\.[0-9]+)?"
 MONTH_DAY = (
     r"(?:January|February|March|April|May|June|July|August|September|"
@@ -271,10 +272,17 @@ def parse_release(raw, source_url):
             reader = PdfReader(BytesIO(raw), strict=True)
             if reader.is_encrypted or len(reader.pages) > 20:
                 raise ValueError
-            pages = [p.extract_text() for p in reader.pages]
+            # Content-stream order can detach a zero change into the preceding
+            # row. Preserve table columns before the existing arithmetic and
+            # narrative checks; never infer a missing change from equal values.
+            pages = [p.extract_text(extraction_mode="layout") for p in reader.pages]
+            extraction = dict(engine="pypdf", version=PYPDF_VERSION, mode="layout")
         else:
             pages = raw.decode("utf-8").split("\f")
-        return parse_release_pages(pages, source_url)
+            extraction = dict(engine="utf-8", mode="page_separated_text")
+        doc = parse_release_pages(pages, source_url)
+        doc["text_extraction"] = extraction
+        return doc
     except ClaimsError:
         raise
     except Exception:

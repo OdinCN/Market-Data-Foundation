@@ -20,6 +20,7 @@ from market_data_foundation.historical.claims_source import (
 )
 from market_data_foundation.historical.cpi_release_schedule import _write_atomic
 from market_data_foundation.historical.public_web_transport import (
+    DOL_CLAIMS_PDF_TIMEOUT,
     PublicFetchError,
     fetch_public,
     header_aware,
@@ -41,7 +42,7 @@ def public_transport(request, *, on_headers=None):
             request.url,
             "dol",
             max_bytes=8 * 1024 * 1024,
-            timeout=12,
+            timeout=DOL_CLAIMS_PDF_TIMEOUT if request.url == CURRENT_REPORT_URL else 12,
             accept="application/pdf"
             if request.url == CURRENT_REPORT_URL
             else "text/html",
