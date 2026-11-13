@@ -918,6 +918,10 @@ function credentialDescription(snapshot: Package, source: string) {
 }
 
 function sourcePurpose(cap: Package["capabilities"][number], source: string) {
+  if (cap.capability_id === "daily_raw")
+    return "旧版 tdx-python 有限样本，按元、股、元归一化；股数由手数换算。";
+  if (cap.capability_id === "daily_native")
+    return "沪深北 A 股日线。价格和成交额保留千分之一元的整数，成交量保留手，价基为 native_projection。";
   if (cap.capability_id === "stock_roster")
     return "用于沪深北证券名册与生命周期核定；不采集日线数值。";
   if (cap.capability_id !== "financial_daily")
