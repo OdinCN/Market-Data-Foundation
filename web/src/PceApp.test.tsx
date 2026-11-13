@@ -595,10 +595,10 @@ it("failed native execution → exact backfill POST → independent successor wo
   await open(h.transport, { tab: "executions", job: originalPce });
   await screen.findByRole("heading", { name: "执行详情" });
   fireEvent.click(btn("指定范围回补 →"));
-  await screen.findByLabelText("关联失败 / 异常执行");
-  expect(
-    (screen.getByLabelText("关联失败 / 异常执行") as HTMLSelectElement).value,
-  ).toBe(originalPce);
+  const parent = (await screen.findByLabelText(
+    "关联失败 / 异常执行",
+  )) as HTMLSelectElement;
+  await waitFor(() => expect(parent.value).toBe(originalPce));
   expect((btn("创建采集任务") as HTMLButtonElement).disabled).toBe(true);
   confirm();
   await waitFor(() =>
