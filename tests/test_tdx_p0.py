@@ -100,7 +100,9 @@ class Store:
 
 
 class Source:
-    def __init__(self, directory, *, repeated=False, fail=False, length=1000):
+    def __init__(
+        self, directory, *, repeated=False, fail=False, length=1000, volumes=None
+    ):
         self.directory = directory
         self.requests = 0
         self.closed = False
@@ -108,6 +110,7 @@ class Source:
         self.fail = fail
         self.offsets = []
         self.length = length
+        self.volumes = volumes or {}
 
     def request(self, operation, market, code="", start=0, count=0):
         self.requests += 1
@@ -137,7 +140,7 @@ class Source:
                     High=1100,
                     Low=900,
                     Close=1050,
-                    Volume=0,
+                    Volume=self.volumes.get(d, 0),
                     Amount=0,
                     Last=999,
                     Order=0,
@@ -298,6 +301,59 @@ def test_bj_long_history_overlap_and_fresh_rerun_only_confirms(tmp_path):
     assert repeated["steps"][0]["counts"]["new"] == 0
     assert repeated["steps"][0]["counts"]["unchanged"] == 1001
     assert store.oracle.corrections == []
+
+
+def test_next_daily_update_inserts_and_revises_from_one_page(tmp_path):
+    host, store, _ = jobs(tmp_path, length=6)
+
+    def collect(day):
+        identity = str(uuid4())
+        host.submit(dict(request_id=identity, action="update", end=day), launch=False)
+        result = host.run(identity)
+        assert result["state"] == "COMPLETE"
+        assert result["provider_requests"] == 1
+        return result["steps"][0]["counts"]
+
+    assert collect("2020-01-06")["new"] == 6
+    host.source_factory = lambda _: Source(
+        tmp_path, length=7, volumes={date(2020, 1, 6): 1}
+    )
+    counts = collect("2020-01-07")
+    assert (counts["new"], counts["changed"], counts["unchanged"]) == (1, 1, 5)
+    (correction,) = store.oracle.corrections
+    assert json.loads(correction["key"])[3] == "2020-01-06"
+    assert correction["old"]["values"][4] == 0
+    assert correction["new"]["values"][4] == 1
+    assert correction["old"]["changed_at"] < correction["new"]["changed_at"]
+
+
+def test_daily_resume_only_requests_failed_instrument(tmp_path):
+    store = Store()
+    roster = store.universe()
+    roster["members"].append(dict(market=2, instrument="920003", name="second"))
+    store.snapshots.append(roster)
+    calls = []
+
+    class FailOnce(Source):
+        def request(self, operation, market, code="", start=0, count=0):
+            calls.append(code)
+            if code == "920003" and calls.count(code) == 1:
+                raise TdxError("timeout")
+            return super().request(operation, market, code, start, count)
+
+    host = DailyJobs(
+        tmp_path / "jobs", store, lambda _: FailOnce(tmp_path, length=3), workers=1
+    )
+    identity = str(uuid4())
+    host.submit(
+        dict(request_id=identity, action="update", end="2020-01-03"), launch=False
+    )
+    assert host.run(identity)["state"] == "PARTIAL"
+    assert sorted(calls) == ["920002", "920003"]
+    calls_before_resume = len(calls)
+    host.resume(identity, launch=False)
+    assert host.run(identity)["state"] == "COMPLETE"
+    assert calls[calls_before_resume:] == ["920003"]
 
 
 def test_commit_unknown_cold_resume_uses_original_page_without_refetch(tmp_path):
@@ -617,9 +673,7 @@ def test_summary_reuses_terminal_legacy_journal_and_refreshes_after_save(
     assert "completed_step_count" not in original_read(identity)
 
 
-def test_strategy_two_slots_restart_and_late_review_only_target_day(
-    tmp_path, monkeypatch
-):
+def test_strategy_single_1535_update_with_overlap_and_restart(tmp_path, monkeypatch):
     from market_data_foundation.historical.tdx_p0_jobs import strategy_slot_id
     from market_data_foundation.historical.tdx_p0_strategy import DailyStrategy
 
@@ -642,7 +696,7 @@ def test_strategy_two_slots_restart_and_late_review_only_target_day(
     )
     strategy = DailyStrategy(jobs)
     strategy.set(True)
-    early = datetime(2026, 1, 5, 7, 9, tzinfo=UTC)
+    early = datetime(2026, 1, 5, 7, 34, 59, tzinfo=UTC)
     strategy.tick(early)
     assert launched == []
 
@@ -654,7 +708,7 @@ def test_strategy_two_slots_restart_and_late_review_only_target_day(
         record.pop("steps", None)
         jobs.path(identity).write_text(json.dumps(record))
 
-    strategy.tick(early + timedelta(minutes=1))
+    strategy.tick(early + timedelta(seconds=1))
     universe = strategy_slot_id("2026-01-05", "universe")
     assert launched == [universe]
     complete(universe)
@@ -666,18 +720,16 @@ def test_strategy_two_slots_restart_and_late_review_only_target_day(
     strategy.tick(datetime(2026, 1, 5, 8, tzinfo=UTC))
     assert launched == [universe, first]  # first run still unfinished
     complete(first)
-    # Restart after the window, on the following morning; review stays on Jan 5.
     restarted = DailyStrategy(jobs)
-    restarted.tick(datetime(2026, 1, 6, 0, tzinfo=UTC))
-    review = strategy_slot_id("2026-01-05", "review")
-    assert launched == [universe, first, review]
-    command = json.loads(jobs.path(review).read_bytes())["command"]
-    assert command["action"] == "update"
-    assert command["start"] == command["end"] == "2026-01-05"
-    complete(review)
-    for _ in range(3):
-        DailyStrategy(jobs).tick(datetime(2026, 1, 10, 8, tzinfo=UTC))
-    assert launched == [universe, first, review]
+    assert command["end"] == "2026-01-05"
+    for at in (
+        datetime(2026, 1, 5, 8, tzinfo=UTC),
+        datetime(2026, 1, 6, 0, tzinfo=UTC),
+        datetime(2026, 1, 10, 8, tzinfo=UTC),
+    ):
+        restarted.tick(at)
+    assert launched == [universe, first]
+    assert not jobs.path(strategy_slot_id("2026-01-05", "review")).exists()
     # The persisted Jan 5 run is terminal. After two missed open days start
     # the next evidenced day, and a failed Jan 6 must not starve Jan 7.
     calendar = store.strategy_calendar(as_of=early)

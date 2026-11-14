@@ -392,7 +392,7 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
           </>
         )}
         <p>
-          自动刷新沿用既有日线 15:10（北京时间）策略；本表单不会改变周期策略。
+          自动刷新沿用既有日线 15:35（北京时间）策略；本表单不会改变周期策略。
         </p>
       </CollectionColumns>
     </section>
@@ -440,7 +440,7 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
     return {
       row: {
         id: "tdx-roster-auto",
-        search: `${title} 15:10`,
+        search: `${title} 15:35`,
         cells: [
           title,
           <span>
@@ -455,7 +455,7 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
         <section aria-label="TDX 名册 周期详情">
           <h3>{title} · 共享盘后刷新</h3>
           <p>
-            15:10 Asia/Shanghai
+            15:35 Asia/Shanghai
             原有策略先刷新名册，再提交日线增量；名册不另设执行器或开关。
           </p>
           <button

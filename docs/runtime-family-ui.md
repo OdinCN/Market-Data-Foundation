@@ -114,7 +114,7 @@ and paging rows does not duplicate an in-flight coverage request.
 
 The stock roster is a separate base registration:
 `mdf.market.tdx.stock.roster@r1`, `/api/r5/tdx/roster`. Its query, refresh form,
-execution records, deep links and shared 15:10 initial / 16:00 same-day review facts use the existing
+execution records, deep links and shared 15:35 Asia/Shanghai trading-day schedule use the existing
 family renderers. The API and daily collector consume `tdx_roster.published`;
 refresh uses the same `DailyJobs` implementation, journal and lock with the
 legacy `action=universe`. The old daily universe/job routes remain compatible.

@@ -27,8 +27,8 @@ import { StrategySwitch } from "./StrategySwitch";
 const title = "沪深北 A 股盘后日线";
 const exchanges = ["深市", "沪市", "北交所"];
 function actionTitle(job: TdxJob) {
-  if (job.strategy_slot === "review") return "16:00 盘后复核";
-  if (job.strategy_slot === "update") return "15:10 盘后首采";
+  if (job.strategy_slot === "review") return "16:00 盘后复核（旧策略）";
+  if (job.strategy_slot === "update") return "盘后日线采集";
   return (
     { init: "历史初始化", update: "盘后增量", universe: "刷新三市名册" }[
       job.command.action
@@ -574,11 +574,10 @@ export const TDX_FAMILY: RuntimeFamily = {
           <h3>{title} · 盘后自动采集</h3>
           <p>
             策略{data.strategy.enabled ? "已启用" : "已暂停"}；执行器
-            {data.strategy.worker_online ? "在线" : "离线"}。工作日候选窗口
-            15:10（北京时间）首采，刷新名册并更新最近 14 日；16:00
-            只复核同一交易日，接收盘后更正。错过窗口或重启后复用固定作业身份，
-            完成后不重复；未完成作业保留原状态供续跑。复核不代表来源最终封账，
-            实际开市与停牌另需证据。
+            {data.strategy.worker_online ? "在线" : "离线"}。交易日北京时间
+            15:35 刷新名册后采集一次日线。采集范围从交易日往前 14
+            个自然日至当日，
+            同批比对历史数据，有变化才写入修订。失败可续跑，已成功的股票直接跳过。
           </p>
           <p>
             交易日证据：{data.strategy.calendar_state ?? "未知"}；最近心跳：

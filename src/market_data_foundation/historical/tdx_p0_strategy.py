@@ -30,10 +30,10 @@ class DailyStrategy:
             value,
             worker_online=bool(self.thread and self.thread.is_alive()),
             heartbeat_at=self.heartbeat,
-            schedule="15:10 initial; 16:00 same-day review; Asia/Shanghai",
+            schedule="15:35 once per trading day; Asia/Shanghai",
             calendar_state=self.calendar_state,
             overlap_calendar_days=14,
-            review_target="same_trading_day_only",
+            review_target=None,
         )
 
     def set(self, enabled):
@@ -83,14 +83,13 @@ class DailyStrategy:
             if all(calendars.values())
             else "CLOSED"
         )
-        # A late start catches up the latest evidenced trading day, including a
-        # weekend restart. It never expands the late review into a history run.
+        # A delayed start can catch up a confirmed trading day.
         eligible = [
             day
             for day, markets in days.items()
             if set(markets) == {0, 1, 2}
             and all(markets.values())
-            and datetime.combine(date.fromisoformat(day), time(15, 10), local.tzinfo)
+            and datetime.combine(date.fromisoformat(day), time(15, 35), local.tzinfo)
             <= local
         ]
         if not eligible:
@@ -106,44 +105,26 @@ class DailyStrategy:
             previous = (
                 json.loads(cursor.read_bytes())["day"] if cursor.exists() else None
             )
-            if previous:
-                if previous in eligible and previous < latest:
-                    next_day = min(d for d in eligible if d > previous)
-                    review = self.jobs.path(strategy_slot_id(previous, "review"))
-                    day = previous
-                    if review.exists() and self.jobs.summary(review.stem)["state"] in {
-                        "COMPLETE",
-                        "PARTIAL",
-                        "INTERRUPTED",
-                    }:
-                        day = next_day
+            if previous in eligible and previous < latest:
+                day = previous
+                previous_update = strategy_slot_id(previous, "update")
+                if self.jobs.path(previous_update).exists() and self.jobs.summary(
+                    previous_update
+                )["state"] in {"COMPLETE", "PARTIAL", "INTERRUPTED"}:
+                    day = min(d for d in eligible if d > previous)
             if previous != day:
                 atomic(cursor, dict(day=day))
-            for slot, action in (
-                ("universe", "universe"),
-                ("update", "update"),
-                ("review", "update"),
-            ):
-                if slot == "review" and local < datetime.combine(
-                    date.fromisoformat(day), time(16), local.tzinfo
-                ):
-                    return
-                identity = strategy_slot_id(day, slot)
+            for action in ("universe", "update"):
+                identity = strategy_slot_id(day, action)
                 if not self.jobs.path(identity).exists():
                     self.jobs.submit(
-                        dict(
-                            request_id=identity,
-                            action=action,
-                            end=day,
-                            **({"start": day} if slot == "review" else {}),
-                        ),
+                        dict(request_id=identity, action=action, end=day),
                         origin="periodic",
                     )
                     return
-                record = self.jobs.summary(identity)
-                if record["state"] != "COMPLETE":
-                    # Older failures stay available to resume without blocking
-                    # every later trading day. An active run retains its turn.
-                    if day < latest and record["state"] in {"PARTIAL", "INTERRUPTED"}:
-                        atomic(cursor, dict(day=next_day))
+                state = self.jobs.summary(identity)["state"]
+                if state != "COMPLETE":
+                    # A past failure stays resumable without starving later dates.
+                    if day < latest and state in {"PARTIAL", "INTERRUPTED"}:
+                        atomic(cursor, dict(day=min(d for d in eligible if d > day)))
                     return

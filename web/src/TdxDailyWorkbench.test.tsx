@@ -356,7 +356,7 @@ it("keeps an uncertain submission disabled and recalls the same request identity
   expect(base.calls.filter((c) => c.method === "POST")).toHaveLength(1);
 });
 
-it("shows the actual first and review roles in the shared periodic detail", () => {
+it("shows the single daily schedule and overlap in the periodic detail", () => {
   const { transport } = fixture();
   const entry = TDX_FAMILY.periodic(
     { strategy: { enabled: true, worker_online: true }, status: {} },
@@ -370,9 +370,8 @@ it("shows the actual first and review roles in the shared periodic detail", () =
   );
   render(<>{entry.detail}</>);
   const detail = screen.getByRole("region", { name: "TDX 周期任务详情" });
-  expect(detail.textContent).toContain("15:10");
-  expect(detail.textContent).toContain("16:00");
-  expect(detail.textContent).toContain("只复核同一交易日");
-  expect(detail.textContent).toContain("完成后不重复");
-  expect(detail.textContent).toContain("复核不代表来源最终封账");
+  expect(detail.textContent).toContain("15:35");
+  expect(detail.textContent).toContain("14 个自然日");
+  expect(detail.textContent).toContain("同批比对历史数据");
+  expect(detail.textContent).not.toContain("16:00");
 });

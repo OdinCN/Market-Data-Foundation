@@ -196,15 +196,14 @@ HELP = dict(
             "uncertain commit replays its immutable batch."
         ),
         (
-            "Strategy: 15:10 Asia/Shanghai initial acquisition; 16:00 review "
-            "of that trading day only. Dated exchange calendars gate both slots. "
-            "A delayed start/restart catches up the latest evidenced trading day; "
-            "durable slot identities prevent duplicate submissions."
+            "Strategy: one 15:35 Asia/Shanghai collection per trading day "
+            "confirmed by dated exchange calendars. A restart catches up missed "
+            "dates using the existing durable universe and update identities."
         ),
         (
-            "First refresh universe, then update the last 14 calendar days. "
-            "The later review waits for completion, uses start=end=target day, "
-            "and is not a final upstream seal. Initialization is separate. "
+            "First refresh the universe. Each daily update covers D minus 14 "
+            "calendar days through D inclusive. The same response supplies new "
+            "bars and historical corrections at the new publication time. "
             "Retained qualified receipts can be explicitly admitted in DEV via "
             "mdf_tdx_daily_receive.py using normal jobs and publication clocks."
         ),

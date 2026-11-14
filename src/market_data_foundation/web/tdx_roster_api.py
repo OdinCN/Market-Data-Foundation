@@ -50,7 +50,7 @@ def roster_router(runtime):
                 "北交所官方分页与新旧代码映射独立留证；已知退市区间保留，未知历史代码沿革不推造。",
                 "刷新来源目录不会延长交易所证据有效期；缺失、过期和历史未知独立报告，失败不替换完整发布。",
                 "日线复用同一发布snapshot_id；旧daily/universe与action=universe作业继续兼容。",
-                "周期刷新复用现有日线15:10 Asia/Shanghai执行器，不另起worker或策略。",
+                "周期刷新复用现有日线15:35 Asia/Shanghai执行器，不另起worker或策略。",
             ],
         )
 

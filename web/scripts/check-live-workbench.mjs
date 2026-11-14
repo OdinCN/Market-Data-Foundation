@@ -59,7 +59,7 @@ const cases = process.env.MDF_WORKBENCH_CASES
               asset: "mdf.market.tdx.stock.daily.native@r1",
               prefix: "/api/r5/tdx/daily",
               summary: true,
-              periodicContains: ["15:10", "16:00", "只复核同一交易日"],
+              periodicContains: ["15:35", "14 个自然日", "同批比对历史数据"],
               result: "日线结果",
               paging: "TDX 日线",
               collection: true,
