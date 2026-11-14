@@ -923,7 +923,7 @@ it.each(["accepted", "lost-after-write", "lost-before-write"] as const)(
       await waitFor(() =>
         expect(
           screen
-            .getByRole("tab", { name: "执行记录" })
+            .getByRole("tab", { name: "周期任务" })
             .getAttribute("aria-selected"),
         ).toBe("true"),
       );
