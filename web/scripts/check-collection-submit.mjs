@@ -197,6 +197,7 @@ try {
           name: /^(提交 .+ 采集|提交采集任务)$/,
         });
         await ready;
+        await submit.waitFor();
         const form = submit.locator("xpath=ancestor::form");
         for (const input of await form.locator("input").all()) {
           const label = await input.evaluate(
