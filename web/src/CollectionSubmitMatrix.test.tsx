@@ -473,6 +473,20 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
         );
       if (row.protocol === "roster")
         expect(Object.keys(post.body)).toEqual(["request_id"]);
+      if (row.protocol.startsWith("legacy")) {
+        const start =
+          post.body.start ?? post.body.reference ?? post.body.binding.reference;
+        const end = post.body.end ?? start;
+        // Editing the draft cannot rewrite the accepted/unknown receipt's range,
+        // or make a plan recovery look up a different batch.
+        fireEvent.change(screen.getByLabelText("开始参考月"), {
+          target: { value: "2020-01" },
+        });
+        expect(
+          within(briefs).getByRole("button", { name: new RegExp(id) })
+            .textContent,
+        ).toContain(`${start} 至 ${end}`);
+      }
       if (lost) {
         const recall = await screen.findByRole("button", {
           name: /核实原请求|回查同一任务|回查原名册任务/,

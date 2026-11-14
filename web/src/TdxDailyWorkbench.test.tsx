@@ -1,6 +1,7 @@
 import "./offlineTestSetup";
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -191,6 +192,7 @@ it("submits on the actual HTTP LAN origin using secure random values and the aft
       (screen.getByLabelText("采集结束日期") as HTMLInputElement).value,
     ).toBe("2026-11-11"),
   );
+  await act(async () => {});
   fireEvent.click(
     screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
   );

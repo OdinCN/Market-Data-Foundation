@@ -14,6 +14,7 @@ const [inventoryPath, output] = process.argv.slice(2);
 assert(inventoryPath && output);
 const inventory = JSON.parse(await fs.readFile(inventoryPath, "utf8"));
 const root = process.cwd();
+const dist = process.env.MDF_SUBMIT_DIST ?? path.join(root, "web/dist");
 const origin = process.env.MDF_SUBMIT_ORIGIN ?? "http://mdf-isolated.invalid";
 const deployed = !!process.env.MDF_SUBMIT_ORIGIN;
 const bundles = new Map();
@@ -119,7 +120,7 @@ try {
                     ? "text/html"
                     : "image/png";
               return route.fulfill({
-                body: await fs.readFile(path.join(root, "web/dist", file)),
+                body: await fs.readFile(path.join(dist, file)),
                 contentType: type,
               });
             } catch {
@@ -300,7 +301,7 @@ try {
     assert.equal(
       sha,
       createHash("sha256")
-        .update(await fs.readFile(path.join(root, "web/dist", name.slice(1))))
+        .update(await fs.readFile(path.join(dist, name.slice(1))))
         .digest("hex"),
       "served bundle must match this build",
     );

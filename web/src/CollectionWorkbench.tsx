@@ -193,6 +193,8 @@ export function CollectionWorkbench({
     id: string;
     key: string;
     variant: string;
+    start: string;
+    end: string;
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -1123,7 +1125,8 @@ export function CollectionWorkbench({
       const plan = response.plans.find((p) => p.identity === id);
       const batch = plan?.batches.find(
         (b) =>
-          b.reference === start && b.jobs.some((j) => j.job_identity === jobId),
+          b.reference === (pinnedLegacy?.start ?? start) &&
+          b.jobs.some((j) => j.job_identity === jobId),
       );
       // An existing parent alone predates this POST. Require this failed
       // child's retry to be queued or a later attempt in the very same batch.
@@ -1194,6 +1197,8 @@ export function CollectionWorkbench({
         id: legacyIdentity,
         key: legacyIntentKey,
         variant: legacyVariant,
+        start,
+        end,
       };
       reservedIntents.current.add(legacyIntentKey);
       const intents = readDevIntents();
@@ -1860,8 +1865,8 @@ export function CollectionWorkbench({
                     createdAt=""
                     current
                     title={asset?.label ?? "采集任务"}
-                    start={start}
-                    end={end}
+                    start={pinnedLegacy?.start ?? start}
+                    end={pinnedLegacy?.end ?? end}
                     result={
                       legacyReceipt?.state ??
                       (busy
