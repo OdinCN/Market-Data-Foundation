@@ -318,7 +318,7 @@ it.each([TDX_FAMILY, future, TDX_ROSTER_FAMILY])(
       family === TDX_FAMILY
         ? /交易日证据/
         : family === TDX_ROSTER_FAMILY
-          ? /15:10 Asia/
+          ? /15:35 Asia/
           : "未来登记族周期详情",
     );
     expect(screen.getAllByLabelText("搜索周期任务")).toHaveLength(1);
