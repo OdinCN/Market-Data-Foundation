@@ -164,3 +164,11 @@ intent, while rejecting replacements, unrelated sources and duplicates.
 涉及页面的新增或变更 API，在同一 PR 的共享流程用例中登记资产、入口按钮、请求方法及次数、提交后的页面与回执、显式详情入口和失败恢复。由开发者先执行。新建采集的共同预期为确认后一次 POST、停留原表单、右侧简报显示同一请求编号、主动点击简报才进入该作业详情。断响应后按原编号 GET，禁止重复 POST。查询/翻页/刷新只读；启停和续跑在隔离状态中检查真实变化。
 
 实页只读浏览脚本只证明已走过的读路径。写按钮应在交付构建上实际点击，用隔离 DEV 作业服务执行 POST 并回读；记录哪些写入被隔离、点击前后页面、请求编号与结果。共享用例见 `web/src/RegisteredFamilyPaths.test.tsx`，两个 TDX 表单的部署构建复验见 `web/scripts/check-tdx-submit.mjs`。出现新按钮或预期不同，在同一变更中补对应断言，不将逐钮回归交给 Owner。
+
+### 共用采集提交契约
+
+`useCollectionSubmit` 负责单个确认意图的一次 POST、同号回查和回执匹配；留在新建页，只有点击简报才进入详情。族适配器保留命令、持久意图、明确拒绝及续跑规则。Macro/legacy PCE 用真实列表 GET 匹配原号；支持单号读取的族用原号 GET，回执未知不重发。TDX 未核实编号在当前标签页刷新后仍保留。
+
+新增采集能力须登记实际用于目标选择/提交准入的 `collectionRegistry`（Macro 通过 `MACRO_PROFILES`，注册族通过 `RuntimeFamily.collection`）；读写准入仍以真实状态能力为准，缺失权限按未核实处理。无执行器的目录资产列在只读说明中，不借用其他族提交。
+
+`CollectionSubmitMatrix.test.tsx` 从上述产品注册和后端目录/包能力自动发现资产，以正常 App 入口、独立 ASGI 协议 fixture 检查成功、丢回执、关闭能力三种场景，要求每条登记路径都有完成证据。新协议只需增加隔离适配器，无需维护第二份资产名单。增加族的恢复操作时继续保留相应领域测试；矩阵不代替初始化范围、续跑或调度语义验收。

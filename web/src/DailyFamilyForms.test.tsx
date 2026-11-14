@@ -35,6 +35,7 @@ const props: Omit<FamilyProps, "transport"> = {
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  sessionStorage.clear();
   vi.restoreAllMocks();
 });
 function mountQuery(family: string, transport: Transport) {
@@ -501,6 +502,7 @@ it.each(["金融日频", "TDX"])(
         update_defaults: { start: "2026-10-29", end: date },
         series: [],
         cutoff_semantics: "fixture",
+        web_capabilities: { query: true, collect: true },
       };
       const financial = (ready: boolean) => (
         <FinancialCollection

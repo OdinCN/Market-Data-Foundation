@@ -350,3 +350,17 @@ export const M3_PROFILE: MacroProfile = Object.freeze({
   historyNotice:
     "月频季调，百万当期美元，非年化；新订单是扣除取消订单的净额。耐用品先行报告（Advance）与制造业完整报告独立留存并排比较。当前旧月快照及首次捕获不代表官方首发；尚未绑定事件 actual。",
 });
+
+// Product collection registration; query/strategy adapters keep their own gates.
+export const MACRO_PROFILES: readonly MacroProfile[] = [
+  CPI_PROFILE,
+  PPI_PROFILE,
+  PCE_PROFILE,
+  EMPLOYMENT_PROFILE,
+  RETAIL_PROFILE,
+  CONSUMPTION_PROFILE,
+  GDP_PROFILE,
+  CLAIMS_PROFILE,
+  JOLTS_PROFILE,
+  M3_PROFILE,
+];

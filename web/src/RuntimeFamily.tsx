@@ -1,3 +1,4 @@
+import type { CollectionContract } from "./collectionRegistry";
 import { useState, type ComponentType, type ReactNode } from "react";
 import { Tabs } from "./WorkflowTable";
 import type { Transport } from "./api";
@@ -34,6 +35,7 @@ export type PeriodicEntry = {
 export type RuntimeFamily = {
   asset: { identity: string; revision: string };
   title: string;
+  collection: CollectionContract | null;
   Query: ComponentType<FamilyProps>;
   ApiHelp: ComponentType<FamilyProps>;
   Collection: ComponentType<FamilyProps>;

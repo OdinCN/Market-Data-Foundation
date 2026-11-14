@@ -19,6 +19,7 @@ const props: Omit<FamilyProps, "transport"> = {
 };
 afterEach(() => {
   cleanup();
+  sessionStorage.clear();
   vi.restoreAllMocks();
 });
 const status = {

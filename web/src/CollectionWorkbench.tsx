@@ -1,4 +1,13 @@
 import {
+  collectionRegistrations,
+  collectionTargets,
+  legacyCollection,
+  readonlyCollections,
+} from "./collectionRegistry";
+import { MACRO_PROFILES } from "./macroTimeSeriesProfile";
+import { useCollectionSubmit } from "./useCollectionSubmit";
+import { ExecutionBriefCard } from "./DailyFormControls";
+import {
   familyRowId,
   useFamilyRecords,
   type RuntimeFamily,
@@ -157,6 +166,9 @@ export function CollectionWorkbench({
       : asset
         ? keyOf(asset.key)
         : "";
+  const collectionRegistered = collectionRegistrations(families).some(
+    (entry) => keyOf(entry.asset) === selectedTarget,
+  );
   const [mode, setMode] = useState<string>(
     route.fields.get("mode") === "backfill" ? "指定范围回补" : "一次性初始化",
   );
@@ -173,6 +185,15 @@ export function CollectionWorkbench({
   const [day, setDay] = useState("1");
   const [month, setMonth] = useState("1");
   const [confirmed, setConfirmed] = useState(false);
+  const submissionScope = `${selectedTarget}:${route.fields.get("operation") ?? ""}:${mode}:${route.fields.get("job") ?? ""}`;
+  const submission = useCollectionSubmit(submissionScope);
+  // Refreshing server offers must not erase or replace the submitted identity.
+  const legacyPinned = useRef<{
+    scope: string;
+    id: string;
+    key: string;
+    variant: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const acceptedReceiptScope = useRef<{
@@ -280,25 +301,16 @@ export function CollectionWorkbench({
   const newRetail = !!retailAvailability?.data && !retailAvailability.legacy;
   const newEmployment =
     !!employmentAvailability?.data && !employmentAvailability.legacy;
-  const macroProfile = m3Target
-    ? M3_PROFILE
-    : joltsTarget
-      ? JOLTS_PROFILE
-      : claimsTarget
-        ? CLAIMS_PROFILE
-        : gdpTarget
-          ? GDP_PROFILE
-          : consumptionTarget
-            ? CONSUMPTION_PROFILE
-            : retailTarget
-              ? RETAIL_PROFILE
-              : employmentTarget
-                ? EMPLOYMENT_PROFILE
-                : pceTarget
-                  ? PCE_PROFILE
-                  : isPpi
-                    ? PPI_PROFILE
-                    : CPI_PROFILE;
+  const macroProfile =
+    MACRO_PROFILES.find((p) =>
+      sameKey(
+        p.asset,
+        asset?.key ?? {
+          identity: route.fields.get("asset") ?? "",
+          revision: route.fields.get("asset_revision") ?? "",
+        },
+      ),
+    ) ?? CPI_PROFILE;
   const macroAvailability = m3Target
     ? m3Availability
     : joltsTarget
@@ -822,11 +834,11 @@ export function CollectionWorkbench({
     const receipt = acceptedReceiptScope.current;
     if (
       !receipt ||
-      tab !== "executions" ||
+      !["new", "executions"].includes(tab) ||
       receipt.asset !== (asset && keyOf(asset.key)) ||
       receipt.operation !== context?.source?.id ||
-      receipt.job !== jobId ||
-      receipt.plan !== scheduleId
+      (tab === "executions" &&
+        (receipt.job !== jobId || receipt.plan !== scheduleId))
     ) {
       setNotice(null);
       acceptedReceiptScope.current = null;
@@ -1044,12 +1056,126 @@ export function CollectionWorkbench({
                         : !scopeMatches
                           ? `此处理器仅支持 ${jobs.data?.reference ?? "已准入"} 参考月；开始与结束须相同。`
                           : null;
+  const pinnedLegacy =
+    legacyPinned.current?.scope === submissionScope
+      ? legacyPinned.current
+      : null;
+  const legacyVariant =
+    pinnedLegacy?.variant ??
+    (mode === "一次性初始化"
+      ? "legacy-once"
+      : !isPce && !cpiBackfillMode
+        ? "legacy-plan-backfill"
+        : "legacy-backfill");
+  const legacyRegistration = legacyCollection(
+    asset?.key,
+    legacyVariant,
+    families,
+  );
+  const unavailableCollection = readonlyCollections.find((r) =>
+    sameKey(r.asset, asset?.key),
+  );
+  const planBackfill = legacyVariant === "legacy-plan-backfill";
+  const legacyIdentity =
+    pinnedLegacy?.id ??
+    (planBackfill
+      ? (parent?.identity ?? null)
+      : (devIntent ?? jobs.data?.intent_identity ?? null));
+  // Independent failed children of the same plan can each need a retry.
+  const legacyIntentKey =
+    pinnedLegacy?.key ??
+    (planBackfill && legacyIdentity && jobId
+      ? JSON.stringify([legacyIdentity, jobId])
+      : legacyIdentity);
+  let legacyLocked = false;
+  try {
+    legacyLocked =
+      !!legacyIntentKey &&
+      (reservedIntents.current.has(legacyIntentKey) ||
+        readDevIntents().includes(legacyIntentKey));
+  } catch {
+    legacyLocked = true;
+  }
+  type LegacyReceipt = {
+    job: string | null;
+    plan: string | null;
+    state: string;
+  };
+  async function readLegacy(id: string): Promise<LegacyReceipt> {
+    if (isPce) {
+      const response = await pceRequest<PceJobs>(transport, "/api/pce/jobs");
+      const job = response.jobs.find(
+        (j) => j.job_id === id && validPceBinding(j.binding),
+      );
+      if (!job) throw Error("receipt_unknown");
+      return { job: id, plan: null, state: stateLabel(job.state) };
+    }
+    if (legacyVariant === "legacy-plan-backfill") {
+      const response = await request(
+        transport,
+        "/api/r5/cpi/plans",
+        undefined,
+        new AbortController().signal,
+      );
+      const plan = response.plans.find((p) => p.identity === id);
+      const batch = plan?.batches.find(
+        (b) =>
+          b.reference === start && b.jobs.some((j) => j.job_identity === jobId),
+      );
+      // An existing parent alone predates this POST. Require this failed
+      // child's retry to be queued or a later attempt in the very same batch.
+      if (
+        !plan ||
+        !batch ||
+        !(
+          plan.retry_queue.includes(batch.key) ||
+          batch.jobs.at(-1)?.job_identity !== jobId
+        )
+      )
+        throw Error("receipt_unknown");
+      return { job: null, plan: id, state: stateLabel(plan.state) };
+    }
+    const response = await request(
+      transport,
+      "/api/r5/cpi/jobs",
+      {
+        job_identity: id,
+      },
+      new AbortController().signal,
+    );
+    const job = response.jobs.find((j) => j.job_identity === id);
+    if (!job) throw Error("receipt_unknown");
+    return { job: id, plan: null, state: stateLabel(job.state) };
+  }
+  function recallLegacy() {
+    if (!legacyIdentity || !legacyIntentKey) return;
+    void submission
+      .recall(
+        legacyIntentKey,
+        () => readLegacy(legacyIdentity),
+        (r) => (r.job ?? r.plan) === legacyIdentity,
+      )
+      .then(() => {
+        setUncertain(false);
+        setRefresh((n) => n + 1);
+      })
+      .catch(() => setNotice("原请求尚未核实；保留编号，不重复提交。"));
+  }
+  const legacyReceipt =
+    submission.attempt?.id === legacyIntentKey &&
+    submission.attempt?.state === "accepted"
+      ? (submission.attempt.receipt as LegacyReceipt)
+      : null;
   async function submit() {
     if (
       writing.current ||
       !confirmed ||
       uncertain ||
       devIntentLocked ||
+      legacyLocked ||
+      !legacyIdentity ||
+      !legacyIntentKey ||
+      !legacyRegistration ||
       block ||
       !(mode === "一次性初始化"
         ? canManual
@@ -1060,137 +1186,138 @@ export function CollectionWorkbench({
     setBusy(true);
     setNotice(null);
     try {
-      let acceptedJob: string | null = null;
-      if (mode === "一次性初始化") {
-        if (devIntent) {
-          // Reserve before any possible effect, including an unmount while the
-          // POST is pending. Empty/stale GETs never authorize another POST.
-          const intents = readDevIntents();
-          if (intents.includes(devIntent))
-            throw new Error("intent_already_reserved");
-          reservedIntents.current.add(devIntent);
-          const stored = JSON.stringify([...intents, devIntent]);
-          sessionStorage.setItem(devIntentKey, stored);
-          if (sessionStorage.getItem(devIntentKey) !== stored)
-            throw new Error("intent_reservation_unverified");
-          // Retain even after DURABLE: accepted intents are read-only. Only a
-          // different named Host intent may submit; no new retry protocol.
-        }
-        if (isPce) {
-          const receipt = await pceRequest<PceJob>(transport, "/api/pce/jobs", {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(pceCatalog!.submission),
-          });
-          if (
-            receipt.job_id !== devIntent ||
-            !validPceBinding(receipt.binding) ||
-            ![
-              "pending",
-              "running",
-              "succeeded",
-              "failed",
-              "outcome_unknown",
-              "cancelled",
-            ].includes(receipt.state)
-          )
-            throw new Error("pce_receipt_identity_mismatch");
-          acceptedJob = receipt.job_id;
-        } else {
-          const receipt = await submitJob(transport, "/api/r5/cpi/jobs", {
-            job_identity: jobs.data!.intent_identity!,
-            asset_identity: asset!.key.identity,
-            asset_revision: asset!.key.revision,
-            reference: start,
-            release_slot: jobs.data!.release_slot!,
-            mode: "manual_once",
-            ...(devCandidate
-              ? {
-                  source_operation_ref: context!.source!.id,
-                  binding_ref: jobs.data!.binding_ref!,
-                  target_schema: jobs.data!.storage_target,
-                  confirmed: true,
-                }
-              : {}),
-          });
-          if (receipt.job_identity !== jobs.data!.intent_identity)
-            throw new Error("receipt_identity_mismatch");
-          acceptedJob = receipt.job_identity;
-        }
-      } else if (cpiBackfillMode) {
-        const intent = cpiBackfill!.submission!;
-        const intents = readDevIntents();
-        if (intents.includes(intent.job_identity))
-          throw new Error("intent_already_reserved");
-        reservedIntents.current.add(intent.job_identity);
-        const stored = JSON.stringify([...intents, intent.job_identity]);
+      legacyPinned.current = {
+        scope: submissionScope,
+        id: legacyIdentity,
+        key: legacyIntentKey,
+        variant: legacyVariant,
+      };
+      reservedIntents.current.add(legacyIntentKey);
+      const intents = readDevIntents();
+      if (!intents.includes(legacyIntentKey)) {
+        const stored = JSON.stringify([...intents, legacyIntentKey]);
         sessionStorage.setItem(devIntentKey, stored);
         if (sessionStorage.getItem(devIntentKey) !== stored)
-          throw new Error("intent_reservation_unverified");
-        const receipt = await submitJob(
-          transport,
-          "/api/r5/cpi/jobs/backfill",
-          intent,
-        );
-        if (receipt.job_identity !== intent.job_identity)
-          throw new Error("receipt_identity_mismatch");
-        acceptedJob = receipt.job_identity;
-      } else if (pceBackfillMode) {
-        const intent = pceBackfill!.submission;
-        const intents = readDevIntents();
-        if (intents.includes(intent.job_identity))
-          throw new Error("intent_already_reserved");
-        reservedIntents.current.add(intent.job_identity);
-        const stored = JSON.stringify([...intents, intent.job_identity]);
-        sessionStorage.setItem(devIntentKey, stored);
-        if (sessionStorage.getItem(devIntentKey) !== stored)
-          throw new Error("intent_reservation_unverified");
-        const receipt = await pceRequest<PceJob>(
-          transport,
-          "/api/pce/jobs/backfill",
-          {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(intent),
-          },
-        );
-        if (
-          receipt.job_id !== intent.job_identity ||
-          receipt.parent_job_id !== intent.parent_job_id ||
-          !validPceBinding(receipt.binding) ||
-          ![
-            "pending",
-            "running",
-            "succeeded",
-            "failed",
-            "outcome_unknown",
-            "cancelled",
-          ].includes(receipt.state)
-        )
-          throw new Error("pce_receipt_identity_mismatch");
-        acceptedJob = receipt.job_id;
-      } else {
-        const response = await transport(
-          `/api/r5/cpi/plans/${parent!.identity}/backfill`,
-          {
-            method: "POST",
-            credentials: "same-origin",
-            cache: "no-store",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ start, end }),
-          },
-        );
-        const receipt = await response.json();
-        if (
-          !response.ok ||
-          receipt.status !== "OK" ||
-          receipt.acceptance !== "DURABLE" ||
-          receipt.plan_identity !== parent!.identity
-        )
-          throw new Error("invalid_receipt");
+          throw Error("intent_reservation_unverified");
       }
+      const result = await submission.submit(
+        legacyIntentKey,
+        async () => {
+          let acceptedJob: string | null = null;
+          if (mode === "一次性初始化") {
+            if (isPce) {
+              const receipt = await pceRequest<PceJob>(
+                transport,
+                "/api/pce/jobs",
+                {
+                  method: "POST",
+                  credentials: "same-origin",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(pceCatalog!.submission),
+                },
+              );
+              if (
+                receipt.job_id !== devIntent ||
+                !validPceBinding(receipt.binding) ||
+                ![
+                  "pending",
+                  "running",
+                  "succeeded",
+                  "failed",
+                  "outcome_unknown",
+                  "cancelled",
+                ].includes(receipt.state)
+              )
+                throw new Error("pce_receipt_identity_mismatch");
+              acceptedJob = receipt.job_id;
+            } else {
+              const receipt = await submitJob(transport, "/api/r5/cpi/jobs", {
+                job_identity: jobs.data!.intent_identity!,
+                asset_identity: asset!.key.identity,
+                asset_revision: asset!.key.revision,
+                reference: start,
+                release_slot: jobs.data!.release_slot!,
+                mode: "manual_once",
+                ...(devCandidate
+                  ? {
+                      source_operation_ref: context!.source!.id,
+                      binding_ref: jobs.data!.binding_ref!,
+                      target_schema: jobs.data!.storage_target,
+                      confirmed: true,
+                    }
+                  : {}),
+              });
+              if (receipt.job_identity !== jobs.data!.intent_identity)
+                throw new Error("receipt_identity_mismatch");
+              acceptedJob = receipt.job_identity;
+            }
+          } else if (cpiBackfillMode) {
+            const intent = cpiBackfill!.submission!;
+            const receipt = await submitJob(
+              transport,
+              "/api/r5/cpi/jobs/backfill",
+              intent,
+            );
+            if (receipt.job_identity !== intent.job_identity)
+              throw new Error("receipt_identity_mismatch");
+            acceptedJob = receipt.job_identity;
+          } else if (pceBackfillMode) {
+            const intent = pceBackfill!.submission;
+            const receipt = await pceRequest<PceJob>(
+              transport,
+              "/api/pce/jobs/backfill",
+              {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(intent),
+              },
+            );
+            if (
+              receipt.job_id !== intent.job_identity ||
+              receipt.parent_job_id !== intent.parent_job_id ||
+              !validPceBinding(receipt.binding) ||
+              ![
+                "pending",
+                "running",
+                "succeeded",
+                "failed",
+                "outcome_unknown",
+                "cancelled",
+              ].includes(receipt.state)
+            )
+              throw new Error("pce_receipt_identity_mismatch");
+            acceptedJob = receipt.job_id;
+          } else {
+            const response = await transport(
+              `/api/r5/cpi/plans/${parent!.identity}/backfill`,
+              {
+                method: "POST",
+                credentials: "same-origin",
+                cache: "no-store",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ start, end }),
+              },
+            );
+            const receipt = await response.json();
+            if (
+              !response.ok ||
+              receipt.status !== "OK" ||
+              receipt.acceptance !== "DURABLE" ||
+              receipt.plan_identity !== parent!.identity
+            )
+              throw new Error("invalid_receipt");
+          }
+          return {
+            job: acceptedJob,
+            plan: acceptedJob ? null : parent!.identity,
+            state: "意图已持久接收，执行结果以回读为准",
+          };
+        },
+        () => readLegacy(legacyIdentity!),
+        (value) => (value.job ?? value.plan) === legacyIdentity,
+      );
+      const acceptedJob = result.job;
       if (active.current) {
         acceptedReceiptScope.current = {
           asset: keyOf(asset!.key),
@@ -1201,16 +1328,6 @@ export function CollectionWorkbench({
         setNotice("意图已持久接收，执行结果以独立回查为准。");
         setConfirmed(false);
         setRefresh((n) => n + 1);
-        navigate(
-          "collection",
-          {
-            tab: "executions",
-            job: acceptedJob,
-            schedule: acceptedJob ? null : parent!.identity,
-            execution_schedule: acceptedJob ? "all" : parent!.identity,
-          },
-          true,
-        );
       }
     } catch (e) {
       if (active.current) {
@@ -1241,19 +1358,9 @@ export function CollectionWorkbench({
         onChange={(e) => {
           const key =
             assets.find((a) => keyOf(a.key) === e.target.value)?.key ??
-            [
-              ...families.map((f) => f.asset),
-              CPI,
-              PPI,
-              PCE,
-              EMPLOYMENT,
-              RETAIL,
-              CONSUMPTION,
-              M3,
-              JOLTS,
-              CLAIMS,
-              GDP,
-            ].find((k) => keyOf(k) === e.target.value);
+            collectionTargets(families).find(
+              (k) => keyOf(k) === e.target.value,
+            );
           navigate("collection", {
             asset: key?.identity ?? null,
             asset_revision: key?.revision ?? null,
@@ -1269,20 +1376,7 @@ export function CollectionWorkbench({
         <option value="">选择一个已登记资产</option>
         {[
           ...assets,
-          ...[
-            ...new Map(
-              [
-                CPI,
-                PPI,
-                PCE,
-                EMPLOYMENT,
-                CLAIMS,
-                GDP,
-                macroProfile.asset,
-                ...families.map((f) => f.asset),
-              ].map((key) => [keyOf(key), key]),
-            ).values(),
-          ]
+          ...collectionTargets(families)
             .filter((k) => !assets.some((a) => sameKey(a.key, k)))
             .map((key) => ({ key })),
         ].map((a) => (
@@ -1429,12 +1523,12 @@ export function CollectionWorkbench({
           )}
         </div>
       )}
-      {tab === "new" && selectedFamily ? (
+      {tab === "new" && selectedFamily?.collection && collectionRegistered ? (
         <>
           {targetControl}
           <selectedFamily.Collection {...familyProps} />
         </>
-      ) : tab === "new" && financialTarget ? (
+      ) : tab === "new" && financialTarget && collectionRegistered ? (
         <>
           {targetControl}
           <FinancialDailyWorkbench
@@ -1446,6 +1540,7 @@ export function CollectionWorkbench({
           />
         </>
       ) : tab === "new" &&
+        collectionRegistered &&
         (newMacro || macroPending) &&
         (cpiTarget ||
           isPpi ||
@@ -1710,6 +1805,8 @@ export function CollectionWorkbench({
                 className="primary"
                 disabled={
                   !!block ||
+                  legacyLocked ||
+                  !legacyRegistration ||
                   !confirmed ||
                   busy ||
                   uncertain ||
@@ -1744,14 +1841,49 @@ export function CollectionWorkbench({
                     )
                   }
                 >
-                  回查同一任务 →
+                  查看执行记录 →
                 </button>
               )}
             </div>
           </form>
-          <aside className="detail-pane" aria-label="本次采集摘要">
-            <h3>本次采集摘要</h3>
-            <dl>
+          <aside className="detail-pane execution-briefs" aria-label="执行简报">
+            <h3>执行简报</h3>
+            {legacyIdentity && (submission.attempt || legacyLocked) && (
+              <>
+                <ExecutionBriefCard
+                  id={legacyIdentity}
+                  disabled={!legacyReceipt}
+                  createdAt=""
+                  current
+                  title={asset?.label ?? "采集任务"}
+                  start={start}
+                  end={end}
+                  result={
+                    legacyReceipt?.state ??
+                    (busy ? "正在提交，尚未核实" : "回执待核实，保留原请求编号")
+                  }
+                  onSelect={() => {
+                    if (legacyReceipt)
+                      navigate("collection", {
+                        ...fields,
+                        tab: legacyReceipt.job ? "executions" : "periodic",
+                        job: legacyReceipt.job,
+                        schedule: legacyReceipt.plan,
+                        execution_schedule: legacyReceipt.job
+                          ? "all"
+                          : legacyReceipt.plan,
+                      });
+                  }}
+                />
+                {!legacyReceipt && (
+                  <button type="button" disabled={busy} onClick={recallLegacy}>
+                    核实原请求
+                  </button>
+                )}
+              </>
+            )}
+            <h3 id="legacy-collection-summary">本次采集摘要</h3>
+            <dl aria-labelledby="legacy-collection-summary">
               <Fact name="采集目标">{asset?.label ?? "未选择"}</Fact>
               <Fact name="来源变体">
                 {context?.source
@@ -1765,15 +1897,24 @@ export function CollectionWorkbench({
                   : `${start || "未设置"} 至 ${end || "未设置"}`}
               </Fact>
               <Fact name="存储目标">{context?.storage ?? "继承资产配置"}</Fact>
+              {unavailableCollection && (
+                <p role="status">{unavailableCollection.reason}</p>
+              )}
               {devCandidate && (
                 <Fact name="DEV 写入目标">
                   mdf_b3_cpi_05_dev_r1 · CPI 2026-09 · 单次执行
                 </Fact>
               )}
-              <Fact name="任务接收状态">尚未提交 / 以持久回执为准</Fact>
+              <Fact name="任务接收状态">
+                {legacyReceipt
+                  ? "已接收"
+                  : legacyLocked
+                    ? "回执待核实"
+                    : "尚未提交"}
+              </Fact>
             </dl>
             <p className="muted">
-              一次性与回补提交后进入执行记录；周期规则需后端准确支持后才能保存。
+              一次性与回补提交后保留本页，主动点击已确认简报才进入执行记录；周期规则需后端准确支持后才能保存。
             </p>
             <Technical>
               <p>{asset && keyOf(asset.key)}</p>

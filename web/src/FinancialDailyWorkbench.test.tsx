@@ -136,6 +136,7 @@ function fixture(post?: (body: unknown) => Promise<Response>) {
       return Response.json({
         status: "OK",
         defaults: { start: "2006-11-05", end: "2026-11-05" },
+        web_capabilities: { query: true, collect: true },
         series: [],
       });
     if (url.endsWith("/jobs")) return Response.json({ status: "OK", jobs: [] });

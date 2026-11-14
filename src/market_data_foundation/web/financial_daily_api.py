@@ -149,6 +149,13 @@ def financial_router(
             require()
             return dict(
                 status(),
+                web_capabilities=dict(
+                    query=options.allow_read,
+                    collect=options.allow_collect,
+                    reason=None
+                    if options.allow_collect
+                    else "financial_collection_not_enabled",
+                ),
                 resident_worker=bool(schedule and control and options.allow_strategy),
             )
         except Exception as error:

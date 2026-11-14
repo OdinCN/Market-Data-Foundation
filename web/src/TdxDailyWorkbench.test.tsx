@@ -18,6 +18,7 @@ import {
 
 afterEach(() => {
   cleanup();
+  sessionStorage.clear();
   vi.unstubAllGlobals();
 });
 const identity = "2679c123-8a3e-4ae9-8aa9-fce60c5f94e1";
@@ -325,7 +326,10 @@ it("pages rows and coverage locally, clears stale results after parameter edits,
 it("keeps an uncertain submission disabled and recalls the same request identity", async () => {
   const base = fixture();
   const navigate = vi.fn();
+  let allowNamedRead = false;
   const transport: Transport = async (input, init) => {
+    if (!allowNamedRead && /\/jobs\/[0-9a-f-]+$/.test(String(input)))
+      throw new Error("receipt_not_visible_yet");
     if (init?.method === "POST") {
       await base.transport(input, init);
       throw new Error("synthetic_lost_receipt");
@@ -357,6 +361,7 @@ it("keeps an uncertain submission disabled and recalls the same request identity
       }) as HTMLButtonElement
     ).disabled,
   ).toBe(true);
+  allowNamedRead = true;
   fireEvent.click(screen.getByRole("button", { name: "回查同一任务" }));
   const recovered = (
     base.calls.find((c) => c.method === "POST")!.body as { request_id: string }

@@ -29,6 +29,7 @@ const status: FinancialStatus = {
   collection_limits: { latest_end: "2026-11-06", max_calendar_days: 10980 },
   series: [],
   cutoff_semantics: "MDF cutoff",
+  web_capabilities: { query: true, collect: true },
 };
 const job = (changes: Partial<FinancialJob> = {}): FinancialJob => ({
   request_id: id,
@@ -414,3 +415,29 @@ it("late job A read cannot replace job B after selecting another execution", asy
   await waitFor(() => expect(screen.queryByText(id)).toBeNull());
   expect(screen.getByText(other)).toBeTruthy();
 });
+
+it.each([undefined, false])(
+  "does not infer financial write permission from read status (%s)",
+  async (collect) => {
+    const f = fixture();
+    render(
+      <FinancialCollection
+        transport={f.transport}
+        generation={0}
+        status={{
+          ...status,
+          web_capabilities:
+            collect === undefined ? undefined : { query: true, collect },
+        }}
+        onExecution={vi.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(value("采集开始日期")).toBe(status.update_defaults!.start),
+    );
+    confirm();
+    expect((submit() as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(submit().closest("form")!);
+    expect(f.calls.filter((c) => c.method === "POST")).toHaveLength(0);
+  },
+);

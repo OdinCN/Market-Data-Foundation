@@ -1,3 +1,4 @@
+import { openSubmittedBrief } from "./openSubmittedBrief.testHelper";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   act,
@@ -82,7 +83,8 @@ function host(lost = false) {
       return Response.json(jobs[0]);
     }
     if (path === "/api/pce/catalog") return Response.json(catalog);
-    if (path === "/api/pce/jobs") return Response.json({ jobs });
+    if (path === "/api/pce/jobs")
+      return Response.json({ jobs: lost ? [] : jobs });
     if (path === "/api/pce/assets")
       return Response.json({
         binding,
@@ -245,7 +247,7 @@ it("developer contract navigation preserves PCE binding and the only create butt
     expect((btn("创建采集任务") as HTMLButtonElement).disabled).toBe(false),
   );
   fireEvent.click(btn("创建采集任务"));
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   expect(
     screen.getByRole("tab", { name: "执行记录" }).getAttribute("aria-selected"),
   ).toBe("true");
@@ -298,7 +300,7 @@ it("late pre-submit GET cannot unlock accepted intent, including reopening", asy
   const view = await open(transport);
   confirm();
   fireEvent.click(btn("创建采集任务"));
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   hold = true;
   fireEvent(document, new Event("visibilitychange"));
   fireEvent.click(screen.getByRole("tab", { name: "新建采集" }));
@@ -320,7 +322,7 @@ it("restores a durable job without session storage and links only its new worker
   const view = await open(h.transport);
   confirm();
   fireEvent.click(btn("创建采集任务"));
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   h.finish();
   view.unmount();
   sessionStorage.clear();
@@ -392,7 +394,7 @@ it("keeps CPI and PCE records partitioned, with both providers in unfiltered exe
   await open(h.transport);
   confirm();
   fireEvent.click(btn("创建采集任务"));
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   await act(async () => {
     location.hash = "ui=r5&view=collection&tab=executions";
     window.dispatchEvent(new Event("hashchange"));
@@ -508,7 +510,7 @@ it("uses real PCE API shapes for native submit → independent worker → new in
     expect((btn("创建采集任务") as HTMLButtonElement).disabled).toBe(false),
   );
   fireEvent.click(btn("创建采集任务"));
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   expect(h.effects).toEqual({ source: 0, raw: 0, jobs: 1 });
   const result = await h.exchange({ control: "run" });
   expect(result.body.state).toBe("succeeded");
@@ -605,7 +607,7 @@ it("failed native execution → exact backfill POST → independent successor wo
     expect((btn("创建采集任务") as HTMLButtonElement).disabled).toBe(false),
   );
   fireEvent.click(btn("创建采集任务"));
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   const writes = h.requests.filter((r) => r.method === "POST");
   expect(writes).toHaveLength(1);
   expect(writes[0].path).toBe("/api/pce/jobs/backfill");

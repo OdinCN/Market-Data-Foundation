@@ -509,3 +509,17 @@ def test_late_treasury_leg_invalidates_legacy_and_versioned_derived_receipts():
     assert not jobs_module.outdated_derived(
         dict(derived, input_batches=["late"]), inputs
     )
+
+
+def test_status_exposes_actual_collection_permission(tmp_path):
+    for writable in (False, True):
+        app = FastAPI()
+        app.include_router(financial_router(FinancialOptions(tmp_path, True, writable)))
+        with TestClient(app) as client:
+            response = client.get(PREFIX + "/status")
+            assert response.status_code == 200
+            assert response.json()["web_capabilities"] == dict(
+                query=True,
+                collect=writable,
+                reason=None if writable else "financial_collection_not_enabled",
+            )

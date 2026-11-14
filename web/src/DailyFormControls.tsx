@@ -215,6 +215,7 @@ export function ExecutionBriefCard({
   current,
   scope,
   onSelect,
+  disabled,
 }: {
   id: string;
   title: string;
@@ -225,11 +226,13 @@ export function ExecutionBriefCard({
   current?: boolean;
   scope?: string;
   onSelect: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       className="execution-brief-card"
+      disabled={disabled}
       aria-current={current ? "true" : undefined}
       onClick={onSelect}
     >

@@ -15,3 +15,4 @@
 - 新增或修改数据族时，接入已有资产目录、查询和采集工作台，沿用周期任务与执行记录入口。族专用字段放在对应表单或详情中。接入位置和已有回归见 `docs/runtime-family-ui.md`。
 - DEV 交付前，在交给用户的同一地址从目录进入，验证改动族及受影响的既有族。用已知本地样本查到实际数值和表格行，查看 API 说明、采集目标、周期详情和已有执行详情。使用 `web/scripts/check-live-workbench.mjs` 的可配置用例复验。基准端口只作对照。独立记录尚未验证的路径和真实业务失败。
 - 新增或修改带页面操作的 API 时，按 `docs/runtime-family-ui.md` 的按钮流程验收规则，在 PR 中验证实际点击、请求次数、页面去向、回执身份及失败恢复。只读实页巡检不覆盖提交等写按钮。
+- 采集提交复用 `useCollectionSubmit`，在产品 `collectionRegistry` / `MACRO_PROFILES` / `RuntimeFamily.collection` 登记能力；跑 `CollectionSubmitMatrix.test.tsx` 的自动全登记矩阵。新增协议补隔离 fixture，禁止为跳过用例而裁剪资产或完成证据检查。

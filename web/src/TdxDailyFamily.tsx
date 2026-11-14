@@ -1,3 +1,5 @@
+import { useTdxPendingJob } from "./useTdxPendingJob";
+import { useCollectionSubmit } from "./useCollectionSubmit";
 import { TdxRosterFacts, type RosterStatus } from "./TdxRosterFacts";
 import {
   DailyDateRange,
@@ -67,6 +69,8 @@ export function TdxDailyCollection({
   navigate,
   generation,
 }: FamilyProps) {
+  const submission = useCollectionSubmit();
+  const pending = useTdxPendingJob(TDX_DAILY.identity);
   const [action, setAction] = useState<"init" | "update">("update");
   const [drafts, setDrafts] = useState(() => {
     const end = tdxLatestClosedDay();
@@ -83,11 +87,12 @@ export function TdxDailyCollection({
       update: { start: false, end: false },
     }),
     writing = useRef(false),
-    intent = useRef<string | null>(null);
+    intent = useRef<string | null>(pending.id);
   const [receipt, setReceipt] = useState<TdxJob | null>(null);
   function accepted(job: TdxJob) {
     if (!intent.current || job.request_id !== intent.current)
       throw Error("request_identity_unconfirmed");
+    pending.release(job.request_id);
     setReceipt(job);
     intent.current = null;
     setNotice("");
@@ -178,6 +183,28 @@ export function TdxDailyCollection({
         briefs={
           <aside className="detail-pane execution-briefs" aria-label="执行简报">
             <h3>执行简报</h3>
+            {pending.blocked && (
+              <p role="alert">本机请求编号无法核实，采集已暂停。</p>
+            )}
+            {notice && <p role="alert">{notice}</p>}
+            {pending.id && (
+              <>
+                <code>{pending.id}</code>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void tdxCall<TdxJob>(transport, "/jobs/" + intent.current)
+                      .then(accepted)
+                      .catch(() =>
+                        setNotice("原请求仍不可核实；请保留编号，不重发。"),
+                      )
+                  }
+                >
+                  回查同一任务
+                </button>
+              </>
+            )}
             <p className="small">
               时间基准：北京时间（UTC+08:00）。以下为真实近期作业，触发来源单列；缺少来源记录时保留待核实。
             </p>
@@ -221,21 +248,24 @@ export function TdxDailyCollection({
               !event.currentTarget.checkValidity()
             )
               return;
+            const id = requestId();
+            if (!pending.reserve(id)) return;
             writing.current = true;
-            intent.current = requestId();
+            intent.current = id;
             setBusy(true);
             setNotice("");
             void (async () => {
               try {
-                const job = await tdxCall<TdxJob>(
-                  transport,
-                  "/jobs",
-                  undefined,
-                  {
-                    request_id: intent.current,
-                    action,
-                    ...range,
-                  },
+                const job = await submission.submit(
+                  id,
+                  () =>
+                    tdxCall<TdxJob>(transport, "/jobs", undefined, {
+                      request_id: id,
+                      action,
+                      ...range,
+                    }),
+                  () => tdxCall<TdxJob>(transport, "/jobs/" + id),
+                  (value) => value.request_id === id,
                 );
                 accepted(job);
               } catch {
@@ -306,7 +336,8 @@ export function TdxDailyCollection({
             className="primary"
             disabled={
               busy ||
-              !!intent.current ||
+              !!pending.id ||
+              pending.blocked ||
               !confirmed ||
               !!error ||
               !status.data?.collect ||
@@ -315,21 +346,6 @@ export function TdxDailyCollection({
           >
             {busy ? "正在提交…" : "提交 TDX 日线 采集"}
           </button>
-          {notice && <p role="alert">{notice}</p>}
-          {notice && (
-            <button
-              type="button"
-              onClick={() =>
-                void tdxCall<TdxJob>(transport, "/jobs/" + intent.current)
-                  .then(accepted)
-                  .catch(() =>
-                    setNotice("原请求仍不可核实；请保留编号，不重发。"),
-                  )
-              }
-            >
-              回查同一任务
-            </button>
-          )}
         </form>
       </CollectionColumns>
     </section>
@@ -541,6 +557,7 @@ function TdxStrategySwitch({
   );
 }
 export const TDX_FAMILY: RuntimeFamily = {
+  collection: { protocol: "tdx", path: "/api/r5/tdx/daily/jobs" },
   asset: TDX_DAILY,
   title,
   Query: TdxDailyQuery,

@@ -286,6 +286,17 @@ it("B: trusted offline fixture explicitly accepts a durable Job, selects its exe
   );
   fireEvent.click(btn("创建采集任务"));
   fireEvent.click(btn("创建采集任务"));
+  const briefs = within(
+    screen.getByRole("complementary", { name: "执行简报" }),
+  );
+  await briefs.findByText("已接收");
+  expect(
+    screen.getByRole("tab", { name: "新建采集" }).getAttribute("aria-selected"),
+  ).toBe("true");
+  const submitted = api.requests.find((r) => r.method === "POST")?.body
+    .job_identity;
+  expect(typeof submitted).toBe("string");
+  fireEvent.click(briefs.getByRole("button", { name: new RegExp(submitted) }));
   await screen.findByRole("heading", { name: "执行详情" });
   expect(api.requests.filter((r) => r.method === "POST")).toHaveLength(1);
   expect(api.effects).toEqual({ source: 0, raw: 0, jobs: 1 });
@@ -806,83 +817,124 @@ it("E: actual offline UNKNOWN execution retains original identity and blocks bli
   await screen.findByRole("heading", { name: "执行详情" });
   expect(new URLSearchParams(location.hash.slice(1)).get("job")).toBe("first");
 });
-it("E: real fixture plan → child execution → same plan/asset and accepted failed-range backfill preserve lineage", async () => {
-  const api = asgi("", "r5_schedules_ui_exchange.py");
-  const target = (await api.exchange({ path: "/api/r5/cpi/jobs" })).body;
-  const accepted = await api.exchange({
-    path: "/api/r5/cpi/plans",
-    method: "POST",
-    body: {
-      plan_identity: "workflow-plan",
-      name: "workflow-plan",
-      asset_identity: target.asset_identity,
-      asset_revision: target.asset_revision,
-      start: "2024-12",
-      end: "2024-12",
-      timezone: "UTC",
-      window_start: "00:00",
-      window_end: "23:59",
-      first_due: "2028-03-10T12:00:00+00:00",
-      interval_seconds: 86400,
-      cycles: 1,
-    },
-  });
-  expect(accepted.status).toBe(202);
-  await api.exchange({ control: "tick", plan: "workflow-plan", failure: true });
-  const before = api.effects.source;
-  location.hash = new URLSearchParams({
-    page: "4",
-    tab: "periodic",
-    asset: CPI.identity,
-    asset_revision: CPI.revision,
-    operation:
-      "mdf.source-candidate.bls-v2.cpi.history-index@r5-cpi-history-index-v1",
-    schedule: "workflow-plan",
-  }).toString();
-  render(<App transport={api.transport} />);
-  await screen.findByRole("heading", { name: "workflow-plan" });
-  fireEvent.click(btn("查看执行记录 →"));
-  const row = await within(
-    screen.getByRole("region", { name: "执行记录" }),
-  ).findByRole("button", { name: /选择 .*失败/ });
-  fireEvent.click(row);
-  expect(screen.getByText("workflow-plan")).toBeTruthy();
-  fireEvent.click(btn("查看周期任务 →"));
-  expect(new URLSearchParams(location.hash.slice(1)).get("schedule")).toBe(
-    "workflow-plan",
-  );
-  fireEvent.click(btn("查看执行记录 →"));
-  fireEvent.click(
-    await within(screen.getByRole("region", { name: "执行记录" })).findByRole(
-      "button",
-      { name: /选择 .*失败/ },
-    ),
-  );
-  fireEvent.click(btn("指定范围回补 →"));
-  for (const name of ["开始参考月", "结束参考月"])
-    fireEvent.change(screen.getByLabelText(name), {
-      target: { value: "2024-12" },
+it.each(["accepted", "lost-after-write", "lost-before-write"] as const)(
+  "real plan backfill preserves lineage and verifies a lost receipt (%s)",
+  async (scenario) => {
+    const api = asgi("", "r5_schedules_ui_exchange.py");
+    const plan = "workflow-plan-" + scenario;
+    let postAttempts = 0;
+    const transport: Transport = async (input, init) => {
+      if (String(input).endsWith("/backfill") && init?.method === "POST") {
+        postAttempts++;
+        if (scenario === "lost-before-write")
+          throw new TypeError("fetch failed");
+        const result = await api.transport(input, init);
+        if (scenario === "lost-after-write")
+          throw new TypeError("connection closed");
+        return result;
+      }
+      return api.transport(input, init);
+    };
+    const target = (await api.exchange({ path: "/api/r5/cpi/jobs" })).body;
+    const accepted = await api.exchange({
+      path: "/api/r5/cpi/plans",
+      method: "POST",
+      body: {
+        plan_identity: plan,
+        name: plan,
+        asset_identity: target.asset_identity,
+        asset_revision: target.asset_revision,
+        start: "2024-12",
+        end: "2024-12",
+        timezone: "UTC",
+        window_start: "00:00",
+        window_end: "23:59",
+        first_due: "2028-03-10T12:00:00+00:00",
+        interval_seconds: 86400,
+        cycles: 1,
+      },
     });
-  fireEvent.click(screen.getByRole("checkbox"));
-  await waitFor(() =>
-    expect(btn("创建采集任务").hasAttribute("disabled")).toBe(false),
-  );
-  fireEvent.click(btn("创建采集任务"));
-  await screen.findByText(/意图已持久接收/);
-  await ready();
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-  expect(screen.getByText(/意图已持久接收/)).toBeTruthy();
-  expect(
-    screen.getByRole("tab", { name: "执行记录" }).getAttribute("aria-selected"),
-  ).toBe("true");
-  expect(api.effects.source).toBe(before);
-  expect(api.requests.filter((r) => r.method === "POST")).toHaveLength(1);
-  expect(api.requests.find((r) => r.method === "POST")?.path).toBe(
-    "/api/r5/cpi/plans/workflow-plan/backfill",
-  );
-});
+    expect(accepted.status).toBe(202);
+    await api.exchange({ control: "tick", plan: plan, failure: true });
+    const before = api.effects.source;
+    location.hash = new URLSearchParams({
+      page: "4",
+      tab: "periodic",
+      asset: CPI.identity,
+      asset_revision: CPI.revision,
+      operation:
+        "mdf.source-candidate.bls-v2.cpi.history-index@r5-cpi-history-index-v1",
+      schedule: plan,
+    }).toString();
+    render(<App transport={transport} />);
+    await screen.findByRole("heading", { name: plan });
+    fireEvent.click(btn("查看执行记录 →"));
+    const row = await within(
+      screen.getByRole("region", { name: "执行记录" }),
+    ).findByRole("button", { name: /选择 .*失败/ });
+    fireEvent.click(row);
+    expect(screen.getByText(plan)).toBeTruthy();
+    fireEvent.click(btn("查看周期任务 →"));
+    expect(new URLSearchParams(location.hash.slice(1)).get("schedule")).toBe(
+      plan,
+    );
+    fireEvent.click(btn("查看执行记录 →"));
+    fireEvent.click(
+      await within(screen.getByRole("region", { name: "执行记录" })).findByRole(
+        "button",
+        { name: /选择 .*失败/ },
+      ),
+    );
+    fireEvent.click(btn("指定范围回补 →"));
+    for (const name of ["开始参考月", "结束参考月"])
+      fireEvent.change(screen.getByLabelText(name), {
+        target: { value: "2024-12" },
+      });
+    fireEvent.click(screen.getByRole("checkbox"));
+    await waitFor(() =>
+      expect(btn("创建采集任务").hasAttribute("disabled")).toBe(false),
+    );
+    fireEvent.click(btn("创建采集任务"));
+    const briefs = within(
+      screen.getByRole("complementary", { name: "执行简报" }),
+    );
+    if (scenario === "lost-before-write") {
+      await screen.findByText(/提交回执未核实/);
+      fireEvent.click(briefs.getByRole("button", { name: "核实原请求" }));
+      await screen.findByText(/原请求尚未核实/);
+      expect(briefs.getByText("回执待核实，保留原请求编号")).toBeTruthy();
+    } else {
+      const currentBrief = () =>
+        within(screen.getByRole("complementary", { name: "执行简报" }));
+      await waitFor(() => {
+        expect(currentBrief().getByText("已接收")).toBeTruthy();
+        expect(
+          currentBrief().queryByRole("button", { name: "核实原请求" }),
+        ).toBeNull();
+      });
+      expect(
+        screen
+          .getByRole("tab", { name: "新建采集" })
+          .getAttribute("aria-selected"),
+      ).toBe("true");
+      fireEvent.click(
+        currentBrief().getByRole("button", { name: new RegExp(plan) }),
+      );
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("tab", { name: "执行记录" })
+            .getAttribute("aria-selected"),
+        ).toBe("true"),
+      );
+      expect(new URLSearchParams(location.hash.slice(1)).get("schedule")).toBe(
+        plan,
+      );
+    }
+    expect(api.effects.source).toBe(before);
+    expect(postAttempts).toBe(1);
+  },
+);
 it.each<Record<string, string>>([
   { asset: "missing" },
   { asset_revision: "wrong-revision" },

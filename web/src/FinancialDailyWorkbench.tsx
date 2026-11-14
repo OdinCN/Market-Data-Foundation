@@ -87,6 +87,11 @@ type Metric = {
   };
 };
 export type FinancialStatus = {
+  web_capabilities?: {
+    query: boolean;
+    collect: boolean;
+    reason?: string | null;
+  };
   defaults: { start: string; end: string };
   update_defaults?: { start: string; end: string };
   update_default_basis?: string;

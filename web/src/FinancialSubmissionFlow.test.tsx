@@ -23,6 +23,7 @@ const status: FinancialStatus = {
   update_defaults: { start: "2026-10-23", end: "2026-11-05" },
   series: [],
   cutoff_semantics: "MDF held",
+  web_capabilities: { query: true, collect: true },
 };
 const id = "00000000-0000-4000-8000-000000000099";
 const make = (

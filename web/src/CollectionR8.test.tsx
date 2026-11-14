@@ -1,3 +1,4 @@
+import { openSubmittedBrief } from "./openSubmittedBrief.testHelper";
 import "./offlineTestSetup";
 import { afterEach, expect, it } from "vitest";
 import {
@@ -128,7 +129,7 @@ it.each([false, true])(
       MANUAL_OPERATION,
     );
     fireEvent.click(button("创建采集任务"));
-    await screen.findByRole("heading", { name: "执行详情" });
+    await openSubmittedBrief();
     const detail = screen.getByRole("complementary", { name: "执行记录详情" });
     expect(within(detail).getByText(`${child} / 尚未执行`)).toBeTruthy();
     expect(
@@ -372,7 +373,7 @@ it("CPI failed INIT → only successor POST → separate worker → original 06 
   await waitFor(() => expect(button("创建采集任务").disabled).toBe(false));
   fireEvent.doubleClick(button("创建采集任务"));
   fireEvent.click(button("创建采集任务"));
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   const writes = h.cpi.requests.filter((r) => r.method === "POST");
   expect(writes).toHaveLength(1);
   expect(writes[0].path).toBe("/api/r5/cpi/jobs/backfill");

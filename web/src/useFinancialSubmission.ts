@@ -1,3 +1,4 @@
+import { useCollectionSubmit } from "./useCollectionSubmit";
 import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
 import {
@@ -79,12 +80,27 @@ const terminal = (job: FinancialJob | null) =>
   );
 /** Same lifecycle as the macro collection form: reserve -> receipt -> poll ->
  * explicit new intent. No automatic receipt clears storage or navigates. */
+function definiteRefusal(error: unknown): error is FinancialRequestError {
+  return (
+    error instanceof FinancialRequestError &&
+    [400, 403, 422].includes(error.status) &&
+    [
+      "financial_job_range_invalid",
+      "financial_invalid_job_request",
+      "financial_invalid_request_id",
+      "financial_invalid_job_action",
+      "financial_capability_not_enabled",
+      "operator_not_authorized",
+    ].includes(error.message)
+  );
+}
 export function useFinancialSubmission(
   transport: Transport,
   scope: string,
   onReceipt: (job: FinancialJob) => void,
   active = true,
 ) {
+  const collection = useCollectionSubmit();
   const [initial] = useState(() => {
     try {
       return { intent: stored(), failed: false };
@@ -235,14 +251,28 @@ export function useFinancialSubmission(
     setReceipt(null);
     setPending(intent);
     try {
-      const r = await financialCall<{ job: FinancialJob }>(
-        transport,
-        intent.resume ? "/jobs/resume" : "/jobs",
-        undefined,
-        intent.resume
-          ? { request_id: intent.request_id }
-          : { request_id: intent.request_id, ...intent.command },
-      );
+      const post = () =>
+        financialCall<{ job: FinancialJob }>(
+          transport,
+          intent.resume ? "/jobs/resume" : "/jobs",
+          undefined,
+          intent.resume
+            ? { request_id: intent.request_id }
+            : { request_id: intent.request_id, ...intent.command },
+        );
+      const r = intent.resume
+        ? await post()
+        : await collection.submit(
+            intent.request_id,
+            post,
+            () =>
+              financialCall<{ job: FinancialJob }>(
+                transport,
+                `/jobs/${intent.request_id}`,
+              ),
+            (value) => matches(value.job, intent),
+            definiteRefusal,
+          );
       if (!matches(r.job, intent)) throw Error("receipt_mismatch");
       if (version === lifecycle.current) {
         latest.current = r.job;
@@ -251,17 +281,7 @@ export function useFinancialSubmission(
       }
     } catch (e) {
       if (version === lifecycle.current) {
-        const definite =
-          e instanceof FinancialRequestError &&
-          [400, 403, 422].includes(e.status) &&
-          [
-            "financial_job_range_invalid",
-            "financial_invalid_job_request",
-            "financial_invalid_request_id",
-            "financial_invalid_job_action",
-            "financial_capability_not_enabled",
-            "operator_not_authorized",
-          ].includes(e.message);
+        const definite = definiteRefusal(e);
         setRejected(definite);
         setFailure(
           definite

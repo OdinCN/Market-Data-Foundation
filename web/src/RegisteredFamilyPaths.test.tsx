@@ -24,6 +24,7 @@ import { keyOf } from "./workflowModel";
 const id = "2679c123-8a3e-4ae9-8aa9-fce60c5f94e1";
 const future: RuntimeFamily = {
   ...TDX_FAMILY,
+  collection: { protocol: "tdx", path: "/fixture/future/jobs" },
   asset: { identity: "mdf.test.registered.daily", revision: "r1" },
   title: "未来登记族",
   Query: () => <p>未来登记族本地查询</p>,

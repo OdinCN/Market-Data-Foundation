@@ -1,3 +1,5 @@
+import { useTdxPendingJob } from "./useTdxPendingJob";
+import { useCollectionSubmit } from "./useCollectionSubmit";
 import {
   TdxRosterFacts as RosterFacts,
   type RosterStatus,
@@ -299,15 +301,18 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
   );
 }
 function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
+  const submission = useCollectionSubmit();
+  const pending = useTdxPendingJob(TDX_ROSTER.identity);
   const [confirmed, setConfirmed] = useState(false),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState("");
-  const intent = useRef<string | null>(null),
+  const intent = useRef<string | null>(pending.id),
     writing = useRef(false);
   const [receipt, setReceipt] = useState<TdxJob | null>(null);
   function accepted(job: TdxJob) {
     if (!intent.current || job.request_id !== intent.current)
       throw Error("request_identity_unconfirmed");
+    pending.release(job.request_id);
     setReceipt(job);
     intent.current = null;
     setNotice("");
@@ -332,23 +337,31 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
       schedule: null,
     });
   async function submit() {
-    if (writing.current || !confirmed || intent.current) return;
+    if (
+      writing.current ||
+      !confirmed ||
+      intent.current ||
+      pending.blocked ||
+      !status.data?.collect ||
+      status.stale
+    )
+      return;
+    const id = requestId();
+    if (!pending.reserve(id)) return;
     writing.current = true;
     setBusy(true);
     setNotice("");
-    const id = requestId();
     intent.current = id;
     try {
-      const receipt = await call<TdxJob>(transport, "/jobs", undefined, {
-        request_id: id,
-      });
+      const receipt = await submission.submit(
+        id,
+        () => call<TdxJob>(transport, "/jobs", undefined, { request_id: id }),
+        () => call<TdxJob>(transport, "/jobs/" + id),
+        (value) => value.request_id === id,
+      );
       accepted(receipt);
     } catch {
-      try {
-        accepted(await call<TdxJob>(transport, "/jobs/" + id));
-      } catch {
-        setNotice("刷新回执未核实；保留原请求编号，回查前不重复提交。");
-      }
+      setNotice("刷新回执未核实；保留原请求编号，回查前不重复提交。");
     } finally {
       writing.current = false;
       setBusy(false);
@@ -364,6 +377,28 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
         briefs={
           <aside className="detail-pane execution-briefs" aria-label="执行简报">
             <h3>执行简报</h3>
+            {pending.blocked && (
+              <p role="alert">本机请求编号无法核实，采集已暂停。</p>
+            )}
+            {notice && <p role="alert">{notice}</p>}
+            {pending.id && (
+              <>
+                <code>{pending.id}</code>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    void call<TdxJob>(transport, "/jobs/" + intent.current)
+                      .then(accepted)
+                      .catch(() =>
+                        setNotice("原请求仍不可核实；请保留编号，不重发。"),
+                      )
+                  }
+                >
+                  回查同一任务
+                </button>
+              </>
+            )}
             {jobs.busy && !jobs.data && (
               <p role="status">正在读取真实名册作业…</p>
             )}
@@ -437,7 +472,8 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
             className="primary"
             disabled={
               busy ||
-              !!intent.current ||
+              !!pending.id ||
+              pending.blocked ||
               !confirmed ||
               !status.data?.collect ||
               status.stale
@@ -446,25 +482,7 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
           >
             提交采集任务
           </button>
-          {notice && <p role="alert">{notice}</p>}
-          {intent.current && (
-            <>
-              <code>{intent.current}</code>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  void call<TdxJob>(transport, "/jobs/" + intent.current)
-                    .then(accepted)
-                    .catch(() =>
-                      setNotice("原请求仍不可核实；请保留编号，不重发。"),
-                    )
-                }
-              >
-                回查原名册任务
-              </button>
-            </>
-          )}
+
           <p>交易日北京时间 09:00 刷新三市目录；本表单不会改变周期策略。</p>
         </form>
       </CollectionColumns>
@@ -472,6 +490,7 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
   );
 }
 export const TDX_ROSTER_FAMILY: RuntimeFamily = {
+  collection: { protocol: "roster", path: "/api/r5/tdx/roster/jobs" },
   asset: TDX_ROSTER,
   title,
   Query: TdxRosterQuery,

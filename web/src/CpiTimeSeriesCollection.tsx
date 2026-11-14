@@ -1,3 +1,4 @@
+import { useCollectionSubmit } from "./useCollectionSubmit";
 import { claimsExecutionPeriod } from "./claimsPeriod";
 import {
   dayRangeValid,
@@ -121,6 +122,7 @@ function CpiTimeSeriesCollectionContent({
   generation?: number;
   onExecution?: (id: string) => void;
 }) {
+  const submission = useCollectionSubmit();
   const weekly = profile.id === "claims";
   const PeriodField = weekly
     ? WeekField
@@ -259,6 +261,60 @@ function CpiTimeSeriesCollectionContent({
     setEnd((saved ?? defaultRange).end);
     setAction(next);
   }
+  async function readIntent(intent: CpiJobIntent) {
+    const result = await readCpiJobs(transport, undefined, profile);
+    const job = result.jobs.find((value) => sameIntent(value, intent));
+    if (!job) throw Error("receipt_unknown");
+    return job;
+  }
+  function recallIntent() {
+    if (!intent || busy) return;
+    void submission
+      .recall(
+        intent.request_id,
+        () => readIntent(intent),
+        (value) => validJob(value, profile) && sameIntent(value, intent),
+      )
+      .then((job) => {
+        setReceipt(job);
+        jobs.refresh();
+        setNotice("已回读原请求，未重复提交。");
+      })
+      .catch(() => setNotice("原请求回执仍待核实，保留编号，不重复提交。"));
+  }
+  function refusal(error: unknown, intent: CpiJobIntent | null) {
+    // The host refuses the execution lock before saving this request's journal.
+    const jobsBusy =
+      error instanceof CpiServiceFailure &&
+      error.status === 409 &&
+      error.classification === `${profile.id}_jobs_busy`;
+    const initializationRefused =
+      intent?.action === "initialize" &&
+      error instanceof CpiServiceFailure &&
+      ((error.status === 409 &&
+        error.classification === "initialization_anchor_unavailable") ||
+        (error.status === 400 &&
+          error.classification === "initialization_preset_range_required"));
+    const refused =
+      jobsBusy ||
+      ((quarterly || weekly) &&
+        error instanceof CpiServiceFailure &&
+        [400, 403, 422].includes(error.status ?? 0)) ||
+      initializationRefused ||
+      (error instanceof CpiServiceFailure &&
+        [400, 403, 422].includes(error.status ?? 0) &&
+        [
+          "collection_not_enabled",
+          `${profile.id}_package_credential_binding_unavailable`,
+          `${profile.id}_capability_disabled`,
+          "bls_credential_missing",
+          "bls_credential_unknown",
+          "operator_not_authorized",
+          "local_read_not_authorized",
+          "collection_range_exceeds_host_limit",
+        ].includes(error.classification));
+    return { jobsBusy, initializationRefused, refused };
+  }
   async function submit() {
     if (
       writing.current ||
@@ -301,16 +357,24 @@ function CpiTimeSeriesCollectionContent({
     }
     try {
       if (!reserved) return;
-      const job = await cpiRequest<CpiJob>(
-        transport,
-        "/jobs",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(reserved),
-        },
-        20000,
-        profile,
+      const intent = reserved;
+      const job = await submission.submit(
+        intent.request_id,
+        () =>
+          cpiRequest<CpiJob>(
+            transport,
+            "/jobs",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(intent),
+            },
+            20000,
+            profile,
+          ),
+        () => readIntent(intent),
+        (value) => validJob(value, profile) && sameIntent(value, intent),
+        (error) => refusal(error, intent).refused,
       );
       if (!validJob(job, profile) || !sameIntent(job, reserved))
         throw new Error("receipt_unknown");
@@ -321,36 +385,10 @@ function CpiTimeSeriesCollectionContent({
       }
     } catch (error) {
       if (mounted.current) {
-        // The host refuses the execution lock before saving this request's journal.
-        const jobsBusy =
-          error instanceof CpiServiceFailure &&
-          error.status === 409 &&
-          error.classification === `${profile.id}_jobs_busy`;
-        const initializationRefused =
-          reserved?.action === "initialize" &&
-          error instanceof CpiServiceFailure &&
-          ((error.status === 409 &&
-            error.classification === "initialization_anchor_unavailable") ||
-            (error.status === 400 &&
-              error.classification === "initialization_preset_range_required"));
-        const refused =
-          jobsBusy ||
-          ((quarterly || weekly) &&
-            error instanceof CpiServiceFailure &&
-            [400, 403, 422].includes(error.status ?? 0)) ||
-          initializationRefused ||
-          (error instanceof CpiServiceFailure &&
-            [400, 403, 422].includes(error.status ?? 0) &&
-            [
-              "collection_not_enabled",
-              `${profile.id}_package_credential_binding_unavailable`,
-              `${profile.id}_capability_disabled`,
-              "bls_credential_missing",
-              "bls_credential_unknown",
-              "operator_not_authorized",
-              "local_read_not_authorized",
-              "collection_range_exceeds_host_limit",
-            ].includes(error.classification));
+        const { jobsBusy, initializationRefused, refused } = refusal(
+          error,
+          reserved,
+        );
         if (refused && reserved) {
           try {
             const stored = storedIntent(intentKey, quarterly, weekly);
@@ -626,6 +664,9 @@ function CpiTimeSeriesCollectionContent({
           <h3>执行简报</h3>
           {notice && <p role="status">{notice}</p>}
           <p className="small">时间基准：北京时间（UTC+08:00）</p>
+          {intent && !matched && !busy && (
+            <button onClick={recallIntent}>核实原请求</button>
+          )}
           <ol className="execution-brief-list">
             {intent && !briefJobs.some((job) => sameIntent(job, intent)) && (
               <li>
@@ -665,6 +706,9 @@ function CpiTimeSeriesCollectionContent({
                 <button
                   type="button"
                   className="execution-brief-card"
+                  aria-current={
+                    intent && sameIntent(job, intent) ? "true" : undefined
+                  }
                   onClick={() => onExecution?.(job.job_id)}
                 >
                   <strong>

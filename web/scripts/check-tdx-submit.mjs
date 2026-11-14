@@ -19,6 +19,7 @@ const browser = await chromium.launch({
   args: ["--no-sandbox", "--disable-dev-shm-usage"],
 });
 const scenarios = [];
+const loseReceipt = process.argv.includes("--lost-receipt");
 try {
   for (const [family, asset, confirm, submit] of [
     [
@@ -38,6 +39,7 @@ try {
     const posts = [],
       reads = [],
       unexpected = [];
+    let allowRecall = !loseReceipt;
     await page.route("**/*", async (route) => {
       const r = route.request(),
         url = new URL(r.url()),
@@ -61,6 +63,12 @@ try {
             },
           ),
         );
+        if (
+          loseReceipt &&
+          (method === "POST" ||
+            (!allowRecall && url.pathname.endsWith("/" + posts[0])))
+        )
+          return route.abort("failed");
         return route.fulfill({ status: out.status, json: out.body });
       }
       if (method === "GET" || method === "HEAD") return route.continue();
@@ -82,6 +90,19 @@ try {
     const button = page.getByRole("button", { name: submit, exact: true });
     await page.getByRole("checkbox", { name: confirm, exact: true }).check();
     await button.click();
+    if (loseReceipt) {
+      await page
+        .getByRole("alert")
+        .filter({ hasText: /回执未核实/ })
+        .waitFor();
+      await page.reload();
+      await page.locator("code").filter({ hasText: posts[0] }).waitFor();
+      assert(await button.isDisabled());
+      allowRecall = true;
+      await page
+        .getByRole("button", { name: /回查同一任务|回查原名册任务/ })
+        .click();
+    }
     const briefs = page.getByRole("complementary", { name: "执行简报" });
     const card = briefs.locator("button[aria-current=true]");
     await card.waitFor();
@@ -108,6 +129,7 @@ try {
     assert.deepEqual(unexpected, []);
     scenarios.push({
       family,
+      lost_receipt_and_reload: loseReceipt,
       request_id: posts[0],
       stored_detail: page.url(),
       posts: posts.length,

@@ -92,6 +92,7 @@ export function FinancialCollection({
   }, [pending]);
   const range = drafts[action];
   useEffect(() => setConfirmed(false), [action, range.start, range.end]);
+  const canCollect = status?.web_capabilities?.collect === true;
   const maxDays = status?.collection_limits?.max_calendar_days ?? 366 * 30;
   const latest = status?.collection_limits?.latest_end ?? beijingToday();
   const error = dailyRangeError(range, maxDays, latest);
@@ -226,10 +227,21 @@ export function FinancialCollection({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (!error && confirmed && status && e.currentTarget.checkValidity())
+          if (
+            !error &&
+            confirmed &&
+            canCollect &&
+            e.currentTarget.checkValidity()
+          )
             void submission.submit({ action, ...range });
         }}
       >
+        {!canCollect && (
+          <p role="status">
+            当前未开放金融日频采集：
+            {status?.web_capabilities?.reason ?? "采集准入尚未核实"}
+          </p>
+        )}
         <label>
           采集方式
           <select
@@ -294,7 +306,7 @@ export function FinancialCollection({
           type="submit"
           className="primary"
           disabled={
-            !status ||
+            !canCollect ||
             !confirmed ||
             !!error ||
             busy ||
