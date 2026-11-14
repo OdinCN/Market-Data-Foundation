@@ -3,6 +3,7 @@
  * Matrix input is generated from the actual product registrations by CI.
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import fs from "node:fs/promises";
@@ -13,6 +14,9 @@ const [inventoryPath, output] = process.argv.slice(2);
 assert(inventoryPath && output);
 const inventory = JSON.parse(await fs.readFile(inventoryPath, "utf8"));
 const root = process.cwd();
+const origin = process.env.MDF_SUBMIT_ORIGIN ?? "http://mdf-isolated.invalid";
+const deployed = !!process.env.MDF_SUBMIT_ORIGIN;
+const bundles = new Map();
 await fs.mkdir(output, { recursive: true });
 function bridge(family, script = "collection_submit_fixture.py", fields = {}) {
   const child = spawn(
@@ -99,6 +103,9 @@ try {
             url = new URL(request.url()),
             method = request.method();
           if (!url.pathname.startsWith("/api/")) {
+            assert.equal(method, "GET");
+            assert.equal(url.origin, origin, "external static request");
+            if (deployed) return route.continue();
             const file = ["/", "/pce"].includes(url.pathname)
               ? "index.html"
               : url.pathname.slice(1);
@@ -155,13 +162,28 @@ try {
           }
           return route.fulfill({ status: out.status, json: out.body });
         });
+        page.on("response", async (response) => {
+          const name = new URL(response.url()).pathname;
+          if (
+            name.startsWith("/assets/") &&
+            name.endsWith(".js") &&
+            response.status() === 200
+          )
+            bundles.set(
+              name,
+              createHash("sha256")
+                .update(await response.body())
+                .digest("hex"),
+            );
+        });
         const ready = page.waitForResponse(
           (r) =>
             new URL(r.url()).pathname ===
               row.path.replace(/\/jobs$/, "/status") && r.status() === 200,
         );
         await page.goto(
-          "http://mdf-isolated.invalid/pce#" +
+          origin +
+            "/pce#" +
             new URLSearchParams({
               ui: "r5",
               view: "collection",
@@ -253,7 +275,17 @@ try {
         });
         await fs.writeFile(
           path.join(output, "browser.json"),
-          JSON.stringify({ isolated: true, proofs }, null, 2),
+          JSON.stringify(
+            {
+              isolated: true,
+              origin,
+              deployed,
+              bundles: Object.fromEntries(bundles),
+              proofs,
+            },
+            null,
+            2,
+          ),
         );
       } finally {
         await page.close();
@@ -263,6 +295,15 @@ try {
       }
     }
   }
+  assert(bundles.size, "loaded production bundle required");
+  for (const [name, sha] of bundles)
+    assert.equal(
+      sha,
+      createHash("sha256")
+        .update(await fs.readFile(path.join(root, "web/dist", name.slice(1))))
+        .digest("hex"),
+      "served bundle must match this build",
+    );
   assert.equal(
     proofs.length,
     inventory.registrations.filter((r) => !r.protocol.startsWith("legacy"))

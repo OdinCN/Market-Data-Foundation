@@ -589,6 +589,26 @@ it("retains the previous standalone UI UNKNOWN marker without exposing its workf
   expect((btn("创建采集任务") as HTMLButtonElement).disabled).toBe(true);
   expect(screen.queryByRole("button", { name: "确认登记 PG Job" })).toBeNull();
   expect(posts(h)).toHaveLength(0);
+  const briefs = within(
+    screen.getByRole("complementary", { name: "执行简报" }),
+  );
+  expect(briefs.getByText(catalog.submission.job_identity)).toBeTruthy();
+  expect(
+    (
+      briefs.getByRole("button", {
+        name: new RegExp(catalog.submission.job_identity),
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  const before = h.requests.length;
+  fireEvent.click(briefs.getByRole("button", { name: "核实原请求" }));
+  await screen.findByText(/原请求尚未核实/);
+  expect(
+    h.requests
+      .slice(before)
+      .some((r) => r.method === "GET" && r.path === "/api/pce/jobs"),
+  ).toBe(true);
+  expect(posts(h)).toHaveLength(0);
 });
 
 const originalPce = "pce-init-698446184a6df3c77bfb182b4411fa73b001143c";

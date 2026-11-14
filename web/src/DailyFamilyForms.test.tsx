@@ -262,6 +262,7 @@ it.each(["金融日频", "TDX"])(
             update_defaults: { start: "2026-10-29", end: date },
             series: [],
             cutoff_semantics: "MDF",
+            web_capabilities: { query: true, collect: true },
           }}
           onExecution={onExecution}
         />

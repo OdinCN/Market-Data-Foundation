@@ -1077,16 +1077,19 @@ export function CollectionWorkbench({
   );
   const planBackfill = legacyVariant === "legacy-plan-backfill";
   const legacyIdentity =
-    pinnedLegacy?.id ??
     (planBackfill
-      ? (parent?.identity ?? null)
-      : (devIntent ?? jobs.data?.intent_identity ?? null));
+      ? parent?.identity
+      : (devIntent ?? jobs.data?.intent_identity)) ??
+    pinnedLegacy?.id ??
+    null;
   // Independent failed children of the same plan can each need a retry.
   const legacyIntentKey =
-    pinnedLegacy?.key ??
+    (legacyIdentity === pinnedLegacy?.id ? pinnedLegacy.key : null) ??
     (planBackfill && legacyIdentity && jobId
       ? JSON.stringify([legacyIdentity, jobId])
       : legacyIdentity);
+  const briefIdentity = pinnedLegacy?.id ?? legacyIdentity;
+  const briefIntentKey = pinnedLegacy?.key ?? legacyIntentKey;
   let legacyLocked = false;
   try {
     legacyLocked =
@@ -1148,12 +1151,12 @@ export function CollectionWorkbench({
     return { job: id, plan: null, state: stateLabel(job.state) };
   }
   function recallLegacy() {
-    if (!legacyIdentity || !legacyIntentKey) return;
+    if (!briefIdentity || !briefIntentKey) return;
     void submission
       .recall(
-        legacyIntentKey,
-        () => readLegacy(legacyIdentity),
-        (r) => (r.job ?? r.plan) === legacyIdentity,
+        briefIntentKey,
+        () => readLegacy(briefIdentity),
+        (r) => (r.job ?? r.plan) === briefIdentity,
       )
       .then(() => {
         setUncertain(false);
@@ -1162,7 +1165,7 @@ export function CollectionWorkbench({
       .catch(() => setNotice("原请求尚未核实；保留编号，不重复提交。"));
   }
   const legacyReceipt =
-    submission.attempt?.id === legacyIntentKey &&
+    submission.attempt?.id === briefIntentKey &&
     submission.attempt?.state === "accepted"
       ? (submission.attempt.receipt as LegacyReceipt)
       : null;
@@ -1848,40 +1851,47 @@ export function CollectionWorkbench({
           </form>
           <aside className="detail-pane execution-briefs" aria-label="执行简报">
             <h3>执行简报</h3>
-            {legacyIdentity && (submission.attempt || legacyLocked) && (
-              <>
-                <ExecutionBriefCard
-                  id={legacyIdentity}
-                  disabled={!legacyReceipt}
-                  createdAt=""
-                  current
-                  title={asset?.label ?? "采集任务"}
-                  start={start}
-                  end={end}
-                  result={
-                    legacyReceipt?.state ??
-                    (busy ? "正在提交，尚未核实" : "回执待核实，保留原请求编号")
-                  }
-                  onSelect={() => {
-                    if (legacyReceipt)
-                      navigate("collection", {
-                        ...fields,
-                        tab: legacyReceipt.job ? "executions" : "periodic",
-                        job: legacyReceipt.job,
-                        schedule: legacyReceipt.plan,
-                        execution_schedule: legacyReceipt.job
-                          ? "all"
-                          : legacyReceipt.plan,
-                      });
-                  }}
-                />
-                {!legacyReceipt && (
-                  <button type="button" disabled={busy} onClick={recallLegacy}>
-                    核实原请求
-                  </button>
-                )}
-              </>
-            )}
+            {briefIdentity &&
+              (submission.attempt || legacyLocked || devIntentLocked) && (
+                <>
+                  <ExecutionBriefCard
+                    id={briefIdentity}
+                    disabled={!legacyReceipt}
+                    createdAt=""
+                    current
+                    title={asset?.label ?? "采集任务"}
+                    start={start}
+                    end={end}
+                    result={
+                      legacyReceipt?.state ??
+                      (busy
+                        ? "正在提交，尚未核实"
+                        : "回执待核实，保留原请求编号")
+                    }
+                    onSelect={() => {
+                      if (legacyReceipt)
+                        navigate("collection", {
+                          ...fields,
+                          tab: legacyReceipt.job ? "executions" : "periodic",
+                          job: legacyReceipt.job,
+                          schedule: legacyReceipt.plan,
+                          execution_schedule: legacyReceipt.job
+                            ? "all"
+                            : legacyReceipt.plan,
+                        });
+                    }}
+                  />
+                  {!legacyReceipt && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={recallLegacy}
+                    >
+                      核实原请求
+                    </button>
+                  )}
+                </>
+              )}
             <h3 id="legacy-collection-summary">本次采集摘要</h3>
             <dl aria-labelledby="legacy-collection-summary">
               <Fact name="采集目标">{asset?.label ?? "未选择"}</Fact>
