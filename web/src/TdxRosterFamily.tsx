@@ -26,7 +26,7 @@ import {
 import { TdxExecutionDetail } from "./TdxDailyFamily";
 import { TdxApiDocumentation } from "./TdxApiDocumentation";
 import { requestId } from "./CpiTimeSeriesCollection";
-import { tdxJobOrigin } from "./tdxJobPresentation";
+import { tdxJobOrigin, rosterJobScope } from "./tdxJobPresentation";
 import { keyOf } from "./workflowModel";
 
 export const TDX_ROSTER = {
@@ -73,7 +73,7 @@ const call = <T,>(
 export function TdxRosterQuery({ transport, generation }: FamilyProps) {
   const [exchange, setExchange] = useState<CpiHttpExchange | null>(null);
   const [requestedPath, setRequestedPath] = useState<string | null>(null);
-  const [day, setDay] = useState(tdxLatestClosedDay),
+  const [selectedDay, setDay] = useState<string | null>(null),
     [market, setMarket] = useState("all"),
     [search, setSearch] = useState("");
   const [history, setHistory] = useState(false),
@@ -87,6 +87,8 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
     (signal) => call<Status>(transport, "/status", signal),
     [transport, generation],
   );
+  const day =
+    selectedDay ?? status.data?.default_query_day ?? tdxLatestClosedDay();
   let suffix: string | null = null;
   try {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw Error("date");
@@ -162,6 +164,9 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
           void read();
         }}
       >
+        <p className="small">
+          默认按最近已核实的名册日期查询，可手动选择其他日期。
+        </p>
         <div className="field-grid">
           <DateField
             type="date"
@@ -267,7 +272,21 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
                       (n) => "名册曾记录 " + n,
                     ),
                   ].join("；") || "—",
-                  m.membership_state,
+                  m.membership_state === "UNKNOWN" &&
+                  m.evidence.listing_date &&
+                  m.evidence.valid_through &&
+                  String(m.evidence.valid_through) < day
+                    ? "当日待核实（最后确认在市：" +
+                      String(m.evidence.valid_through) +
+                      "）"
+                    : ((
+                        {
+                          ACTIVE: "在市",
+                          NOT_YET_LISTED: "尚未上市",
+                          DELISTED_OR_TERMINATED: "已退市或终止上市",
+                          UNKNOWN: "成员身份证据不足",
+                        } as Record<string, string>
+                      )[m.membership_state] ?? m.membership_state),
                   String(m.evidence.listing_date ?? "未核实"),
                   String(m.evidence.delist_date ?? "未记录"),
                 ],
@@ -354,6 +373,7 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
                     <ExecutionBriefCard
                       id={j.request_id}
                       title={`${title} · ${tdxJobOrigin(j)}`}
+                      scope={rosterJobScope(j)}
                       createdAt={j.created_at}
                       result={tdxStateLabel[j.state] ?? j.state}
                       onSelect={() => open(j.request_id)}
@@ -364,69 +384,86 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
           </aside>
         }
       >
-        <p>
-          采集目标：沪深北 A
-          股基础名册。方式：完整刷新三市来源目录；不采集日线。与旧
-          action=universe 共用实际实现、作业锁及发布。
-        </p>
-        <label>
-          采集方式
-          <select
-            value="refresh"
-            disabled={busy || !!intent.current}
-            onChange={() => {}}
-          >
-            <option value="refresh">完整刷新三市名册</option>
-          </select>
-        </label>
-        <p>
-          沪深 GetCount/GetCode、北交所 GetBJDirectory
-          的原件分别留存；交易所上市/退市与北交所新旧代码证据独立核定。目录刷新不会延长交易所证据有效期，不自动取得已退市全历史名册。
-        </p>
-        {status.data && <RosterFacts value={status.data} />}
-        <label className="confirm">
-          <input
-            type="checkbox"
-            checked={confirmed}
-            disabled={busy || !!intent.current}
-            onChange={(e) => setConfirmed(e.target.checked)}
-          />
-          我确认刷新三市名册到开发测试库
-        </label>
-        <button
-          className="primary"
-          disabled={
-            busy ||
-            !!intent.current ||
-            !confirmed ||
-            !status.data?.collect ||
-            status.stale
-          }
-          onClick={() => void submit()}
+        <form
+          className="collection-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (status.data?.collect && !status.stale) void submit();
+          }}
         >
-          提交采集任务
-        </button>
-        {notice && <p role="alert">{notice}</p>}
-        {intent.current && (
-          <>
-            <code>{intent.current}</code>
-            <button
-              disabled={busy}
-              onClick={() =>
-                void call(transport, "/jobs/" + intent.current)
-                  .then(() => open(intent.current!))
-                  .catch(() =>
-                    setNotice("原请求仍不可核实；请保留编号，不重发。"),
-                  )
-              }
+          <p>
+            采集目标：沪深北 A
+            股基础名册。方式：完整刷新三市来源目录；不采集日线。与旧
+            action=universe 共用实际实现、作业锁及发布。
+          </p>
+          <label>
+            采集方式
+            <select
+              value="refresh"
+              disabled={busy || !!intent.current}
+              onChange={() => {}}
             >
-              回查原名册任务
-            </button>
-          </>
-        )}
-        <p>
-          自动刷新沿用既有日线 15:35（北京时间）策略；本表单不会改变周期策略。
-        </p>
+              <option value="refresh">完整刷新三市名册</option>
+            </select>
+          </label>
+          <p>
+            沪深 GetCount/GetCode、北交所 GetBJDirectory
+            的原件分别留存；交易所上市/退市与北交所新旧代码证据独立核定。目录刷新不会延长交易所证据有效期，不自动取得已退市全历史名册。
+          </p>
+          <p>采集范围：深市、沪市、北交所的 A 股来源目录（提交时快照）。</p>
+          {status.failure && <p role="alert">名册采集资格读取失败。</p>}
+          {status.data && !status.data.collect && (
+            <p role="status">当前采集能力未启用。</p>
+          )}
+          <details>
+            <summary>当前名册证据</summary>
+            {status.data && <RosterFacts value={status.data} />}
+          </details>
+          <label className="cpi-collection-confirm">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              disabled={busy || !!intent.current}
+              onChange={(e) => setConfirmed(e.target.checked)}
+            />
+            我确认刷新三市名册到开发测试库
+          </label>
+          <button
+            className="primary"
+            disabled={
+              busy ||
+              !!intent.current ||
+              !confirmed ||
+              !status.data?.collect ||
+              status.stale
+            }
+            type="submit"
+          >
+            提交采集任务
+          </button>
+          {notice && <p role="alert">{notice}</p>}
+          {intent.current && (
+            <>
+              <code>{intent.current}</code>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void call(transport, "/jobs/" + intent.current)
+                    .then(() => open(intent.current!))
+                    .catch(() =>
+                      setNotice("原请求仍不可核实；请保留编号，不重发。"),
+                    )
+                }
+              >
+                回查原名册任务
+              </button>
+            </>
+          )}
+          <p>
+            自动刷新沿用既有日线 15:35（北京时间）策略；本表单不会改变周期策略。
+          </p>
+        </form>
       </CollectionColumns>
     </section>
   );
@@ -454,6 +491,8 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
       createdAt: j.created_at,
       title: `${title} · ${tdxJobOrigin(j)}`,
       search: `${title} ${j.request_id} ${j.state}`,
+      schedule: j.origin === "periodic" ? "tdx-roster-auto" : undefined,
+      scope: rosterJobScope(j),
       result: `${tdxStateLabel[j.state] ?? j.state} · 来源请求 ${j.provider_requests}`,
     }));
   },
@@ -491,6 +530,27 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
             15:35 Asia/Shanghai
             原有策略先刷新名册，再提交日线增量；名册不另设执行器或开关。
           </p>
+          <button
+            onClick={() =>
+              props.navigate("collection", {
+                ...fields,
+                tab: "executions",
+                execution_asset: keyOf(TDX_ROSTER),
+                execution_schedule: "tdx-roster-auto",
+                schedule: null,
+                job: null,
+              })
+            }
+          >
+            查看执行记录 →
+          </button>
+          <button
+            onClick={() =>
+              props.navigate("assets", { ...fields, tab: "local" })
+            }
+          >
+            查看关联资产 →
+          </button>
           <button
             onClick={() =>
               props.navigate("collection", {

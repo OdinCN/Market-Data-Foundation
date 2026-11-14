@@ -192,3 +192,28 @@ it("opens roster refresh from periodic facts through the normal new collection r
     }),
   );
 });
+
+it("uses recorded markets for historical roster jobs instead of the shared daily date window", async () => {
+  const jobs = [
+    {
+      request_id: "r",
+      state: "COMPLETE",
+      origin: "periodic",
+      created_at: "2026-11-13T07:10:00Z",
+      provider_requests: 2,
+      command: {
+        action: "universe",
+        markets: [0, 2],
+        start: "2026-10-30",
+        end: "2026-11-13",
+      },
+    },
+  ];
+  const transport: Transport = async () => Response.json({ jobs });
+  const [row] = await TDX_ROSTER_FAMILY.readExecutions(
+    transport,
+    new AbortController().signal,
+  );
+  expect(row.scope).toBe("深市、北交所 A 股名册（来源目录快照）");
+  expect(row.schedule).toBe("tdx-roster-auto");
+});

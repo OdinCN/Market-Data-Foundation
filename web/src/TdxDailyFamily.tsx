@@ -6,7 +6,7 @@ import {
   dailyRangeError,
   rangeWithDefaults,
 } from "./DailyFormControls";
-import { tdxJobOrigin } from "./tdxJobPresentation";
+import { tdxJobOrigin, rosterJobScope } from "./tdxJobPresentation";
 import { useEffect, useRef, useState } from "react";
 import type { FamilyProps, RuntimeFamily } from "./RuntimeFamily";
 import {
@@ -388,7 +388,7 @@ export function TdxExecutionDetail({
         )}
         <Fact name="采集范围">
           {job.command.action === "universe"
-            ? "沪深北三市完整来源名册（不采集日线）"
+            ? rosterJobScope(job)
             : `${job.command.start} 至 ${job.command.end}`}
         </Fact>
         <Fact name="来源请求">{job.provider_requests}</Fact>

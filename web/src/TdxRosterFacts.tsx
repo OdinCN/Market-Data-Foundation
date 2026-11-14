@@ -7,6 +7,7 @@ export type RosterStatus = {
   observed_at?: string;
   available_at?: string;
   valid_through?: string;
+  default_query_day?: string;
   collect?: boolean;
   total?: number;
   directory_observed_day?: string;

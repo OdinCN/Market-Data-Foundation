@@ -407,19 +407,27 @@ class PackageHost:
             and history[key(c.definition_ref)].holding != "unknown"
             for c in package.capabilities
         )
+        readonly = getattr(self.store, "configuration_readonly_capabilities", {}).get(
+            package_id, []
+        )
+        # The reference host owns these switches. Keep an enabled one visible
+        # so existing clients can preserve it during an unrelated native save.
+        visible_caps = [
+            c
+            for c in self.catalog.capabilities(package_id)
+            if c.capability_id not in readonly or c.capability_id in enabled
+        ]
         return PackageView(
             environment_id=self.environment_id,
             package_id=package_id,
             name=package.name,
             domain=package.domain,
             description=package.description,
-            capabilities=self.catalog.capabilities(package_id),
+            capabilities=visible_caps,
             configuration_state="PRESENT" if record else "ABSENT",
             config_revision=record.revision if record else None,
             enabled_capability_ids=list(enabled),
-            configuration_readonly_capability_ids=getattr(
-                self.store, "configuration_readonly_capabilities", {}
-            ).get(package_id, []),
+            configuration_readonly_capability_ids=[c for c in readonly if c in enabled],
             required_sources=required,
             source_access=self.catalog.source_access(package_id),
             credential_states=credentials,

@@ -184,7 +184,11 @@ def test_real_unified_host_http_save_keeps_legacy_snapshot_readable(
             headers={"Origin": "http://192.168.10.20:18766"},
         )
         assert saved.status_code == 200, saved.text
-        assert saved.json()["configuration_readonly_capability_ids"] == ["daily_raw"]
+        assert saved.json()["configuration_readonly_capability_ids"] == []
+        assert {c["capability_id"] for c in saved.json()["capabilities"]} == {
+            "daily_native",
+            "stock_roster",
+        }
         assert set(client.get(path).json()["enabled_capability_ids"]) == {
             "daily_native",
             "stock_roster",

@@ -53,7 +53,7 @@ export type TdxJob = {
   provider_requests: number;
   step_count?: number;
   complete_steps?: number;
-  command: { action: string; start: string; end: string };
+  command: { action: string; start: string; end: string; markets?: number[] };
   steps?: Step[];
 };
 type Bar = {

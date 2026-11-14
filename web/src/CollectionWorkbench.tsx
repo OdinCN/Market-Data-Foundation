@@ -2115,11 +2115,13 @@ export function CollectionWorkbench({
                 cells: [
                   row.title,
                   <ExecutionCreatedAt value={row.createdAt} />,
-                  <span className="execution-range">
-                    <span>{row.start ?? "未记录"}</span>
-                    <span>至</span>
-                    <span>{row.end ?? "未记录"}</span>
-                  </span>,
+                  row.scope ?? (
+                    <span className="execution-range">
+                      <span>{row.start ?? "未记录"}</span>
+                      <span>至</span>
+                      <span>{row.end ?? "未记录"}</span>
+                    </span>
+                  ),
                   <span className="execution-result">{row.result}</span>,
                 ],
               })),

@@ -18,6 +18,7 @@ export type FamilyExecution = {
   createdAt: string;
   title: string;
   search: string;
+  scope?: string;
   start?: string;
   end?: string;
   result: ReactNode;

@@ -213,6 +213,7 @@ export function ExecutionBriefCard({
   end,
   result,
   current,
+  scope,
   onSelect,
 }: {
   id: string;
@@ -222,6 +223,7 @@ export function ExecutionBriefCard({
   end?: string;
   result: ReactNode;
   current?: boolean;
+  scope?: string;
   onSelect: () => void;
 }) {
   return (
@@ -243,9 +245,7 @@ export function ExecutionBriefCard({
         </div>
         <div>
           <dt>采集范围</dt>
-          <dd>
-            {start ?? "未记录"} 至 {end ?? "未记录"}
-          </dd>
+          <dd>{scope ?? `${start ?? "未记录"} 至 ${end ?? "未记录"}`}</dd>
         </div>
         <div>
           <dt>结果</dt>

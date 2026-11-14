@@ -217,7 +217,7 @@ PACKAGES = (
         "tdx",
         "TDX 日线接入包",
         "TDX",
-        "沪深北原生日线与历史原始日线变体；价基和来源独立，禁止静默互换。",
+        "沪深北 A 股基础名册与原生日线。",
         (
             CapabilityView(
                 capability_id="stock_roster",

@@ -111,6 +111,7 @@ async function setup(family: RuntimeFamily = TDX_FAMILY) {
     complete_steps: 0,
     command: {
       action: family === TDX_ROSTER_FAMILY ? "universe" : "init",
+      markets: [0, 1, 2],
       start: "1990-01-01",
       end: "2026-11-11",
     },
@@ -271,7 +272,7 @@ it.each([TDX_FAMILY, future, TDX_ROSTER_FAMILY])(
       family === TDX_FAMILY
         ? /原生价基（native_projection）/
         : family === TDX_ROSTER_FAMILY
-          ? /三市完整来源名册/
+          ? /深市、沪市、北交所 A 股名册/
           : "未来登记族执行详情",
     );
     expect(h.calls.filter((c) => c.method === "POST")).toHaveLength(1);
@@ -298,7 +299,7 @@ it.each([TDX_FAMILY, future, TDX_ROSTER_FAMILY])(
       family === TDX_FAMILY
         ? /原生价基（native_projection）/
         : family === TDX_ROSTER_FAMILY
-          ? /三市完整来源名册/
+          ? /深市、沪市、北交所 A 股名册/
           : "未来登记族执行详情",
     );
     expect(location.hash).toBe(deepLink);

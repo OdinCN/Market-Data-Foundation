@@ -112,6 +112,7 @@ def facts(snapshot, day):
         available_at=_timestamp((snapshot or {}).get("available_at")),
         requested_day=day.isoformat(),
         valid_through=through,
+        default_query_day=min(day.isoformat(), through) if through else day.isoformat(),
         directory_observed_day=(refreshed_day or observed_day).isoformat()
         if (refreshed_day or observed_day)
         else None,
@@ -179,6 +180,7 @@ def query(
     snapshot_id=None,
     market=None,
     search="",
+    use_default_day=False,
     offset=0,
     limit=100,
 ):
@@ -186,6 +188,9 @@ def query(
     require(offset >= 0 and 1 <= limit <= 1000, "tdx_roster_page")
     cutoff = as_of or datetime.now(UTC)
     snapshot, status = published(store, day, snapshot_id=snapshot_id, as_of=cutoff)
+    if use_default_day and status["default_query_day"] != day.isoformat():
+        day = date.fromisoformat(status["default_query_day"])
+        snapshot, status = published(store, day, snapshot_id=snapshot_id, as_of=cutoff)
     term = search_text(search)
     changes = store.name_changes(day, cutoff, market) if term and snapshot else {}
     observations = (

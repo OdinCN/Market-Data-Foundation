@@ -96,7 +96,8 @@ def roster_router(runtime):
                 instant(cutoff)
             return tdx_roster.query(
                 runtime.store,
-                date.fromisoformat(q["day"]) if "day" in q else latest_day(),
+                date.fromisoformat(q["day"]) if "day" in q else latest_day(cutoff),
+                use_default_day="day" not in q,
                 as_of=cutoff,
                 snapshot_id=q.get("snapshot_id"),
                 market=int(q["market"]) if "market" in q else None,

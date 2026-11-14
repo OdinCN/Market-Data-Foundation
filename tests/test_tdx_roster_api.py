@@ -243,3 +243,14 @@ def test_tdx_change_pages_use_event_name_and_require_every_page(tmp_path):
     page(2, ["20211115", "广道高新", "920680", None, "广道退", 2, "A股"])
     (change,) = tdx_changes(tmp_path)
     assert change[:5] == (2, "920680", date(2025, 5, 6), "广道数字", "*ST广道")
+
+
+def test_default_query_day_uses_attested_date_but_explicit_later_day_stays_unknown():
+    store = published_store()
+    later = date(2026, 11, 14)
+    implicit = tdx_roster.query(store, later, use_default_day=True)
+    assert implicit["requested_day"] == "2026-11-12"
+    assert implicit["rows"][0]["membership_state"] == "ACTIVE"
+    explicit = tdx_roster.query(store, later)
+    assert explicit["requested_day"] == "2026-11-14"
+    assert explicit["rows"][0]["membership_state"] == "UNKNOWN"
