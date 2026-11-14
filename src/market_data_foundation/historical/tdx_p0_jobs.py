@@ -504,6 +504,20 @@ class DailyJobs:
             candidates = [
                 m for m in members if (m["market"], m["instrument"]) not in merged
             ]
+            for item in members:
+                known = merged.get((item["market"], item["instrument"]))
+                if known and known["name"] != item["name"]:
+                    known["evidence"] = dict(
+                        known["evidence"],
+                        directory_name=item["name"],
+                        directory_name_observed_at=observed,
+                    )
+                elif known and "directory_name" in known["evidence"]:
+                    known["evidence"] = {
+                        key: value
+                        for key, value in known["evidence"].items()
+                        if key not in {"directory_name", "directory_name_observed_at"}
+                    }
             snapshot["members"] = list(merged.values())
             snapshot["details"] = dict(
                 previous["details"],

@@ -188,3 +188,58 @@ def test_pg_datetime_and_current_directory_do_not_upgrade_stale_exchange_census(
     assert status["state"] == "STALE"
     assert status["classification"] == "tdx_roster_stale"
     assert status["valid_through"] == "2026-11-12"
+
+
+def test_roster_normalizes_names_and_searches_dated_aliases():
+    store = published_store()
+    member = store.snapshots[0]["members"][0]
+    member.update(market=0, instrument="000002", name="万  科Ａ")
+    day = date(2026, 11, 12)
+    for term in ("万科", "万科A", "WanKeA", "anke", "WKA", "wk", "000002"):
+        assert tdx_roster.query(store, day, search=term)["total"] == 1
+
+    store.name_changes = lambda *_: {
+        (0, "000002"): [
+            dict(effective_date=day, old_name="*ST测试", new_name="万 科Ａ")
+        ]
+    }
+    for term in ("*ST测试", "stceshi", "stcs", "000002"):
+        (row,) = tdx_roster.query(store, day, search=term)["rows"]
+        assert row["name"] == "万  科Ａ"
+        assert row["matched_changes"][0]["old_name"] == "*ST测试"
+
+
+def test_tdx_change_pages_use_event_name_and_require_every_page(tmp_path):
+    import json
+
+    from scripts.mdf_tdx_name_changes_import import tdx_changes
+
+    def page(n, row):
+        payload = {
+            "ErrorCode": 0,
+            "ResultSets": [
+                {
+                    "Count": 1,
+                    "ColName": [
+                        "rq",
+                        "lastname",
+                        "code",
+                        "prename",
+                        "name",
+                        "sc",
+                        "zqlx",
+                    ],
+                    "Content": [row],
+                },
+                {"Content": [[n]]},
+                {"Content": [[2]]},
+            ],
+        }
+        (tmp_path / f"{n:03}.json").write_text(json.dumps(payload))
+
+    page(1, ["20250506", "*ST广道", "920680", "广道数字", "广道退", 2, "A股"])
+    with pytest.raises(ValueError, match="Incomplete"):
+        list(tdx_changes(tmp_path))
+    page(2, ["20211115", "广道高新", "920680", None, "广道退", 2, "A股"])
+    (change,) = tdx_changes(tmp_path)
+    assert change[:5] == (2, "920680", date(2025, 5, 6), "广道数字", "*ST广道")

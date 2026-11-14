@@ -64,6 +64,12 @@ def test_daily_driver_forged_sidecar_cannot_authorize_unknown_bytes(
 
 
 class Store:
+    def observed_names(self, day, cutoff, market):
+        return {}
+
+    def name_changes(self, day, cutoff, market):
+        return {}
+
     def __init__(self):
         self.oracle = OfflineCurrent()
         self.fail_after_commit = False

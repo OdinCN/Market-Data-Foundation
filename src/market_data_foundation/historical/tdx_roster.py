@@ -1,8 +1,12 @@
 """Published stock membership is a base capability shared by daily consumers."""
 
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import UTC, date, datetime
+from functools import lru_cache
+from unicodedata import normalize
 from zoneinfo import ZoneInfo
+
+from pypinyin import lazy_pinyin
 
 from market_data_foundation.canonical.model import require
 from market_data_foundation.historical.tdx_p0_contract import (
@@ -141,6 +145,32 @@ def require_usable(snapshot, status):
     )
 
 
+def search_text(value):
+    return "".join(normalize("NFKC", value).casefold().split())
+
+
+@lru_cache(maxsize=32768)
+def name_keys(name):
+    literal = search_text(name)
+    syllables = lazy_pinyin(literal, errors=lambda text: list(text))
+    return literal, "".join(syllables), "".join(s[0] for s in syllables)
+
+
+def matching_changes(member, changes, term):
+    listed = member.get("evidence", {}).get("listing_date")
+    result = []
+    for change in changes:
+        if listed and change["effective_date"].isoformat() < listed:
+            continue
+        if any(
+            term in key
+            for field in ("old_name", "new_name")
+            for key in name_keys(change[field])
+        ):
+            result.append(change)
+    return result
+
+
 def query(
     store,
     day,
@@ -154,17 +184,53 @@ def query(
 ):
     require(market is None or market in {0, 1, 2}, "tdx_roster_market")
     require(offset >= 0 and 1 <= limit <= 1000, "tdx_roster_page")
-    snapshot, status = published(store, day, snapshot_id=snapshot_id, as_of=as_of)
-    members = [
-        {**m, "membership_state": lifecycle(m, day)}
-        for m in (snapshot or {}).get("members", [])
-        if (market is None or m["market"] == market)
-        and search.casefold() in (m["instrument"] + " " + m["name"]).casefold()
-    ]
+    cutoff = as_of or datetime.now(UTC)
+    snapshot, status = published(store, day, snapshot_id=snapshot_id, as_of=cutoff)
+    term = search_text(search)
+    changes = store.name_changes(day, cutoff, market) if term and snapshot else {}
+    observations = (
+        store.observed_names(day, cutoff, market) if term and snapshot else {}
+    )
+    members = []
+    for m in (snapshot or {}).get("members", []):
+        if market is not None and m["market"] != market:
+            continue
+        # An exact code opens all retained names for this instrument.
+        name_term = "" if term == m["instrument"] else term
+        history = matching_changes(
+            m, changes.get((m["market"], m["instrument"]), ()), name_term
+        )
+        listed = m.get("evidence", {}).get("listing_date")
+        prior = [
+            name
+            for name, observed in observations.get((m["market"], m["instrument"]), ())
+            if search_text(name) != search_text(m["name"])
+            and (
+                not listed
+                or observed.astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat()
+                >= listed
+            )
+            and any(name_term in key for key in name_keys(name))
+        ]
+        if (
+            term in m["instrument"]
+            or any(term in k for k in name_keys(m["name"]))
+            or history
+            or prior
+        ):
+            members.append(
+                dict(
+                    m,
+                    membership_state=lifecycle(m, day),
+                    matched_changes=history,
+                    matched_observed_names=sorted(prior),
+                )
+            )
     members.sort(key=lambda m: (m["market"], m["instrument"]))
     return dict(
         status="OK" if snapshot else "NOT_AVAILABLE",
         **status,
+        search_as_of=cutoff.isoformat(),
         rows=members[offset : offset + limit],
         total=len(members),
         offset=offset,

@@ -49,6 +49,11 @@ def migrate(conn, *, dev_opt_in=False):
         ).fetchone()[0]:
             conn.execute((SQL_DIR / "008_p0_read_index.sql").read_text())
 
+        if not conn.execute(
+            "SELECT to_regclass('mdf_tdx_daily.roster_name_changes')"
+        ).fetchone()[0]:
+            conn.execute((SQL_DIR / "009_name_changes.sql").read_text())
+
 
 def visible_versions(scope, *, materialize_members=False):
     """Select the newest fact version whose batch was confirmed in PostgreSQL."""
@@ -193,6 +198,39 @@ class PgStore:
             # know it, PostgreSQL can estimate one member and perform millions
             # of publication-index probes for a full local summary.
             conn.execute("ANALYZE mdf_tdx_daily.p0_members")
+
+    def name_changes(self, day, cutoff, market):
+        with self.connector() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT market,instrument,effective_date,old_name,new_name,source_url,"
+                "raw_sha256 FROM mdf_tdx_daily.roster_name_changes "
+                "WHERE effective_date <= %s AND available_at <= %s "
+                "AND (%s::smallint IS NULL OR market=%s) ORDER BY effective_date DESC",
+                (day, cutoff, market, market),
+            )
+            changes = {}
+            for row in cur:
+                changes.setdefault(
+                    (row.pop("market"), row.pop("instrument")), []
+                ).append(row)
+            return changes
+
+    def observed_names(self, day, cutoff, market):
+        with self.connector() as conn:
+            rows = conn.execute(
+                "SELECT m.market,m.instrument,n.name,max(u.observed_at) "
+                "FROM mdf_tdx_daily.p0_members m JOIN mdf_tdx_daily.p0_universes u "
+                "USING(snapshot_id) CROSS JOIN LATERAL "
+                "(VALUES (m.name),(m.evidence->>'directory_name')) n(name) "
+                "WHERE n.name IS NOT NULL AND u.available_at <= %s "
+                "AND (u.observed_at AT TIME ZONE 'Asia/Shanghai')::date <= %s "
+                "AND (%s::smallint IS NULL OR m.market=%s) GROUP BY 1,2,3",
+                (cutoff, day, market, market),
+            )
+            names = {}
+            for exchange, instrument, name, observed in rows:
+                names.setdefault((exchange, instrument), []).append((name, observed))
+            return names
 
     def strategy_calendar(self, *, as_of):
         # The scheduler needs dated calendar evidence, never the thousands of

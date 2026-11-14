@@ -45,6 +45,7 @@ def roster_router(runtime):
                 ).items()
             },
             notes=[
+                "search支持简称、连续拼音片段和首字母；准确输入六位代码可查看名称记录。matched_changes来自深交所简称变更或通达信沪北股票更名，matched_observed_names为曾观察到的名称。",
                 "GET只读已发布名册，零来源请求；刷新必须显式POST并进入共享执行记录。",
                 "深沪GetCount/GetCode分页，北交所GetBJDirectory；官方在市/退市原件补生命周期，二者不是可互换来源。",
                 "北交所官方分页与新旧代码映射独立留证；已知退市区间保留，未知历史代码沿革不推造。",

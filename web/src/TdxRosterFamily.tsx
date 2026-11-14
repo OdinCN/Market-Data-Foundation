@@ -47,9 +47,17 @@ type Result = Status & {
     market: number;
     instrument: string;
     name: string;
+    matched_changes?: {
+      old_name: string;
+      new_name: string;
+      effective_date: string;
+      source_url?: string;
+    }[];
+    matched_observed_names?: string[];
     membership_state: string;
     evidence: Record<string, unknown>;
   }[];
+  search_as_of?: string;
   total: number;
   offset: number;
   next_offset: number | null;
@@ -112,6 +120,8 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
     url.searchParams.set("offset", String(offset));
     if (page && result?.snapshot_id)
       url.searchParams.set("snapshot_id", result.snapshot_id);
+    if (page && result?.search_as_of)
+      url.searchParams.set("as_of", result.search_as_of);
     setRequestedPath(url.pathname + url.search);
     try {
       const data = await requestCpiJson<Result>(
@@ -173,7 +183,11 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
           </label>
           <label>
             代码或名称
-            <input value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input
+              placeholder="简称、曾用名、全拼或简拼"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </label>
         </div>
         <HistoryCutoffFields
@@ -222,7 +236,8 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
               columns={[
                 "交易所",
                 "代码",
-                "名称",
+                "名册名称",
+                "匹配的名称记录",
                 "该日成员状态",
                 "上市日期",
                 "退市日期",
@@ -234,6 +249,24 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
                   exchanges[m.market],
                   m.instrument,
                   m.name,
+                  [
+                    ...(m.matched_changes ?? []).map(
+                      (c) =>
+                        c.effective_date +
+                        " " +
+                        c.old_name +
+                        " → " +
+                        c.new_name +
+                        (c.source_url?.startsWith("https://fk.tdx.com.cn/")
+                          ? "（通达信）"
+                          : c.source_url?.startsWith("https://www.szse.cn/")
+                            ? "（深交所）"
+                            : ""),
+                    ),
+                    ...(m.matched_observed_names ?? []).map(
+                      (n) => "名册曾记录 " + n,
+                    ),
+                  ].join("；") || "—",
                   m.membership_state,
                   String(m.evidence.listing_date ?? "未核实"),
                   String(m.evidence.delist_date ?? "未记录"),
