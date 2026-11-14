@@ -201,7 +201,8 @@ HELP = dict(
             "dates using the existing durable universe and update identities."
         ),
         (
-            "First refresh the universe. Each daily update covers D minus 14 "
+            "Refresh the universe at 09:00. Reuse that job at 15:35. "
+            "Each daily update covers D minus 14 "
             "calendar days through D inclusive. The same response supplies new "
             "bars and historical corrections at the new publication time. "
             "Retained qualified receipts can be explicitly admitted in DEV via "

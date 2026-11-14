@@ -702,7 +702,7 @@ def test_strategy_single_1535_update_with_overlap_and_restart(tmp_path, monkeypa
     )
     strategy = DailyStrategy(jobs)
     strategy.set(True)
-    early = datetime(2026, 1, 5, 7, 34, 59, tzinfo=UTC)
+    early = datetime(2026, 1, 5, 0, 59, 59, tzinfo=UTC)
     strategy.tick(early)
     assert launched == []
 
@@ -717,8 +717,25 @@ def test_strategy_single_1535_update_with_overlap_and_restart(tmp_path, monkeypa
     strategy.tick(early + timedelta(seconds=1))
     universe = strategy_slot_id("2026-01-05", "universe")
     assert launched == [universe]
+    # At the close, resume the original partially completed directory once.
+    failed = json.loads(jobs.path(universe).read_bytes())
+    failed["state"] = "PARTIAL"
+    jobs.path(universe).write_text(json.dumps(failed))
+    resumes = []
+
+    def resume(identity):
+        resumes.append(identity)
+        failed["resume_count"] = 1
+        jobs.path(identity).write_text(json.dumps(failed))
+
+    monkeypatch.setattr(jobs, "resume", resume)
+    strategy.tick(datetime(2026, 1, 5, 7, 34, 59, tzinfo=UTC))
+    assert resumes == []
+    strategy.tick(datetime(2026, 1, 5, 7, 35, tzinfo=UTC))
+    strategy.tick(datetime(2026, 1, 5, 7, 35, 30, tzinfo=UTC))
+    assert resumes == [universe] and launched == [universe]
     complete(universe)
-    strategy.tick(early + timedelta(minutes=2))
+    DailyStrategy(jobs).tick(datetime(2026, 1, 5, 7, 35, 45, tzinfo=UTC))
     first = strategy_slot_id("2026-01-05", "update")
     assert launched[-1] == first
     command = json.loads(jobs.path(first).read_bytes())["command"]

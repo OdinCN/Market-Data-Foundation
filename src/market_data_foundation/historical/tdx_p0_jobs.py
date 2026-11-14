@@ -84,7 +84,12 @@ def validate(command):
         and len(markets) == len(set(markets)),
         "tdx_markets",
     )
-    end = date.fromisoformat(command.get("end", latest_day().isoformat()))
+    latest = (
+        datetime.now(ZoneInfo("Asia/Shanghai")).date()
+        if action == "universe"
+        else latest_day()
+    )
+    end = date.fromisoformat(command.get("end", latest.isoformat()))
     start = date.fromisoformat(
         command.get(
             "start",
@@ -93,7 +98,7 @@ def validate(command):
             ).isoformat(),
         )
     )
-    require(date(1990, 1, 1) <= start <= end <= latest_day(), "tdx_after_close_range")
+    require(date(1990, 1, 1) <= start <= end <= latest, "tdx_after_close_range")
     instruments = command.get("instruments")
     require(
         instruments is None
@@ -850,6 +855,9 @@ def coverage(store, day, *, as_of=None, job=None):
                 ] += 1
                 continue
             counts["active_count" if state == "ACTIVE" else "lifecycle_unknown"] += 1
+            if calendar and not calendar["is_open"]:
+                counts["market_closed"] += 1
+                continue
             suspended = next(
                 (
                     s
@@ -860,9 +868,7 @@ def coverage(store, day, *, as_of=None, job=None):
                 ),
                 None,
             )
-            if state == "ACTIVE" and calendar and not calendar["is_open"]:
-                counts["market_closed"] += 1
-            elif state == "ACTIVE" and suspended:
+            if state == "ACTIVE" and suspended:
                 counts["confirmed_suspended"] += 1
                 counts["suspended_with_bars"] += int(key in rows)
             elif key in rows:
@@ -894,9 +900,9 @@ def coverage(store, day, *, as_of=None, job=None):
                 effective_count=counts["active_count"] + counts["lifecycle_unknown"],
                 enumeration_known=enumeration_known,
                 expected_trading_count=(
-                    counts["active_count"]
-                    - counts["confirmed_suspended"]
-                    - counts["market_closed"]
+                    0
+                    if calendar and not calendar["is_open"]
+                    else counts["active_count"] - counts["confirmed_suspended"]
                     if calendar and not counts["lifecycle_unknown"]
                     else None
                 ),
@@ -916,13 +922,15 @@ def coverage(store, day, *, as_of=None, job=None):
                 **counts,
             )
         )
+    applicable = [r for r in result if r["calendar_state"] != "CLOSED"]
     return dict(
         day=day,
         as_of=data["as_of"],
         snapshot_id=(snapshot or {}).get("snapshot_id"),
         markets=result,
         missing=missing,
-        complete=all(r["complete"] for r in result),
+        applicable=bool(applicable),
+        complete=bool(applicable) and all(r["complete"] for r in applicable),
         denominator_semantics=(
             (snapshot or {})
             .get("details", {})

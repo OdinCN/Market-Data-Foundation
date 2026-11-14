@@ -30,7 +30,7 @@ class DailyStrategy:
             value,
             worker_online=bool(self.thread and self.thread.is_alive()),
             heartbeat_at=self.heartbeat,
-            schedule="15:35 once per trading day; Asia/Shanghai",
+            schedule="09:00 roster; 15:35 daily bars; Asia/Shanghai",
             calendar_state=self.calendar_state,
             overlap_calendar_days=14,
             review_target=None,
@@ -92,12 +92,21 @@ class DailyStrategy:
             and datetime.combine(date.fromisoformat(day), time(15, 35), local.tzinfo)
             <= local
         ]
-        if not eligible:
-            return
         with self.path.with_suffix(".lock").open("a") as stream:
             try:
                 fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
+                return
+            today = local.date().isoformat()
+            if self.calendar_state == "OPEN" and time(9) <= local.time() < time(15, 35):
+                roster = strategy_slot_id(today, "universe")
+                if not self.jobs.path(roster).exists():
+                    self.jobs.submit(
+                        dict(request_id=roster, action="universe", end=today),
+                        origin="periodic",
+                    )
+                    return
+            if not eligible:
                 return
             latest = max(eligible)
             day = latest
@@ -122,7 +131,17 @@ class DailyStrategy:
                         origin="periodic",
                     )
                     return
-                state = self.jobs.summary(identity)["state"]
+                record = self.jobs.summary(identity)
+                state = record["state"]
+                if (
+                    action == "universe"
+                    and day == local.date().isoformat()
+                    and local.time() >= time(15, 35)
+                    and state in {"PARTIAL", "INTERRUPTED"}
+                    and record.get("resume_count", 0) == 0
+                ):
+                    self.jobs.resume(identity)
+                    return
                 if state != "COMPLETE":
                     # A past failure stays resumable without starving later dates.
                     if day < latest and state in {"PARTIAL", "INTERRUPTED"}:

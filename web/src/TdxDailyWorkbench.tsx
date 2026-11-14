@@ -96,6 +96,7 @@ type Result = {
   provider_requests: number;
 };
 type Coverage = {
+  applicable?: boolean;
   offset?: number;
   limit?: number;
   complete: boolean;
@@ -565,7 +566,10 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
         {coverageError && (
           <p role="alert">覆盖证据读取失败，已有日线保留；未据此判定完整。</p>
         )}
-        {coverage && (
+        {coverage?.applicable === false && (
+          <p>所选结束日期三市休市，当日无需日线。</p>
+        )}
+        {coverage && coverage.applicable !== false && (
           <>
             <p>
               按结束日期的有效期名册与交易日证据对账，未解决{" "}
@@ -608,29 +612,31 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
               }))}
               onSelect={() => {}}
             />
-            <WorkflowTable
-              singlePane
-              label="缺项明细"
-              columns={["交易所", "证券", "原因"]}
-              rows={coverage.missing.map((m) => ({
-                id: `${m.market}:${m.instrument}`,
-                search: `${m.name} ${m.instrument} ${m.classification}`,
-                cells: [
-                  exchanges[m.market],
-                  `${m.instrument} ${m.name}`,
-                  m.classification,
-                ],
-              }))}
-              onSelect={(id) => {
-                const [m, code] = id.split(":");
-                change(() => {
-                  setMarket(m);
-                  setInstrument(code);
-                  setDirection("history");
-                });
-              }}
-              pageSize={20}
-            />
+            {coverage.missing_total > 0 && (
+              <WorkflowTable
+                singlePane
+                label="缺项明细"
+                columns={["交易所", "证券", "原因"]}
+                rows={coverage.missing.map((m) => ({
+                  id: `${m.market}:${m.instrument}`,
+                  search: `${m.name} ${m.instrument} ${m.classification}`,
+                  cells: [
+                    exchanges[m.market],
+                    `${m.instrument} ${m.name}`,
+                    m.classification,
+                  ],
+                }))}
+                onSelect={(id) => {
+                  const [m, code] = id.split(":");
+                  change(() => {
+                    setMarket(m);
+                    setInstrument(code);
+                    setDirection("history");
+                  });
+                }}
+                pageSize={20}
+              />
+            )}
             {(coverage.offset ?? 0) + coverage.missing.length <
               coverage.missing_total && (
               <button

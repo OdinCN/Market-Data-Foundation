@@ -26,7 +26,7 @@ import {
 import { TdxExecutionDetail } from "./TdxDailyFamily";
 import { TdxApiDocumentation } from "./TdxApiDocumentation";
 import { requestId } from "./CpiTimeSeriesCollection";
-import { tdxJobOrigin, rosterJobScope } from "./tdxJobPresentation";
+import { tdxJobOrigin, rosterJobScope, tdxBriefs } from "./tdxJobPresentation";
 import { keyOf } from "./workflowModel";
 
 export const TDX_ROSTER = {
@@ -304,6 +304,16 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
     [notice, setNotice] = useState("");
   const intent = useRef<string | null>(null),
     writing = useRef(false);
+  const [receipt, setReceipt] = useState<TdxJob | null>(null);
+  function accepted(job: TdxJob) {
+    if (!intent.current || job.request_id !== intent.current)
+      throw Error("request_identity_unconfirmed");
+    setReceipt(job);
+    intent.current = null;
+    setNotice("");
+    setConfirmed(false);
+    jobs.refresh();
+  }
   const status = useVisiblePolling(
     (signal) => call<Status>(transport, "/status", signal),
     [transport, generation],
@@ -332,15 +342,10 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
       const receipt = await call<TdxJob>(transport, "/jobs", undefined, {
         request_id: id,
       });
-      if (receipt.request_id !== id)
-        throw Error("request_identity_unconfirmed");
-      intent.current = null;
-      open(id);
+      accepted(receipt);
     } catch {
       try {
-        await call(transport, "/jobs/" + id);
-        intent.current = null;
-        open(id);
+        accepted(await call<TdxJob>(transport, "/jobs/" + id));
       } catch {
         setNotice("刷新回执未核实；保留原请求编号，回查前不重复提交。");
       }
@@ -363,23 +368,23 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
               <p role="status">正在读取真实名册作业…</p>
             )}
             {jobs.failure && <p role="alert">作业读取失败，记录待核实。</p>}
-            {jobs.data && !jobs.data.jobs.length && <p>暂无名册刷新记录。</p>}
+            {jobs.data && !jobs.data.jobs.length && !receipt && (
+              <p>暂无名册刷新记录。</p>
+            )}
             <ol className="execution-brief-list">
-              {[...(jobs.data?.jobs ?? [])]
-                .sort((a, b) => b.created_at.localeCompare(a.created_at))
-                .slice(0, 5)
-                .map((j) => (
-                  <li key={j.request_id}>
-                    <ExecutionBriefCard
-                      id={j.request_id}
-                      title={`${title} · ${tdxJobOrigin(j)}`}
-                      scope={rosterJobScope(j)}
-                      createdAt={j.created_at}
-                      result={tdxStateLabel[j.state] ?? j.state}
-                      onSelect={() => open(j.request_id)}
-                    />
-                  </li>
-                ))}
+              {tdxBriefs(jobs.data?.jobs ?? [], receipt).map((j) => (
+                <li key={j.request_id}>
+                  <ExecutionBriefCard
+                    id={j.request_id}
+                    current={j.request_id === receipt?.request_id}
+                    title={`${title} · ${tdxJobOrigin(j)}`}
+                    scope={rosterJobScope(j)}
+                    createdAt={j.created_at}
+                    result={tdxStateLabel[j.state] ?? j.state}
+                    onSelect={() => open(j.request_id)}
+                  />
+                </li>
+              ))}
             </ol>
           </aside>
         }
@@ -449,8 +454,8 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
                 type="button"
                 disabled={busy}
                 onClick={() =>
-                  void call(transport, "/jobs/" + intent.current)
-                    .then(() => open(intent.current!))
+                  void call<TdxJob>(transport, "/jobs/" + intent.current)
+                    .then(accepted)
                     .catch(() =>
                       setNotice("原请求仍不可核实；请保留编号，不重发。"),
                     )
@@ -460,9 +465,7 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
               </button>
             </>
           )}
-          <p>
-            自动刷新沿用既有日线 15:35（北京时间）策略；本表单不会改变周期策略。
-          </p>
+          <p>交易日北京时间 09:00 刷新三市目录；本表单不会改变周期策略。</p>
         </form>
       </CollectionColumns>
     </section>
@@ -512,7 +515,7 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
     return {
       row: {
         id: "tdx-roster-auto",
-        search: `${title} 15:35`,
+        search: `${title} 09:00`,
         cells: [
           title,
           <span>
@@ -525,10 +528,10 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
       refresh,
       detail: (
         <section aria-label="TDX 名册 周期详情">
-          <h3>{title} · 共享盘后刷新</h3>
+          <h3>{title} · 盘前目录刷新</h3>
           <p>
-            15:35 Asia/Shanghai
-            原有策略先刷新名册，再提交日线增量；名册不另设执行器或开关。
+            09:00 Asia/Shanghai 刷新三市行情目录。15:35
+            日线复用当日已完成的目录作业；错过早盘时先补目录。上市、停牌和正式更名以交易所对应日期的证据为准。
           </p>
           <button
             onClick={() =>

@@ -47,12 +47,19 @@ function fixture() {
     provider_requests: 2,
     steps: [],
   };
+  let submitted: typeof job | undefined;
   const transport: Transport = vi.fn(async (input, init) => {
     const url = String(input);
     const method = init?.method ?? "GET";
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ url, method, body });
-    if (method === "POST") return Response.json(job);
+    if (method === "POST") {
+      if (url.endsWith("/jobs")) {
+        submitted = { ...job, request_id: body.request_id, command: body };
+        return Response.json(submitted);
+      }
+      return Response.json(job);
+    }
     if (url.endsWith("/status"))
       return Response.json({
         enabled: true,
@@ -70,7 +77,10 @@ function fixture() {
       });
     if (url.endsWith("/summary")) return Response.json({ markets: [] });
     if (url.endsWith("/jobs")) return Response.json({ jobs: [job] });
-    if (url.includes("/jobs/")) return Response.json(job);
+    if (url.includes("/jobs/"))
+      return Response.json(
+        submitted && url.endsWith(submitted.request_id) ? submitted : job,
+      );
     if (url.endsWith("/strategy"))
       return Response.json({ enabled: false, worker_online: true });
     if (url.includes("/coverage?"))
@@ -198,10 +208,15 @@ it("submits on the actual HTTP LAN origin using secure random values and the aft
   expect(body.end).toBe("2026-11-11");
   expect(body.start).toBe("2026-10-28");
   expect(random).toHaveBeenCalledOnce();
+  const card = await screen.findByRole("button", {
+    name: new RegExp(body.request_id),
+  });
+  expect(navigate).not.toHaveBeenCalled();
+  fireEvent.click(card);
   await waitFor(() =>
     expect(navigate).toHaveBeenCalledWith(
       "collection",
-      expect.objectContaining({ job: identity, tab: "executions" }),
+      expect.objectContaining({ job: body.request_id, tab: "executions" }),
     ),
   );
 });
@@ -343,6 +358,14 @@ it("keeps an uncertain submission disabled and recalls the same request identity
     ).disabled,
   ).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "回查同一任务" }));
+  const recovered = (
+    base.calls.find((c) => c.method === "POST")!.body as { request_id: string }
+  ).request_id;
+  const card = await screen.findByRole("button", {
+    name: new RegExp(recovered),
+  });
+  expect(navigate).not.toHaveBeenCalled();
+  fireEvent.click(card);
   expect(navigate).toHaveBeenCalledWith(
     "collection",
     expect.objectContaining({

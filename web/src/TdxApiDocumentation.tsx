@@ -90,7 +90,7 @@ export function TdxApiDocumentation({
           ],
           [
             "GET /api/r5/tdx/daily/strategy；POST 同路径",
-            "交易日北京时间15:35采集一次，范围从当日往前14个自然日至当日，同批比对历史修订；POST体为enabled布尔值",
+            "交易日北京时间09:00刷新目录，15:35复用目录采集一次日线，范围从当日往前14个自然日至当日，同批比对历史修订；POST体为enabled布尔值",
             "名册刷新与日线共用此策略，不启动另一worker",
           ],
         ]}

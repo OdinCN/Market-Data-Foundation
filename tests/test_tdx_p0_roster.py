@@ -301,3 +301,14 @@ def test_coverage_can_prove_complete_and_respects_evidence_time_and_job_scope():
     assert report["complete"] is False
     assert report["markets"][2]["unknown"] == 1
     assert report["markets"][2]["failed"] == 0
+    # A closed exchange owes no bars even when its membership evidence is stale.
+    for m in members:
+        m["evidence"]["valid_through"] = "2026-11-11"
+    for c in snapshot["details"]["calendar"]:
+        c["is_open"] = False
+    closed = coverage(Store(), day, as_of=cutoff)
+    assert not closed["applicable"] and closed["missing"] == []
+    assert all(m["expected_trading_count"] == 0 for m in closed["markets"])
+    snapshot["details"]["calendar"].pop()
+    mixed = coverage(Store(), day, as_of=cutoff)
+    assert mixed["applicable"] and [m["market"] for m in mixed["missing"]] == [2]

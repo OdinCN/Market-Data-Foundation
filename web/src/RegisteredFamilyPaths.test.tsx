@@ -1,4 +1,5 @@
 import "./offlineTestSetup";
+import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   act,
@@ -27,24 +28,41 @@ const future: RuntimeFamily = {
   title: "未来登记族",
   Query: () => <p>未来登记族本地查询</p>,
   ApiHelp: () => <p>未来登记族 API 合同</p>,
-  Collection: ({ transport, navigate }) => (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        void transport("/fixture/future/jobs", { method: "POST" }).then(() =>
-          navigate("collection", {
-            asset: future.asset.identity,
-            asset_revision: "r1",
-            tab: "executions",
-            execution_asset: keyOf(future.asset),
-            job: id,
-          }),
-        );
-      }}
-    >
-      <button>提交未来族采集</button>
-    </form>
-  ),
+  Collection: function FutureCollection({ transport, navigate }) {
+    const [created, setCreated] = useState(false);
+    return (
+      <>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void transport("/fixture/future/jobs", { method: "POST" }).then(
+              () => setCreated(true),
+            );
+          }}
+        >
+          <button>提交未来族采集</button>
+        </form>
+        <aside aria-label="执行简报">
+          {created && (
+            <button
+              aria-current="true"
+              onClick={() =>
+                navigate("collection", {
+                  asset: future.asset.identity,
+                  asset_revision: "r1",
+                  tab: "executions",
+                  execution_asset: keyOf(future.asset),
+                  job: id,
+                })
+              }
+            >
+              {id}
+            </button>
+          )}
+        </aside>
+      </>
+    );
+  },
   ExecutionDetail: () => <p>未来登记族执行详情</p>,
   readExecutions: async () => [
     {
@@ -81,8 +99,7 @@ function nav(name: string) {
   );
 }
 async function setup(family: RuntimeFamily = TDX_FAMILY) {
-  if (family === TDX_ROSTER_FAMILY)
-    vi.spyOn(crypto, "randomUUID").mockReturnValue(id);
+  if (family !== future) vi.spyOn(crypto, "randomUUID").mockReturnValue(id);
   root = mkdtempSync(join(tmpdir(), "mdf-d01-family-path-"));
   const b = asgi("financial_manual", "d01_ui_exchange.py", { store_dir: root });
   for (const [name, capabilities] of [
@@ -264,6 +281,18 @@ it.each([TDX_FAMILY, future, TDX_ROSTER_FAMILY])(
       fireEvent.click(screen.getByRole("button", { name: "提交采集任务" }));
     } else
       fireEvent.click(screen.getByRole("button", { name: "提交未来族采集" }));
+    {
+      const briefs = screen.getByRole("complementary", { name: "执行简报" });
+      const card = await within(briefs).findByRole("button", {
+        name: new RegExp(id),
+        current: true,
+      });
+      expect(new URLSearchParams(location.hash.slice(1)).get("tab")).toBe(
+        "new",
+      );
+      expect(h.calls.filter((c) => c.method === "POST")).toHaveLength(1);
+      fireEvent.click(card);
+    }
     const table = await screen.findByRole("region", { name: "执行记录" });
     await screen.findByRole("button", { name: new RegExp(id) });
     expect(screen.getByLabelText("执行资产筛选")).toBeTruthy();
@@ -319,7 +348,7 @@ it.each([TDX_FAMILY, future, TDX_ROSTER_FAMILY])(
       family === TDX_FAMILY
         ? /交易日证据/
         : family === TDX_ROSTER_FAMILY
-          ? /15:35 Asia/
+          ? /09:00 Asia/
           : "未来登记族周期详情",
     );
     expect(screen.getAllByLabelText("搜索周期任务")).toHaveLength(1);

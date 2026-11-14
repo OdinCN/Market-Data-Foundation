@@ -16,3 +16,14 @@ export function rosterJobScope(job: TdxJob) {
         " A 股名册（来源目录快照）"
     : "来源目录快照（市场范围未留存）";
 }
+
+export function tdxBriefs(history: TdxJob[], receipt: TdxJob | null) {
+  const newest = [...history].sort((a, b) =>
+    b.created_at.localeCompare(a.created_at),
+  );
+  if (!receipt) return newest.slice(0, 5);
+  return [
+    newest.find((j) => j.request_id === receipt.request_id) ?? receipt,
+    ...newest.filter((j) => j.request_id !== receipt.request_id),
+  ].slice(0, 5);
+}

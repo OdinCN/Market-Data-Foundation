@@ -6,7 +6,7 @@ import {
   dailyRangeError,
   rangeWithDefaults,
 } from "./DailyFormControls";
-import { tdxJobOrigin, rosterJobScope } from "./tdxJobPresentation";
+import { tdxJobOrigin, rosterJobScope, tdxBriefs } from "./tdxJobPresentation";
 import { useEffect, useRef, useState } from "react";
 import type { FamilyProps, RuntimeFamily } from "./RuntimeFamily";
 import {
@@ -84,6 +84,16 @@ export function TdxDailyCollection({
     }),
     writing = useRef(false),
     intent = useRef<string | null>(null);
+  const [receipt, setReceipt] = useState<TdxJob | null>(null);
+  function accepted(job: TdxJob) {
+    if (!intent.current || job.request_id !== intent.current)
+      throw Error("request_identity_unconfirmed");
+    setReceipt(job);
+    intent.current = null;
+    setNotice("");
+    setConfirmed(false);
+    jobs.refresh();
+  }
   const status = useVisiblePolling(
     (signal) => tdxCall<Status>(transport, "/status", signal),
     [transport, generation],
@@ -137,10 +147,10 @@ export function TdxDailyCollection({
       schedule: null,
     });
   }
-  const recent = [...(jobs.data?.jobs ?? [])]
-    .filter((job) => job.command.action !== "universe")
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .slice(0, 5);
+  const recent = tdxBriefs(
+    (jobs.data?.jobs ?? []).filter((j) => j.command.action !== "universe"),
+    receipt,
+  );
   return (
     <section
       className="ordinary-query cpi-timeseries"
@@ -183,6 +193,7 @@ export function TdxDailyCollection({
                 <li key={j.request_id}>
                   <ExecutionBriefCard
                     id={j.request_id}
+                    current={j.request_id === receipt?.request_id}
                     title={`${title} · ${tdxJobOrigin(j)} · ${actionTitle(j)}`}
                     createdAt={j.created_at}
                     start={j.command.start}
@@ -226,7 +237,7 @@ export function TdxDailyCollection({
                     ...range,
                   },
                 );
-                open(job.request_id);
+                accepted(job);
               } catch {
                 setNotice("提交回执未核实，请回查同一任务；不会自动重试。");
               } finally {
@@ -306,7 +317,16 @@ export function TdxDailyCollection({
           </button>
           {notice && <p role="alert">{notice}</p>}
           {notice && (
-            <button type="button" onClick={() => open(intent.current!)}>
+            <button
+              type="button"
+              onClick={() =>
+                void tdxCall<TdxJob>(transport, "/jobs/" + intent.current)
+                  .then(accepted)
+                  .catch(() =>
+                    setNotice("原请求仍不可核实；请保留编号，不重发。"),
+                  )
+              }
+            >
               回查同一任务
             </button>
           )}
@@ -575,8 +595,9 @@ export const TDX_FAMILY: RuntimeFamily = {
           <p>
             策略{data.strategy.enabled ? "已启用" : "已暂停"}；执行器
             {data.strategy.worker_online ? "在线" : "离线"}。交易日北京时间
-            15:35 刷新名册后采集一次日线。采集范围从交易日往前 14
-            个自然日至当日，
+            15:35
+            复用早盘名册采集一次日线；当日目录尚未采集时先补目录。采集范围从交易日往前
+            14 个自然日至当日，
             同批比对历史数据，有变化才写入修订。失败可续跑，已成功的股票直接跳过。
           </p>
           <p>
