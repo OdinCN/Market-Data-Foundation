@@ -171,4 +171,6 @@ intent, while rejecting replacements, unrelated sources and duplicates.
 
 新增采集能力须登记实际用于目标选择/提交准入的 `collectionRegistry`（Macro 通过 `MACRO_PROFILES`，注册族通过 `RuntimeFamily.collection`）；读写准入仍以真实状态能力为准，缺失权限按未核实处理。无执行器的目录资产列在只读说明中，不借用其他族提交。
 
+TDX 日线查询沿用金融日频的本地优先语义。`DailyQuery` 只读本地发布；缺口通过同一绑定源的无留存读端临时补齐，不调用作业或入库端。18766 的 `--allow-tdx-source-query` 独立于采集权限；`local_only=true` 或显式 `as_of` 始终不补源。单日截面的 `total/offset/next_offset` 以已发布名册候选计数，可能出现空页，必须沿返回游标并固定 `snapshot_id`。临时值、未完成日 K、真实观测时间和缺口由结果表及原始响应共同展示，不计入本地 coverage。确定性回归见 `test_tdx_daily_query.py` / `TdxEphemeralQuery.test.tsx`；`web/scripts/check-tdx-query.mjs` 从交付目录进入，分别记录真实只读和显式模拟盘中，两者不可互相代替。
+
 `CollectionSubmitMatrix.test.tsx` 从上述产品注册和后端目录/包能力自动发现资产，以正常 App 入口、独立 ASGI 协议 fixture 检查成功、丢回执、关闭能力三种场景，要求每条登记路径都有完成证据。新协议只需增加隔离适配器，无需维护第二份资产名单。增加族的恢复操作时继续保留相应领域测试；矩阵不代替初始化范围、续跑或调度语义验收。

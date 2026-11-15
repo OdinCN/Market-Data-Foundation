@@ -559,7 +559,7 @@ function TdxStrategySwitch({
 export const TDX_FAMILY: RuntimeFamily = {
   collection: { protocol: "tdx", path: "/api/r5/tdx/daily/jobs" },
   asset: TDX_DAILY,
-  title,
+  title: "沪深北 A 股原生日线",
   Query: TdxDailyQuery,
   ApiHelp: TdxApiHelp,
   Collection: TdxDailyCollection,

@@ -494,14 +494,14 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
           )}
         </div>
 
-        <label>
+        <label className="cpi-history-toggle">
           <input
             type="checkbox"
             checked={history || localOnly}
             disabled={history}
             onChange={(e) => change(() => setLocalOnly(e.target.checked))}
           />
-          仅本地已保存数据（不补源）
+          <span>仅本地已保存数据（不补源）</span>
         </label>
         <HistoryCutoffFields
           enabled={history}

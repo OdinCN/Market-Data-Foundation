@@ -366,6 +366,20 @@ export function TdxApiDocumentation({
               "日期/整数/必填字段或时区无效",
               "使用含时区截止，检查必填值",
             ],
+            ...(!roster
+              ? [
+                  [
+                    "400 / tdx_query_stock_scope、tdx_query_snapshot_unavailable",
+                    "证券不属已绑定日线范围 / 指定名册不可读",
+                    "核对市场与代码；显式新查询选择当前名册，不暗换已固定的快照",
+                  ],
+                  [
+                    "200 / upstream.issues、query_coverage.missing",
+                    "缺数、来源失败、读取预算或当前观测未核实；已读值仍保留",
+                    "核对缺口与来源请求次数；再次查询取得新观测，不自动采集或用昨日替代",
+                  ],
+                ]
+              : []),
             [
               "403 / operator_not_authorized、tdx_capability_not_enabled",
               "DEV来源/授权/能力未开",
