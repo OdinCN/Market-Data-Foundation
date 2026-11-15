@@ -199,17 +199,34 @@ try {
     await dateField(current.page, "交易日", today);
     const body = await query(current);
     assert(body.rows.every((r) => r.trading_day === today));
-    if (
-      ["pre_open", "market_closed", "future_day"].includes(
-        body.query_coverage?.session,
-      )
-    ) {
+    assert.equal(body.query_mode, "local_first");
+    assert(
+      body.query_coverage,
+      "current query must report session and coverage",
+    );
+    const phase = body.query_coverage.session;
+    if (["pre_open", "market_closed", "future_day"].includes(phase)) {
       assert.equal(body.provider_requests, 0);
       assert.equal(body.rows.length, 0);
-    } else if (
-      body.rows.some((r) => r.origin === "upstream" && r.is_complete === false)
-    )
-      report.realIntraday = true;
+    } else {
+      assert(
+        body.rows.length > 0,
+        "open trading day requires actual current bars",
+      );
+      if (phase !== "after_close") {
+        assert(
+          body.rows.some(
+            (r) => r.origin === "upstream" && r.is_complete === false,
+          ),
+          "intraday requires a fresh unfinished observation, not held or absent data",
+        );
+        report.realIntraday = true;
+      } else
+        assert(
+          body.rows.some((r) => r.is_complete),
+          "after-close query requires an observed completed daily bar",
+        );
+    }
     await capture(current, body);
   } finally {
     await close(current);
