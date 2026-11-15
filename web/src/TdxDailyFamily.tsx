@@ -26,7 +26,7 @@ import { keyOf } from "./workflowModel";
 import { useVisiblePolling } from "./useVisiblePolling";
 import { Fact, Technical, WorkflowTable } from "./WorkflowTable";
 import { StrategySwitch } from "./StrategySwitch";
-const title = "沪深北 A 股盘后日线";
+const title = "沪深北 A 股原生日线";
 const exchanges = ["深市", "沪市", "北交所"];
 function actionTitle(job: TdxJob) {
   if (job.strategy_slot === "review") return "16:00 盘后复核（旧策略）";
@@ -559,7 +559,7 @@ function TdxStrategySwitch({
 export const TDX_FAMILY: RuntimeFamily = {
   collection: { protocol: "tdx", path: "/api/r5/tdx/daily/jobs" },
   asset: TDX_DAILY,
-  title: "沪深北 A 股原生日线",
+  title,
   Query: TdxDailyQuery,
   ApiHelp: TdxApiHelp,
   Collection: TdxDailyCollection,
