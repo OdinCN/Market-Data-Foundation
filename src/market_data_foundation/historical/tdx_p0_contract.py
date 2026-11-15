@@ -105,7 +105,13 @@ HELP = dict(
         "market": "optional integer 0=SZ, 1=SH, 2=BJ",
         "instrument": "optional six ASCII digits; requires market",
         "as_of": "aware ISO8601 with microseconds; MDF availability",
-        "local_only": "true only; default true; GET never acquires upstream",
+        "local_only": (
+            "false by default: local first, bound TDX ephemeral supplement; "
+            "true or as_of means local only"
+        ),
+        "snapshot_id": (
+            "optional published-roster identity for cross-section pagination"
+        ),
         "basis": "native_projection only; default native_projection",
         "period/security_type": "1d/stock only",
         "order": "asc or desc; default asc, history form explicitly desc",
@@ -114,9 +120,29 @@ HELP = dict(
     response_fields={
         "rows": "market/instrument/trading_day, integer OHLCV/amount, source/batch_id",
         "received_at/available_at": "actual receipt / confirmed local publication",
-        "total/next_offset": "count / next cursor or null; not universe coverage",
+        "total/next_offset": (
+            "rows for history/local mode; roster candidates for local-first "
+            "cross-section; never universe completeness"
+        ),
+        "pagination_basis/page_end_offset": (
+            "rows or roster_candidates; use returned cursor, including empty candidates"
+        ),
         "snapshot_id/membership": "base-roster identity / history qualification",
-        "provider_requests": "0 for all local GET reads",
+        "provider_requests": (
+            "actual Type9 operations sent this GET, including failed sent "
+            "requests; 0 for local-only/as_of"
+        ),
+        "rows[].origin/persisted/bar_state/is_complete": (
+            "local or upstream; ephemeral unfinished today / after-close "
+            "unpersisted; no final-publication assertion"
+        ),
+        "rows[].observed_at/available_at": (
+            "actual receipt clock / local publication; upstream available_at is null"
+        ),
+        "upstream/query_coverage": (
+            "classified partial failures, request budget and this query page; "
+            "distinct from persisted /coverage"
+        ),
         "source_event_time": "null; SDK date does not establish absolute source time",
     },
     errors={
@@ -158,9 +184,9 @@ HELP = dict(
         history=PREFIX
         + (
             "/query?market=1&instrument=600519&start=1990-01-01&end=2026-11-1"
-            "2&local_only=true&order=desc&limit=100"
+            "2&local_only=false&order=desc&limit=100"
         ),
-        cross_section=PREFIX + "/query?day=2026-11-12&local_only=true&limit=100",
+        cross_section=PREFIX + "/query?day=2026-11-12&local_only=false&limit=100",
         coverage=PREFIX + "/coverage?day=2026-11-12",
         job={
             "request_id": "8c9604c4-3281-4f14-9f08-939a7a362d11",
@@ -173,10 +199,43 @@ HELP = dict(
         strategy={"enabled": True},
     ),
     notes=[
+        (
+            "Queries require an independent --allow-tdx-source-query opt-in on "
+            "DEV 18766; collection permission and workers are unchanged."
+        ),
+        (
+            "Today is refreshed without a response cache during the unfinished "
+            "session, including lunch and closing-price trading until 15:30 "
+            "Beijing. Before 09:25 and on confirmed closed days no current bar "
+            "is fabricated."
+        ),
+        (
+            "Source receipt time is observed_at; SDK 15:00 is only a date "
+            "projection. Missing/failed upstream never becomes yesterday or a "
+            "zero bar."
+        ),
+        (
+            "Local-first cross-section pages process at most 100 published-"
+            "roster/local candidates; request/time bounds can shorten a page. "
+            "Follow next_offset and pin snapshot_id. total counts candidates, "
+            "not returned bars."
+        ),
+        (
+            "Historical single-stock source paging overlaps <=800 Type9 rows, "
+            "merges by date/market/code and preserves published local values. "
+            "Current unfinished values may temporarily supersede a held "
+            "intraday row without writing it."
+        ),
+        (
+            "Current queries are new observations, not an atomic historical "
+            "snapshot across pages; explicit as_of freezes only published local"
+            " versions. Query results never increase persisted coverage."
+        ),
         "历史日线可用 order=desc 按交易日倒序读取；省略时使用 asc。",
         (
-            "Queries are local only and perform zero source requests; local_o"
-            "nly=false is rejected."
+            "Local-first queries supplement only missing eligible dates from "
+            "the bound TDX source. GET never writes facts, raw files, rosters "
+            "or jobs. as_of and local_only=true are strictly local."
         ),
         (
             "as_of filters MDF actual version availability, never inferred hi"

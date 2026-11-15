@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -22,6 +23,7 @@ from market_data_foundation.historical.tdx_roster import published
 from market_data_foundation.storage.tdx_p0 import PgStore
 from market_data_foundation.web.gdp_api import body
 from market_data_foundation.web.pce_dev_host import admitted
+from market_data_foundation.web.tdx_daily_query import DailyQuery
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,7 @@ class TdxOptions:
     allow_read: bool = True
     origin: str = ORIGIN
     workers: int = 4
+    allow_source_query: bool = False
 
 
 def admitted_tdx_write(request, *, origin=ORIGIN):
@@ -55,7 +58,15 @@ def admitted_tdx_write(request, *, origin=ORIGIN):
 
 
 class DailyRuntime:
-    def __init__(self, options, store=None, source_factory=None):
+    def __init__(
+        self,
+        options,
+        store=None,
+        source_factory=None,
+        *,
+        query_source_factory=None,
+        query_clock=None,
+    ):
         self.options = options
         self.store = store or PgStore()
         self.jobs = DailyJobs(
@@ -71,6 +82,22 @@ class DailyRuntime:
                 )
             ),
             workers=options.workers,
+        )
+        self.query = DailyQuery(
+            self.store,
+            query_source_factory
+            or (
+                lambda: GoDailySource(
+                    options.binary,
+                    options.endpoint,
+                    None,
+                    live_opt_in=options.allow_source_query,
+                    retain_raw=False,
+                    timeout=5,
+                )
+            ),
+            allow_source=options.allow_source_query,
+            **({"clock": query_clock} if query_clock else {}),
         )
         self.strategy = DailyStrategy(
             self.jobs,
@@ -160,6 +187,15 @@ def tdx_router(runtime=None):
                 dataset_id=HELP["dataset_id"],
                 enabled=bool(runtime and runtime.options.allow_read),
                 collect=bool(runtime and runtime.options.allow_collect),
+                source_query=bool(runtime and runtime.options.allow_source_query),
+                query_defaults=dict(
+                    end=runtime.query.clock()
+                    .astimezone(ZoneInfo("Asia/Shanghai"))
+                    .date()
+                    .isoformat()
+                )
+                if runtime
+                else None,
                 defaults=dict(start="1990-01-01", end=latest_day().isoformat()),
                 price_basis="native_projection",
                 return_qualification="NOT_QUALIFIED",
@@ -206,6 +242,7 @@ def tdx_router(runtime=None):
                     "offset",
                     "limit",
                     "local_only",
+                    "snapshot_id",
                     "basis",
                     "period",
                     "security_type",
@@ -214,7 +251,7 @@ def tdx_router(runtime=None):
             )
             q = request.query_params
             require(
-                q.get("local_only", "true") == "true"
+                q.get("local_only", "false") in {"true", "false"}
                 and q.get("basis", "native_projection") == "native_projection"
                 and q.get("period", "1d") == "1d"
                 and q.get("security_type", "stock") == "stock",
@@ -227,7 +264,19 @@ def tdx_router(runtime=None):
                 and "end" in q,
                 "tdx_query_direction",
             )
-            return runtime.store.query(
+            if (
+                runtime.options.allow_source_query
+                and q.get("local_only", "false") == "false"
+                and "as_of" not in q
+                and (
+                    runtime.options.origin != ORIGIN
+                    or not admitted(request, origin=runtime.options.origin)
+                )
+            ):
+                raise TdxError("operator_not_authorized")
+            return runtime.query.query(
+                local_only=q.get("local_only", "false") == "true",
+                snapshot_id=q.get("snapshot_id"),
                 start=date.fromisoformat(q.get("day") or q["start"]),
                 end=date.fromisoformat(q.get("day") or q["end"]),
                 market=int(q["market"]) if "market" in q else None,

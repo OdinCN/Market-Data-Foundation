@@ -467,13 +467,13 @@ it("TDX keeps row paging usable while independent coverage is pending, and cance
   expect(screen.queryByText(/覆盖结论/)).toBeNull();
 });
 
-it("TDX uses the Beijing post-close boundary while status is pending", async () => {
+it("TDX offers the current Beijing query date while status is pending", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-11-12T16:20:00Z"));
   try {
     mountQuery("TDX", async () => new Promise<Response>(() => {}));
     expect((screen.getByLabelText("结束日期") as HTMLInputElement).value).toBe(
-      "2026-11-12",
+      "2026-11-13",
     );
     expect(
       (screen.getByRole("button", { name: "查询数据" }) as HTMLButtonElement)

@@ -293,6 +293,7 @@ class PgStore:
         offset=0,
         limit=100,
         order="asc",
+        snapshot_id=None,
     ):
         require(
             type(start) is date
@@ -337,7 +338,9 @@ class PgStore:
             "int IS NULL OR market=%(market)s) AND (%(instrument)s::text IS N"
             "ULL OR instrument=%(instrument)s)"
         )
-        snapshot = self.universe(as_of=cutoff, day=start if start == end else None)
+        snapshot = self.universe(
+            snapshot_id=snapshot_id, as_of=cutoff, day=start if start == end else None
+        )
         params["snapshot"] = (snapshot or {}).get("snapshot_id")
         scope += " AND " + member_scope(snapshot is not None)
         cte = visible_versions(scope)

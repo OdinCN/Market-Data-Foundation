@@ -153,6 +153,14 @@ def main():
     parser.add_argument("--tdx-endpoint")
     parser.add_argument("--allow-tdx-collect", action="store_true")
     parser.add_argument(
+        "--allow-tdx-source-query",
+        action="store_true",
+        help=(
+            "Opt in to ephemeral reads from the bound TDX source on DEV 18766; "
+            "never ingest"
+        ),
+    )
+    parser.add_argument(
         "--allow-unified-dev-macro-operations",
         action="store_true",
         help="Opt in to existing capability-gated Macro operations on TDX DEV 18766",
@@ -331,6 +339,12 @@ def main():
         )
     from market_data_foundation.web.worker_control import DevWorkerControl
 
+    require(
+        not args.allow_tdx_source_query
+        or args.tdx_state_directory is not None
+        and args.tdx_dev_port == 18766,
+        "tdx_source_query_dev_opt_in",
+    )
     tdx_runtime = None
     if args.tdx_state_directory:
         from market_data_foundation.web.tdx_daily_api import DailyRuntime, TdxOptions
@@ -347,6 +361,7 @@ def main():
                 args.allow_tdx_collect,
                 origin=f"http://192.168.10.20:{args.tdx_dev_port}",
                 workers=args.tdx_workers,
+                allow_source_query=args.allow_tdx_source_query,
             )
         )
     app = create_timeseries_preview(

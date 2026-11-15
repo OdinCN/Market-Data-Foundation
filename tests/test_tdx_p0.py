@@ -518,8 +518,11 @@ def test_local_query_and_help_no_source_effects_and_strict_parameters(tmp_path):
             client.get(PREFIX + "/query?day=2025-01-01").json()["provider_requests"]
             == 0
         )
+        fallback = client.get(PREFIX + "/query?day=2025-01-01&local_only=false")
+        assert fallback.status_code == 200
+        assert fallback.json()["provider_requests"] == 0
         assert (
-            client.get(PREFIX + "/query?day=2025-01-01&local_only=false").status_code
+            client.get(PREFIX + "/query?day=2025-01-01&local_only=invalid").status_code
             == 400
         )
         assert (

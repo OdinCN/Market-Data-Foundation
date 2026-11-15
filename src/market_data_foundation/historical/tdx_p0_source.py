@@ -123,19 +123,33 @@ def verify_wire(row):
 
 
 class GoDailySource:
-    def __init__(self, binary, endpoint, directory, *, live_opt_in=False, timeout=60):
+    def __init__(
+        self,
+        binary,
+        endpoint,
+        directory,
+        *,
+        live_opt_in=False,
+        timeout=60,
+        retain_raw=True,
+    ):
         require(live_opt_in is True, "tdx_live_opt_in_required")
+        require(
+            retain_raw is False or directory is not None, "tdx_raw_directory_required"
+        )
         self.binary = Path(binary)
         self.endpoint = endpoint
-        self.directory = Path(directory)
-        created = []
-        parent = self.directory
-        while not parent.exists():
-            created.append(parent)
-            parent = parent.parent
-        self.directory.mkdir(parents=True, exist_ok=True)
-        for parent in reversed(created):
-            sync_directory(parent.parent)
+        self.retain_raw = retain_raw
+        self.directory = Path(directory) if retain_raw else None
+        if self.directory is not None:
+            created = []
+            parent = self.directory
+            while not parent.exists():
+                created.append(parent)
+                parent = parent.parent
+            self.directory.mkdir(parents=True, exist_ok=True)
+            for parent in reversed(created):
+                sync_directory(parent.parent)
         self.timeout = timeout
         self.process = None
         self.requests = 0
@@ -222,9 +236,16 @@ class GoDailySource:
             self.requests += 1
             row = self._receive()
             raw = encoded(row)
-            path = self.directory / (request["id"] + ".json")
-            retain(path, raw)
-            outcome.update(path=str(path), sha256=sha256(raw).hexdigest(), row=row)
+            path = (
+                self.directory / (request["id"] + ".json") if self.directory else None
+            )
+            if path is not None:
+                retain(path, raw)
+            outcome.update(
+                path=str(path) if path else None,
+                sha256=sha256(raw).hexdigest(),
+                row=row,
+            )
             require(
                 row.get("request") == request
                 and row.get("sdk_release") == V100_DRIVER_SDK_RELEASE,
@@ -276,9 +297,13 @@ class GoDailySource:
             execute,
             allow_live=True,
         )
-        retain(
-            self.directory / (request["id"] + ".observation.json"), encoded(observation)
-        )
+        if self.directory is not None:
+            retain(
+                self.directory / (request["id"] + ".observation.json"),
+                encoded(observation),
+            )
+        else:
+            outcome["observation"] = observation
         if (
             not outcome.get("row")
             or outcome["row"].get("classification") != "retained_raw"

@@ -24,7 +24,7 @@ export function TdxApiDocumentation({
   );
   const query = roster
     ? `${prefix}/query?day=2026-11-12&market=2&search=920002&limit=100`
-    : `${prefix}/query?market=1&instrument=600519&start=2026-11-09&end=2026-11-12&order=desc&local_only=true&basis=native_projection&limit=100`;
+    : `${prefix}/query?market=1&instrument=600519&start=2026-11-09&end=2026-11-12&order=desc&local_only=false&basis=native_projection&limit=100`;
   return (
     <section
       aria-label={roster ? "TDX 名册 API说明" : "TDX API说明"}
@@ -34,7 +34,7 @@ export function TdxApiDocumentation({
       <p>
         {roster
           ? "独立基础名册：只读已发布快照，日线使用同一 snapshot_id。来源目录与交易所生命周期证据分别保留，不能用当前存续名册推造完整历史。"
-          : "证券历史与单日横截面共用本地查询；价基 native_projection，收益口径 NOT_QUALIFIED。所有 GET 均不触发来源请求或创建采集作业。"}
+          : "证券历史与单日横截面均本地优先，缺口仅向已绑定 TDX 源临时补查。GET 不入库、不留存原始响应、不创建作业；采集仍从正常入口提交。价基 native_projection，收益口径 NOT_QUALIFIED。"}
       </p>
       <CompactTable
         label="接口与方法"
@@ -48,7 +48,9 @@ export function TdxApiDocumentation({
           [
             "GET " + prefix + "/query",
             "分页 rows、total、next_offset",
-            "只读已发布本地版本",
+            roster
+              ? "只读已发布本地版本"
+              : "本地优先；临时值明确未入库、未完成及实际观测时间",
           ],
           ...(!roster
             ? [
@@ -151,13 +153,18 @@ export function TdxApiDocumentation({
                 ],
                 [
                   "local_only / basis",
-                  "否 / true、native_projection",
-                  "仅接受这两个值；拒绝联网查询、前后复权或其他价基",
+                  "否 / false、native_projection",
+                  "local_only=false 临时补缺；true或as_of强制本地。价基仅native_projection，不引入复权或收益假设",
                 ],
                 [
                   "period / security_type",
                   "否 / 1d、stock",
                   "仅支持A股原生日线，不映射宏观指标",
+                ],
+                [
+                  "snapshot_id",
+                  "否 / 首次选择",
+                  "截面翻页固定返回的发布名册；刷新查询重新选择。过期/未核实名册不证明全市场覆盖",
                 ],
                 [
                   "order",
@@ -167,7 +174,7 @@ export function TdxApiDocumentation({
                 [
                   "offset / limit",
                   "否 / 0、100",
-                  "offset≥0，limit=1..10000；按next_offset翻页，不再套一层客户端分页",
+                  "offset≥0，limit=1..10000；本地优先截面最多100候选/页，预算可缩短页；按next_offset继续，缺数不造行",
                 ],
               ]
         }
@@ -175,6 +182,11 @@ export function TdxApiDocumentation({
       <p>
         未知参数、重复参数和无效日期均拒绝。URL中的正时区加号应编码为%2B；页面请求预览与cURL会正确编码。
       </p>
+      {!roster && (
+        <p>
+          查询与采集解耦：仅查询当天无真实日K时返回缺口；盘前、休市、已确认停牌不使用昨日或合成零值。盘中重复查询实时更新临时值。as_of只代表本地确认可用截止，不能用现在补来的值回答过去。09:00名册/15:35日线计划保持不变。
+        </p>
+      )}
       <details open>
         <summary>返回字段、类型与单位</summary>
         <CompactTable
@@ -184,7 +196,9 @@ export function TdxApiDocumentation({
             [
               "rows / total / offset / next_offset",
               "object[] / integer / integer / integer|null",
-              "筛选后结果、总行数、当前偏移、下一页；空结果不代表采集完整",
+              roster
+                ? "筛选后结果、总行数、当前偏移、下一页；空结果不代表采集完整"
+                : "历史/仅本地为真实行数；本地优先截面total为候选数，rows仅含实际日K，缺数页也可有下一页",
             ],
             [
               "snapshot_id",
@@ -194,7 +208,9 @@ export function TdxApiDocumentation({
             [
               "provider_requests",
               "integer",
-              "本地读取固定0；采集作业另计真实来源请求",
+              roster
+                ? "本地读取固定0；采集作业另计真实来源请求"
+                : "本次真实发出的Type9请求数，包括已发出但失败的请求；as_of/仅本地固定0",
             ],
             ...(roster
               ? [
@@ -236,9 +252,19 @@ export function TdxApiDocumentation({
                     "交易日期、市场、六位代码；源事件绝对时点未知",
                   ],
                   [
-                    "rows[].received_at / available_at / batch_id / source",
-                    "ISO time / ISO time / string / string",
-                    "真实接收与PG发布可用时间、留存批次及具名来源；不是历史官方发布时间",
+                    "rows[].received_at / observed_at / available_at / batch_id / source",
+                    "ISO time / ISO time / ISO time|null / string|null / string",
+                    "观测时间为实际来源接收；临时值available_at/batch_id为null。只对本地已发布值给PG可用时间，不倒填发现或来源首发时间",
+                  ],
+                  [
+                    "rows[].origin / persisted / bar_state / is_complete",
+                    "string / boolean / string / boolean",
+                    "local本地已发布；upstream临时未入库。当天09:25起至15:30前含午休标记未完成；15:30后无本地值仍为临时盘后值，is_final不作保证",
+                  ],
+                  [
+                    "upstream / query_coverage / pagination_basis",
+                    "object / object / string",
+                    "来源缺数/失败/预算分类、本页真实覆盖与候选分页。独立/coverage仍只核对入库数据，不把临时行计为已采集",
                   ],
                   [
                     "price_basis / return_qualification / source_event_time",
@@ -265,7 +291,7 @@ export function TdxApiDocumentation({
           <CodeBlock
             label="截面与覆盖示例"
             copyLabel="复制截面与覆盖示例"
-            text={`${prefix}/query?day=2026-11-12&local_only=true&limit=100\n${prefix}/coverage?day=2026-11-12&offset=0&limit=100`}
+            text={`${prefix}/query?day=2026-11-16&local_only=false&limit=100\n${prefix}/coverage?day=2026-11-12&offset=0&limit=100`}
           />
         )}
         <CodeBlock

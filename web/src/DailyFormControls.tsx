@@ -161,6 +161,8 @@ export function QueryPagination({
   nextOffset,
   pending,
   onPage,
+  previousOffset,
+  rangeEnd,
 }: {
   label: string;
   offset: number;
@@ -169,18 +171,30 @@ export function QueryPagination({
   nextOffset: number | null;
   pending: boolean;
   onPage: (offset: number) => void;
+  previousOffset?: number;
+  rangeEnd?: number;
 }) {
   return (
     <div className="actions" aria-label={`${label} 结果分页`}>
       <button
         disabled={pending || offset === 0}
-        onClick={() => onPage(Math.max(0, offset - pageSize))}
+        onClick={() => onPage(previousOffset ?? Math.max(0, offset - pageSize))}
       >
         上一页
       </button>
       <span>
-        第 {Math.floor(offset / pageSize) + 1} /{" "}
-        {Math.max(1, Math.ceil(total / pageSize))} 页，每页最多 {pageSize} 条
+        {rangeEnd !== undefined ? (
+          <>
+            候选 {rangeEnd > offset ? offset + 1 : offset}–{rangeEnd} / {total}
+            ，缺数不生成日K
+          </>
+        ) : (
+          <>
+            第 {Math.floor(offset / pageSize) + 1} /{" "}
+            {Math.max(1, Math.ceil(total / pageSize))} 页，每页最多 {pageSize}{" "}
+            条
+          </>
+        )}
       </span>
       <button
         disabled={pending || nextOffset === null}

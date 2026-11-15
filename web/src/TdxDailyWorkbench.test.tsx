@@ -351,6 +351,7 @@ it("keeps an uncertain submission disabled and recalls the same request identity
       (screen.getByLabelText("采集结束日期") as HTMLInputElement).value,
     ).toBe("2026-11-11"),
   );
+  await act(async () => {});
   fireEvent.click(
     screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
   );

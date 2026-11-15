@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Transport } from "./api";
 import type { FamilyProps } from "./RuntimeFamily";
 import {
+  beijingToday,
   formatBeijingTime,
   toBeijingIso,
   beijingInstantKey,
@@ -67,7 +68,14 @@ type Bar = {
   volume: number;
   amount: number;
   received_at: string;
-  available_at: string;
+  available_at: string | null;
+  observed_at?: string;
+  origin?: "local" | "upstream";
+  persisted?: boolean;
+  is_complete?: boolean;
+  bar_state?: string;
+  source?: string;
+  source_binding?: string;
 };
 type Market = {
   market: number;
@@ -94,6 +102,22 @@ type Result = {
   next_offset: number | null;
   as_of: string;
   provider_requests: number;
+  queried_at?: string;
+  snapshot_id?: string | null;
+  pagination_basis?: "rows" | "roster_candidates";
+  page_end_offset?: number;
+  upstream?: {
+    issues: { classification: string }[];
+    attempted_operations: number;
+  };
+  query_coverage?: {
+    page_candidates: number;
+    missing_count: number;
+    temporary_rows: number;
+    unfinished_rows: number;
+    session: string;
+    roster: { state: string };
+  };
 };
 type Coverage = {
   applicable?: boolean;
@@ -155,13 +179,25 @@ export function tdxLatestClosedDay() {
         .slice(0, 10);
 }
 
+function collectionNotDue(end: string, result: Result) {
+  const cutoff = toBeijingIso(result.as_of);
+  return (
+    result.query_coverage?.session !== "market_closed" &&
+    (end > cutoff.slice(0, 10) ||
+      (end === cutoff.slice(0, 10) && cutoff.slice(11, 16) < "15:35"))
+  );
+}
+
 export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
   const initialAsOf = route.fields.get("as_of") ?? "";
   const [direction, setDirection] = useState("history"),
     [market, setMarket] = useState("1"),
     [instrument, setInstrument] = useState("600519");
   const [start, setStart] = useState("1990-01-01"),
-    [end, setEnd] = useState(tdxLatestClosedDay);
+    [end, setEnd] = useState(beijingToday);
+  const [localOnly, setLocalOnly] = useState(false);
+  const querySnapshot = useRef<string | null>(null);
+  const previousPages = useRef(new Map<number, number>());
   const [history, setHistory] = useState(Boolean(initialAsOf)),
     [cutoff, setCutoff] = useState(
       toBeijingIso(initialAsOf).replace(/\+08:00$/, "") || initialAsOf,
@@ -192,15 +228,19 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
   );
   const status = useVisiblePolling(
     (signal) =>
-      tdxCall<{ defaults: { end: string } }>(transport, "/status", signal),
+      tdxCall<{ defaults: { end: string }; query_defaults?: { end: string } }>(
+        transport,
+        "/status",
+        signal,
+      ),
     [transport, generation],
     true,
     () => true,
     false,
   );
   useEffect(() => {
-    if (status.data?.defaults.end && !editedEnd.current)
-      setEnd(status.data.defaults.end);
+    const end = status.data?.query_defaults?.end ?? status.data?.defaults.end;
+    if (end && !editedEnd.current) setEnd(end);
   }, [status.data]);
   useEffect(
     () => () => {
@@ -210,6 +250,8 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
     [],
   );
   function change(edit: () => void) {
+    querySnapshot.current = null;
+    previousPages.current.clear();
     active.current?.abort();
     coverageActive.current?.abort();
     active.current = null;
@@ -243,9 +285,9 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
         /^[0-9]{6}$/.test(instrument) &&
         market !== "all")) &&
     (!history || !!asOf);
-  function queryPath(nextOffset = offset) {
+  function queryPath(nextOffset = offset, paging = false) {
     const q = new URLSearchParams({
-      local_only: "true",
+      local_only: String(history || localOnly),
       basis: "native_projection",
       limit: "100",
       offset: String(nextOffset),
@@ -261,6 +303,8 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
       if (market !== "all") q.set("market", market);
     }
     if (history) q.set("as_of", asOf);
+    if ((nextOffset > 0 || paging) && querySnapshot.current)
+      q.set("snapshot_id", querySnapshot.current);
     return prefix + "/query?" + q;
   }
   function coveragePath(nextOffset = 0) {
@@ -274,7 +318,7 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
       })
     );
   }
-  async function read(nextOffset = 0) {
+  async function read(nextOffset = 0, paging = false) {
     if (!valid || active.current) return;
     editedEnd.current = true;
     const controller = new AbortController();
@@ -284,7 +328,9 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
     setResult(null);
     setExchange(null);
     setOffset(nextOffset);
-    if (nextOffset === 0) {
+    if (nextOffset === 0 && !paging) {
+      querySnapshot.current = null;
+      previousPages.current.clear();
       coverageActive.current?.abort();
       coverageActive.current = null;
       setCoverage(null);
@@ -294,7 +340,7 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
     try {
       const rows = await requestCpiJson<Result>(
         transport,
-        queryPath(nextOffset),
+        queryPath(nextOffset, paging),
         { signal: controller.signal },
         60000,
         (x) => {
@@ -304,20 +350,28 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
       );
       if (
         !Array.isArray(rows.rows) ||
-        rows.provider_requests !== 0 ||
+        !Number.isInteger(rows.provider_requests) ||
+        rows.provider_requests < 0 ||
+        ((history || localOnly) &&
+          (rows.provider_requests !== 0 ||
+            rows.rows.some((r) => r.origin === "upstream"))) ||
         !Number.isInteger(rows.total) ||
         !beijingInstantKey(rows.as_of) ||
         (history && beijingInstantKey(rows.as_of) !== beijingInstantKey(asOf))
       )
-        throw Error("tdx_local_query_contract");
+        throw Error("tdx_query_contract");
       if (active.current !== controller || controller.signal.aborted) return;
+      querySnapshot.current = rows.snapshot_id ?? null;
+      if (rows.next_offset !== null)
+        previousPages.current.set(rows.next_offset, nextOffset);
       setResult(rows);
       // Coverage is a separate local read. A slow reconciliation must not
       // hold returned rows or their pager, nor restart when rows are paged.
-      if (nextOffset === 0) void readCoverage(0);
+      if (nextOffset === 0 && !collectionNotDue(end, rows))
+        void readCoverage(0);
     } catch {
       if (active.current === controller && !controller.signal.aborted)
-        setError("本次查询结果尚未核实，请核实本地服务后重新查询。");
+        setError("本次查询结果尚未核实，请核实服务或来源状态后重新查询。");
     } finally {
       if (active.current === controller) {
         active.current = null;
@@ -352,7 +406,9 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
   return (
     <div className="tdx-daily-workbench">
       <p className="muted">
-        仅查询本地已保存日线，不访问上游、不保存。原生价基（native_projection）；价格与金额按千分之一元保存，成交量为手，收益口径待核验。
+        本地优先，范围缺口仅临时向已绑定 TDX
+        源补查，不入库、不创建采集作业。当天盘中、午休及收盘价交易阶段返回实际观测到的未完成日K，15:30
+        后未入库值仍标为临时；无真实日K不会用昨日或零值代替。原生价基（native_projection），价格与金额单位千分之一元，成交量为手，收益口径待核验。
       </p>
       <form
         onSubmit={(e) => {
@@ -438,6 +494,15 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
           )}
         </div>
 
+        <label>
+          <input
+            type="checkbox"
+            checked={history || localOnly}
+            disabled={history}
+            onChange={(e) => change(() => setLocalOnly(e.target.checked))}
+          />
+          仅本地已保存数据（不补源）
+        </label>
         <HistoryCutoffFields
           enabled={history}
           value={cutoff}
@@ -496,7 +561,7 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
           </>
         )}
       </LocalQuerySummary>
-      {busy && <p role="status">正在读取本地日线…</p>}
+      {busy && <p role="status">正在查询日线…</p>}
       {coverageBusy && (
         <p role="status">正在读取覆盖证据；已有日线可继续查看与翻页。</p>
       )}
@@ -515,9 +580,46 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
         {result && (
           <>
             <p>
-              共 {result.total} 根；来源请求 {result.provider_requests} 次。截止{" "}
+              {result.pagination_basis === "roster_candidates"
+                ? `共 ${result.total} 个名册/本地候选，本页 ${result.rows.length} 根真实日K`
+                : `共 ${result.total} 根`}
+              ；来源请求 {result.provider_requests} 次。 本地读取截止{" "}
               {formatBeijingTime(result.as_of)}。
+              {result.queried_at &&
+                ` 查询完成 ${formatBeijingTime(result.queried_at)}。`}
             </p>
+            {result.upstream?.issues.length ? (
+              <p role="alert">
+                临时补查部分未完成：
+                {result.upstream.issues.map((i) => i.classification).join("、")}
+                。已读本地值保留；未入库值不计入持有覆盖。
+              </p>
+            ) : null}
+            {result.query_coverage && (
+              <p role="status">
+                本次查询缺口 {result.query_coverage.missing_count} 项；临时日K{" "}
+                {result.query_coverage.temporary_rows} 根，未完成{" "}
+                {result.query_coverage.unfinished_rows} 根。 名册状态{" "}
+                {result.query_coverage.roster.state}
+                ；当前阶段{" "}
+                {(
+                  {
+                    pre_open: "盘前",
+                    opening_auction: "开盘集合竞价",
+                    morning: "上午交易",
+                    lunch_break: "午休（当日日K仍未完成）",
+                    afternoon: "下午交易",
+                    closing_price_session: "收盘价交易阶段（当日日K仍未完成）",
+                    after_close: "盘后",
+                    historical: "历史日期",
+                    future_day: "未来日期",
+                    market_closed: "休市/非交易日",
+                  } as Record<string, string>
+                )[result.query_coverage.session] ??
+                  result.query_coverage.session}
+                ；本页结果不证明三市全量覆盖。
+              </p>
+            )}
             <WorkflowTable
               singlePane
               label="日线结果"
@@ -532,7 +634,9 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
                 "收盘",
                 "成交量（手）",
                 "成交额（元）",
-                "可用时间（北京时间）",
+                "来源 / 状态",
+                "来源观测（北京时间）",
+                "本地可用时间（北京时间）",
               ]}
               rows={result.rows.map((b) => ({
                 id: `${b.market}:${b.instrument}:${b.trading_day}`,
@@ -547,21 +651,34 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
                   (b.close / 1000).toFixed(3),
                   b.volume,
                   (b.amount / 1000).toFixed(3),
-                  formatBeijingTime(b.available_at),
+                  `${b.origin === "upstream" ? "临时 TDX（未入库）" : "本地已发布"} · ${b.is_complete === false ? "未完成日K" : b.origin === "upstream" ? "已收盘日K" : "已保存日K"}${b.source ? ` · ${b.source}` : ""}`,
+                  formatBeijingTime(b.observed_at ?? b.received_at),
+                  b.origin === "upstream"
+                    ? "未入库，无本地可用时间"
+                    : formatBeijingTime(b.available_at),
                 ],
               }))}
               onSelect={() => {}}
             />
             <QueryPagination
               label="TDX 日线"
+              previousOffset={previousPages.current.get(offset)}
+              rangeEnd={
+                result.pagination_basis === "roster_candidates"
+                  ? result.page_end_offset
+                  : undefined
+              }
               offset={offset}
               total={result.total}
               pageSize={100}
               nextOffset={result.next_offset}
               pending={busy}
-              onPage={(value) => void read(value)}
+              onPage={(value) => void read(value, true)}
             />
           </>
+        )}
+        {result && collectionNotDue(end, result) && (
+          <p>所选日期尚未到 15:35 盘后采集时间。</p>
         )}
         {coverageError && (
           <p role="alert">覆盖证据读取失败，已有日线保留；未据此判定完整。</p>
@@ -572,7 +689,7 @@ export function TdxDailyQuery({ transport, generation, route }: FamilyProps) {
         {coverage && coverage.applicable !== false && (
           <>
             <p>
-              按结束日期的有效期名册与交易日证据对账，未解决{" "}
+              以下仅核对本地已入库覆盖（临时查询值不计入）：按结束日期的有效期名册与交易日证据对账，未解决{" "}
               {coverage.missing_total} 项。覆盖结论：
               {coverage.complete ? "完整" : "部分或证据不足"}
               。缺少的历史成员和停牌证据单列未知。

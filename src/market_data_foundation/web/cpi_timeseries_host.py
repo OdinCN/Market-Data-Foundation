@@ -108,7 +108,23 @@ class TimeSeriesPackages(PackageHost):
                                     reasons=["tdx_resident_executor_observed"],
                                 ),
                                 "upstream_read": Eligibility(
-                                    allowed=False, reasons=["tdx_queries_local_only"]
+                                    allowed=bool(
+                                        tdx
+                                        and tdx.options.allow_read
+                                        and tdx.options.allow_source_query
+                                        and tdx.options.origin
+                                        == "http://192.168.10.20:18766"
+                                        and revision.definition_ref.identity
+                                        == "mdf.market.tdx.stock.daily.native"
+                                    ),
+                                    reasons=[
+                                        "tdx_ephemeral_source_query_opt_in"
+                                        if tdx
+                                        and tdx.options.allow_source_query
+                                        and revision.definition_ref.identity
+                                        == "mdf.market.tdx.stock.daily.native"
+                                        else "tdx_queries_local_only"
+                                    ],
                                 ),
                             }
                         )
