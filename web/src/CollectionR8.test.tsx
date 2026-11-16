@@ -452,17 +452,30 @@ it.each(["lost", "late"])(
       return response;
     };
     let view = open(transport, {
+      tab: "executions",
       asset: CPI.identity,
       asset_revision: CPI.revision,
       operation: MANUAL_OPERATION,
       job: parent,
-      mode: "backfill",
     });
-    await waitFor(() =>
-      expect(
-        (screen.getByLabelText("开始参考月") as HTMLInputElement).value,
-      ).toBe("2026-09"),
+    // Start from the loaded failed job so its source cannot change underneath confirmation.
+    fireEvent.click(
+      await screen.findByRole("button", { name: "指定范围回补 →" }),
     );
+    await waitFor(() => {
+      const parentField = screen.getByLabelText(
+        "关联失败 / 异常执行",
+      ) as HTMLSelectElement;
+      expect(parentField.value).toBe(parent);
+      for (const label of ["开始参考月", "结束参考月"])
+        expect((screen.getByLabelText(label) as HTMLInputElement).value).toBe(
+          "2026-09",
+        );
+      expect(
+        parentField.closest("form")?.querySelector("p.availability"),
+      ).toBeNull();
+    });
+    await act(async () => {});
     fireEvent.click(screen.getByRole("checkbox"));
     await waitFor(() => expect(button("创建采集任务").disabled).toBe(false));
     fireEvent.click(button("创建采集任务"));
