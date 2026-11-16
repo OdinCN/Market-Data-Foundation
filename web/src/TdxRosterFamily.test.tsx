@@ -8,17 +8,28 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import App from "./App";
 import type { FamilyProps } from "./RuntimeFamily";
 import type { Transport } from "./api";
 import { TdxRosterQuery, TDX_ROSTER_FAMILY } from "./TdxRosterFamily";
 import { TdxApiDocumentation } from "./TdxApiDocumentation";
+import { keyOf } from "./workflowModel";
+import { asgi, closeBridges } from "./workflowTestBridge";
 const props: Omit<FamilyProps, "transport"> = {
   route: { view: "assets", invalid: false, fields: new URLSearchParams() },
   navigate: vi.fn(),
   generation: 0,
 };
+let root = "";
 afterEach(() => {
   cleanup();
+  closeBridges();
+  if (root) rmSync(root, { recursive: true, force: true });
+  root = "";
+  location.hash = "";
   sessionStorage.clear();
   vi.restoreAllMocks();
 });
@@ -175,7 +186,97 @@ it("recalls the original roster UUID after a lost write and prevents duplicate d
   expect(calls.some((c) => c.path.endsWith("/jobs/" + id))).toBe(true);
 });
 
-it("opens roster refresh from periodic facts through the normal new collection route", () => {
+it("opens roster refresh from the shared workbench periodic tab without writing or losing the asset revision", async () => {
+  // Provision only isolated package configuration before rendering. Every request
+  // made by the actual App navigation below must remain a read.
+  root = mkdtempSync(join(tmpdir(), "mdf-d01-roster-entry-"));
+  const directory = asgi("financial_manual", "d01_ui_exchange.py", {
+    store_dir: root,
+  });
+  const configured = await directory.exchange({
+    method: "PUT",
+    path: "/api/r5/packages/tdx",
+    body: {
+      expected_revision: null,
+      enabled_capability_ids: ["stock_roster"],
+      source_changes: [],
+    },
+  });
+  expect(configured.status).toBe(200);
+  const backend = asgi("roster", "collection_submit_fixture.py");
+  const calls: { path: string; method: string }[] = [];
+  const transport: Transport = async (input, init) => {
+    const path = String(input),
+      method = init?.method ?? "GET";
+    calls.push({ path, method });
+    if (method !== "GET") throw Error("navigation_must_not_write");
+    if (/^\/api\/r5\/(packages|sources)(?:\/|\?|$)/.test(path))
+      return directory.transport(input, init);
+    if (
+      path.startsWith("/api/r5/tdx/roster/") ||
+      path === "/api/r5/tdx/daily/strategy"
+    )
+      return backend.transport(input, init);
+    return Response.json({ classification: "not_enabled" }, { status: 404 });
+  };
+  location.hash = new URLSearchParams({
+    ui: "r5",
+    view: "collection",
+    tab: "periodic",
+    periodic_asset: keyOf(TDX_ROSTER_FAMILY.asset),
+  }).toString();
+  render(<App transport={transport} />);
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: /选择 沪深北 A 股基础名册/,
+    }),
+  );
+  const detail = await screen.findByRole("region", {
+    name: "TDX 名册 周期详情",
+  });
+  expect(within(detail).queryByRole("button", { name: /新建/ })).toBeNull();
+  expect(
+    screen.getByLabelText("周期操作").getAttribute("data-periodic-id"),
+  ).toBe("tdx-roster-auto");
+  fireEvent.click(screen.getByRole("tab", { name: "新建采集" }));
+
+  const form = await screen.findByRole("region", {
+    name: "TDX 基础名册 刷新",
+  });
+  const route = new URLSearchParams(location.hash.slice(1));
+  expect(route.get("view")).toBe("collection");
+  expect(route.get("tab")).toBe("new");
+  expect(route.get("asset")).toBe(TDX_ROSTER_FAMILY.asset.identity);
+  expect(route.get("asset_revision")).toBe(TDX_ROSTER_FAMILY.asset.revision);
+  expect(
+    screen.getByRole("tab", { name: "新建采集" }).getAttribute("aria-selected"),
+  ).toBe("true");
+  expect((screen.getByLabelText("采集目标") as HTMLSelectElement).value).toBe(
+    keyOf(TDX_ROSTER_FAMILY.asset),
+  );
+  expect(
+    (within(form).getByLabelText("采集方式") as HTMLSelectElement).value,
+  ).toBe("refresh");
+  expect(screen.queryByLabelText("采集开始日期")).toBeNull();
+  const confirm = within(form).getByRole("checkbox", {
+    name: "我确认刷新三市名册到开发测试库",
+  }) as HTMLInputElement;
+  const submit = within(form).getByRole("button", {
+    name: "提交采集任务",
+  }) as HTMLButtonElement;
+  expect(confirm.checked).toBe(false);
+  expect(submit.disabled).toBe(true);
+  fireEvent.click(confirm);
+  await waitFor(() => expect(submit.disabled).toBe(false));
+  expect(calls.some((c) => c.path === "/api/r5/tdx/roster/status")).toBe(true);
+  expect(calls.some((c) => c.path === "/api/r5/tdx/roster/jobs")).toBe(true);
+  expect(calls.every((c) => c.method === "GET")).toBe(true);
+  expect(
+    (await backend.exchange({ path: "/api/r5/tdx/roster/jobs" })).body.jobs,
+  ).toEqual([]);
+});
+
+it("keeps the roster periodic domain detail free of duplicate collection navigation", () => {
   const navigate = vi.fn();
   const entry = TDX_ROSTER_FAMILY.periodic(
     { enabled: true, worker_online: true },
@@ -183,15 +284,10 @@ it("opens roster refresh from periodic facts through the normal new collection r
     vi.fn(),
   );
   render(<>{entry.detail}</>);
-  fireEvent.click(screen.getByRole("button", { name: "新建名册刷新" }));
-  expect(navigate).toHaveBeenCalledWith(
-    "collection",
-    expect.objectContaining({
-      tab: "new",
-      asset: "mdf.market.tdx.stock.roster",
-      asset_revision: "r1",
-    }),
-  );
+  const detail = screen.getByRole("region", { name: "TDX 名册 周期详情" });
+  expect(within(detail).queryByRole("button", { name: /新建/ })).toBeNull();
+  expect(within(detail).queryByRole("tab", { name: "新建采集" })).toBeNull();
+  expect(navigate).not.toHaveBeenCalled();
 });
 
 it("uses recorded markets for historical roster jobs instead of the shared daily date window", async () => {
