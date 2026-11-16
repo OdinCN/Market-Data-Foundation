@@ -399,7 +399,7 @@ try {
           });
           assert.equal(enabled.status, 200);
         }
-        let posted = false,
+        let writeStarted = false,
           allowRead = !lost;
         const calls = [];
         await page.route("**/*", async (route) => {
@@ -444,8 +444,9 @@ try {
             assert.equal(method, "GET");
             out = await directory.exchange(call);
           } else if (url.pathname.startsWith(row.path.replace(/\/jobs$/, ""))) {
+            if (method === "POST") writeStarted = true;
             if (
-              posted &&
+              writeStarted &&
               !allowRead &&
               method === "GET" &&
               url.pathname.includes("/jobs")
@@ -466,10 +467,13 @@ try {
             out = { status: 404, body: { classification: "not_enabled" } };
           }
           call.status = out.status;
-          if (method === "POST" && out.status >= 200 && out.status < 300) {
-            posted = true;
-            if (lost) return route.abort("failed");
-          }
+          if (
+            lost &&
+            method === "POST" &&
+            out.status >= 200 &&
+            out.status < 300
+          )
+            return route.abort("failed");
           const send = () =>
             route.fulfill({ status: out.status, json: out.body });
           if (method === "GET" && pause.once && url.pathname === pause.path) {
@@ -536,9 +540,23 @@ try {
           await input.blur();
         }
         await form.getByRole("checkbox").check();
+        const lostReceipt = lost
+          ? page.waitForEvent("requestfailed", {
+              predicate: (req) =>
+                req.method() === "POST" &&
+                new URL(req.url()).pathname === row.path,
+            })
+          : null;
         await submit.click();
         const briefs = page.getByRole("complementary", { name: "执行简报" });
         if (lost) {
+          // A pending card can render before the POST reaches the job router.
+          // Reload only after the router accepted the job and the browser lost its receipt.
+          await lostReceipt;
+          const accepted = calls.find(
+            (c) => c.method === "POST" && c.path === row.path,
+          );
+          assert(accepted && accepted.status >= 200 && accepted.status < 300);
           const recall = page.getByRole("button", {
             name: "核实原请求",
           });
