@@ -875,7 +875,7 @@ it.each(["accepted", "lost-after-write", "lost-before-write"] as const)(
     ).findByRole("button", { name: /选择 .*失败/ });
     fireEvent.click(row);
     expect(screen.getByText(plan)).toBeTruthy();
-    fireEvent.click(btn("查看周期任务 →"));
+    fireEvent.click(btn("查看周期任务"));
     expect(new URLSearchParams(location.hash.slice(1)).get("schedule")).toBe(
       plan,
     );
@@ -1323,6 +1323,26 @@ it.each(["periodic", "executions"])(
       await screen.findByRole("heading", { name: "执行详情" });
     }
     expect(await screen.findByText("f2-plan")).toBeTruthy();
+    const originalId = new URLSearchParams(location.hash.slice(1)).get("job");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "查看周期任务" }),
+    );
+    await waitFor(() => {
+      const selected = screen
+        .getByRole("region", { name: "周期任务" })
+        .querySelector('tr[aria-selected="true"]');
+      expect(selected?.getAttribute("data-record-id")).toBe("f2-plan");
+      expect(new URLSearchParams(location.hash.slice(1)).get("job")).toBe(
+        originalId,
+      );
+    });
+    fireEvent.click(screen.getByRole("button", { name: "返回此执行记录" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("region", { name: "执行详情主体" }).dataset
+          .executionId,
+      ).toBe(originalId),
+    );
     fireEvent.click(btn("查看资产数据"));
     await screen.findByRole("heading", { name: "美国 CPI" });
     expect(new URLSearchParams(location.hash.slice(1)).get("asset")).toBe(

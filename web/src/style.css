@@ -2057,6 +2057,8 @@ button.strategy-switch::before {
 }
 .execution-brief > .execution-brief-card {
   width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .collection-fields > button {

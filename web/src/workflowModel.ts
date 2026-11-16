@@ -469,7 +469,16 @@ export function executions(jobs: Job[], plans: Plans | null): Execution[] {
       })),
     ),
   );
-  const byId = new Map<string, Execution>(children.map((c) => [c.id, c]));
+  const byId = new Map<string, Execution>();
+  for (const child of children) {
+    const previous = byId.get(child.id);
+    byId.set(
+      child.id,
+      previous && previous.schedule !== child.schedule
+        ? { ...previous, schedule: null }
+        : child,
+    );
+  }
   for (const j of jobs)
     byId.set(j.job_identity, {
       id: j.job_identity,

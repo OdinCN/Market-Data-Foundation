@@ -469,7 +469,8 @@ export function TdxExecutionDetail({
         id={job.request_id}
         assetKey={keyOf(familyAsset)}
         asset={familyTitle}
-        source={`TDX · ${tdxJobOrigin(job)}`}
+        source="TDX"
+        trigger={tdxJobOrigin(job)}
         action={actionTitle(job)}
         start={job.command.start}
         end={job.command.end}
@@ -488,20 +489,6 @@ export function TdxExecutionDetail({
             job: job.request_id,
             package: null,
           })
-        }
-        onPeriodic={
-          job.origin === "periodic"
-            ? () =>
-                navigate("collection", {
-                  ...fields,
-                  tab: "periodic",
-                  job: job.request_id,
-                  periodic_asset: keyOf(familyAsset),
-                  schedule: apiPrefix.endsWith("/roster")
-                    ? "tdx-roster-auto"
-                    : "tdx-daily-auto",
-                })
-            : undefined
         }
         onResume={
           !["COMPLETE", "RUNNING", "QUEUED"].includes(job.state) &&
@@ -542,8 +529,9 @@ export function TdxExecutionDetail({
             ? "按原请求恢复名册刷新"
             : "续跑未完成分片"
         }
+        confirmResume
         actionsDisabled={
-          busy || detail.stale || !status.data?.collect || status.stale
+          busy || detail.stale || status.data?.collect !== true || status.stale
         }
       >
         {detail.failure && <p role="alert">执行详情已陈旧，请重读核实。</p>}
@@ -645,6 +633,7 @@ function TdxStrategySwitch({
 export const TDX_FAMILY: RuntimeFamily = {
   collection: {
     protocol: "tdx",
+    strategy: { id: strategyId, path: "/api/r5/tdx/daily/strategy" },
     path: "/api/r5/tdx/daily/jobs",
     resumePath: "/api/r5/tdx/daily/jobs/resume",
   },
@@ -665,8 +654,9 @@ export const TDX_FAMILY: RuntimeFamily = {
       .map((j) => ({
         id: j.request_id,
         createdAt: j.created_at,
-        title: `${title} · ${actionTitle(j)}`,
-        search: `${title} ${j.request_id} ${actionTitle(j)} ${tdxStateLabel[j.state] ?? j.state}`,
+        title: `${title} · ${tdxJobOrigin(j)} · ${actionTitle(j)}`,
+        schedule: j.origin === "periodic" ? strategyId : undefined,
+        search: `${title} ${j.request_id} ${tdxJobOrigin(j)} ${actionTitle(j)} ${tdxStateLabel[j.state] ?? j.state}`,
         start: j.command.start ?? "三市名册",
         end: j.command.end ?? "提交时点",
         result: `${tdxStateLabel[j.state] ?? j.state} · 完成分片 ${j.complete_steps ?? "未记录"}/${j.step_count ?? "未记录"} · 来源请求 ${j.provider_requests}`,
@@ -677,6 +667,11 @@ export const TDX_FAMILY: RuntimeFamily = {
       tdxCall<Strategy>(transport, "/strategy", signal),
       tdxCall<Status>(transport, "/status", signal),
     ]);
+    if (
+      typeof strategy.enabled !== "boolean" ||
+      typeof strategy.worker_online !== "boolean"
+    )
+      throw Error("strategy_unverified");
     return { strategy, status };
   },
   periodic(value, props, refresh) {
@@ -711,27 +706,6 @@ export const TDX_FAMILY: RuntimeFamily = {
             交易日证据：{data.strategy.calendar_state ?? "未知"}；最近心跳：
             {formatBeijingTime(data.strategy.heartbeat_at, "未记录")}
           </p>
-          <button
-            onClick={() =>
-              props.navigate("collection", {
-                ...fields,
-                tab: "executions",
-                execution_asset: keyOf(TDX_DAILY),
-                execution_schedule: "all",
-                schedule: null,
-                job: null,
-              })
-            }
-          >
-            查看执行记录 →
-          </button>
-          <button
-            onClick={() =>
-              props.navigate("assets", { ...fields, tab: "local" })
-            }
-          >
-            查看关联资产 →
-          </button>
         </section>
       ),
     };

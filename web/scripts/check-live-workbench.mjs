@@ -70,7 +70,7 @@ const cases = process.env.MDF_WORKBENCH_CASES
               row: "沪深北 A 股基础名册",
               asset: "mdf.market.tdx.stock.roster@r1",
               prefix: "/api/r5/tdx/roster",
-              periodicCollectionButton: "新建名册刷新",
+              periodicCollectionTab: true,
               dates: { 名册日期: "2026-11-12" },
               valueProperty: "instrument",
               result: "名册结果",
@@ -371,10 +371,10 @@ try {
       item.checks.push(
         "global periodic filter -> actual details (no switches changed)",
       );
-      if (c.periodicCollectionButton) {
+      if (c.periodicCollectionTab) {
         await page
-          .getByRole("button", {
-            name: c.periodicCollectionButton,
+          .getByRole("tab", {
+            name: "新建采集",
             exact: true,
           })
           .click();

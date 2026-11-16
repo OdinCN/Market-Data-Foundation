@@ -233,9 +233,12 @@ it("resumes the existing interrupted identity from execution detail", async () =
       navigate={vi.fn()}
     />,
   );
+  const resume = await screen.findByRole("button", { name: "续跑未完成分片" });
+  expect((resume as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(
-    await screen.findByRole("button", { name: "续跑未完成分片" }),
+    screen.getByRole("checkbox", { name: "我确认按原请求恢复采集" }),
   );
+  fireEvent.click(resume);
   await waitFor(() =>
     expect(calls.filter((c) => c.method === "POST")).toHaveLength(1),
   );

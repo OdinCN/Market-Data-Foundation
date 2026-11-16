@@ -827,7 +827,7 @@ export async function saveCpiStrategy(
 
 export type CpiExecution = {
   id: string;
-  origin: "manual" | "automatic" | "schedule";
+  origin?: string | null;
   stage?: string | null;
   action: string;
   start: string | null;
@@ -862,9 +862,10 @@ export async function readCpiExecutions(
         !!e.id &&
         (!("asset" in e) || e.asset === profile.id) &&
         (["claims", "gdp"].includes(profile.id)
-          ? ["manual", "schedule"]
-          : ["manual", "automatic"]
-        ).includes(e.origin) &&
+          ? ["manual", "schedule"].includes(e.origin ?? "")
+          : e.origin == null ||
+            (typeof e.origin === "string" &&
+              /^[a-z_]{1,40}$/.test(e.origin))) &&
         typeof e.action === "string" &&
         typeof e.state === "string" &&
         [e.start, e.end].every(

@@ -14,6 +14,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import App from "./App";
+import { CollectionWorkbench } from "./CollectionWorkbench";
+import { ExecutionDetailShell } from "./CollectionLifecycle";
+import { CPI, type Asset } from "./workflowModel";
+import type { Route, Navigate } from "./workflowRoute";
 import type { Transport } from "./api";
 import type { RuntimeFamily } from "./RuntimeFamily";
 import { TDX_FAMILY } from "./TdxDailyFamily";
@@ -24,7 +28,11 @@ import { keyOf } from "./workflowModel";
 const id = "2679c123-8a3e-4ae9-8aa9-fce60c5f94e1";
 const future: RuntimeFamily = {
   ...TDX_FAMILY,
-  collection: { protocol: "tdx", path: "/fixture/future/jobs" },
+  collection: {
+    protocol: "macro",
+    path: "/fixture/future/jobs",
+    strategy: null,
+  },
   asset: { identity: "mdf.test.registered.daily", revision: "r1" },
   title: "未来登记族",
   Query: () => <p>未来登记族本地查询</p>,
@@ -388,4 +396,153 @@ it("resolves a registered source deep link and rejects a conflicting revision", 
   });
   await screen.findByText(/关联对象缺失或身份冲突/);
   expect(screen.queryByLabelText("查询方向")).toBeNull();
+});
+
+it("an asynchronously populated new non-TDX registration shares selection, pagination and real policy return", async () => {
+  let release!: (value: Response) => void;
+  const delayed = new Promise<Response>((resolve) => {
+    release = resolve;
+  });
+  const policyId = "future-actual-policy";
+  const family: RuntimeFamily = {
+    ...future,
+    collection: {
+      protocol: "macro",
+      path: "/fixture/future/jobs",
+      strategy: { id: policyId, path: "/fixture/future/policy" },
+    },
+    ExecutionDetail: ({ route }) => (
+      <ExecutionDetailShell
+        id={route.fields.get("job")!}
+        assetKey={keyOf(future.asset)}
+        asset="未来登记族"
+        source="fixture"
+        trigger="手动采集"
+        action="更新"
+        result="完成"
+      />
+    ),
+    readExecutions: async () =>
+      Array.from({ length: 25 }, (_, i) => ({
+        id: "new-family-" + i,
+        createdAt: "2026-10-01T01:00:00Z",
+        title: "新族 " + i,
+        search: "new-family-" + i,
+        result: "完成",
+      })),
+    readPeriodic: async () => ({ policy_id: policyId }),
+    periodic: (data, _props, refresh) => ({
+      row: {
+        id: (data as { policy_id: string }).policy_id,
+        search: "新族策略",
+        cells: ["新族策略"],
+      },
+      detail: <h3>新族策略详情</h3>,
+      refresh,
+    }),
+  };
+  const transport: Transport = vi.fn(async (url) =>
+    String(url).endsWith("/executions")
+      ? (await delayed).clone()
+      : Response.json({}),
+  );
+  const localAsset = {
+    key: family.asset,
+    label: "新族",
+    interfaces: [],
+  } as unknown as Asset;
+  function Probe() {
+    const [route, setRoute] = useState<Route>({
+      view: "collection",
+      invalid: false,
+      fields: new URLSearchParams({
+        tab: "executions",
+        execution_asset: "all",
+        asset: family.asset.identity,
+        asset_revision: family.asset.revision,
+        job: "new-family-24",
+      }),
+    });
+    const navigate: Navigate = (view, fields = {}, preserve = false) =>
+      setRoute((old) => {
+        const next = new URLSearchParams(preserve ? old.fields : undefined);
+        for (const [key, value] of Object.entries(fields)) {
+          if (value === null) next.delete(key);
+          else next.set(key, value);
+        }
+        return { view, fields: next, invalid: false };
+      });
+    return (
+      <CollectionWorkbench
+        families={[family]}
+        assets={[localAsset]}
+        asset={localAsset}
+        source={undefined}
+        route={route}
+        navigate={navigate}
+        transport={transport}
+        generation={0}
+        invalidIdentity={false}
+        cpiAvailability={{
+          busy: false,
+          legacy: false,
+          failure: null,
+          data: {
+            latest_months: {},
+            observation_count: 0,
+            revision_count: 0,
+            batch_count: 0,
+            web_capabilities: { query: true, collect: true, reason: null },
+          },
+        }}
+      />
+    );
+  }
+  render(<Probe />);
+  await screen.findByText("第 2 页");
+  await act(async () =>
+    release(
+      Response.json({
+        executions: Array.from({ length: 22 }, (_, i) => ({
+          id: "later-macro-" + i,
+          origin: "manual",
+          action: "update",
+          state: "complete",
+          start: "2026-09",
+          end: "2026-09",
+          created_at: "2026-11-01T01:00:00Z",
+          started_at: null,
+          finished_at: null,
+          classification: null,
+          result: null,
+        })),
+      }),
+    ),
+  );
+  await screen.findByText("第 3 页");
+  function selected() {
+    return screen
+      .getByRole("region", { name: "执行记录" })
+      .querySelector<HTMLElement>('tr[aria-selected="true"]')?.dataset
+      .executionId;
+  }
+  expect(selected()).toBe("new-family-24");
+  fireEvent.click(screen.getByRole("button", { name: "选择 new-family-23" }));
+  expect(selected()).toBe("new-family-23");
+  expect(
+    screen.getByRole("region", { name: "执行详情主体" }).dataset.executionId,
+  ).toBe("new-family-23");
+  fireEvent.click(await screen.findByRole("button", { name: "查看周期任务" }));
+  await screen.findByRole("heading", { name: "新族策略详情" });
+  expect(
+    screen.getByLabelText("周期操作").getAttribute("data-periodic-id"),
+  ).toBe(policyId);
+  fireEvent.click(screen.getByRole("button", { name: "返回此执行记录" }));
+  await screen.findByText("第 3 页");
+  expect(selected()).toBe("new-family-23");
+  expect(
+    (transport as ReturnType<typeof vi.fn>).mock.calls.every(
+      ([, init]) => !init?.method || init.method === "GET",
+    ),
+  ).toBe(true);
 });

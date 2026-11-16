@@ -24,6 +24,7 @@ const old = "00000000-0000-4000-8000-000000000001",
 const job = (changes: Partial<FinancialJob> = {}): FinancialJob => ({
   request_id: old,
   state: "complete",
+  origin: "manual",
   created_at: "2026-11-05T09:00:00Z",
   provider_requests: 0,
   command: { action: "update", start: "2026-11-01", end: "2026-11-05" },
@@ -165,9 +166,13 @@ it("sorts unknown creation last without borrowing updated or current timestamps"
 });
 function detail(record: FinancialJob) {
   const requests: string[] = [];
-  const transport: Transport = async (_u, i) => {
+  const transport: Transport = async (url, i) => {
     requests.push(i?.method ?? "GET");
-    return Response.json({ status: "OK", job: record });
+    return Response.json(
+      String(url).endsWith("/status")
+        ? { status: "OK", web_capabilities: { query: true, collect: true } }
+        : { status: "OK", job: record },
+    );
   };
   render(
     <FinancialDailyWorkbench
@@ -229,7 +234,16 @@ it("partial failures identify only failed steps, leaving pending and unpublished
   expect(
     (screen.getByRole("button", { name: "续跑此作业" }) as HTMLButtonElement)
       .disabled,
-  ).toBe(false);
+  ).toBe(true);
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "我确认按原请求恢复采集" }),
+  );
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "续跑此作业" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
 });
 it("complete legacy record retains unknown start instead of manufacturing it", async () => {
   detail(
@@ -245,7 +259,7 @@ it("complete legacy record retains unknown start instead of manufacturing it", a
   );
 });
 
-it("new-collection briefs keep manual triggers; automatic jobs remain in execution records", async () => {
+it("new-collection briefs retain actual manual and automatic records with their real triggers", async () => {
   const records = [job({ origin: "periodic", request_id: recent }), job()];
   const calls: string[] = [];
   const transport: Transport = async (u, i) => {
@@ -277,7 +291,7 @@ it("new-collection briefs keep manual triggers; automatic jobs remain in executi
   );
   const briefs = await screen.findByRole("complementary", { name: "执行简报" });
   await within(briefs).findByText(/金融日频 · 手动采集 · 更新指定范围/);
-  expect(within(briefs).queryByRole("button", { name: /自动策略/ })).toBeNull();
+  expect(within(briefs).getByRole("button", { name: /自动策略/ })).toBeTruthy();
   expect(
     within(briefs).getByText(/金融日频 · 手动采集 · 更新指定范围/),
   ).toBeTruthy();

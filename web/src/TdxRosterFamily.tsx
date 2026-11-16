@@ -524,6 +524,7 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
 export const TDX_ROSTER_FAMILY: RuntimeFamily = {
   collection: {
     protocol: "roster",
+    strategy: { id: "tdx-roster-auto", path: "/api/r5/tdx/daily/strategy" },
     path: "/api/r5/tdx/roster/jobs",
     resumePath: "/api/r5/tdx/roster/jobs/resume",
   },
@@ -555,11 +556,17 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
     }));
   },
   async readPeriodic(transport, signal) {
-    return tdxCall<{
+    const value = await tdxCall<{
       enabled: boolean;
       heartbeat_at?: string;
       worker_online: boolean;
     }>(transport, "/strategy", signal);
+    if (
+      typeof value.enabled !== "boolean" ||
+      typeof value.worker_online !== "boolean"
+    )
+      throw Error("strategy_unverified");
+    return value;
   },
   periodic(value, props, refresh) {
     const data = value as {
@@ -588,39 +595,6 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
             09:00 Asia/Shanghai 刷新三市行情目录。15:35
             日线复用当日已完成的目录作业；错过早盘时先补目录。上市、停牌和正式更名以交易所对应日期的证据为准。
           </p>
-          <button
-            onClick={() =>
-              props.navigate("collection", {
-                ...fields,
-                tab: "executions",
-                execution_asset: keyOf(TDX_ROSTER),
-                execution_schedule: "tdx-roster-auto",
-                schedule: null,
-                job: null,
-              })
-            }
-          >
-            查看执行记录 →
-          </button>
-          <button
-            onClick={() =>
-              props.navigate("assets", { ...fields, tab: "local" })
-            }
-          >
-            查看关联资产 →
-          </button>
-          <button
-            onClick={() =>
-              props.navigate("collection", {
-                ...fields,
-                tab: "new",
-                job: null,
-                schedule: null,
-              })
-            }
-          >
-            新建名册刷新
-          </button>
         </section>
       ),
     };

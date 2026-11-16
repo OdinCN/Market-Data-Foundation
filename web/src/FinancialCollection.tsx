@@ -14,7 +14,6 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { beijingToday } from "./beijingTime";
 import {
-  financialJobOrigin,
   financialJobResult,
   financialJobTitle,
 } from "./financialJobPresentation";
@@ -115,14 +114,7 @@ export function FinancialCollection({
     ...(jobs.data?.jobs ?? []),
   ]);
   const tracked = verified.find((j) => j.request_id === pending?.request_id);
-  const briefs = collectionRecent(
-    verified.filter(
-      (j) =>
-        j.request_id === pending?.request_id ||
-        financialJobOrigin(j) === "手动采集",
-    ),
-    pending?.request_id,
-  );
+  const briefs = collectionRecent(verified, pending?.request_id);
   function newIntent() {
     if (!canRelease) return;
     submission.newIntent();
@@ -132,15 +124,13 @@ export function FinancialCollection({
     <CollectionColumns
       briefs={
         <CollectionBriefs>
-          <p className="small">
-            以下为手动采集；自动作业见周期任务与执行记录。
-          </p>
+          <p className="small">近期真实执行；触发来源以各记录为准。</p>
           {jobs.busy && !jobs.data && <p role="status">正在读取执行简报…</p>}
           {jobs.failure && (
             <p role="alert">执行简报读取失败，已有记录待核实。</p>
           )}
           {jobs.data && !briefs.length && !pending && (
-            <p>暂无手动采集记录；尚未提交本次采集。</p>
+            <p>暂无执行记录；尚未提交本次采集。</p>
           )}
           <ol className="execution-brief-list">
             {pending && !tracked && (

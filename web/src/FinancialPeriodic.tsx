@@ -123,9 +123,7 @@ export function useFinancialPeriodic(
       { id: b.request_id, createdAt: b.created_at },
     ),
   );
-  const recentJob =
-    orderedJobs.find((j) => j.origin === "periodic") ??
-    orderedJobs.find((j) => j.origin == null || j.origin === "manual");
+  const recentJob = orderedJobs[0];
   const openJob = (id: string) =>
     navigate("collection", {
       tab: "executions",
@@ -353,16 +351,6 @@ export function useFinancialPeriodic(
         <Fact name="最新数据期">{latestText}</Fact>
         <Fact name="下次维护检查（北京时间）">{nextText}</Fact>
       </dl>
-      <button
-        onClick={() =>
-          navigate("assets", {
-            asset: FINANCIAL.identity,
-            asset_revision: "r1",
-          })
-        }
-      >
-        查询各指标本地覆盖 →
-      </button>
       <details>
         <summary>各指标最新本地数据期</summary>
         {!summary.data && <p role="status">{latestText}</p>}
@@ -396,7 +384,8 @@ export function useFinancialPeriodic(
           <>
             <p>
               本资产最近执行来源：{financialJobOrigin(recentJob)}。
-              {recentJob.origin !== "periodic" &&
+              {recentJob.origin === "manual" &&
+                !orderedJobs.some((j) => j.origin === "periodic") &&
                 "自动策略尚无真实执行记录；以下为手动采集结果。"}
             </p>
             <dl>

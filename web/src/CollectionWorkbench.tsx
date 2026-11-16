@@ -1,3 +1,5 @@
+import { ExecutionNavigation, PeriodicNavigation } from "./ExecutionNavigation";
+import { executionOrigin } from "./executionOrigin";
 import {
   CollectionBriefs,
   CollectionFormLock,
@@ -189,7 +191,6 @@ export function CollectionWorkbench({
     route.fields.get("mode") === "backfill" ? "指定范围回补" : "一次性初始化",
   );
   const [refresh, setRefresh] = useState(0);
-  const manuallySelected = useRef(false);
   const [briefTarget, setBriefTarget] = useState<string | null>(null);
   const [start, setStart] = useState(
     sameKey(asset?.key, PCE) ? PCE_REFERENCE : "",
@@ -645,87 +646,84 @@ export function CollectionWorkbench({
     claims: claimsRecords,
   };
   const macroRecords = [
-    ...(executionSchedule === "all" &&
-    (filter === "all" || filter === keyOf(M3))
+    ...(filter === "all" || filter === keyOf(M3)
       ? (m3Records.data?.executions ?? []).map((e) => ({
           ...e,
           profile: M3_PROFILE,
           rowId: `m3:${e.id}`,
         }))
       : []),
-    ...(executionSchedule === "all" &&
-    (filter === "all" || filter === keyOf(GDP))
+    ...(filter === "all" || filter === keyOf(GDP)
       ? (gdpRecords.data?.executions ?? []).map((e) => ({
           ...e,
           profile: GDP_PROFILE,
           rowId: `gdp:${e.id}`,
         }))
       : []),
-    ...(executionSchedule === "all" &&
-    (filter === "all" || filter === keyOf(JOLTS))
+    ...(filter === "all" || filter === keyOf(JOLTS)
       ? (joltsRecords.data?.executions ?? []).map((e) => ({
           ...e,
           profile: JOLTS_PROFILE,
           rowId: `jolts:${e.id}`,
         }))
       : []),
-    ...(executionSchedule === "all" &&
-    (filter === "all" || filter === keyOf(CLAIMS))
+    ...(filter === "all" || filter === keyOf(CLAIMS)
       ? (claimsRecords.data?.executions ?? []).map((e) => ({
           ...e,
           profile: CLAIMS_PROFILE,
           rowId: `claims:${e.id}`,
         }))
       : []),
-    ...(executionSchedule === "all" &&
-    (filter === "all" || filter === keyOf(CONSUMPTION))
+    ...(filter === "all" || filter === keyOf(CONSUMPTION)
       ? (consumptionRecords.data?.executions ?? []).map((e) => ({
           ...e,
           profile: CONSUMPTION_PROFILE,
           rowId: `consumption:${e.id}`,
         }))
       : []),
-    ...((executionSchedule === "all" || executionSchedule === "retail-auto") &&
-    (filter === "all" || filter === keyOf(RETAIL))
+    ...(filter === "all" || filter === keyOf(RETAIL)
       ? (retailRecords.data?.executions ?? []).map((e) => ({
           ...e,
           profile: RETAIL_PROFILE,
           rowId: `retail:${e.id}`,
         }))
       : []),
-    ...(executionSchedule === "all" &&
-    (filter === "all" || filter === keyOf(EMPLOYMENT))
+    ...(filter === "all" || filter === keyOf(EMPLOYMENT)
       ? (employmentRecords.data?.executions ?? []).map((e) => ({
           ...e,
           profile: EMPLOYMENT_PROFILE,
           rowId: `employment:${e.id}`,
         }))
       : []),
-    ...(executionSchedule === "all" &&
-    (filter === "all" || filter === keyOf(CPI))
+    ...(filter === "all" || filter === keyOf(CPI)
       ? (cpiRecords.data?.executions ?? []).map((e) => ({
           ...e,
           profile: CPI_PROFILE,
           rowId: e.id,
         }))
       : []),
-    ...(executionSchedule === "all" &&
-    (filter === "all" || filter === keyOf(PCE))
+    ...(filter === "all" || filter === keyOf(PCE)
       ? (pceRecords.data?.executions ?? []).map((e) => ({
           ...e,
           profile: PCE_PROFILE,
           rowId: `pce:${e.id}`,
         }))
       : []),
-    ...(executionSchedule === "all" &&
-    (filter === "all" || filter === keyOf(PPI))
+    ...(filter === "all" || filter === keyOf(PPI)
       ? (ppiRecords.data?.executions ?? []).map((e) => ({
           ...e,
           profile: PPI_PROFILE,
           rowId: `ppi:${e.id}`,
         }))
       : []),
-  ];
+  ].filter(
+    (e) =>
+      executionSchedule === "all" ||
+      ((e.origin === "automatic" ||
+        e.origin === "schedule" ||
+        e.origin === "periodic") &&
+        executionSchedule === `${e.profile.id}-auto`),
+  );
   const cpiExecution = macroRecords.find(
     (e) =>
       e.id === jobId &&
@@ -2066,6 +2064,23 @@ export function CollectionWorkbench({
           (filter === keyOf(RETAIL) && retailAvailability) ||
           (filter === keyOf(CONSUMPTION) && consumptionAvailability)) ? (
         <CpiStrategyWorkbench
+          navigation={(id) => {
+            const candidates = collectionRegistrations(families).filter(
+              (r) => r.strategy?.id === id,
+            );
+            const registration =
+              candidates.length === 1 ? candidates[0] : undefined;
+            return (
+              registration && (
+                <PeriodicNavigation
+                  asset={registration.asset}
+                  id={id}
+                  job={sameKey(asset?.key, registration.asset) ? jobId : null}
+                  navigate={navigate}
+                />
+              )
+            );
+          }}
           supplements={familyRecords.periodicEntries}
           supplement={
             financialRegistered &&
@@ -2164,7 +2179,25 @@ export function CollectionWorkbench({
             !invalidIdentity && (filter === "all" || filter === keyOf(CPI))
           }
           selected={scheduleId === "cpi-auto"}
-          onSelect={(id) => navigate("collection", { schedule: id }, true)}
+          onSelect={(id) => {
+            const candidates = collectionRegistrations(families).filter(
+              (r) => r.strategy?.id === id,
+            );
+            const target =
+              candidates.length === 1 ? candidates[0].asset : undefined;
+            if (target)
+              navigate(
+                "collection",
+                {
+                  schedule: id,
+                  asset: target.identity,
+                  asset_revision: target.revision,
+                  operation: null,
+                  job: sameKey(asset?.key, target) ? jobId : null,
+                },
+                true,
+              );
+          }}
         />
       ) : tab === "periodic" ? (
         <>
@@ -2216,6 +2249,23 @@ export function CollectionWorkbench({
                     {formatBeijingTime(plan.next_due)}
                   </Fact>
                 </dl>
+                {jobId &&
+                  plan.batches.some((b) =>
+                    b.jobs.some((j) => j.job_identity === jobId),
+                  ) && (
+                    <button
+                      onClick={() =>
+                        navigate("collection", {
+                          ...planFields,
+                          tab: "executions",
+                          schedule: null,
+                          job: jobId,
+                        })
+                      }
+                    >
+                      返回此执行记录
+                    </button>
+                  )}
                 <button
                   onClick={() =>
                     navigate(
@@ -2259,13 +2309,11 @@ export function CollectionWorkbench({
             columns={["任务名称", "创建时间（北京时间）", "采集范围", "结果"]}
             pageSize={20}
             locateId={
-              manuallySelected.current
-                ? null
-                : selectedFamily && jobId
-                  ? familyRowId(selectedFamily, jobId)
-                  : financialTarget && jobId
-                    ? `financial:${jobId}`
-                    : (cpiExecution?.rowId ?? execution?.id ?? briefTarget)
+              selectedFamily && jobId
+                ? familyRowId(selectedFamily, jobId)
+                : financialTarget && jobId
+                  ? `financial:${jobId}`
+                  : (cpiExecution?.rowId ?? execution?.id ?? briefTarget)
             }
             selected={
               selectedFamily && jobId
@@ -2277,7 +2325,6 @@ export function CollectionWorkbench({
             empty={recordState("jobs")}
             onSelect={(job) => {
               setBriefTarget(null);
-              manuallySelected.current = true;
               const familyRow = familyRows.find(
                 (row) => familyRowId(row.family, row.id) === job,
               );
@@ -2352,7 +2399,14 @@ export function CollectionWorkbench({
                 ],
               })),
               ...(financialRecords.data?.jobs ?? [])
-                .filter(() => executionSchedule === "all")
+                .filter(
+                  (j) =>
+                    executionSchedule === "all" ||
+                    (executionSchedule === "financial-auto" &&
+                      ["automatic", "schedule", "periodic"].includes(
+                        j.origin ?? "",
+                      )),
+                )
                 .map((j) => ({
                   id: `financial:${j.request_id}`,
                   execution: { id: j.request_id, asset: keyOf(FINANCIAL) },
@@ -2389,10 +2443,10 @@ export function CollectionWorkbench({
                 id: e.rowId,
                 execution: { id: e.id, asset: keyOf(e.profile.asset) },
                 createdAt: e.created_at,
-                search: `${e.id} ${macroAssetLabel(e.profile)} ${e.origin !== "manual" ? "自动策略" : "手动采集"} ${cpiActionText(e.origin !== "manual" ? (e.stage ?? e.action) : e.action)} ${e.start ?? ""} ${e.end ?? ""} ${cpiExecutionStateText(e.state, e.result, e.profile, e)}${e.profile.id === "claims" ? " " + claimsExecutionPeriod(e.result) : ""}`,
+                search: `${e.id} ${macroAssetLabel(e.profile)} ${executionOrigin(e.origin)} ${cpiActionText(["automatic", "schedule"].includes(e.origin ?? "") ? (e.stage ?? e.action) : e.action)} ${e.start ?? ""} ${e.end ?? ""} ${cpiExecutionStateText(e.state, e.result, e.profile, e)}${e.profile.id === "claims" ? " " + claimsExecutionPeriod(e.result) : ""}`,
                 cells: [
                   <>
-                    {`${e.profile.label} · ${e.origin !== "manual" ? "自动阶段 · " : ""}${cpiActionText(e.origin !== "manual" ? (e.stage ?? e.action) : e.action)}`}
+                    {`${e.profile.label} · ${executionOrigin(e.origin)} · ${cpiActionText(["automatic", "schedule"].includes(e.origin ?? "") ? (e.stage ?? e.action) : e.action)}`}
                     {e.profile.id === "claims" && (
                       <span className="small">
                         {claimsExecutionPeriod(e.result)}
@@ -2412,85 +2466,109 @@ export function CollectionWorkbench({
               })),
             ].sort(executionCreatedOrder)}
           >
-            {selectedFamily && jobId ? (
-              <selectedFamily.ExecutionDetail
-                key={`${keyOf(selectedFamily.asset)}:${jobId}`}
-                {...familyProps}
-              />
-            ) : financialTarget && jobId ? (
-              <FinancialDailyWorkbench
-                key={`financial:${jobId}`}
-                route={route}
-                navigate={navigate}
-                transport={transport}
-                generation={generation}
-                embedded
-                detailOnly
-              />
-            ) : cpiExecution ? (
-              <CpiExecutionDetail
-                execution={cpiExecution}
-                key={`${keyOf(cpiExecution.profile.asset)}:${cpiExecution.id}`}
-                profile={cpiExecution.profile}
-                transport={transport}
-                canCollect={
-                  macroAvailability?.data?.web_capabilities.collect === true &&
-                  !macroAvailability.failure
-                }
-                onResult={() =>
-                  navigate("assets", {
-                    asset: cpiExecution.profile.asset.identity,
-                    asset_revision: cpiExecution.profile.asset.revision,
-                    operation: null,
-                    tab: "local",
-                    package: null,
-                    job: cpiExecution.id,
-                  })
-                }
-                onRefresh={macroReaders[cpiExecution.profile.id].refresh}
-                actionsDisabled={
-                  macroReaders[cpiExecution.profile.id].busy ||
-                  macroReaders[cpiExecution.profile.id].stale
-                }
-                onPeriodic={
-                  cpiExecution.origin !== "manual"
-                    ? () =>
-                        navigate("collection", {
-                          asset: cpiExecution.profile.asset.identity,
-                          asset_revision: cpiExecution.profile.asset.revision,
-                          operation: null,
-                          tab: "periodic",
-                          schedule: `${cpiExecution.profile.id}-auto`,
-                          periodic_asset: keyOf(cpiExecution.profile.asset),
-                          job: cpiExecution.id,
-                        })
-                    : undefined
-                }
-              />
-            ) : execution ? (
-              <ExecutionDetail
-                execution={execution}
-                navigate={navigate}
-                successor={successorOf(execution.id)}
-                eligible={
-                  execution.state === "failed" &&
-                  (execution.pce
-                    ? !!pceBackfill?.eligible &&
-                      execution.id === pceBackfill.submission.parent_job_id
-                    : execution.schedule
-                      ? !!plans.data?.write_eligible
-                      : !!cpiBackfill?.eligible &&
-                        execution.id === cpiBackfill.submission?.parent_job_id)
-                }
-                reason={
-                  execution.pce
-                    ? pceBackfill?.reason
-                    : execution.schedule
-                      ? "history_plan_read_only"
-                      : cpiBackfill?.reason
-                }
-              />
-            ) : null}
+            <ExecutionNavigation
+              asset={
+                selectedFamily?.asset ??
+                (financialTarget
+                  ? FINANCIAL
+                  : (cpiExecution?.profile.asset ?? execution?.asset))
+              }
+              job={jobId}
+              family={selectedFamily}
+              registration={collectionRegistrations(families).find(
+                (r) =>
+                  sameKey(
+                    r.asset,
+                    selectedFamily?.asset ??
+                      (financialTarget
+                        ? FINANCIAL
+                        : (cpiExecution?.profile.asset ?? execution?.asset)),
+                  ) &&
+                  (execution
+                    ? r.protocol.startsWith("legacy")
+                    : !r.protocol.startsWith("legacy")),
+              )}
+              associatedPlan={
+                execution?.schedule &&
+                plansMatch &&
+                !plans.stale &&
+                plans.data?.plans.filter(
+                  (p) => p.identity === execution.schedule,
+                ).length === 1
+                  ? execution.schedule
+                  : undefined
+              }
+              transport={transport}
+              navigate={navigate}
+              generation={generation}
+            >
+              {selectedFamily && jobId ? (
+                <selectedFamily.ExecutionDetail
+                  key={`${keyOf(selectedFamily.asset)}:${jobId}`}
+                  {...familyProps}
+                />
+              ) : financialTarget && jobId ? (
+                <FinancialDailyWorkbench
+                  key={`financial:${jobId}`}
+                  route={route}
+                  navigate={navigate}
+                  transport={transport}
+                  generation={generation}
+                  embedded
+                  detailOnly
+                />
+              ) : cpiExecution ? (
+                <CpiExecutionDetail
+                  execution={cpiExecution}
+                  key={`${keyOf(cpiExecution.profile.asset)}:${cpiExecution.id}`}
+                  profile={cpiExecution.profile}
+                  transport={transport}
+                  canCollect={
+                    macroAvailability?.data?.web_capabilities.collect ===
+                      true && !macroAvailability.failure
+                  }
+                  onResult={() =>
+                    navigate("assets", {
+                      asset: cpiExecution.profile.asset.identity,
+                      asset_revision: cpiExecution.profile.asset.revision,
+                      operation: null,
+                      tab: "local",
+                      package: null,
+                      job: cpiExecution.id,
+                    })
+                  }
+                  onRefresh={macroReaders[cpiExecution.profile.id].refresh}
+                  actionsDisabled={
+                    macroReaders[cpiExecution.profile.id].busy ||
+                    macroReaders[cpiExecution.profile.id].stale
+                  }
+                />
+              ) : execution ? (
+                <ExecutionDetail
+                  execution={execution}
+                  navigate={navigate}
+                  successor={successorOf(execution.id)}
+                  eligible={
+                    execution.state === "failed" &&
+                    (execution.pce
+                      ? !!pceBackfill?.eligible &&
+                        execution.id === pceBackfill.submission.parent_job_id
+                      : execution.schedule
+                        ? !!plans.data?.write_eligible
+                        : !!cpiBackfill?.eligible &&
+                          execution.id ===
+                            cpiBackfill.submission?.parent_job_id)
+                  }
+                  reason={
+                    execution.pce
+                      ? pceBackfill?.reason
+                      : execution.schedule
+                        ? "history_plan_read_only"
+                        : cpiBackfill?.reason
+                  }
+                />
+              ) : null}
+            </ExecutionNavigation>
           </WorkflowTable>
           {jobId &&
             !jobs.busy &&
@@ -2549,10 +2627,13 @@ function ExecutionDetail({
         assetKey={keyOf(e.asset)}
         asset={assetTitle(e.asset)}
         source={e.pce ? "BEA · 兼容入口" : "BLS · 兼容入口"}
+        trigger={e.schedule ? "自动策略（历史计划批次）" : "触发来源待核实"}
         action={
           e.pce?.parent_job_id || e.dto?.parent_job_id
             ? "指定范围回补"
-            : "一次性初始化"
+            : e.schedule
+              ? "历史计划采集"
+              : "一次性初始化"
         }
         start={e.reference}
         end={e.reference}
@@ -2569,6 +2650,18 @@ function ExecutionDetail({
             package: null,
           })
         }
+        onResume={
+          eligible && !successor
+            ? () =>
+                navigate("collection", {
+                  ...fields,
+                  tab: "new",
+                  job: e.id,
+                  mode: "backfill",
+                })
+            : undefined
+        }
+        resumeLabel="指定范围回补 →"
       >
         <dl>
           <Fact name="Job / Attempt">
@@ -2586,7 +2679,9 @@ function ExecutionDetail({
               {e.dto?.classification ?? e.pce?.classification ?? "无错误分类"}
             </Fact>
           )}
-          <Fact name="关联计划">{e.schedule ?? "无 / 人工任务"}</Fact>
+          <Fact name="关联计划">
+            {e.schedule ?? "未记录（不据此推断触发来源）"}
+          </Fact>
           <Fact name="材料 / 版本 / 发布">
             {e.version ? e.version : "尚无版本 / 发布回执"}
           </Fact>
@@ -2611,34 +2706,6 @@ function ExecutionDetail({
               }
             >
               查看原失败执行 →
-            </button>
-          )}
-          {e.schedule && (
-            <button
-              onClick={() =>
-                navigate("collection", {
-                  ...fields,
-                  tab: "periodic",
-                  schedule: e.schedule,
-                  job: e.id,
-                })
-              }
-            >
-              查看周期任务 →
-            </button>
-          )}
-          {eligible && !successor && (
-            <button
-              onClick={() =>
-                navigate("collection", {
-                  ...fields,
-                  tab: "new",
-                  job: e.id,
-                  mode: "backfill",
-                })
-              }
-            >
-              指定范围回补 →
             </button>
           )}
           {e.version && e.publication && e.readAsOf && (

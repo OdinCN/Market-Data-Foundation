@@ -37,7 +37,7 @@ export function WorkflowTable({
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const input = useRef<HTMLInputElement>(null);
-  const located = useRef<string | null>(null);
+  const located = useRef<{ id: string; follow: boolean } | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const detail = useRef<HTMLElement>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -69,6 +69,9 @@ export function WorkflowTable({
       ?.focus({ preventScroll: true });
   }
   function selectRow(id: string) {
+    // Row selection keeps the user's search/page, but follows this identity if
+    // an unfiltered list is subsequently reordered by another family's read.
+    located.current = { id, follow: !search.trim() };
     onSelect?.(id);
     if (rightDetails) {
       setDetailOpen(true);
@@ -83,11 +86,13 @@ export function WorkflowTable({
       located.current = null;
       return;
     }
-    if (located.current === locateId) return;
-    setSearch("");
+    if (located.current?.id !== locateId) {
+      located.current = { id: locateId, follow: true };
+      setSearch("");
+    }
+    if (!located.current.follow) return;
     const index = rows.findIndex((row) => row.id === locateId);
-    setPage(pageSize && index >= 0 ? Math.floor(index / pageSize) : 0);
-    if (index >= 0) located.current = locateId;
+    if (index >= 0) setPage(pageSize ? Math.floor(index / pageSize) : 0);
   }, [locateId, rows, pageSize]);
   const visible = rows.filter((r) =>
     r.search.toLowerCase().includes(search.trim().toLowerCase()),
@@ -112,6 +117,7 @@ export function WorkflowTable({
             placeholder={`搜索${label}`}
             value={search}
             onChange={(e) => {
+              if (located.current) located.current.follow = false;
               setSearch(e.target.value);
               setPage(0);
             }}
@@ -178,14 +184,20 @@ export function WorkflowTable({
           <div className="actions">
             <button
               disabled={currentPage === 0}
-              onClick={() => setPage(currentPage - 1)}
+              onClick={() => {
+                if (located.current) located.current.follow = false;
+                setPage(currentPage - 1);
+              }}
             >
               前一页记录
             </button>
             <span>第 {currentPage + 1} 页</span>
             <button
               disabled={currentPage >= lastPage}
-              onClick={() => setPage(currentPage + 1)}
+              onClick={() => {
+                if (located.current) located.current.follow = false;
+                setPage(currentPage + 1);
+              }}
             >
               后一页记录
             </button>

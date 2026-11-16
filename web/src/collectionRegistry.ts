@@ -13,6 +13,8 @@ export type CollectionContract = {
     | "legacy-pce"
     | "legacy-plan";
   path: string;
+  /** A registered singleton policy, verified by GET before linking to its row. */
+  strategy: { id: string; path: string } | null;
   resumePath?: string;
   intent?: "client-request" | "server-offer";
 };
@@ -33,6 +35,10 @@ export function collectionRegistrations(
       variant: "timeseries",
       protocol: "macro" as const,
       path: profile.basePath + "/jobs",
+      strategy: {
+        id: `${profile.id}-auto`,
+        path: profile.basePath + "/strategy",
+      },
       resumePath: profile.resumePath,
       intent: "client-request" as const,
       profile,
@@ -42,6 +48,10 @@ export function collectionRegistrations(
       variant: "daily",
       protocol: "financial",
       path: "/api/r5/financial/timeseries/jobs",
+      strategy: {
+        id: "financial-auto",
+        path: "/api/r5/financial/timeseries/strategy",
+      },
       resumePath: "/api/r5/financial/timeseries/jobs/resume",
     },
     ...families
@@ -56,6 +66,7 @@ export function collectionRegistrations(
       variant: "legacy-once",
       protocol: "legacy-cpi",
       path: "/api/r5/cpi/jobs",
+      strategy: null,
       intent: "server-offer",
     },
     {
@@ -63,6 +74,7 @@ export function collectionRegistrations(
       variant: "legacy-backfill",
       protocol: "legacy-cpi",
       path: "/api/r5/cpi/jobs/backfill",
+      strategy: null,
       intent: "server-offer",
     },
     {
@@ -70,6 +82,7 @@ export function collectionRegistrations(
       variant: "legacy-plan-backfill",
       protocol: "legacy-plan",
       path: "/api/r5/cpi/plans/{plan}/backfill",
+      strategy: null,
       intent: "server-offer",
     },
     {
@@ -77,6 +90,7 @@ export function collectionRegistrations(
       variant: "legacy-once",
       protocol: "legacy-pce",
       path: "/api/pce/jobs",
+      strategy: null,
       intent: "server-offer",
     },
     {
@@ -84,6 +98,7 @@ export function collectionRegistrations(
       variant: "legacy-backfill",
       protocol: "legacy-pce",
       path: "/api/pce/jobs/backfill",
+      strategy: null,
       intent: "server-offer",
     },
   ];

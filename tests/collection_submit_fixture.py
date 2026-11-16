@@ -118,10 +118,28 @@ class Host:
             )
         return result
 
+    def strategy(self):
+        return dict(
+            exists=True,
+            enabled=False,
+            history_start="2000-Q1"
+            if self.key == "gdp"
+            else "2000-01-01"
+            if self.key == "claims"
+            else "2000-01",
+            worker=dict(state="paused", last_heartbeat_at=None),
+            next_due=None,
+            policy=dict(timezone="Asia/Shanghai"),
+        )
+
+    def schedule(self):
+        return dict(calendar_status="verified", targets=[])
+
     def executions(self):
         return dict(
             executions=[
-                dict(j, id=j["job_id"], origin="manual") for j in self.journal.list()
+                dict(j, id=j["job_id"], origin=j.get("origin", "manual"))
+                for j in self.journal.list()
             ]
         )
 
@@ -215,7 +233,15 @@ elif family == "financial":
     host.resume = resume
     app.include_router(
         financial_router(
-            FinancialOptions(root, allow_read=True, allow_collect=True), jobs=host
+            FinancialOptions(
+                root,
+                allow_read=True,
+                allow_collect=True,
+                allow_strategy=True,
+                state_directory=root / "strategy",
+                window_path=root / "absent-window.json",
+            ),
+            jobs=host,
         )
     )
 else:
@@ -252,6 +278,17 @@ with TestClient(
             )
         elif req.get("control") == "directory":
             out = dict(status=200, body=directory(DirectoryQuery()).model_dump())
+        elif req.get("control") == "clone":
+            journal = runtime.jobs if family in {"tdx", "roster"} else host.journal
+            job = dict(journal.read(req["id"]))
+            for field in ("request_id", "job_id", "id"):
+                if field in job:
+                    job[field] = req["target_id"]
+            job["origin"] = req.get("origin")
+            if "created_at" in req:
+                job["created_at"] = req["created_at"]
+            journal.save(job)
+            out = dict(status=200, body=job)
         elif req.get("control") == "phase":
             identity, phase = req["id"], req["phase"]
             if identity in held:

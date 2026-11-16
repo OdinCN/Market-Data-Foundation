@@ -1,3 +1,4 @@
+import { executionOrigin } from "./executionOrigin";
 import type { FinancialJob } from "./FinancialDailyWorkbench";
 
 const states: Record<string, string> = {
@@ -41,11 +42,7 @@ export function financialJobResult(job: FinancialJob) {
   return "部分完成，未执行步骤待核实";
 }
 export const financialJobOrigin = (job: Pick<FinancialJob, "origin">) =>
-  job.origin === "periodic"
-    ? "自动策略"
-    : job.origin == null || job.origin === "manual"
-      ? "手动采集"
-      : "触发来源待核实";
+  executionOrigin(job.origin);
 export const financialJobTitle = (job: FinancialJob) =>
   `金融日频 · ${financialJobOrigin(job)} · ${job.command.action === "init" ? "初始化采集" : "更新指定范围"}`;
 

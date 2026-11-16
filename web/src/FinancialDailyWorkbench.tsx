@@ -191,7 +191,7 @@ export function FinancialDailyWorkbench({
   const status = useVisiblePolling(
     (signal) => financialCall<FinancialStatus>(transport, "/status", signal),
     [transport, generation],
-    !detailOnly,
+    true,
     undefined,
     false,
   );
@@ -296,6 +296,9 @@ export function FinancialDailyWorkbench({
         <FinancialExecutionDetail
           job={job}
           busy={
+            status.data?.web_capabilities?.collect !== true ||
+            status.stale ||
+            detail.stale ||
             submission.busy ||
             submission.uncertain ||
             submission.storageFailed ||
@@ -304,17 +307,6 @@ export function FinancialDailyWorkbench({
           }
           resume={() => void submission.submit({ resume: job.request_id, job })}
           go={go}
-          periodic={() =>
-            navigate("collection", {
-              asset: FINANCIAL.identity,
-              asset_revision: FINANCIAL.revision,
-              operation: null,
-              tab: "periodic",
-              schedule: "financial-auto",
-              periodic_asset: `${FINANCIAL.identity}@${FINANCIAL.revision}`,
-              job: job.request_id,
-            })
-          }
         />
       )}
     </>
@@ -470,12 +462,10 @@ function FinancialExecutionDetail({
   busy,
   resume,
   go,
-  periodic,
 }: {
   job: FinancialJob;
   busy: boolean;
   resume: () => void;
-  periodic: () => void;
   go: (view: "assets" | "collection", tab: string, id?: string | null) => void;
 }) {
   const failed = j.steps.filter((s) =>
@@ -493,7 +483,8 @@ function FinancialExecutionDetail({
       <ExecutionDetailShell
         id={j.request_id}
         asset="金融条件日频（十项）"
-        source={financialJobOrigin(j)}
+        source={financialJobSources(j).join("、") || "来源待核实"}
+        trigger={financialJobOrigin(j)}
         action={j.command.action === "init" ? "初始化采集" : "更新指定范围"}
         start={j.command.start}
         end={j.command.end}
@@ -512,16 +503,11 @@ function FinancialExecutionDetail({
         }
         assetKey={`${FINANCIAL.identity}@${FINANCIAL.revision}`}
         onResult={() => go("assets", "local", j.request_id)}
-        onPeriodic={financialJobOrigin(j) === "自动策略" ? periodic : undefined}
         onResume={resumable ? resume : undefined}
         resumeLabel="续跑此作业"
+        confirmResume
         actionsDisabled={busy}
       >
-        <dl>
-          <Fact name="数据来源（步骤绑定）">
-            {financialJobSources(j).join("、") || "未记录"}
-          </Fact>
-        </dl>
         <FinancialResultFacts job={j} />
         <p className="small">
           已确认 {j.steps.filter((s) => s.state === "complete").length}/

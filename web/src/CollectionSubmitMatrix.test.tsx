@@ -1,3 +1,4 @@
+import { expectedPolicy } from "../scripts/collection-protocol-evidence";
 import "./offlineTestSetup";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -272,7 +273,17 @@ async function setup(
     let response: Response;
     if (directory && /^\/api\/r5\/(packages|sources)/.test(url))
       response = await directory.transport(input, init);
-    else if (directory && !url.startsWith(row.path.replace(/\/jobs$/, "")))
+    else if (
+      directory &&
+      !url.startsWith(row.path.replace(/\/jobs$/, "")) &&
+      // Roster and daily use the same registered worker policy. Admit exactly
+      // this read, not another family's job writes or source requests.
+      !(
+        row.protocol === "roster" &&
+        method === "GET" &&
+        url === "/api/r5/tdx/daily/strategy"
+      )
+    )
       return Response.json({ classification: "not_enabled" }, { status: 404 });
     else {
       if (
@@ -559,16 +570,28 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
     const failedShell = await selectedShell(row, nextId);
     expect(failedShell.dataset.executionId).toBe(nextId);
     let expectedPosts = 2;
-    if (row.resumePath) {
+    // Read the real isolated router contract, independently of UI registration.
+    // Removing resume metadata must not make a supported recovery disappear.
+    const apiContract = await context.backend.exchange({
+      path: "/openapi.json",
+    });
+    expect(apiContract.status).toBe(200);
+    const expectedResumePath = apiContract.body.paths[row.path + "/resume"]
+      ?.post
+      ? row.path + "/resume"
+      : undefined;
+    expect(row.resumePath).toBe(expectedResumePath);
+    if (expectedResumePath) {
       const resume = (await within(failedShell).findByRole(
         "button",
         { name: /续跑|按原请求恢复/ },
         { timeout: 15000 },
       )) as HTMLButtonElement;
-      const confirm = within(failedShell).queryByRole("checkbox", {
+      expect(resume.disabled).toBe(true);
+      const confirm = within(failedShell).getByRole("checkbox", {
         name: "我确认按原请求恢复采集",
       });
-      if (confirm) fireEvent.click(confirm);
+      fireEvent.click(confirm);
       await waitFor(() => expect(resume.disabled).toBe(false));
       fireEvent.click(resume);
       await waitFor(() =>
@@ -577,7 +600,7 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
         ),
       );
       const recovery = context.calls.filter((c) => c.method === "POST")[2];
-      expect(recovery.url).toBe(row.resumePath);
+      expect(recovery.url).toBe(expectedResumePath);
       expect(recovery.body.request_id).toBe(nextId);
       expect(new URLSearchParams(location.hash.slice(1)).get("job")).toBe(
         nextId,
@@ -596,7 +619,7 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
     ).find((r) => r.dataset.recordId?.endsWith(id))!;
     expect(priorRow).toBeTruthy();
     fireEvent.click(within(priorRow).getByRole("button"));
-    const shell = await selectedShell(row, id);
+    let shell = await selectedShell(row, id);
     expect(shell.dataset.executionId).toBe(id);
     expect(shell.dataset.executionAsset).toBe(keyOf(row.asset));
     const scope = within(shell).getByText("范围").parentElement!.textContent;
@@ -615,6 +638,49 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
     expect(
       within(shell).queryByRole("button", { name: /回查当前任务/ }),
     ).toBeNull();
+    // Expected target is derived from independently read protocol evidence,
+    // never from optional buttons or the frontend strategy declaration.
+    const policy = await expectedPolicy(row, context.backend.exchange);
+    expect(row.strategy).toEqual(policy);
+    if (policy) {
+      const expectedStrategy = policy.id;
+      const trigger = within(shell).getByText("触发方式", { selector: "dt" });
+      expect(trigger.nextElementSibling?.textContent).toBe("手动采集");
+      const originalExecutionFilter = new URLSearchParams(
+        location.hash.slice(1),
+      ).get("execution_asset");
+      fireEvent.click(
+        await within(shell).findByRole("button", { name: "查看周期任务" }),
+      );
+      await waitFor(
+        () => {
+          const route = new URLSearchParams(location.hash.slice(1));
+          expect(route.get("schedule")).toBe(expectedStrategy);
+          expect(route.get("asset")).toBe(row.asset.identity);
+          expect(route.get("asset_revision")).toBe(row.asset.revision);
+          expect(route.get("job")).toBe(id);
+          const periodic = screen.getByRole("region", { name: "周期任务" });
+          expect(
+            periodic
+              .querySelector('tr[aria-selected="true"]')
+              ?.getAttribute("data-record-id"),
+          ).toBe(expectedStrategy);
+          expect(
+            screen.getByLabelText("周期操作").getAttribute("data-periodic-id"),
+          ).toBe(expectedStrategy);
+        },
+        { timeout: 15000 },
+      );
+      fireEvent.click(screen.getByRole("button", { name: "返回此执行记录" }));
+      shell = await selectedShell(row, id);
+      expect(
+        new URLSearchParams(location.hash.slice(1)).get("execution_asset"),
+      ).toBe(originalExecutionFilter);
+    } else
+      expect(
+        within(shell).queryByRole("button", { name: "查看周期任务" }),
+      ).toBeNull();
+
     const selected = screen
       .getByRole("region", { name: "执行记录" })
       .querySelector('tr[aria-selected="true"]') as HTMLElement;

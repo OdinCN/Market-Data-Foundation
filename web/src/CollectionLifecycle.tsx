@@ -6,6 +6,8 @@ import {
   type ReactNode,
 } from "react";
 import { ExecutionFacts } from "./ExecutionFacts";
+import { useExecutionNavigation } from "./ExecutionNavigation";
+import { Fact } from "./WorkflowTable";
 
 // Unknown and in-flight states never authorize a new intent. A domain may
 // further restrict terminal states (for example unresolved financial steps).
@@ -117,6 +119,8 @@ export function ExecutionDetailShell({
   ...facts
 }: ExecutionDetailProps) {
   const [confirmed, setConfirmed] = useState(false);
+  const navigation = useExecutionNavigation(assetKey, facts.id);
+  const openPeriodic = navigation ? navigation.open : onPeriodic;
   useEffect(() => setConfirmed(false), [facts.id, assetKey]);
   return (
     <section
@@ -127,13 +131,23 @@ export function ExecutionDetailShell({
     >
       <h3>执行详情</h3>
       <ExecutionFacts {...facts} />
+      {navigation?.binding && (
+        <dl>
+          <Fact name="周期关联">
+            {navigation.binding.relation === "associated"
+              ? "本记录关联计划"
+              : "本资产当前策略"}{" "}
+            · {navigation.binding.id}
+          </Fact>
+        </dl>
+      )}
       <div
         className="actions"
         aria-label="执行操作"
         data-execution-id={facts.id}
       >
         {onResult && <button onClick={onResult}>查看资产数据</button>}
-        {onPeriodic && <button onClick={onPeriodic}>查看周期任务</button>}
+        {openPeriodic && <button onClick={openPeriodic}>查看周期任务</button>}
         {onResume && confirmResume && (
           <label className="cpi-collection-confirm">
             <input

@@ -178,7 +178,9 @@ function Workbench({
   transport,
   tab = "executions",
   fields = {},
+  modernPce = false,
 }: {
+  modernPce?: boolean;
   transport: Transport;
   tab?: string;
   fields?: Record<string, string>;
@@ -219,6 +221,7 @@ function Workbench({
       generation={0}
       invalidIdentity={false}
       cpiAvailability={availability}
+      pceAvailability={modernPce ? availability : undefined}
     />
   );
 }
@@ -1145,3 +1148,169 @@ it("a direct CPI execution link locates its selected row beyond the first page, 
   expect(selected?.dataset.executionAsset).toBe(keyOf(CPI));
   expect(h.calls.every((c) => c.method === "GET")).toBe(true);
 });
+
+it("returns from a strategy to the selected execution beyond the first page after a manual row selection", async () => {
+  const h = fixture();
+  h.records.splice(
+    0,
+    h.records.length,
+    ...Array.from({ length: 25 }, (_, i) => ({
+      ...h.records[0],
+      id: `cycle-${i}`,
+      created_at: `2026-10-${String(29 - Math.floor(i / 24)).padStart(2, "0")}T01:00:00Z`,
+    })),
+  );
+  render(
+    <Workbench
+      transport={h.transport}
+      fields={{ asset: CPI.identity, asset_revision: CPI.revision }}
+    />,
+  );
+  await flush();
+  fireEvent.click(button("后一页记录"));
+  fireEvent.click(screen.getByRole("button", { name: /选择 cycle-24 / }));
+  await flush();
+  expect(
+    screen.getByRole("region", { name: "执行详情主体" }).dataset.executionId,
+  ).toBe("cycle-24");
+  fireEvent.click(await screen.findByRole("button", { name: "查看周期任务" }));
+  await flush();
+  expect(
+    screen
+      .getByRole("region", { name: "周期任务" })
+      .querySelector('tr[aria-selected="true"]')
+      ?.getAttribute("data-record-id"),
+  ).toBe("cpi-auto");
+  fireEvent.click(screen.getByRole("button", { name: "返回此执行记录" }));
+  await flush();
+  expect(screen.getByText("第 2 页")).toBeTruthy();
+  expect(
+    screen
+      .getByRole("region", { name: "执行记录" })
+      .querySelector<HTMLElement>('tr[aria-selected="true"]')?.dataset
+      .executionId,
+  ).toBe("cycle-24");
+  expect(
+    screen.getByRole("region", { name: "执行详情主体" }).dataset.executionId,
+  ).toBe("cycle-24");
+  expect(h.calls.every((c) => c.method === "GET")).toBe(true);
+});
+
+it("cold all-asset deep links follow the selected identity when a delayed family inserts newer records", async () => {
+  const h = fixture();
+  const seed = h.records[0];
+  h.records.splice(
+    0,
+    h.records.length,
+    ...Array.from({ length: 25 }, (_, i) => ({
+      ...seed,
+      id: `cold-${i}`,
+      created_at: `2026-10-${String(29 - Math.floor(i / 24)).padStart(2, "0")}T01:00:00Z`,
+    })),
+  );
+  let release!: (response: Response) => void;
+  const late = new Promise<Response>((resolve) => {
+    release = resolve;
+  });
+  const transport: Transport = (url, init) =>
+    String(url) === "/api/r5/pce/timeseries/executions"
+      ? late
+      : h.transport(url, init);
+  render(
+    <Workbench
+      modernPce
+      transport={transport}
+      fields={{
+        asset: CPI.identity,
+        asset_revision: CPI.revision,
+        execution_asset: "all",
+        job: "cold-24",
+      }}
+    />,
+  );
+  await flush();
+  expect(screen.getByText("第 2 页")).toBeTruthy();
+  await act(async () =>
+    release(
+      response({
+        executions: Array.from({ length: 22 }, (_, i) => ({
+          ...seed,
+          id: `late-pce-${i}`,
+          created_at: "2026-11-01T01:00:00Z",
+        })),
+      }),
+    ),
+  );
+  expect(screen.getByText("第 3 页")).toBeTruthy();
+  const selected = () =>
+    screen
+      .getByRole("region", { name: "执行记录" })
+      .querySelector<HTMLElement>('tr[aria-selected="true"]')?.dataset
+      .executionId;
+  expect(selected()).toBe("cold-24");
+  expect(
+    screen.getByRole("region", { name: "执行详情主体" }).dataset.executionId,
+  ).toBe("cold-24");
+  fireEvent.click(screen.getByRole("button", { name: /选择 cold-23 / }));
+  await flush();
+  expect(selected()).toBe("cold-23");
+  expect(
+    screen.getByRole("region", { name: "执行详情主体" }).dataset.executionId,
+  ).toBe("cold-23");
+  expect(h.calls.every((c) => c.method === "GET")).toBe(true);
+});
+
+it.each([CPI, PCE])(
+  "a concrete strategy excludes same-asset manual and unknown records: $identity",
+  async (key) => {
+    const h = fixture();
+    const seed = h.records[0];
+    h.records.splice(
+      0,
+      h.records.length,
+      { ...seed, id: "original-manual" },
+      { ...seed, id: "unknown-origin", origin: null },
+      ...(key === CPI
+        ? [{ ...seed, id: "known-automatic", origin: "automatic" }]
+        : []),
+    );
+    render(
+      <Workbench
+        modernPce
+        transport={h.transport}
+        fields={{
+          asset: key.identity,
+          asset_revision: key.revision,
+          execution_asset: keyOf(key),
+          job: "original-manual",
+        }}
+      />,
+    );
+    await flush();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "查看周期任务" }),
+    );
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "返回此执行记录" }));
+    await flush();
+    expect(
+      screen.getByRole("region", { name: "执行详情主体" }).dataset.executionId,
+    ).toBe("original-manual");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "查看周期任务" }),
+    );
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: /^查看执行记录$/ }));
+    await flush();
+    const list = screen.getByRole("region", { name: "执行记录" });
+    const ids = [
+      ...list.querySelectorAll<HTMLElement>("tr[data-execution-id]"),
+    ].map((el) => el.dataset.executionId);
+    expect(ids).toEqual(key === CPI ? ["known-automatic"] : []);
+    if (key === PCE)
+      expect(
+        within(list).getByText("当前已查询范围没有执行记录。"),
+      ).toBeTruthy();
+    expect(h.calls.every((c) => c.method === "GET")).toBe(true);
+  },
+);

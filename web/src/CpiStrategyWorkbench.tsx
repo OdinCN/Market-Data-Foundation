@@ -1,3 +1,4 @@
+import { executionOrigin } from "./executionOrigin";
 import {
   claimsPlanPeriod,
   claimsActualsVerified,
@@ -291,7 +292,9 @@ function RecentExecution({
   );
   const execution = latestRealExecution(records.data?.executions ?? []);
   const automatic = latestRealExecution(
-    (records.data?.executions ?? []).filter((e) => e.origin !== "manual"),
+    (records.data?.executions ?? []).filter((e) =>
+      ["automatic", "schedule"].includes(e.origin ?? ""),
+    ),
   );
   const href = execution
     ? `#${new URLSearchParams({
@@ -325,7 +328,7 @@ function RecentExecution({
         <>
           <p>
             本资产最近执行来源：
-            {execution.origin === "manual" ? "手动采集" : "自动策略"}。
+            {executionOrigin(execution.origin)}。
           </p>
           {execution.state === "running" && (
             <p>任务执行中，尚未确认完成；受理回执不代表采集成功。</p>
@@ -336,9 +339,9 @@ function RecentExecution({
           <dl>
             <Fact name="采集方式">
               {cpiActionText(
-                execution.origin === "manual"
-                  ? execution.action
-                  : (execution.stage ?? execution.action),
+                ["automatic", "schedule"].includes(execution.origin ?? "")
+                  ? (execution.stage ?? execution.action)
+                  : execution.action,
               )}
             </Fact>
             <Fact name="范围">
@@ -476,14 +479,10 @@ export function CpiExecutionDetail({
       <ExecutionDetailShell
         id={e.id}
         asset={macroAssetLabel(profile)}
-        source={
-          <>
-            {profile.provider} ·{" "}
-            <span>{e.origin !== "manual" ? "自动策略" : "手动采集"}</span>
-          </>
-        }
+        source={profile.provider}
+        trigger={executionOrigin(e.origin)}
         action={cpiActionText(
-          e.origin !== "manual"
+          ["automatic", "schedule"].includes(e.origin ?? "")
             ? e.action === "withdraw"
               ? "withdraw"
               : (e.stage ?? e.action)
@@ -642,6 +641,7 @@ export function CpiStrategyWorkbench(
   );
 }
 function CpiStrategyWorkbenchContent({
+  navigation,
   transport,
   profile: primaryProfile = CPI_PROFILE,
   availability: primaryAvailability,
@@ -680,6 +680,7 @@ function CpiStrategyWorkbenchContent({
   selected: selectedProp,
   onSelect,
 }: {
+  navigation?: (id: string) => ReactNode;
   transport: Transport;
   supplement?: { row: Row; detail: ReactNode; refresh: () => void };
   supplements?: { row: Row; detail: ReactNode; refresh: () => void }[];
@@ -929,7 +930,10 @@ function CpiStrategyWorkbenchContent({
   const extraEntries = [...(supplement ? [supplement] : []), ...supplements];
   const extraEntry = extraEntries.find((entry) => selection === entry.row.id);
   const extraSelected = !!extraEntry;
-  const detailVisible = entry.visible && !extraSelected;
+  const detailVisible =
+    entry.visible &&
+    !extraSelected &&
+    (!selection || selection === `${entry.profile.id}-auto`);
   const calendar = useVisiblePolling(
     async (signal) => {
       const value = await cpiRequest<Schedule>(
@@ -1107,7 +1111,18 @@ function CpiStrategyWorkbenchContent({
           ...extraEntries.map((entry) => entry.row),
         ]}
       >
-        {shown && extraSelected && extraEntry?.detail}
+        {shown && extraSelected && (
+          <>
+            {navigation?.(extraEntry.row.id)}
+            {extraEntry.detail}
+          </>
+        )}
+        {shown &&
+          selection &&
+          !extraSelected &&
+          selection !== `${entry.profile.id}-auto` && (
+            <p role="status">请求的周期任务当前不可核实，未改选其他策略。</p>
+          )}
         {shown && detailVisible && !data && (
           <section aria-label="自动采集问题说明">
             <p role="status">
@@ -1131,6 +1146,7 @@ function CpiStrategyWorkbenchContent({
         {shown && detailVisible && data && (
           <>
             <h3>{profile.label} 策略详情</h3>
+            {navigation?.(`${profile.id}-auto`)}
             <p className="auto-summary">
               自动采集{data.enabled ? "已开启" : "已暂停"} ·{" "}
               {entry.diagnosis.state}

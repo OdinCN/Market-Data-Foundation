@@ -66,6 +66,8 @@ function api(initial = "running") {
       if (mode === "timeout") throw new TypeError("controlled_timeout");
       return Response.json({ status: "OK", job: record });
     }
+    if (url.endsWith("/status"))
+      return Response.json({ status: "OK", ...status });
     if (url.endsWith("/jobs"))
       return Response.json({ status: "OK", jobs: record ? [record] : [] });
     if (mode === "404" || mode === "timeout" || !record)
@@ -298,7 +300,15 @@ it("resume keeps the original execution route and posts only its original reques
       generation={0}
     />,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "续跑此作业" }));
+  const resume = await screen.findByRole("button", { name: "续跑此作业" });
+  expect((resume as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "我确认按原请求恢复采集" }),
+  );
+  await waitFor(() =>
+    expect((resume as HTMLButtonElement).disabled).toBe(false),
+  );
+  fireEvent.click(resume);
   await waitFor(() => expect(postCount(a)).toBe(1));
   await screen.findByText("采集中");
   expect(nav).not.toHaveBeenCalled();

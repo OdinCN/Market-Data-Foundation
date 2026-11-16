@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Transport } from "./api";
+import { FINANCIAL } from "./FinancialDailyWorkbench";
 import { useFinancialPeriodic } from "./FinancialPeriodic";
 afterEach(cleanup);
 const base = {
@@ -355,5 +356,61 @@ it.each(["complete", "failed"])(
     expect(
       screen.getAllByText(/financial_timeout|请求超时/).length,
     ).toBeGreaterThan(0);
+  },
+);
+
+it.each(["manual", null])(
+  "latest financial summary uses the actual newest %s record, not an older automatic result",
+  async (origin) => {
+    const nav = vi.fn();
+    const make = (
+      request_id: string,
+      created_at: string,
+      value: string | null,
+    ) => ({
+      request_id,
+      origin: value,
+      state: "complete",
+      created_at,
+      started_at: created_at,
+      finished_at: created_at,
+      command: { action: "update", start: "2026-11-01", end: "2026-11-02" },
+      steps: [],
+      provider_requests: 0,
+    });
+    const transport: Transport = async (url) =>
+      Response.json(
+        String(url).endsWith("/jobs")
+          ? {
+              status: "OK",
+              jobs: [
+                make("old-automatic", "2026-11-15T01:00:00Z", "periodic"),
+                make("newest-record", "2026-11-16T01:00:00Z", origin),
+              ],
+            }
+          : String(url).endsWith("/summary")
+            ? { status: "OK", series: [] }
+            : base,
+      );
+    function Test() {
+      return useFinancialPeriodic(transport, true, nav).detail;
+    }
+    render(<Test />);
+    await screen.findByText("newest-record");
+    expect(
+      screen.getByText(
+        new RegExp(
+          `本资产最近执行来源：${origin === "manual" ? "手动采集" : "触发来源待核实"}`,
+        ),
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "打开对应执行详情" }));
+    expect(nav).toHaveBeenCalledWith(
+      "collection",
+      expect.objectContaining({
+        asset: FINANCIAL.identity,
+        job: "newest-record",
+      }),
+    );
   },
 );
