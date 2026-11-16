@@ -230,7 +230,13 @@ it.each(["all", keyOf(CPI)])(
     expect(detail.getByText("未记录 至 未记录")).toBeTruthy();
     expect(detail.getByText("累计调度尝试")).toBeTruthy();
     expect(detail.getByText("累计实际请求")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /刷新|回查/ })).toBeNull();
+    const beforeRefresh = h.calls.length;
+    fireEvent.click(detail.getByRole("button", { name: "回查当前任务" }));
+    await flush();
+    expect(h.calls.length).toBeGreaterThan(beforeRefresh);
+    expect(
+      screen.getByRole("region", { name: "执行详情主体" }).dataset.executionId,
+    ).toBe("automatic-stage-stable-id");
     expect(screen.queryByRole("region", { name: "CPI 任务回执" })).toBeNull();
     expect(h.calls.every((c) => c.method === "GET")).toBe(true);
   },

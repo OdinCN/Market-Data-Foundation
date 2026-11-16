@@ -13,6 +13,8 @@ export type CollectionContract = {
     | "legacy-pce"
     | "legacy-plan";
   path: string;
+  resumePath?: string;
+  intent?: "client-request" | "server-offer";
 };
 export type CollectionRegistration = CollectionContract & {
   asset: Key;
@@ -31,6 +33,8 @@ export function collectionRegistrations(
       variant: "timeseries",
       protocol: "macro" as const,
       path: profile.basePath + "/jobs",
+      resumePath: profile.resumePath,
+      intent: "client-request" as const,
       profile,
     })),
     {
@@ -38,6 +42,7 @@ export function collectionRegistrations(
       variant: "daily",
       protocol: "financial",
       path: "/api/r5/financial/timeseries/jobs",
+      resumePath: "/api/r5/financial/timeseries/jobs/resume",
     },
     ...families
       .filter((f) => f.collection)
@@ -51,30 +56,35 @@ export function collectionRegistrations(
       variant: "legacy-once",
       protocol: "legacy-cpi",
       path: "/api/r5/cpi/jobs",
+      intent: "server-offer",
     },
     {
       asset: CPI,
       variant: "legacy-backfill",
       protocol: "legacy-cpi",
       path: "/api/r5/cpi/jobs/backfill",
+      intent: "server-offer",
     },
     {
       asset: CPI,
       variant: "legacy-plan-backfill",
       protocol: "legacy-plan",
       path: "/api/r5/cpi/plans/{plan}/backfill",
+      intent: "server-offer",
     },
     {
       asset: PCE,
       variant: "legacy-once",
       protocol: "legacy-pce",
       path: "/api/pce/jobs",
+      intent: "server-offer",
     },
     {
       asset: PCE,
       variant: "legacy-backfill",
       protocol: "legacy-pce",
       path: "/api/pce/jobs/backfill",
+      intent: "server-offer",
     },
   ];
 }

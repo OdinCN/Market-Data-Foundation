@@ -174,3 +174,16 @@ intent, while rejecting replacements, unrelated sources and duplicates.
 TDX 日线查询沿用金融日频的本地优先语义。`DailyQuery` 只读本地发布；缺口通过同一绑定源的无留存读端临时补齐，不调用作业或入库端。18766 的 `--allow-tdx-source-query` 独立于采集权限；`local_only=true` 或显式 `as_of` 始终不补源。单日截面的 `total/offset/next_offset` 以已发布名册候选计数，可能出现空页，必须沿返回游标并固定 `snapshot_id`。临时值、未完成日 K、真实观测时间和缺口由结果表及原始响应共同展示，不计入本地 coverage。确定性回归见 `test_tdx_daily_query.py` / `TdxEphemeralQuery.test.tsx`；`web/scripts/check-tdx-query.mjs` 从交付目录进入，分别记录真实只读和显式模拟盘中，两者不可互相代替。
 
 `CollectionSubmitMatrix.test.tsx` 从上述产品注册和后端目录/包能力自动发现资产，以正常 App 入口、独立 ASGI 协议 fixture 检查成功、丢回执、关闭能力三种场景，要求每条登记路径都有完成证据。新协议只需增加隔离适配器，无需维护第二份资产名单。增加族的恢复操作时继续保留相应领域测试；矩阵不代替初始化范围、续跑或调度语义验收。
+
+
+### 采集生命周期与详情外壳
+
+`CollectionBriefs`、`CollectionFormLock`、`ExecutionBriefCard` 与 `ExecutionDetailShell` 是实际产品共用组件。受理后锁定原命令并按原号 GET 跟踪；运行、未知、未核实与在途状态不能重开。终态还须通过领域限制（金融未决步骤、TDX 提交效果未知等）。仅当前卡片出现“开始另一项采集”；点击清除旧意图与确认，保留已核实记录，新的明确确认才能 POST 新号。`useCollectionSubmit.reset()` 使旧轮异步结果失效；改变资产/命令作用域的旧回执不能更新当前状态。
+
+详情共同顺序为标题、编号/资产/来源/范围/状态/时间、操作区、领域扩展。发布材料、名册证据、分片、失败与覆盖保留各自真实口径。恢复只在注册了实际 `resumePath` 且该记录状态支持时显示；完成记录不渲染无意义的灰色续跑。M3/零售仍须确认原范围恢复；金融、TDX 保留各自已有协议与回执检查。来源准入不足会禁用恢复并说明原因。
+
+稳定验收元素：`aside[aria-label="执行简报"]`；当前卡片 `.execution-brief[data-current="true"][data-execution-id]`；公共详情 `section[aria-label="执行详情主体"][data-execution-asset][data-execution-id]`；操作区 `[aria-label="执行操作"][data-execution-id]`；选中列表行 `tr[aria-selected="true"][data-execution-asset][data-execution-id]`（同时保留原 `data-record-id`）。按钮为“开始另一项采集”“回查同一任务”“查看结果”“回查当前任务”，恢复按钮保留领域名称。结果入口保留资产/版本与 `job`，目录显示“关联执行”及“返回此执行记录”；手动切换资产清除旧关联。
+
+`collectionRegistry` 的 `intent=server-offer` 标记兼容入口：CPI/PCE 单次、指定回补、旧计划批次使用服务实际提供的编号/唯一后继资格，不能改成浏览器随意造新 UUID。没有新的服务准入编号时不显示“开始另一项采集”；原编号仍可跟踪、查看或按资格回补。旧计划回补回执指向周期计划/原批次，不冒充新的执行编号。这些为真实协议例外，矩阵必须验证，不能删除登记以绕过。
+
+`CollectionSubmitMatrix.test.tsx` 由产品登记及实际目录/能力自动枚举，要求每条路径完成 accepted/lost/denied/lifecycle 证据；领域协议 fixture 均禁止外网与 PG，走真实 ASGI 路由和隔离 journal。生命周期用例检查未知防重、锁定、新确认新号、实际能力恢复、简报/列表/深链/结果返回身份；跨族用例故意复用请求号并迟返旧详情。新增族使用共同组件、登记真实 `resumePath`/编号能力，新增协议适配器后必须通过整张矩阵。PR 的前端 CI 使用该矩阵驱动 Chromium 实际点击构建产物。每个可采集资产验证正常与丢回执，沿正常路径验证锁定、重开、新编号、列表切换、刷新、查看结果与返回。名册和消费记录还故意共用同一编号，并延迟返回旧请求。写入限定在隔离的实际作业路由和临时日志。DEV 交付时应在最终预览地址复验，并点击真实已有任务比对详情与操作。

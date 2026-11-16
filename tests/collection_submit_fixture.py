@@ -13,7 +13,7 @@ import signal
 import socket
 import sys
 import tempfile
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
@@ -34,8 +34,12 @@ from market_data_foundation.web.financial_daily_api import (
     financial_router,
 )
 from market_data_foundation.web.gdp_api import timeseries_router as period_router
+from market_data_foundation.web.m3_query_api import timeseries_router as m3_router
 from market_data_foundation.web.package_catalog import PACKAGES
 from market_data_foundation.web.pce_dev_host import CANDIDATE_ORIGIN
+from market_data_foundation.web.retail_timeseries import (
+    timeseries_router as retail_router,
+)
 from market_data_foundation.web.source_catalog import DirectoryQuery, directory
 from market_data_foundation.web.tdx_daily_api import (
     DailyRuntime,
@@ -121,7 +125,10 @@ class Host:
             ]
         )
 
-    def submit(self, command, *, on_started=None):
+    def jobs(self):
+        return dict(jobs=self.journal.list())
+
+    def submit(self, command, *, on_started=None, resume=False):
         if set(command) != {"request_id", "action", "start", "end"}:
             raise WebError("invalid_job_shape")
         identity = str(UUID(command["request_id"]))
@@ -130,6 +137,16 @@ class Host:
         if existing:
             if any(existing[k] != command[k] for k in command):
                 raise WebError("identity_conflict", 409)
+            if resume:
+                existing.update(
+                    state="running",
+                    started_at=datetime.now(UTC).isoformat(),
+                    finished_at=None,
+                    classification=None,
+                )
+                self.journal.save(existing)
+                if on_started:
+                    on_started(existing)
             return existing
         now = datetime.now(UTC).isoformat()
         job = dict(
@@ -183,6 +200,19 @@ elif family == "financial":
         return nested
 
     host.submit = submit
+
+    def resume(identity, *, on_started=None):
+        job = host.journal.read(identity)
+        job.update(
+            state="pending", finished_at=None, updated_at=datetime.now(UTC).isoformat()
+        )
+        job["resume_count"] = job.get("resume_count", 0) + 1
+        host.journal.save(job)
+        if on_started:
+            on_started(job)
+        return job
+
+    host.resume = resume
     app.include_router(
         financial_router(
             FinancialOptions(root, allow_read=True, allow_collect=True), jobs=host
@@ -192,8 +222,14 @@ else:
     host = Host(family)
     if family in {"cpi", "ppi", "pce", "employment", "consumption", "jolts"}:
         app.include_router(monthly_router(host))
+    elif family == "m3":
+        app.include_router(m3_router(host))
+    elif family == "retail":
+        app.include_router(retail_router(host, authorize=lambda _: True))
     else:
         app.include_router(period_router(host, prefix=host.prefix, family=family))
+
+held = {}
 
 with TestClient(
     app, base_url=CANDIDATE_ORIGIN, client=("192.168.10.25", 1234)
@@ -216,6 +252,98 @@ with TestClient(
             )
         elif req.get("control") == "directory":
             out = dict(status=200, body=directory(DirectoryQuery()).model_dump())
+        elif req.get("control") == "phase":
+            identity, phase = req["id"], req["phase"]
+            if identity in held:
+                held.pop(identity).__exit__(None, None, None)
+            journal = runtime.jobs if family in {"tdx", "roster"} else host.journal
+            job = journal.read(identity)
+            state = {
+                "active": "running",
+                "unknown": "unknown",
+                "complete": "complete",
+                "failed": "failed",
+            }[phase]
+            if family in {"tdx", "roster"}:
+                state = {
+                    "running": "RUNNING",
+                    "unknown": "PARTIAL",
+                    "complete": "COMPLETE",
+                    "failed": "FAILED",
+                }[state]
+            if phase == "active":
+                lock = (
+                    runtime.jobs.lock(identity)
+                    if family in {"tdx", "roster"}
+                    else host.journal.execution()
+                )
+                lock.__enter__()
+                held[identity] = lock
+            clock = datetime.now(UTC).isoformat()
+            job.update(
+                state=state,
+                updated_at=clock,
+                finished_at=clock if phase in {"complete", "failed"} else None,
+                classification="commit_outcome_unknown"
+                if phase == "unknown" and family in {"tdx", "roster"}
+                else None,
+            )
+            if family == "financial":
+                job["steps"] = []
+            if phase == "complete" and family == "gdp":
+                start_year, start_q = job["start"].split("-Q")
+                end_year, end_q = job["end"].split("-Q")
+                expected = (
+                    (int(end_year) - int(start_year)) * 4
+                    + int(end_q)
+                    - int(start_q)
+                    + 1
+                ) * len(GDP_IDS)
+                job["result"] = dict(
+                    coverage=dict(
+                        expected=expected,
+                        available=expected,
+                        official_null=0,
+                        missing=0,
+                    ),
+                    readback=dict(verified=True, as_of_basis="available"),
+                )
+            if phase == "complete" and family == "claims":
+                day, end = (
+                    date.fromisoformat(job["start"]),
+                    date.fromisoformat(job["end"]),
+                )
+                weeks = []
+                while day <= end:
+                    if day.weekday() == 5:
+                        weeks.append(day.isoformat())
+                    day += timedelta(days=1)
+                expected = len(weeks) * len(CLAIMS_IDS)
+                job["result"] = dict(
+                    coverage=dict(
+                        expected=expected,
+                        available=expected,
+                        missing_rows=0,
+                        provider_missing_values=0,
+                    ),
+                    readback=dict(verified=True, as_of_basis="available"),
+                    series_coverage={
+                        key: dict(
+                            expected=len(weeks),
+                            available=len(weeks),
+                            latest_week=weeks[-1] if weeks else None,
+                            missing_weeks=[],
+                            missing_weeks_total=0,
+                            missing_weeks_truncated=False,
+                            trailing_missing_weeks=[],
+                            trailing_missing_weeks_total=0,
+                            trailing_missing_weeks_truncated=False,
+                        )
+                        for key in CLAIMS_IDS
+                    },
+                )
+            journal.save(job)
+            out = dict(status=200, body=job)
         elif req.get("control") == "stored":
             paths = list(root.rglob("*.json"))
             out = dict(

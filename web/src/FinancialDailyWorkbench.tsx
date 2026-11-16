@@ -13,7 +13,7 @@ import { CompactTable } from "./CpiQueryDetails";
 import type { FinancialHelp } from "./FinancialApiHelp";
 import { FinancialDailyQuery } from "./FinancialDailyQuery";
 import { FINANCIAL_PREFIX as prefix } from "./financialQuery";
-import { ExecutionFacts } from "./ExecutionFacts";
+import { ExecutionDetailShell } from "./CollectionLifecycle";
 import { formatBeijingTime } from "./beijingTime";
 import { useState, type ReactNode } from "react";
 import type { Navigate, Route } from "./workflowRoute";
@@ -240,6 +240,8 @@ export function FinancialDailyWorkbench({
         asset: FINANCIAL.identity,
         asset_revision: "r1",
         operation: null,
+        package:
+          view === "assets" ? null : (route.fields.get("package") ?? null),
         tab: nextTab,
         job: id,
         reference: null,
@@ -302,6 +304,18 @@ export function FinancialDailyWorkbench({
           }
           resume={() => void submission.submit({ resume: job.request_id, job })}
           go={go}
+          refresh={detail.refresh}
+          periodic={() =>
+            navigate("collection", {
+              asset: FINANCIAL.identity,
+              asset_revision: FINANCIAL.revision,
+              operation: null,
+              tab: "periodic",
+              schedule: "financial-auto",
+              periodic_asset: `${FINANCIAL.identity}@${FINANCIAL.revision}`,
+              job: job.request_id,
+            })
+          }
         />
       )}
     </>
@@ -457,10 +471,14 @@ function FinancialExecutionDetail({
   busy,
   resume,
   go,
+  refresh,
+  periodic,
 }: {
   job: FinancialJob;
   busy: boolean;
   resume: () => void;
+  refresh: () => void;
+  periodic: () => void;
   go: (view: "assets" | "collection", tab: string, id?: string | null) => void;
 }) {
   const failed = j.steps.filter((s) =>
@@ -475,8 +493,7 @@ function FinancialExecutionDetail({
     (failed.length > 0 || jobProblem);
   return (
     <section aria-label="日频作业详情">
-      <h3>执行详情</h3>
-      <ExecutionFacts
+      <ExecutionDetailShell
         id={j.request_id}
         asset="金融条件日频（十项）"
         source={financialJobOrigin(j)}
@@ -496,123 +513,126 @@ function FinancialExecutionDetail({
             ? financialReason({ classification: j.classification })
             : null
         }
-      />
-      <dl>
-        <Fact name="数据来源（步骤绑定）">
-          {financialJobSources(j).join("、") || "未记录"}
-        </Fact>
-      </dl>
-      <FinancialResultFacts job={j} />
-      <p className="small">
-        已确认 {j.steps.filter((s) => s.state === "complete").length}/
-        {j.steps.length} 段；本作业累计来源请求 {j.provider_requests}
-        。执行段完成不表示所有日历日都有公布值；来源尾部、非观测日和短历史独立留缺。
-      </p>
-      {(pending.length > 0 || running.length > 0) && (
-        <section aria-label="执行进度">
-          <p>
-            采集中 {running.length} 段；等待执行 {pending.length}{" "}
-            段。待执行步骤尚无失败事实。
-          </p>
-        </section>
-      )}
-      {waiting.length > 0 && (
-        <section aria-label="等待来源公布">
-          <h4>等待来源公布</h4>
-          {waiting.map((s, i) => (
-            <p key={i}>
-              {names[s.series_id]} · {s.start} 至 {s.end}
-              ：等待来源日期或公布；保留已确认历史，由后续更新补齐。
+        assetKey={`${FINANCIAL.identity}@${FINANCIAL.revision}`}
+        onResult={() => go("assets", "local", j.request_id)}
+        onRefresh={refresh}
+        onPeriodic={financialJobOrigin(j) === "自动策略" ? periodic : undefined}
+        onResume={resumable ? resume : undefined}
+        resumeLabel="续跑此作业"
+        actionsDisabled={busy}
+      >
+        <dl>
+          <Fact name="数据来源（步骤绑定）">
+            {financialJobSources(j).join("、") || "未记录"}
+          </Fact>
+        </dl>
+        <FinancialResultFacts job={j} />
+        <p className="small">
+          已确认 {j.steps.filter((s) => s.state === "complete").length}/
+          {j.steps.length} 段；本作业累计来源请求 {j.provider_requests}
+          。执行段完成不表示所有日历日都有公布值；来源尾部、非观测日和短历史独立留缺。
+        </p>
+        {(pending.length > 0 || running.length > 0) && (
+          <section aria-label="执行进度">
+            <p>
+              采集中 {running.length} 段；等待执行 {pending.length}{" "}
+              段。待执行步骤尚无失败事实。
             </p>
-          ))}
-        </section>
-      )}
-      {(failed.length > 0 || jobProblem) && (
-        <section aria-label="失败与恢复">
-          <h4>失败与恢复</h4>
-          {jobProblem && (
-            <p role="alert">
-              {j.classification
-                ? financialReason({ classification: j.classification })
-                : "作业结果未核实或失败原因未记录；请刷新同一记录核对后恢复。"}
+          </section>
+        )}
+        {waiting.length > 0 && (
+          <section aria-label="等待来源公布">
+            <h4>等待来源公布</h4>
+            {waiting.map((s, i) => (
+              <p key={i}>
+                {names[s.series_id]} · {s.start} 至 {s.end}
+                ：等待来源日期或公布；保留已确认历史，由后续更新补齐。
+              </p>
+            ))}
+          </section>
+        )}
+        {(failed.length > 0 || jobProblem) && (
+          <section aria-label="失败与恢复">
+            <h4>失败与恢复</h4>
+            {jobProblem && (
+              <p role="alert">
+                {j.classification
+                  ? financialReason({ classification: j.classification })
+                  : "作业结果未核实或失败原因未记录；请刷新同一记录核对后恢复。"}
+              </p>
+            )}
+            {failed.map((s, i) => (
+              <p key={i} role="alert">
+                {names[s.series_id]} · {s.start} 至 {s.end}：{label(s.state)}。
+                {financialReason(s)}
+              </p>
+            ))}
+          </section>
+        )}
+        {j.classification && !jobProblem && (
+          <details>
+            <summary>保留的异常分类</summary>
+            <p>
+              先前记录：{j.classification}
+              。该分类独立保留，不代表当前作业失败；当前状态以本次回读为准。
             </p>
-          )}
-          {failed.map((s, i) => (
-            <p key={i} role="alert">
-              {names[s.series_id]} · {s.start} 至 {s.end}：{label(s.state)}。
-              {financialReason(s)}
+          </details>
+        )}
+        <div className="actions">
+          <button onClick={() => go("assets", "local", j.request_id)}>
+            查看关联资产 →
+          </button>
+          <button onClick={() => go("collection", "executions", j.request_id)}>
+            返回执行列表
+          </button>
+        </div>
+        {j.coverage && (
+          <details>
+            <summary>各指标覆盖与缺口</summary>
+            <p className="small">
+              作业结束时的区间本地覆盖快照，含此前已持有数据，不代表本次新增量。快照截止：
+              {formatBeijingTime(j.coverage.as_of, "未记录")}。
             </p>
-          ))}
-          {resumable && (
-            <div className="actions">
-              <button disabled={busy} onClick={resume}>
-                续跑此作业
-              </button>
-            </div>
-          )}
-        </section>
-      )}
-      {j.classification && !jobProblem && (
+            <CoverageTable rows={j.coverage.series} />
+          </details>
+        )}
         <details>
-          <summary>保留的异常分类</summary>
-          <p>
-            先前记录：{j.classification}
-            。该分类独立保留，不代表当前作业失败；当前状态以本次回读为准。
-          </p>
+          <summary>逐段进度与原件</summary>
+          <ul className="financial-steps">
+            {j.steps.map((s, i) => (
+              <li key={i}>
+                <strong>{s.series_id}</strong> {s.start} 至 {s.end} ·{" "}
+                {label(s.state)} · 来源请求 {s.provider_requests ?? "未记录"} ·
+                原件批次尝试 {s.retained?.attempts ?? "未记录"} · 有效值{" "}
+                {s.valid_rows ?? "待回读"}
+                {s.acquired_end && (
+                  <p>
+                    本段已取得区间：{s.acquired_start} 至 {s.acquired_end}
+                    ；原文最新观测：{s.latest_source_observation ?? "未取得"}。
+                  </p>
+                )}
+                {s.deferred_after && (
+                  <p>
+                    请求中的后续日期尚未进入来源观测日，等待后续更新；不会把它们写成未来值。
+                  </p>
+                )}
+                {s.classification && <p>{financialReason(s)}</p>}
+                {s.result && (
+                  <Technical>
+                    <pre className="financial-json">
+                      {JSON.stringify(
+                        { batch: s.result, retained: s.retained },
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  </Technical>
+                )}
+              </li>
+            ))}
+          </ul>
         </details>
-      )}
-      <div className="actions">
-        <button onClick={() => go("assets", "local")}>查看关联资产 →</button>
-        <button onClick={() => go("collection", "executions")}>
-          返回执行列表
-        </button>
-      </div>
-      {j.coverage && (
-        <details>
-          <summary>各指标覆盖与缺口</summary>
-          <p className="small">
-            作业结束时的区间本地覆盖快照，含此前已持有数据，不代表本次新增量。快照截止：
-            {formatBeijingTime(j.coverage.as_of, "未记录")}。
-          </p>
-          <CoverageTable rows={j.coverage.series} />
-        </details>
-      )}
-      <details>
-        <summary>逐段进度与原件</summary>
-        <ul className="financial-steps">
-          {j.steps.map((s, i) => (
-            <li key={i}>
-              <strong>{s.series_id}</strong> {s.start} 至 {s.end} ·{" "}
-              {label(s.state)} · 来源请求 {s.provider_requests ?? "未记录"} ·
-              原件批次尝试 {s.retained?.attempts ?? "未记录"} · 有效值{" "}
-              {s.valid_rows ?? "待回读"}
-              {s.acquired_end && (
-                <p>
-                  本段已取得区间：{s.acquired_start} 至 {s.acquired_end}
-                  ；原文最新观测：{s.latest_source_observation ?? "未取得"}。
-                </p>
-              )}
-              {s.deferred_after && (
-                <p>
-                  请求中的后续日期尚未进入来源观测日，等待后续更新；不会把它们写成未来值。
-                </p>
-              )}
-              {s.classification && <p>{financialReason(s)}</p>}
-              {s.result && (
-                <Technical>
-                  <pre className="financial-json">
-                    {JSON.stringify(
-                      { batch: s.result, retained: s.retained },
-                      null,
-                      2,
-                    )}
-                  </pre>
-                </Technical>
-              )}
-            </li>
-          ))}
-        </ul>
-      </details>
+      </ExecutionDetailShell>
     </section>
   );
 }

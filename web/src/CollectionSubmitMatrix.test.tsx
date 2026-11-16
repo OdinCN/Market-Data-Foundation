@@ -83,7 +83,7 @@ function requireEvidence(
 ) {
   const missing: string[] = [];
   for (const row of rows)
-    for (const scenario of ["accepted", "lost", "denied"])
+    for (const scenario of ["accepted", "lost", "denied", "lifecycle"])
       if (
         !evidence.some(
           (p) =>
@@ -321,6 +321,7 @@ async function setup(
   await act(async () => {});
   return {
     backend,
+    transport,
     calls,
     reference,
     view,
@@ -330,7 +331,7 @@ async function setup(
     },
   };
 }
-function fillForm(reference: string) {
+function fillForm(reference: string, alternate = false) {
   const button = submitButton(),
     form = button.closest("form")!;
   for (const input of Array.from(
@@ -343,12 +344,18 @@ function fillForm(reference: string) {
         .join(" ");
     if (!/开始|结束/.test(label)) continue;
     const value = label.includes("季度")
-      ? "2026-Q3"
+      ? alternate
+        ? "2026-Q2"
+        : "2026-Q3"
       : input.type === "date" || input.placeholder.includes("DD")
-        ? "2026-10-31"
+        ? alternate
+          ? "2026-10-24"
+          : "2026-10-31"
         : label.includes("参考月")
           ? reference
-          : "2026-09";
+          : alternate
+            ? "2026-08"
+            : "2026-09";
     fireEvent.change(input, { target: { value } });
   }
 }
@@ -372,7 +379,7 @@ it("covers the actual capability catalog and requires a scenario for every produ
     /missing submit scenario/,
   );
   const complete = registrations.flatMap((r) =>
-    ["accepted", "lost", "denied"].map((scenario) => ({
+    ["accepted", "lost", "denied", "lifecycle"].map((scenario) => ({
       asset: keyOf(r.asset),
       variant: r.variant,
       scenario,
@@ -405,6 +412,229 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
       variant: row.variant,
       scenario: "denied",
       requests: context.calls,
+    });
+  }, 90000);
+  it("keeps the accepted intent, tracks its ID, reopens explicitly and uses one detail shell", async () => {
+    const context = await setup(row);
+    fillForm(context.reference);
+    await act(async () => {});
+    const form = submitButton().closest("form")!;
+    fireEvent.click(within(form).getByRole("checkbox"));
+    await waitFor(() => expect(submitButton().disabled).toBe(false));
+    fireEvent.click(submitButton());
+    await waitFor(() =>
+      expect(context.calls.filter((c) => c.method === "POST")).toHaveLength(1),
+    );
+    const post = context.calls.find((c) => c.method === "POST")!;
+    const id =
+      post.body.request_id ??
+      post.body.job_identity ??
+      post.url.split("/").at(-2)!;
+    const briefs = () =>
+      screen.getByRole("complementary", { name: "执行简报" });
+    const card = () =>
+      within(briefs()).getByRole("button", {
+        name: new RegExp(id),
+      }) as HTMLButtonElement;
+    await waitFor(() => expect(card().disabled).toBe(false));
+    expect(tab()).toBe("new");
+    if (row.intent === "server-offer") {
+      // Compatibility contracts offer a bounded server-owned ID. Never invent
+      // a client UUID or release the durable reservation to pretend to reopen.
+      expect(
+        within(briefs()).queryByRole("button", { name: "开始另一项采集" }),
+      ).toBeNull();
+      expect(
+        briefs().querySelector('[data-collection-exception="server-offer"]'),
+      ).toBeTruthy();
+      fireEvent.submit(form);
+      expect(context.calls.filter((c) => c.method === "POST")).toHaveLength(1);
+      proofs.push({
+        asset: keyOf(row.asset),
+        variant: row.variant,
+        scenario: "lifecycle",
+        exception: "server-offer",
+        id,
+      });
+      return;
+    }
+    const refresh = async () => {
+      const before = context.calls.filter(
+        (c) => c.method === "GET" && c.url.includes("/jobs"),
+      ).length;
+      fireEvent.click(
+        within(card().closest(".execution-brief")!).getByRole("button", {
+          name: "回查同一任务",
+        }),
+      );
+      await waitFor(() =>
+        expect(
+          context.calls.filter(
+            (c) =>
+              c.method === "GET" && c.url.includes("/jobs") && c.status === 200,
+          ).length,
+        ).toBeGreaterThan(before),
+      );
+      await act(async () => {});
+    };
+    for (const phase of ["active", "unknown"]) {
+      await context.backend.exchange({ control: "phase", id, phase });
+      await refresh();
+      await waitFor(() =>
+        expect(
+          within(briefs()).queryByRole("button", { name: "开始另一项采集" }),
+        ).toBeNull(),
+      );
+      expect(form.querySelector("fieldset")?.disabled).toBe(true);
+      fireEvent.submit(form);
+      expect(context.calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    }
+    await context.backend.exchange({ control: "phase", id, phase: "complete" });
+    await refresh();
+    const reopen = await within(briefs()).findByRole("button", {
+      name: "开始另一项采集",
+    });
+    fireEvent.click(reopen);
+    await waitFor(() =>
+      expect(form.querySelector("fieldset")?.disabled).toBe(false),
+    );
+    expect(
+      (within(form).getByRole("checkbox") as HTMLInputElement).checked,
+    ).toBe(false);
+    expect(card().disabled).toBe(false); // released history remains available
+    fireEvent.submit(form);
+    expect(context.calls.filter((c) => c.method === "POST")).toHaveLength(1);
+    fillForm(context.reference, true);
+    fireEvent.click(within(form).getByRole("checkbox"));
+    await waitFor(() => expect(submitButton().disabled).toBe(false));
+    fireEvent.click(submitButton());
+    await waitFor(() =>
+      expect(context.calls.filter((c) => c.method === "POST")).toHaveLength(2),
+    );
+    const next = context.calls.filter((c) => c.method === "POST")[1];
+    expect(next.url).toBe(post.url);
+    expect(next.body.request_id).not.toBe(id);
+    if (typeof post.body.start === "string")
+      expect(next.body.start).not.toBe(post.body.start);
+    expect(tab()).toBe("new");
+    const nextId = next.body.request_id;
+    await context.backend.exchange({
+      control: "phase",
+      id: nextId,
+      phase: "failed",
+    });
+    fireEvent.click(
+      await within(briefs()).findByRole("button", { name: new RegExp(nextId) }),
+    );
+    const failedShell = await screen.findByRole("region", {
+      name: "执行详情主体",
+    });
+    expect(failedShell.dataset.executionId).toBe(nextId);
+    let expectedPosts = 2;
+    if (row.resumePath) {
+      const confirm = within(failedShell).queryByRole("checkbox", {
+        name: "我确认按原请求恢复采集",
+      });
+      if (confirm) fireEvent.click(confirm);
+      const resume = within(failedShell).getByRole("button", {
+        name: /续跑|按原请求恢复/,
+      }) as HTMLButtonElement;
+      await waitFor(() => expect(resume.disabled).toBe(false));
+      fireEvent.click(resume);
+      await waitFor(() =>
+        expect(context.calls.filter((c) => c.method === "POST")).toHaveLength(
+          3,
+        ),
+      );
+      const recovery = context.calls.filter((c) => c.method === "POST")[2];
+      expect(recovery.url).toBe(row.resumePath);
+      expect(recovery.body.request_id).toBe(nextId);
+      expect(new URLSearchParams(location.hash.slice(1)).get("job")).toBe(
+        nextId,
+      );
+      expectedPosts = 3;
+    } else
+      expect(
+        within(failedShell).queryByRole("button", {
+          name: /续跑|按原请求恢复/,
+        }),
+      ).toBeNull();
+    const priorRow = Array.from(
+      screen
+        .getByRole("region", { name: "执行记录" })
+        .querySelectorAll<HTMLElement>("tr[data-record-id]"),
+    ).find((r) => r.dataset.recordId?.endsWith(id))!;
+    expect(priorRow).toBeTruthy();
+    fireEvent.click(within(priorRow).getByRole("button"));
+    const shell = await screen.findByRole("region", { name: "执行详情主体" });
+    expect(shell.dataset.executionId).toBe(id);
+    expect(shell.dataset.executionAsset).toBe(keyOf(row.asset));
+    const scope = within(shell).getByText("范围").parentElement!.textContent;
+    if (row.protocol === "roster") {
+      for (const market of ["深市", "沪市", "北交所"])
+        expect(scope).toContain(market);
+    } else {
+      expect(scope).toContain(post.body.start);
+      expect(scope).toContain(post.body.end);
+    }
+
+    expect(shell.querySelector("h3")?.textContent).toBe("执行详情");
+    expect(
+      within(shell).queryByRole("button", { name: /续跑|恢复采集|恢复名册/ }),
+    ).toBeNull();
+    fireEvent.click(
+      within(shell).getByRole("button", { name: "回查当前任务" }),
+    );
+    const selected = screen
+      .getByRole("region", { name: "执行记录" })
+      .querySelector('tr[aria-selected="true"]') as HTMLElement;
+    expect(selected.dataset.recordId?.endsWith(id)).toBe(true);
+    context.view.unmount();
+    render(
+      <App
+        transport={context.transport}
+        initialQuery={{
+          reference: context.reference,
+          as_of: "2026-11-14T00:00:00Z",
+        }}
+      />,
+    );
+    const reloaded = await screen.findByRole("region", {
+      name: "执行详情主体",
+    });
+    expect(reloaded.dataset.executionId).toBe(id);
+    expect(reloaded.dataset.executionAsset).toBe(keyOf(row.asset));
+    fireEvent.click(within(reloaded).getByRole("button", { name: "查看结果" }));
+    await waitFor(() =>
+      expect(new URLSearchParams(location.hash.slice(1)).get("view")).toBe(
+        "assets",
+      ),
+    );
+    expect(new URLSearchParams(location.hash.slice(1)).get("job")).toBe(id);
+    expect(new URLSearchParams(location.hash.slice(1)).get("asset")).toBe(
+      row.asset.identity,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "返回此执行记录" }),
+    );
+    const returned = await screen.findByRole("region", {
+      name: "执行详情主体",
+    });
+    expect(returned.dataset.executionId).toBe(id);
+    expect(returned.dataset.executionAsset).toBe(keyOf(row.asset));
+    expect(context.calls.filter((c) => c.method === "POST")).toHaveLength(
+      expectedPosts,
+    );
+    proofs.push({
+      asset: keyOf(row.asset),
+      variant: row.variant,
+      scenario: "lifecycle",
+      id,
+      next: next.body.request_id,
+      locked: true,
+      unknownBlocks: true,
+      samePageReopen: true,
+      resultAndReturn: true,
     });
   }, 90000);
   it.each([false, true])(
@@ -574,3 +804,173 @@ it.each(readonlyCollections)(
   },
   90000,
 );
+
+it("keeps list selection and details on the same asset/ID when an old family read returns late", async () => {
+  const chosen = [
+    registrations.find((r) => r.profile?.id === "consumption")!,
+    registrations.find((r) => r.profile?.id === "cpi")!,
+    registrations.find((r) => r.protocol === "financial")!,
+    registrations.find((r) => r.protocol === "tdx")!,
+  ];
+  const identity = "73117ab1-6301-48fa-b96e-81b25e789abb";
+  const sources = new Map<string, Bridge>();
+  for (const row of chosen) {
+    const b = row.profile
+      ? asgi(row.profile.id, "collection_submit_fixture.py")
+      : drivers[row.protocol].bridge();
+    sources.set(row.path.replace(/\/jobs$/, ""), b);
+    if (row.protocol === "tdx")
+      await b.exchange({
+        method: "POST",
+        path: row.path,
+        body: {
+          request_id: "411d48ab-952c-4099-aad0-6df9d01b75da",
+          action: "universe",
+        },
+      });
+    const command = row.profile
+      ? {
+          request_id: identity,
+          action: "update",
+          start: "2026-09",
+          end: "2026-09",
+        }
+      : {
+          request_id: identity,
+          action: "update",
+          start: "2026-11-09",
+          end: "2026-11-12",
+          ...(row.protocol === "tdx" ? { markets: [0, 1, 2] } : {}),
+        };
+    const saved = await b.exchange({
+      method: "POST",
+      path: row.path,
+      body: command,
+    });
+    expect([200, 202]).toContain(saved.status);
+    await b.exchange({ control: "phase", id: identity, phase: "complete" });
+  }
+  const root = mkdtempSync(join(tmpdir(), "mdf-d01-cross-details-"));
+  roots.push(root);
+  const directory = asgi("financial_manual", "d01_ui_exchange.py", {
+    store_dir: root,
+  });
+  const groups = new Map<string, string[]>();
+  for (const row of chosen) {
+    const cap = capabilities.find((c) => keyOf(c.asset) === keyOf(row.asset))!;
+    groups.set(cap.package, [
+      ...(groups.get(cap.package) ?? []),
+      cap.capability,
+    ]);
+  }
+  for (const [pkg, enabled] of groups)
+    expect(
+      (
+        await directory.exchange({
+          method: "PUT",
+          path: `/api/r5/packages/${pkg}`,
+          body: {
+            expected_revision: null,
+            enabled_capability_ids: enabled,
+            source_changes: [],
+          },
+        })
+      ).status,
+    ).toBe(200);
+  let pending = false,
+    delay = true;
+  let release = () => {};
+  const tdx = chosen[3];
+  const transport: Transport = async (input, init) => {
+    const url = String(input);
+    if (/^\/api\/r5\/(packages|sources)/.test(url))
+      return directory.transport(input, init);
+    const match = [...sources].find(([prefix]) => url.startsWith(prefix));
+    if (!match)
+      return Response.json(
+        { classification: "fixture_not_enabled" },
+        { status: 404 },
+      );
+    const response = await match[1].transport(input, init);
+    if (delay && url === tdx.path + "/" + identity) {
+      delay = false;
+      pending = true;
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    }
+    return response;
+  };
+  location.hash = new URLSearchParams({
+    ui: "r5",
+    view: "collection",
+    tab: "executions",
+    execution_asset: "all",
+    package: "macro",
+    execution_schedule: "all",
+    asset: chosen[0].asset.identity,
+    asset_revision: chosen[0].asset.revision,
+    job: identity,
+  }).toString();
+  render(<App transport={transport} />);
+  async function select(row: CollectionRegistration) {
+    const table = await screen.findByRole("region", { name: "执行记录" });
+    let found: HTMLElement | undefined;
+    await waitFor(() => {
+      found = [
+        ...table.querySelectorAll<HTMLElement>("tr[data-record-id]"),
+      ].find(
+        (r) =>
+          r.dataset.executionId === identity &&
+          r.dataset.executionAsset === keyOf(row.asset),
+      );
+      expect(found).toBeTruthy();
+    });
+    fireEvent.click(within(found!).getByRole("button"));
+  }
+  async function same(row: CollectionRegistration) {
+    await waitFor(() => {
+      const shell = screen.getByRole("region", { name: "执行详情主体" });
+      expect(shell.dataset.executionId).toBe(identity);
+      expect(shell.dataset.executionAsset).toBe(keyOf(row.asset));
+      const selected = screen
+        .getByRole("region", { name: "执行记录" })
+        .querySelector('tr[aria-selected="true"]') as HTMLElement;
+      expect(selected.dataset.executionId).toBe(identity);
+      expect(selected.dataset.executionAsset).toBe(keyOf(row.asset));
+    });
+    expect(new URLSearchParams(location.hash.slice(1)).get("asset")).toBe(
+      row.asset.identity,
+    );
+  }
+  await same(chosen[0]);
+  await select(tdx);
+  await waitFor(() => expect(pending).toBe(true));
+  await select(chosen[2]);
+  await same(chosen[2]);
+  await act(async () => {
+    release();
+  });
+  await same(chosen[2]);
+  await select(tdx);
+  await same(tdx);
+  await select(chosen[0]);
+  await same(chosen[0]);
+  await select(chosen[1]);
+  await same(chosen[1]); // CPI must replace the previous Macro identity
+  await select(tdx);
+  await same(tdx);
+  fireEvent.click(
+    within(screen.getByRole("region", { name: "执行详情主体" })).getByRole(
+      "button",
+      { name: "查看结果" },
+    ),
+  );
+  const context = await screen.findByLabelText("关联执行");
+  expect(context.dataset.executionAsset).toBe(keyOf(tdx.asset));
+  expect(context.dataset.executionId).toBe(identity);
+  fireEvent.click(
+    within(context).getByRole("button", { name: "返回此执行记录" }),
+  );
+  await same(tdx);
+}, 90000);

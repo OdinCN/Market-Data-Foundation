@@ -73,7 +73,14 @@ jobs:
         run: npm run contract:check
       - name: Run all frontend tests with offline ASGI fixtures
         working-directory: web
+        env:
+          MDF_SUBMIT_EVIDENCE: ${{ runner.temp }}/collection-matrix.json
         run: npm test
       - name: Build frontend
         working-directory: web
         run: npm run build
+      - name: Install Chromium for the collection workflow
+        working-directory: web
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Exercise the built collection workbench for every registered asset
+        run: node web/scripts/check-collection-submit.mjs "$RUNNER_TEMP/collection-matrix.json" "$RUNNER_TEMP/collection-browser"

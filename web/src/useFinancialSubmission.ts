@@ -192,6 +192,7 @@ export function useFinancialSubmission(
     if (!pending || !canRelease || writing.current) return;
     try {
       clear(pending);
+      collection.reset();
       tracking.invalidate();
       setPending(null);
       setReceipt(null);

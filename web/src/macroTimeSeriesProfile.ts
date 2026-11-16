@@ -29,6 +29,7 @@ export type MacroProfile = Readonly<{
   provider: "BLS" | "BEA" | "Census" | "FRED";
   asset: Key;
   basePath: string;
+  resumePath?: string;
   series: readonly (readonly [string, string, string, string])[];
   historyNotice?: string;
   defaultQuerySeries?: readonly string[];
@@ -185,6 +186,7 @@ export const RETAIL_PROFILE: MacroProfile = Object.freeze({
   provider: "Census",
   asset: RETAIL,
   basePath: "/api/r5/retail/timeseries",
+  resumePath: "/api/r5/retail/timeseries/jobs/resume",
   series: [
     ["headline", "总体 · 季调", "headline", "sa"],
     ["control", "控制组（MDF推导）· 季调", "core", "sa"],
@@ -332,6 +334,7 @@ export const M3_PROFILE: MacroProfile = Object.freeze({
   provider: "Census",
   asset: M3,
   basePath: "/api/r5/m3/timeseries",
+  resumePath: "/api/r5/m3/timeseries/jobs/resume",
   series: [
     ["durable_goods_new_orders", "耐用品新订单 · 季调", "durable", "sa"],
     [

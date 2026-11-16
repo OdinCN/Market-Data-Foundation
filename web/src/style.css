@@ -2045,3 +2045,20 @@ button.strategy-switch::before {
 .workbench.single-pane {
   grid-template-columns: minmax(0, 1fr);
 }
+
+.collection-fields {
+  display: grid;
+  gap: 14px;
+  justify-items: stretch;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.execution-brief > .execution-brief-card {
+  width: 100%;
+}
+
+.collection-fields > button {
+  justify-self: start;
+}

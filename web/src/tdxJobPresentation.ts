@@ -1,3 +1,4 @@
+import { collectionCanReopen } from "./CollectionLifecycle";
 import type { TdxJob } from "./TdxDailyWorkbench";
 
 export function tdxJobOrigin(job: TdxJob) {
@@ -26,4 +27,16 @@ export function tdxBriefs(history: TdxJob[], receipt: TdxJob | null) {
     newest.find((j) => j.request_id === receipt.request_id) ?? receipt,
     ...newest.filter((j) => j.request_id !== receipt.request_id),
   ].slice(0, 5);
+}
+
+export function tdxCanReopen(job: TdxJob) {
+  return (
+    collectionCanReopen(job.state) &&
+    job.classification !== "commit_outcome_unknown" &&
+    !(job.steps ?? []).some(
+      (step) =>
+        ["RUNNING", "UNKNOWN", "OUTCOME_UNKNOWN"].includes(step.state) ||
+        step.classification === "commit_outcome_unknown",
+    )
+  );
 }

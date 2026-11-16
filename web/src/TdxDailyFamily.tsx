@@ -1,3 +1,12 @@
+import { tdxCanReopen } from "./tdxJobPresentation";
+import {
+  useCollectionRecords,
+  collectionRecent,
+  CollectionBriefs,
+  CollectionFormLock,
+  collectionCanReopen,
+  ExecutionDetailShell,
+} from "./CollectionLifecycle";
 import { useTdxPendingJob } from "./useTdxPendingJob";
 import { useCollectionSubmit } from "./useCollectionSubmit";
 import { TdxRosterFacts, type RosterStatus } from "./TdxRosterFacts";
@@ -90,11 +99,8 @@ export function TdxDailyCollection({
     intent = useRef<string | null>(pending.id);
   const [receipt, setReceipt] = useState<TdxJob | null>(null);
   function accepted(job: TdxJob) {
-    if (!intent.current || job.request_id !== intent.current)
-      throw Error("request_identity_unconfirmed");
-    pending.release(job.request_id);
+    if (!intent.current || job.request_id !== intent.current) return;
     setReceipt(job);
-    intent.current = null;
     setNotice("");
     setConfirmed(false);
     jobs.refresh();
@@ -109,7 +115,7 @@ export function TdxDailyCollection({
   );
   useEffect(() => {
     const end = status.data?.defaults.end;
-    if (!end) return;
+    if (!end || pending.id) return;
     const { start } = updateRange(end);
     setDrafts((old) => ({
       init: rangeWithDefaults(
@@ -152,10 +158,42 @@ export function TdxDailyCollection({
       schedule: null,
     });
   }
-  const recent = tdxBriefs(
-    (jobs.data?.jobs ?? []).filter((j) => j.command.action !== "universe"),
-    receipt,
+  const currentJobs = useCollectionRecords([
+    ...(receipt ? [receipt] : []),
+    ...(jobs.data?.jobs ?? []),
+  ]);
+  const tracked =
+    currentJobs.find((j) => j.request_id === pending.id) ??
+    (receipt?.request_id === pending.id ? receipt : null);
+  useEffect(() => {
+    if (!tracked || tracked.command.action === "universe") return;
+    const command = tracked.command;
+    const mode = command.action as "init" | "update";
+    setAction(mode);
+    setConfirmed(false);
+    setDrafts((old) => ({
+      ...old,
+      [mode]: { start: command.start!, end: command.end! },
+    }));
+  }, [tracked?.request_id]);
+  const visibleJobs = collectionRecent(
+    currentJobs.filter((j) => j.command.action !== "universe"),
+    pending.id,
   );
+  function newIntent() {
+    if (!pending.id || !tracked || !tdxCanReopen(tracked) || busy || jobs.stale)
+      return;
+    try {
+      pending.release(pending.id);
+    } catch {
+      setNotice("本机原请求编号无法核实，未释放意图，请保留原号回查。");
+      return;
+    }
+    intent.current = null;
+    submission.reset();
+    setConfirmed(false);
+    setNotice("");
+  }
   return (
     <section
       className="ordinary-query cpi-timeseries"
@@ -181,13 +219,12 @@ export function TdxDailyCollection({
       )}
       <CollectionColumns
         briefs={
-          <aside className="detail-pane execution-briefs" aria-label="执行简报">
-            <h3>执行简报</h3>
+          <CollectionBriefs>
             {pending.blocked && (
               <p role="alert">本机请求编号无法核实，采集已暂停。</p>
             )}
             {notice && <p role="alert">{notice}</p>}
-            {pending.id && (
+            {pending.id && !tracked && (
               <>
                 <code>{pending.id}</code>
                 <button
@@ -206,32 +243,41 @@ export function TdxDailyCollection({
               </>
             )}
             <p className="small">
-              时间基准：北京时间（UTC+08:00）。以下为真实近期作业，触发来源单列；缺少来源记录时保留待核实。
+              以下为真实近期作业，触发来源单列；缺少来源记录时保留待核实。
             </p>
             {jobs.busy && !jobs.data && <p role="status">正在读取执行简报…</p>}
             {jobs.failure && (
               <p role="alert">执行简报读取失败，已有记录待核实。</p>
             )}
-            {jobs.data && !recent.length && (
+            {jobs.data && !currentJobs.length && (
               <p>暂无采集记录；尚未提交本次采集。</p>
             )}
             <ol className="execution-brief-list">
-              {recent.map((j) => (
+              {visibleJobs.map((j) => (
                 <li key={j.request_id}>
                   <ExecutionBriefCard
                     id={j.request_id}
-                    current={j.request_id === receipt?.request_id}
+                    current={j.request_id === pending.id}
+                    onRefresh={() =>
+                      void tdxCall<TdxJob>(transport, "/jobs/" + j.request_id)
+                        .then(accepted)
+                        .catch(() => setNotice("原请求回查失败，请保留编号。"))
+                    }
+                    state={j.state}
+                    onReopen={newIntent}
+                    canReopen={!jobs.stale && tdxCanReopen(j)}
+                    reopenDisabled={busy || pending.blocked}
                     title={`${title} · ${tdxJobOrigin(j)} · ${actionTitle(j)}`}
                     createdAt={j.created_at}
                     start={j.command.start}
                     end={j.command.end}
-                    result={tdxStateLabel[j.state] ?? j.state}
+                    result={`${tdxStateLabel[j.state] ?? j.state}${j.classification ? ` · ${j.classification}` : ""}`}
                     onSelect={() => open(j.request_id)}
                   />
                 </li>
               ))}
             </ol>
-          </aside>
+          </CollectionBriefs>
         }
       >
         <form
@@ -277,75 +323,77 @@ export function TdxDailyCollection({
             })();
           }}
         >
-          <label>
-            采集方式
-            <select
-              aria-label="采集方式"
-              value={action}
-              disabled={busy || !!intent.current}
-              onChange={(e) => {
-                setAction(e.target.value as typeof action);
-                setConfirmed(false);
-              }}
+          <CollectionFormLock locked={busy || !!pending.id}>
+            <label>
+              采集方式
+              <select
+                aria-label="采集方式"
+                value={action}
+                disabled={busy || !!intent.current}
+                onChange={(e) => {
+                  setAction(e.target.value as typeof action);
+                  setConfirmed(false);
+                }}
+              >
+                <option value="update">更新指定范围（盘后增量）</option>
+                <option value="init">初始化采集</option>
+              </select>
+            </label>
+            <div className="field-grid">
+              <DailyDateRange
+                key={action}
+                collection
+                start={range.start}
+                end={range.end}
+                onStart={(v) => change("start", v)}
+                onEnd={(v) => change("end", v)}
+                min="1990-01-01"
+                max={status.data?.defaults.end}
+                disabled={busy || !!intent.current}
+              />
+            </div>
+            <p className="small">
+              {action === "init"
+                ? "初始化服务预置范围：1990 年至最近盘后日，可自行修改。"
+                : "更新默认回看 14 日，可编辑起止日期。"}
+            </p>
+            <p className="small">
+              沪深北三市；原生价基（native_projection），收益口径待核验。逐页持久保存，中断后在执行记录续跑未完成分片。日期按北京时间盘后窗口核定。
+            </p>
+            {error && range.end && <p role="alert">{error}</p>}
+            {status.busy && !status.data && (
+              <p role="status">正在核实采集资格与盘后日期…</p>
+            )}
+            {status.failure && (
+              <p role="alert">TDX 采集资格读取失败，请重读核实。</p>
+            )}
+            {status.data && !status.data.collect && (
+              <p role="status">当前采集能力未启用。</p>
+            )}
+            <label className="cpi-collection-confirm">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                disabled={busy || !!intent.current}
+                onChange={(e) => setConfirmed(e.target.checked)}
+              />
+              <span>我确认将以上范围采集到开发测试库</span>
+            </label>
+            <button
+              className="primary"
+              disabled={
+                busy ||
+                !!pending.id ||
+                pending.blocked ||
+                !confirmed ||
+                !!error ||
+                !status.data?.collect ||
+                status.stale
+              }
             >
-              <option value="update">更新指定范围（盘后增量）</option>
-              <option value="init">初始化采集</option>
-            </select>
-          </label>
-          <div className="field-grid">
-            <DailyDateRange
-              key={action}
-              collection
-              start={range.start}
-              end={range.end}
-              onStart={(v) => change("start", v)}
-              onEnd={(v) => change("end", v)}
-              min="1990-01-01"
-              max={status.data?.defaults.end}
-              disabled={busy || !!intent.current}
-            />
-          </div>
-          <p className="small">
-            {action === "init"
-              ? "初始化服务预置范围：1990 年至最近盘后日，可自行修改。"
-              : "更新默认回看 14 日，可编辑起止日期。"}
-          </p>
-          <p className="small">
-            沪深北三市；原生价基（native_projection），收益口径待核验。逐页持久保存，中断后在执行记录续跑未完成分片。日期按北京时间盘后窗口核定。
-          </p>
-          {error && range.end && <p role="alert">{error}</p>}
-          {status.busy && !status.data && (
-            <p role="status">正在核实采集资格与盘后日期…</p>
-          )}
-          {status.failure && (
-            <p role="alert">TDX 采集资格读取失败，请重读核实。</p>
-          )}
-          {status.data && !status.data.collect && (
-            <p role="status">当前采集能力未启用。</p>
-          )}
-          <label className="cpi-collection-confirm">
-            <input
-              type="checkbox"
-              checked={confirmed}
-              disabled={busy || !!intent.current}
-              onChange={(e) => setConfirmed(e.target.checked)}
-            />
-            <span>我确认将以上范围采集到开发测试库</span>
-          </label>
-          <button
-            className="primary"
-            disabled={
-              busy ||
-              !!pending.id ||
-              pending.blocked ||
-              !confirmed ||
-              !!error ||
-              !status.data?.collect ||
-              status.stale
-            }
-          >
-            {busy ? "正在提交…" : "提交 TDX 日线 采集"}
-          </button>
+              {busy ? "正在提交…" : "提交 TDX 日线 采集"}
+            </button>
+          </CollectionFormLock>
         </form>
       </CollectionColumns>
     </section>
@@ -370,18 +418,39 @@ export function TdxExecutionDetail({
     operation: null,
   };
   const id = route.fields.get("job");
+  const selectedIdentity = `${apiPrefix}:${id}`;
+  const selectedId = useRef(selectedIdentity);
+  selectedId.current = selectedIdentity;
+
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const writing = useRef(false);
+  useEffect(() => {
+    selectedId.current = selectedIdentity;
+    writing.current = false;
+    setBusy(false);
+    setNotice("");
+    return () => {
+      selectedId.current = "";
+    };
+  }, [selectedIdentity]);
+
   const detail = useVisiblePolling(
-    (signal) =>
-      tdxCall<TdxJob>(
+    async (signal) => {
+      const job = await tdxCall<TdxJob>(
         transport,
         "/jobs/" + encodeURIComponent(id!),
         signal,
         undefined,
         apiPrefix,
-      ),
+      );
+      if (
+        job.request_id !== id ||
+        (job.command.action === "universe") !== apiPrefix.endsWith("/roster")
+      )
+        throw Error("tdx_execution_identity_mismatch");
+      return job;
+    },
     [transport, generation, id, apiPrefix],
     !!id,
   );
@@ -401,108 +470,132 @@ export function TdxExecutionDetail({
   const job = detail.data;
   return (
     <section aria-label="TDX 执行详情">
-      <h3>
-        {job.command.action === "universe"
-          ? "沪深北 A 股基础名册"
-          : familyTitle}{" "}
-        · {actionTitle(job)}
-      </h3>
-      {detail.failure && <p role="alert">执行详情已陈旧，请重读核实。</p>}
-      <dl>
-        <Fact name="执行状态">{tdxStateLabel[job.state] ?? job.state}</Fact>
-        <Fact name="触发来源">{tdxJobOrigin(job)}</Fact>
-        <Fact name="创建时间">{formatBeijingTime(job.created_at)}</Fact>
-        <Fact name="开始时间">
-          {formatBeijingTime(job.started_at, "未记录")}
-        </Fact>
-        <Fact name="结束时间">
-          {formatBeijingTime(job.finished_at, "尚未结束或未记录")}
-        </Fact>
-        <Fact name="发布名册">{job.snapshot_id ?? "尚未发布或未记录"}</Fact>
-        {job.classification && (
-          <Fact name="结果分类">{job.classification}</Fact>
-        )}
-        <Fact name="采集范围">
-          {job.command.action === "universe"
-            ? rosterJobScope(job)
-            : `${job.command.start} 至 ${job.command.end}`}
-        </Fact>
-        <Fact name="来源请求">{job.provider_requests}</Fact>
-        {job.admission?.mode === "retained_qualified_receipts" && (
-          <Fact name="已读取留存响应">{job.retained_responses ?? 0}</Fact>
-        )}
-        {job.command.action !== "universe" && (
-          <Fact name="价基">原生价基（native_projection），收益口径待核验</Fact>
-        )}
-      </dl>
-      <Technical>{job.request_id}</Technical>
-      <button
-        disabled={
-          busy ||
-          detail.stale ||
-          !status.data?.collect ||
-          status.stale ||
-          ["COMPLETE", "RUNNING", "QUEUED"].includes(job.state)
+      <ExecutionDetailShell
+        id={job.request_id}
+        assetKey={keyOf(familyAsset)}
+        asset={familyTitle}
+        source={`TDX · ${tdxJobOrigin(job)}`}
+        action={actionTitle(job)}
+        start={job.command.start}
+        end={job.command.end}
+        scope={
+          job.command.action === "universe" ? rosterJobScope(job) : undefined
         }
-        onClick={() => {
-          if (writing.current) return;
-          writing.current = true;
-          setBusy(true);
-          setNotice("");
-          void tdxCall(
-            transport,
-            "/jobs/resume",
-            undefined,
-            {
-              request_id: job.request_id,
-            },
-            apiPrefix,
-          )
-            .catch(() =>
-              setNotice("续跑回执未核实，请回查当前任务；不会自动重试。"),
-            )
-            .finally(() => {
-              writing.current = false;
-              setBusy(false);
-              detail.refresh();
-            });
-        }}
+        createdAt={job.created_at}
+        startedAt={job.started_at}
+        finishedAt={job.finished_at}
+        result={tdxStateLabel[job.state] ?? job.state}
+        classification={job.classification}
+        onResult={() =>
+          navigate("assets", {
+            ...fields,
+            tab: "local",
+            job: job.request_id,
+            package: null,
+          })
+        }
+        onRefresh={detail.refresh}
+        onPeriodic={
+          job.origin === "periodic"
+            ? () =>
+                navigate("collection", {
+                  ...fields,
+                  tab: "periodic",
+                  job: job.request_id,
+                  periodic_asset: keyOf(familyAsset),
+                  schedule: apiPrefix.endsWith("/roster")
+                    ? "tdx-roster-auto"
+                    : "tdx-daily-auto",
+                })
+            : undefined
+        }
+        onResume={
+          !["COMPLETE", "RUNNING", "QUEUED"].includes(job.state) &&
+          ["PARTIAL", "FAILED", "INTERRUPTED"].includes(job.state)
+            ? () => {
+                if (writing.current) return;
+                const selected = job.request_id;
+                const owner = selectedIdentity;
+                writing.current = true;
+                setBusy(true);
+                setNotice("");
+                void tdxCall(
+                  transport,
+                  "/jobs/resume",
+                  undefined,
+                  { request_id: selected },
+                  apiPrefix,
+                )
+                  .catch(
+                    () =>
+                      selectedId.current === owner &&
+                      setNotice(
+                        "续跑回执未核实，请回查当前任务；不会自动重试。",
+                      ),
+                  )
+                  .finally(() => {
+                    if (selectedId.current === owner) {
+                      writing.current = false;
+                      setBusy(false);
+                      detail.refresh();
+                    }
+                  });
+              }
+            : undefined
+        }
+        resumeLabel={
+          job.command.action === "universe"
+            ? "按原请求恢复名册刷新"
+            : "续跑未完成分片"
+        }
+        actionsDisabled={
+          busy || detail.stale || !status.data?.collect || status.stale
+        }
       >
-        续跑未完成分片
-      </button>
-      <button onClick={() => navigate("assets", { ...fields, tab: "local" })}>
-        查看本地结果
-      </button>
-      <button onClick={detail.refresh}>回查当前任务</button>
-      {notice && <p role="alert">{notice}</p>}
-      <WorkflowTable
-        singlePane
-        label="采集分片"
-        columns={[
-          "交易所",
-          "证券",
-          "状态",
-          "实得起始",
-          "实得截止",
-          "页数",
-          "边界或失败",
-        ]}
-        rows={(job.steps ?? []).map((s, i) => ({
-          id: String(i),
-          search: `${s.instrument} ${s.classification} ${s.state}`,
-          cells: [
-            exchanges[s.market],
-            s.instrument ?? "全名册",
-            tdxStateLabel[s.state] ?? s.state,
-            s.first ?? "未知",
-            s.last ?? "未知",
-            s.pages,
-            s.classification ?? s.boundary ?? "待执行",
-          ],
-        }))}
-        onSelect={() => {}}
-        pageSize={25}
-      />
+        {detail.failure && <p role="alert">执行详情已陈旧，请重读核实。</p>}
+        <dl>
+          <Fact name="发布名册">{job.snapshot_id ?? "尚未发布或未记录"}</Fact>
+          <Fact name="来源请求">{job.provider_requests}</Fact>
+          {job.admission?.mode === "retained_qualified_receipts" && (
+            <Fact name="已读取留存响应">{job.retained_responses ?? 0}</Fact>
+          )}
+          {job.command.action !== "universe" && (
+            <Fact name="价基">
+              原生价基（native_projection），收益口径待核验
+            </Fact>
+          )}
+        </dl>
+        <Technical>{job.request_id}</Technical>
+        {notice && <p role="alert">{notice}</p>}
+        <WorkflowTable
+          singlePane
+          label="采集分片"
+          columns={[
+            "交易所",
+            "证券",
+            "状态",
+            "实得起始",
+            "实得截止",
+            "页数",
+            "边界或失败",
+          ]}
+          rows={(job.steps ?? []).map((s, i) => ({
+            id: String(i),
+            search: `${s.instrument} ${s.classification} ${s.state}`,
+            cells: [
+              exchanges[s.market],
+              s.instrument ?? "全名册",
+              tdxStateLabel[s.state] ?? s.state,
+              s.first ?? "未知",
+              s.last ?? "未知",
+              s.pages,
+              s.classification ?? s.boundary ?? "待执行",
+            ],
+          }))}
+          onSelect={() => {}}
+          pageSize={25}
+        />
+      </ExecutionDetailShell>
     </section>
   );
 }
@@ -557,7 +650,11 @@ function TdxStrategySwitch({
   );
 }
 export const TDX_FAMILY: RuntimeFamily = {
-  collection: { protocol: "tdx", path: "/api/r5/tdx/daily/jobs" },
+  collection: {
+    protocol: "tdx",
+    path: "/api/r5/tdx/daily/jobs",
+    resumePath: "/api/r5/tdx/daily/jobs/resume",
+  },
   asset: TDX_DAILY,
   title,
   Query: TdxDailyQuery,

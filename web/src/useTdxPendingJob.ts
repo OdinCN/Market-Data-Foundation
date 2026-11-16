@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { uuidValid } from "./cpiTimeSeriesApi";
 
-// Preserve unresolved writes across a route change or refresh in this tab.
+// Preserve the active intent across navigation/refresh until explicit terminal reopen.
 export function useTdxPendingJob(asset: string) {
   const key = `mdf.${asset}.pending.v1`;
   function read() {

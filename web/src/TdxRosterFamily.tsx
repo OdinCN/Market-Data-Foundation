@@ -1,3 +1,11 @@
+import { tdxCanReopen } from "./tdxJobPresentation";
+import {
+  useCollectionRecords,
+  collectionRecent,
+  CollectionBriefs,
+  CollectionFormLock,
+  collectionCanReopen,
+} from "./CollectionLifecycle";
 import { useTdxPendingJob } from "./useTdxPendingJob";
 import { useCollectionSubmit } from "./useCollectionSubmit";
 import {
@@ -310,11 +318,8 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
     writing = useRef(false);
   const [receipt, setReceipt] = useState<TdxJob | null>(null);
   function accepted(job: TdxJob) {
-    if (!intent.current || job.request_id !== intent.current)
-      throw Error("request_identity_unconfirmed");
-    pending.release(job.request_id);
+    if (!intent.current || job.request_id !== intent.current) return;
     setReceipt(job);
-    intent.current = null;
     setNotice("");
     setConfirmed(false);
     jobs.refresh();
@@ -367,6 +372,28 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
       setBusy(false);
     }
   }
+  const currentJobs = useCollectionRecords([
+    ...(receipt ? [receipt] : []),
+    ...(jobs.data?.jobs ?? []),
+  ]);
+  const tracked =
+    currentJobs.find((j) => j.request_id === pending.id) ??
+    (receipt?.request_id === pending.id ? receipt : null);
+  const visibleJobs = collectionRecent(currentJobs, pending.id);
+  function newIntent() {
+    if (!pending.id || !tracked || !tdxCanReopen(tracked) || busy || jobs.stale)
+      return;
+    try {
+      pending.release(pending.id);
+    } catch {
+      setNotice("本机原请求编号无法核实，未释放意图，请保留原号回查。");
+      return;
+    }
+    intent.current = null;
+    submission.reset();
+    setConfirmed(false);
+    setNotice("");
+  }
   return (
     <section
       className="ordinary-query cpi-timeseries"
@@ -375,13 +402,12 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
       <h3>{title} · 刷新</h3>
       <CollectionColumns
         briefs={
-          <aside className="detail-pane execution-briefs" aria-label="执行简报">
-            <h3>执行简报</h3>
+          <CollectionBriefs>
             {pending.blocked && (
               <p role="alert">本机请求编号无法核实，采集已暂停。</p>
             )}
             {notice && <p role="alert">{notice}</p>}
-            {pending.id && (
+            {pending.id && !tracked && (
               <>
                 <code>{pending.id}</code>
                 <button
@@ -407,21 +433,30 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
               <p>暂无名册刷新记录。</p>
             )}
             <ol className="execution-brief-list">
-              {tdxBriefs(jobs.data?.jobs ?? [], receipt).map((j) => (
+              {visibleJobs.map((j) => (
                 <li key={j.request_id}>
                   <ExecutionBriefCard
                     id={j.request_id}
-                    current={j.request_id === receipt?.request_id}
+                    current={j.request_id === pending.id}
+                    onRefresh={() =>
+                      void call<TdxJob>(transport, "/jobs/" + j.request_id)
+                        .then(accepted)
+                        .catch(() => setNotice("原请求回查失败，请保留编号。"))
+                    }
+                    state={j.state}
+                    onReopen={newIntent}
+                    canReopen={!jobs.stale && tdxCanReopen(j)}
+                    reopenDisabled={busy || pending.blocked}
                     title={`${title} · ${tdxJobOrigin(j)}`}
                     scope={rosterJobScope(j)}
                     createdAt={j.created_at}
-                    result={tdxStateLabel[j.state] ?? j.state}
+                    result={`${tdxStateLabel[j.state] ?? j.state}${j.classification ? ` · ${j.classification}` : ""}`}
                     onSelect={() => open(j.request_id)}
                   />
                 </li>
               ))}
             </ol>
-          </aside>
+          </CollectionBriefs>
         }
       >
         <form
@@ -431,66 +466,72 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
             if (status.data?.collect && !status.stale) void submit();
           }}
         >
-          <p>
-            采集目标：沪深北 A
-            股基础名册。方式：完整刷新三市来源目录；不采集日线。与旧
-            action=universe 共用实际实现、作业锁及发布。
-          </p>
-          <label>
-            采集方式
-            <select
-              value="refresh"
-              disabled={busy || !!intent.current}
-              onChange={() => {}}
+          <CollectionFormLock locked={busy || !!pending.id}>
+            <p>
+              采集目标：沪深北 A
+              股基础名册。方式：完整刷新三市来源目录；不采集日线。与旧
+              action=universe 共用实际实现、作业锁及发布。
+            </p>
+            <label>
+              采集方式
+              <select
+                value="refresh"
+                disabled={busy || !!intent.current}
+                onChange={() => {}}
+              >
+                <option value="refresh">完整刷新三市名册</option>
+              </select>
+            </label>
+            <p>
+              沪深 GetCount/GetCode、北交所 GetBJDirectory
+              的原件分别留存；交易所上市/退市与北交所新旧代码证据独立核定。目录刷新不会延长交易所证据有效期，不自动取得已退市全历史名册。
+            </p>
+            <p>采集范围：深市、沪市、北交所的 A 股来源目录（提交时快照）。</p>
+            {status.failure && <p role="alert">名册采集资格读取失败。</p>}
+            {status.data && !status.data.collect && (
+              <p role="status">当前采集能力未启用。</p>
+            )}
+            <details>
+              <summary>当前名册证据</summary>
+              {status.data && <RosterFacts value={status.data} />}
+            </details>
+            <label className="cpi-collection-confirm">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                disabled={busy || !!intent.current}
+                onChange={(e) => setConfirmed(e.target.checked)}
+              />
+              我确认刷新三市名册到开发测试库
+            </label>
+            <button
+              className="primary"
+              disabled={
+                busy ||
+                !!pending.id ||
+                pending.blocked ||
+                !confirmed ||
+                !status.data?.collect ||
+                status.stale
+              }
+              type="submit"
             >
-              <option value="refresh">完整刷新三市名册</option>
-            </select>
-          </label>
-          <p>
-            沪深 GetCount/GetCode、北交所 GetBJDirectory
-            的原件分别留存；交易所上市/退市与北交所新旧代码证据独立核定。目录刷新不会延长交易所证据有效期，不自动取得已退市全历史名册。
-          </p>
-          <p>采集范围：深市、沪市、北交所的 A 股来源目录（提交时快照）。</p>
-          {status.failure && <p role="alert">名册采集资格读取失败。</p>}
-          {status.data && !status.data.collect && (
-            <p role="status">当前采集能力未启用。</p>
-          )}
-          <details>
-            <summary>当前名册证据</summary>
-            {status.data && <RosterFacts value={status.data} />}
-          </details>
-          <label className="cpi-collection-confirm">
-            <input
-              type="checkbox"
-              checked={confirmed}
-              disabled={busy || !!intent.current}
-              onChange={(e) => setConfirmed(e.target.checked)}
-            />
-            我确认刷新三市名册到开发测试库
-          </label>
-          <button
-            className="primary"
-            disabled={
-              busy ||
-              !!pending.id ||
-              pending.blocked ||
-              !confirmed ||
-              !status.data?.collect ||
-              status.stale
-            }
-            type="submit"
-          >
-            提交采集任务
-          </button>
+              提交采集任务
+            </button>
 
-          <p>交易日北京时间 09:00 刷新三市目录；本表单不会改变周期策略。</p>
+            <p>交易日北京时间 09:00 刷新三市目录；本表单不会改变周期策略。</p>
+          </CollectionFormLock>
         </form>
       </CollectionColumns>
     </section>
   );
 }
 export const TDX_ROSTER_FAMILY: RuntimeFamily = {
-  collection: { protocol: "roster", path: "/api/r5/tdx/roster/jobs" },
+  collection: {
+    protocol: "roster",
+    path: "/api/r5/tdx/roster/jobs",
+    resumePath: "/api/r5/tdx/roster/jobs/resume",
+  },
   asset: TDX_ROSTER,
   title,
   Query: TdxRosterQuery,

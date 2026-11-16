@@ -10,6 +10,7 @@ export function ExecutionFacts({
   action,
   start,
   end,
+  scope,
   createdAt,
   startedAt,
   finishedAt,
@@ -22,6 +23,7 @@ export function ExecutionFacts({
   action: ReactNode;
   start?: string | null;
   end?: string | null;
+  scope?: ReactNode;
   createdAt?: string | null;
   startedAt?: string | null;
   finishedAt?: string | null;
@@ -35,7 +37,11 @@ export function ExecutionFacts({
       <Fact name="来源">{source}</Fact>
       <Fact name="采集方式">{action}</Fact>
       <Fact name="范围">
-        {start ?? "未记录"} 至 {end ?? "未记录"}
+        {scope ?? (
+          <>
+            {start ?? "未记录"} 至 {end ?? "未记录"}
+          </>
+        )}
       </Fact>
       <Fact name="创建时间（北京时间）">
         {formatBeijingTime(createdAt, "未记录")}

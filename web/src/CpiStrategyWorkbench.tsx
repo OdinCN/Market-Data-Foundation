@@ -3,7 +3,7 @@ import {
   claimsActualsVerified,
   claimsLatestDataText,
 } from "./claimsPeriod";
-import { ExecutionFacts } from "./ExecutionFacts";
+import { ExecutionDetailShell } from "./CollectionLifecycle";
 import { planTargetKey, type PlanIssue } from "./autoCollectionDiagnosis";
 import { ClaimsCollectionDetails } from "./ClaimsCollectionDetails";
 import { CodeBlock } from "./CpiQueryDetails";
@@ -375,10 +375,95 @@ function RecentExecution({
 export function CpiExecutionDetail({
   execution: e,
   profile = CPI_PROFILE,
+  onResult,
+  onRefresh,
+  onPeriodic,
+  onResume,
+  actionsDisabled,
+  transport,
+  canCollect = false,
 }: {
   execution: CpiExecution;
+  transport?: Transport;
+  canCollect?: boolean;
   profile?: MacroProfile;
+  onResult?: () => void;
+  onRefresh?: () => void;
+  onPeriodic?: () => void;
+  onResume?: () => void;
+  actionsDisabled?: boolean;
 }) {
+  const [recovering, setRecovering] = useState(false);
+  const [awaitingRead, setAwaitingRead] = useState(false);
+  const [recoveryNotice, setRecoveryNotice] = useState("");
+  const resuming = useRef(false);
+  const selectedIdentity = `${keyOf(profile.asset)}:${e.id}`;
+  const selected = useRef(selectedIdentity);
+  selected.current = selectedIdentity;
+  useEffect(() => {
+    selected.current = selectedIdentity;
+    resuming.current = false;
+    setRecovering(false);
+    setAwaitingRead(false);
+    setRecoveryNotice("");
+    return () => {
+      selected.current = "";
+    };
+  }, [selectedIdentity]);
+
+  useEffect(() => {
+    setAwaitingRead(false);
+  }, [e.state, e.started_at, e.finished_at]);
+  const supportedRecovery =
+    !!profile.resumePath &&
+    e.origin === "manual" &&
+    ["failed", "unknown", ...(profile.id === "m3" ? ["waiting"] : [])].includes(
+      e.state,
+    );
+  async function recover() {
+    if (
+      !transport ||
+      !canCollect ||
+      resuming.current ||
+      awaitingRead ||
+      actionsDisabled ||
+      !supportedRecovery
+    )
+      return;
+    const owner = selectedIdentity;
+    resuming.current = true;
+    setRecovering(true);
+    setAwaitingRead(true);
+    setRecoveryNotice("");
+    try {
+      const receipt = await cpiRequest<{ request_id: string }>(
+        transport,
+        "/jobs/resume",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            request_id: e.id,
+            action: e.action,
+            start: e.start,
+            end: e.end,
+          }),
+        },
+        20000,
+        profile,
+      );
+      if (receipt.request_id !== e.id) throw Error("receipt_identity_mismatch");
+    } catch {
+      if (selected.current === owner)
+        setRecoveryNotice("恢复回执尚未核实，请回查原任务；不自动重发。");
+    } finally {
+      if (selected.current === owner) {
+        resuming.current = false;
+        setRecovering(false);
+        onRefresh?.();
+      }
+    }
+  }
   const result =
     e.result?.result && typeof e.result.result === "object"
       ? (e.result.result as Record<string, unknown>)
@@ -388,109 +473,15 @@ export function CpiExecutionDetail({
     | undefined;
   return (
     <>
-      <h3>执行详情</h3>
-      {profile.id === "m3" &&
-        result?.reports &&
-        typeof result.reports === "object" && (
-          <section aria-label="分报告采集结果">
-            <h4>两阶段采集结果</h4>
-            {Object.entries(
-              result.reports as Record<
-                string,
-                {
-                  coverage?: { available: number; expected: number };
-                  remaining_requests?: number;
-                  source_failure?: unknown;
-                  storage_failure?: unknown;
-                }
-              >,
-            ).map(([d, r]) => (
-              <p key={d}>
-                {d === "m3" ? "制造业完整报告" : "耐用品先行报告（Advance）"}：
-                {r.coverage
-                  ? `${r.coverage.available} / ${r.coverage.expected} 有值`
-                  : "执行中"}
-                ，待请求 {r.remaining_requests ?? "未记录"}；
-                {r.storage_failure
-                  ? "存储结果未知"
-                  : r.source_failure
-                    ? "来源请求失败/等待"
-                    : "已返回结果"}
-              </p>
-            ))}
-          </section>
-        )}
-
-      {profile.id === "m3" && result && (
-        <dl>
-          <Fact name="已确认来源分片">
-            {String(result.completed_requests ?? "未记录")}
-          </Fact>
-          <Fact name="待请求分片">
-            {String(result.remaining_requests ?? "未记录")}
-          </Fact>
-          {!!result.source_failure &&
-            typeof result.source_failure === "object" &&
-            !!(result.source_failure as Record<string, unknown>).retry_at && (
-              <Fact name="来源准入重试时间（北京时间）">
-                {formatBeijingTime(
-                  String(
-                    (result.source_failure as Record<string, unknown>).retry_at,
-                  ),
-                )}
-              </Fact>
-            )}
-          <Fact name="已确认请求点数">
-            {String(result.requested_points ?? "未记录")}
-          </Fact>
-          {Array.isArray(result.pending) && (
-            <Fact name="尚未确认请求的指标月">
-              {String(result.pending.length)}
-            </Fact>
-          )}
-          {!!result.source_failure && (
-            <Fact name="来源状态">
-              {typeof result.source_failure === "object"
-                ? String(
-                    (result.source_failure as Record<string, unknown>)
-                      .classification ?? "来源请求失败",
-                  )
-                : "来源请求失败"}
-            </Fact>
-          )}
-        </dl>
-      )}
-      {material && (
-        <section aria-label="发布材料执行结果">
-          <h4>发布材料</h4>
-          <p>
-            {material.state === "retained"
-              ? "材料已留存；支持范围见事件详情"
-              : "材料尚未完整确认；连续数值结果另列"}
-          </p>
-          {releaseReasonTexts(material.reasons).map((reason) => (
-            <p key={reason}>{reason}</p>
-          ))}
-          {releaseEvidenceLinks(material).map(
-            ({ eventId, evidenceId, report }) => (
-              <p key={`${eventId}:${evidenceId ?? "event"}`}>
-                <a href={releaseLink(profile, eventId, evidenceId)}>
-                  {profile.id === "m3" && report === "advm3"
-                    ? "打开耐用品先行报告事件"
-                    : profile.id === "m3" && report === "m3"
-                      ? "打开制造业完整报告事件"
-                      : "打开发布事件"}
-                  {evidenceId ? "与证据" : ""}
-                </a>
-              </p>
-            ),
-          )}
-        </section>
-      )}
-      <ExecutionFacts
+      <ExecutionDetailShell
         id={e.id}
         asset={macroAssetLabel(profile)}
-        source={e.origin !== "manual" ? "自动策略" : "手动采集"}
+        source={
+          <>
+            {profile.provider} ·{" "}
+            <span>{e.origin !== "manual" ? "自动策略" : "手动采集"}</span>
+          </>
+        }
         action={cpiActionText(
           e.origin !== "manual"
             ? e.action === "withdraw"
@@ -505,25 +496,146 @@ export function CpiExecutionDetail({
         finishedAt={e.finished_at}
         result={cpiExecutionStateText(e.state, e.result, profile, e)}
         classification={e.classification}
-      />
-      {profile.id === "m3" && (
-        <p className="small">
-          以下新增和请求数仅属于本次执行；恢复时已确认的分片不会重复请求，范围覆盖包括之前确认的分片。
-        </p>
-      )}
-      <ResultFacts result={e.result} profile={profile} />
-      {profile.id === "claims" ? (
-        <ClaimsCollectionDetails result={e.result} />
-      ) : profile.id === "gdp" ? (
-        <GdpCollectionDetails result={e.result} />
-      ) : (
-        <MacroSourceCoverage
-          key={e.id}
-          result={e.result}
-          start={e.start}
-          end={e.end}
-        />
-      )}
+        assetKey={keyOf(profile.asset)}
+        onResult={onResult}
+        onRefresh={
+          onRefresh
+            ? () => {
+                setAwaitingRead(false);
+                onRefresh();
+              }
+            : undefined
+        }
+        onPeriodic={onPeriodic}
+        onResume={
+          onResume ?? (supportedRecovery ? () => void recover() : undefined)
+        }
+        confirmResume
+        actionsDisabled={
+          actionsDisabled || recovering || awaitingRead || !canCollect
+        }
+      >
+        {profile.id === "m3" &&
+          !!result?.reports &&
+          typeof result.reports === "object" && (
+            <section aria-label="分报告采集结果">
+              <h4>两阶段采集结果</h4>
+              {Object.entries(
+                result.reports as Record<
+                  string,
+                  {
+                    coverage?: { available: number; expected: number };
+                    remaining_requests?: number;
+                    source_failure?: unknown;
+                    storage_failure?: unknown;
+                  }
+                >,
+              ).map(([d, r]) => (
+                <p key={d}>
+                  {d === "m3" ? "制造业完整报告" : "耐用品先行报告（Advance）"}
+                  ：
+                  {r.coverage
+                    ? `${r.coverage.available} / ${r.coverage.expected} 有值`
+                    : "执行中"}
+                  ，待请求 {r.remaining_requests ?? "未记录"}；
+                  {r.storage_failure
+                    ? "存储结果未知"
+                    : r.source_failure
+                      ? "来源请求失败/等待"
+                      : "已返回结果"}
+                </p>
+              ))}
+            </section>
+          )}
+
+        {profile.id === "m3" && result && (
+          <dl>
+            <Fact name="已确认来源分片">
+              {String(result.completed_requests ?? "未记录")}
+            </Fact>
+            <Fact name="待请求分片">
+              {String(result.remaining_requests ?? "未记录")}
+            </Fact>
+            {!!result.source_failure &&
+              typeof result.source_failure === "object" &&
+              !!(result.source_failure as Record<string, unknown>).retry_at && (
+                <Fact name="来源准入重试时间（北京时间）">
+                  {formatBeijingTime(
+                    String(
+                      (result.source_failure as Record<string, unknown>)
+                        .retry_at,
+                    ),
+                  )}
+                </Fact>
+              )}
+            <Fact name="已确认请求点数">
+              {String(result.requested_points ?? "未记录")}
+            </Fact>
+            {Array.isArray(result.pending) && (
+              <Fact name="尚未确认请求的指标月">
+                {String(result.pending.length)}
+              </Fact>
+            )}
+            {!!result.source_failure && (
+              <Fact name="来源状态">
+                {typeof result.source_failure === "object"
+                  ? String(
+                      (result.source_failure as Record<string, unknown>)
+                        .classification ?? "来源请求失败",
+                    )
+                  : "来源请求失败"}
+              </Fact>
+            )}
+          </dl>
+        )}
+        {material && (
+          <section aria-label="发布材料执行结果">
+            <h4>发布材料</h4>
+            <p>
+              {material.state === "retained"
+                ? "材料已留存；支持范围见事件详情"
+                : "材料尚未完整确认；连续数值结果另列"}
+            </p>
+            {releaseReasonTexts(material.reasons).map((reason) => (
+              <p key={reason}>{reason}</p>
+            ))}
+            {releaseEvidenceLinks(material).map(
+              ({ eventId, evidenceId, report }) => (
+                <p key={`${eventId}:${evidenceId ?? "event"}`}>
+                  <a href={releaseLink(profile, eventId, evidenceId)}>
+                    {profile.id === "m3" && report === "advm3"
+                      ? "打开耐用品先行报告事件"
+                      : profile.id === "m3" && report === "m3"
+                        ? "打开制造业完整报告事件"
+                        : "打开发布事件"}
+                    {evidenceId ? "与证据" : ""}
+                  </a>
+                </p>
+              ),
+            )}
+          </section>
+        )}
+
+        {profile.id === "m3" && (
+          <p className="small">
+            以下新增和请求数仅属于本次执行；恢复时已确认的分片不会重复请求，范围覆盖包括之前确认的分片。
+          </p>
+        )}
+        <ResultFacts result={e.result} profile={profile} />
+        {profile.id === "claims" ? (
+          <ClaimsCollectionDetails result={e.result} />
+        ) : profile.id === "gdp" ? (
+          <GdpCollectionDetails result={e.result} />
+        ) : (
+          <MacroSourceCoverage
+            key={e.id}
+            result={e.result}
+            start={e.start}
+            end={e.end}
+          />
+        )}
+        {recoveryNotice && <p role="alert">{recoveryNotice}</p>}
+      </ExecutionDetailShell>
     </>
   );
 }

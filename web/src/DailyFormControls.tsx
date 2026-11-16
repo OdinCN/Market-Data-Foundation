@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { DateField } from "./DateField";
 import { Tabs } from "./WorkflowTable";
 import { formatBeijingTime, beijingInputToIso } from "./beijingTime";
+import { collectionCanReopen } from "./CollectionLifecycle";
 
 export function rangeWithDefaults(
   draft: { start: string; end: string },
@@ -230,6 +231,14 @@ export function ExecutionBriefCard({
   scope,
   onSelect,
   disabled,
+  state,
+  onReopen,
+  canReopen = true,
+  reopenDisabled = false,
+  onResume,
+  resumeLabel = "按原请求恢复采集",
+  resumeDisabled = false,
+  onRefresh,
 }: {
   id: string;
   title: string;
@@ -241,34 +250,86 @@ export function ExecutionBriefCard({
   scope?: string;
   onSelect: () => void;
   disabled?: boolean;
+  state?: string;
+  onReopen?: () => void;
+  canReopen?: boolean;
+  reopenDisabled?: boolean;
+  onResume?: () => void;
+  resumeLabel?: string;
+  resumeDisabled?: boolean;
+  onRefresh?: () => void;
 }) {
+  const [resumeConfirmed, setResumeConfirmed] = useState(false);
   return (
-    <button
-      type="button"
-      className="execution-brief-card"
-      disabled={disabled}
-      aria-current={current ? "true" : undefined}
-      onClick={onSelect}
+    <div
+      className="execution-brief"
+      data-execution-id={id}
+      data-current={current ? "true" : undefined}
     >
-      <strong>{title}</strong>
-      <dl>
-        <div>
-          <dt>请求编号</dt>
-          <dd className="request-id">{id}</dd>
+      <button
+        type="button"
+        className="execution-brief-card"
+        disabled={disabled}
+        aria-current={current ? "true" : undefined}
+        onClick={onSelect}
+      >
+        <strong>{title}</strong>
+        <dl>
+          <div>
+            <dt>请求编号</dt>
+            <dd className="request-id">{id}</dd>
+          </div>
+          <div>
+            <dt>创建时间</dt>
+            <dd>{formatBeijingTime(createdAt).replace(" 北京时间", "")}</dd>
+          </div>
+          <div>
+            <dt>采集范围</dt>
+            <dd>{scope ?? `${start ?? "未记录"} 至 ${end ?? "未记录"}`}</dd>
+          </div>
+          <div>
+            <dt>结果</dt>
+            <dd>{result}</dd>
+          </div>
+        </dl>
+      </button>
+      {current && onRefresh && (
+        <button type="button" onClick={onRefresh}>
+          回查同一任务
+        </button>
+      )}
+      {onResume && (
+        <div
+          className="actions"
+          aria-label="简报恢复操作"
+          data-execution-id={id}
+        >
+          <label className="cpi-collection-confirm">
+            <input
+              type="checkbox"
+              checked={resumeConfirmed}
+              disabled={resumeDisabled}
+              onChange={(e) => setResumeConfirmed(e.target.checked)}
+            />
+            <span>我确认按原请求恢复采集</span>
+          </label>
+          <button
+            type="button"
+            disabled={resumeDisabled || !resumeConfirmed}
+            onClick={() => {
+              setResumeConfirmed(false);
+              onResume();
+            }}
+          >
+            {resumeLabel}
+          </button>
         </div>
-        <div>
-          <dt>创建时间</dt>
-          <dd>{formatBeijingTime(createdAt).replace(" 北京时间", "")}</dd>
-        </div>
-        <div>
-          <dt>采集范围</dt>
-          <dd>{scope ?? `${start ?? "未记录"} 至 ${end ?? "未记录"}`}</dd>
-        </div>
-        <div>
-          <dt>结果</dt>
-          <dd>{result}</dd>
-        </div>
-      </dl>
-    </button>
+      )}
+      {current && onReopen && canReopen && collectionCanReopen(state) && (
+        <button type="button" disabled={reopenDisabled} onClick={onReopen}>
+          开始另一项采集
+        </button>
+      )}
+    </div>
   );
 }

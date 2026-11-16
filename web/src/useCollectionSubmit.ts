@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Attempt = {
   id: string;
@@ -14,6 +14,21 @@ type Attempt = {
 export function useCollectionSubmit(scope = "") {
   const attempts = useRef(new Map<string, Promise<unknown>>());
   const [attempt, setAttempt] = useState<Attempt | null>(null);
+  const lifecycle = useRef({ scope, version: 0 });
+  if (lifecycle.current.scope !== scope)
+    lifecycle.current = { scope, version: lifecycle.current.version + 1 };
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const version = lifecycle.current.version;
+  const current = () =>
+    alive.current &&
+    lifecycle.current.scope === scope &&
+    lifecycle.current.version === version;
   async function recall<T>(
     id: string,
     read: () => Promise<T>,
@@ -21,7 +36,7 @@ export function useCollectionSubmit(scope = "") {
   ) {
     const receipt = await read();
     if (!matches(receipt)) throw Error("collection_receipt_identity_mismatch");
-    setAttempt({ id, scope, state: "accepted", receipt });
+    if (current()) setAttempt({ id, scope, state: "accepted", receipt });
     return receipt;
   }
   function submit<T>(
@@ -39,7 +54,7 @@ export function useCollectionSubmit(scope = "") {
         const receipt = await post();
         if (!matches(receipt))
           throw Error("collection_receipt_identity_mismatch");
-        setAttempt({ id, scope, state: "accepted", receipt });
+        if (current()) setAttempt({ id, scope, state: "accepted", receipt });
         return receipt;
       } catch (error) {
         if (!rejected(error)) {
@@ -49,12 +64,22 @@ export function useCollectionSubmit(scope = "") {
             // Missing, delayed or malformed GET cannot authorize a second POST.
           }
         }
-        setAttempt({ id, scope, state: "unknown" });
+        if (current()) setAttempt({ id, scope, state: "unknown" });
         throw error;
       }
     })();
     attempts.current.set(scope + ":" + id, result);
     return result;
   }
-  return { attempt: attempt?.scope === scope ? attempt : null, submit, recall };
+  function reset() {
+    lifecycle.current.version += 1;
+    attempts.current.clear();
+    setAttempt(null);
+  }
+  return {
+    attempt: attempt?.scope === scope ? attempt : null,
+    submit,
+    recall,
+    reset,
+  };
 }

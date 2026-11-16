@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-export type Row = { id: string; cells: ReactNode[]; search: string };
+export type Row = {
+  id: string;
+  cells: ReactNode[];
+  search: string;
+  execution?: { id: string; asset: string };
+};
 export function WorkflowTable({
   label,
   columns,
@@ -134,6 +139,9 @@ export function WorkflowTable({
               {shown.map((row) => (
                 <tr
                   key={row.id}
+                  data-record-id={row.id}
+                  data-execution-id={row.execution?.id}
+                  data-execution-asset={row.execution?.asset}
                   className={row.id === selected ? "selected" : ""}
                   aria-selected={row.id === selected}
                   onClick={() => selectRow(row.id)}

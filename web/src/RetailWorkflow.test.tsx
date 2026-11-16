@@ -525,7 +525,9 @@ it("retains a lost submission across remount and explicitly resumes the same dur
   );
   const resume = await form.findByRole("button", { name: /按原请求恢复采集/ });
   expect((resume as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(form.getByRole("checkbox"));
+  fireEvent.click(
+    form.getByRole("checkbox", { name: "我确认按原请求恢复采集" }),
+  );
   fireEvent.click(resume);
   await flush();
   const posts = h.calls.filter((c) => c.method === "POST");
