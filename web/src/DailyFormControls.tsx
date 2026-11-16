@@ -238,7 +238,6 @@ export function ExecutionBriefCard({
   onResume,
   resumeLabel = "按原请求恢复采集",
   resumeDisabled = false,
-  onRefresh,
 }: {
   id: string;
   title: string;
@@ -257,7 +256,6 @@ export function ExecutionBriefCard({
   onResume?: () => void;
   resumeLabel?: string;
   resumeDisabled?: boolean;
-  onRefresh?: () => void;
 }) {
   const [resumeConfirmed, setResumeConfirmed] = useState(false);
   return (
@@ -293,11 +291,6 @@ export function ExecutionBriefCard({
           </div>
         </dl>
       </button>
-      {current && onRefresh && (
-        <button type="button" onClick={onRefresh}>
-          回查同一任务
-        </button>
-      )}
       {onResume && (
         <div
           className="actions"

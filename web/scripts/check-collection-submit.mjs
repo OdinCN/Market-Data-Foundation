@@ -94,6 +94,14 @@ async function selectedDetail(page, asset, id) {
       .getAttribute("data-execution-id"),
     id,
   );
+  const redundant = detail.getByRole("button", {
+    name: /^(回查当前任务|查看关联资产 →|返回执行列表)$/,
+  });
+  assert.equal(await redundant.count(), 0);
+  assert.equal(
+    await detail.getByRole("button", { name: "查看资产数据" }).count(),
+    1,
+  );
   return detail;
 }
 async function exerciseLifecycle({
@@ -116,7 +124,7 @@ async function exerciseLifecycle({
   });
   const confirm = form.getByRole("checkbox");
   const writes = () => calls.filter((c) => c.method === "POST");
-  async function refreshPhase(phase) {
+  async function trackPhase(phase) {
     assert.equal(
       (await backend.exchange({ control: "phase", id: firstId, phase })).status,
       200,
@@ -127,18 +135,42 @@ async function exerciseLifecycle({
         new URL(r.url()).pathname.startsWith(row.path) &&
         r.status() === 200,
     );
-    await current
-      .getByRole("button", { name: "回查同一任务", exact: true })
-      .click();
+    assert.equal(
+      await current
+        .getByRole("button", {
+          name: "回查同一任务",
+          exact: true,
+        })
+        .count(),
+      0,
+    );
     await read;
+    await page.waitForFunction(
+      ({ id, phase }) => {
+        const card = [...document.querySelectorAll(".execution-brief")]
+          .find((el) => el.dataset.executionId === id)
+          ?.querySelector(".execution-brief-card");
+        const result =
+          [...(card?.querySelectorAll("dl > div") ?? [])]
+            .find((el) => el.querySelector("dt")?.textContent === "结果")
+            ?.querySelector("dd")?.textContent ?? "";
+        const visibleState = {
+          active: /执行中|采集中/,
+          unknown: /未知|待核实|commit_outcome_unknown/,
+          complete: /完成/,
+        }[phase];
+        return !!visibleState?.test(result);
+      },
+      { id: firstId, phase },
+    );
   }
   for (const phase of ["active", "unknown"]) {
-    await refreshPhase(phase);
+    await trackPhase(phase);
     await reopen.waitFor({ state: "hidden" });
     assert(await confirm.isDisabled(), phase + " must lock the accepted form");
     assert.equal(writes().length, 1);
   }
-  await refreshPhase("complete");
+  await trackPhase("complete");
   await reopen.click();
   assert.equal(currentRoute(page).get("tab"), "new");
   assert(await firstCard.isVisible());
@@ -188,10 +220,18 @@ async function exerciseLifecycle({
     await detail.getByRole("button", { name: /续跑|按原请求恢复/ }).count(),
     0,
   );
-  await detail.getByRole("button", { name: "回查当前任务" }).click();
+  assert.equal(
+    await detail
+      .getByRole("button", {
+        name: "回查当前任务",
+        exact: true,
+      })
+      .count(),
+    0,
+  );
   await page.reload();
   detail = await selectedDetail(page, row.asset, firstId);
-  await detail.getByRole("button", { name: "查看结果" }).click();
+  await detail.getByRole("button", { name: "查看资产数据" }).click();
   const context = page.getByLabel("关联执行", { exact: true });
   await context.waitFor();
   assert.equal(await context.getAttribute("data-execution-id"), firstId);
@@ -500,7 +540,7 @@ try {
         const briefs = page.getByRole("complementary", { name: "执行简报" });
         if (lost) {
           const recall = page.getByRole("button", {
-            name: /核实原请求|回查同一任务|回查原名册任务/,
+            name: "核实原请求",
           });
           await recall.waitFor();
           await page.reload();

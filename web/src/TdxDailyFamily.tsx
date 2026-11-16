@@ -238,7 +238,7 @@ export function TdxDailyCollection({
                       )
                   }
                 >
-                  回查同一任务
+                  核实原请求
                 </button>
               </>
             )}
@@ -258,11 +258,6 @@ export function TdxDailyCollection({
                   <ExecutionBriefCard
                     id={j.request_id}
                     current={j.request_id === pending.id}
-                    onRefresh={() =>
-                      void tdxCall<TdxJob>(transport, "/jobs/" + j.request_id)
-                        .then(accepted)
-                        .catch(() => setNotice("原请求回查失败，请保留编号。"))
-                    }
                     state={j.state}
                     onReopen={newIntent}
                     canReopen={!jobs.stale && tdxCanReopen(j)}
@@ -315,7 +310,7 @@ export function TdxDailyCollection({
                 );
                 accepted(job);
               } catch {
-                setNotice("提交回执未核实，请回查同一任务；不会自动重试。");
+                setNotice("提交回执未核实，请按原请求编号核实。");
               } finally {
                 setBusy(false);
                 writing.current = false;
@@ -494,7 +489,6 @@ export function TdxExecutionDetail({
             package: null,
           })
         }
-        onRefresh={detail.refresh}
         onPeriodic={
           job.origin === "periodic"
             ? () =>
@@ -530,7 +524,7 @@ export function TdxExecutionDetail({
                     () =>
                       selectedId.current === owner &&
                       setNotice(
-                        "续跑回执未核实，请回查当前任务；不会自动重试。",
+                        "续跑回执未核实，正在自动跟踪原任务；不会自动重试。",
                       ),
                   )
                   .finally(() => {
@@ -592,7 +586,6 @@ export function TdxExecutionDetail({
               s.classification ?? s.boundary ?? "待执行",
             ],
           }))}
-          onSelect={() => {}}
           pageSize={25}
         />
       </ExecutionDetailShell>

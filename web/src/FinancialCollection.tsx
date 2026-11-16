@@ -114,6 +114,7 @@ export function FinancialCollection({
     ...(receipt ? [receipt] : []),
     ...(jobs.data?.jobs ?? []),
   ]);
+  const tracked = verified.find((j) => j.request_id === pending?.request_id);
   const briefs = collectionRecent(
     verified.filter(
       (j) =>
@@ -142,7 +143,7 @@ export function FinancialCollection({
             <p>暂无手动采集记录；尚未提交本次采集。</p>
           )}
           <ol className="execution-brief-list">
-            {pending && !receipt && (
+            {pending && !tracked && (
               <li>
                 <ExecutionBriefCard
                   id={pending.request_id}
@@ -167,7 +168,7 @@ export function FinancialCollection({
                 />
               </li>
             )}
-            {pending && uncertain && !busy && (
+            {pending && !tracked && uncertain && !busy && (
               <li>
                 <p role="status">
                   同一请求的回执尚未核实或已陈旧，保留请求并自动跟踪，请勿重复提交。
@@ -195,7 +196,6 @@ export function FinancialCollection({
                   end={j.command.end}
                   result={financialJobResult(j)}
                   current={pending?.request_id === j.request_id}
-                  onRefresh={submission.verify}
                   state={j.state}
                   canReopen={canRelease}
                   onReopen={newIntent}

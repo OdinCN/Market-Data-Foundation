@@ -421,7 +421,7 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
                       )
                   }
                 >
-                  回查同一任务
+                  核实原请求
                 </button>
               </>
             )}
@@ -438,11 +438,6 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
                   <ExecutionBriefCard
                     id={j.request_id}
                     current={j.request_id === pending.id}
-                    onRefresh={() =>
-                      void call<TdxJob>(transport, "/jobs/" + j.request_id)
-                        .then(accepted)
-                        .catch(() => setNotice("原请求回查失败，请保留编号。"))
-                    }
                     state={j.state}
                     onReopen={newIntent}
                     canReopen={!jobs.stale && tdxCanReopen(j)}

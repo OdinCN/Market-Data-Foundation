@@ -143,6 +143,22 @@ const submitButton = () =>
     name: /^(提交 .+ 采集|提交采集任务|创建采集任务)$/,
   }) as HTMLButtonElement;
 const tab = () => new URLSearchParams(location.hash.slice(1)).get("tab");
+async function selectedShell(row: CollectionRegistration, id: string) {
+  await waitFor(() => {
+    const shell = screen.getByRole("region", { name: "执行详情主体" });
+    expect(shell.dataset.executionId).toBe(id);
+    expect(shell.dataset.executionAsset).toBe(keyOf(row.asset));
+    const selected = screen
+      .getByRole("region", { name: "执行记录" })
+      .querySelector<HTMLElement>('tr[aria-selected="true"]');
+    expect(selected?.dataset.executionId).toBe(id);
+    expect(selected?.dataset.executionAsset).toBe(keyOf(row.asset));
+    const route = new URLSearchParams(location.hash.slice(1));
+    expect(route.get("job")).toBe(id);
+    expect(route.get("asset")).toBe(row.asset.identity);
+  });
+  return screen.getByRole("region", { name: "执行详情主体" });
+}
 async function setup(
   row: CollectionRegistration,
   lost = false,
@@ -438,6 +454,11 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
       }) as HTMLButtonElement;
     await waitFor(() => expect(card().disabled).toBe(false));
     expect(tab()).toBe("new");
+    expect(
+      within(briefs()).queryByRole("button", {
+        name: /回查同一任务|核实原请求/,
+      }),
+    ).toBeNull();
     if (row.intent === "server-offer") {
       // Compatibility contracts offer a bounded server-owned ID. Never invent
       // a client UUID or release the durable reservation to pretend to reopen.
@@ -458,28 +479,28 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
       });
       return;
     }
-    const refresh = async () => {
+    const track = async (phase: string) => {
       const before = context.calls.filter(
-        (c) => c.method === "GET" && c.url.includes("/jobs"),
+        (c) =>
+          c.method === "GET" && c.url.includes("/jobs") && c.status === 200,
       ).length;
-      fireEvent.click(
-        within(card().closest(".execution-brief")!).getByRole("button", {
-          name: "回查同一任务",
-        }),
+      await context.backend.exchange({ control: "phase", id, phase });
+      // Observe the real automatic read, without an extra product button.
+      await waitFor(
+        () =>
+          expect(
+            context.calls.filter(
+              (c) =>
+                c.method === "GET" &&
+                c.url.includes("/jobs") &&
+                c.status === 200,
+            ).length,
+          ).toBeGreaterThan(before),
+        { timeout: 12000 },
       );
-      await waitFor(() =>
-        expect(
-          context.calls.filter(
-            (c) =>
-              c.method === "GET" && c.url.includes("/jobs") && c.status === 200,
-          ).length,
-        ).toBeGreaterThan(before),
-      );
-      await act(async () => {});
     };
     for (const phase of ["active", "unknown"]) {
-      await context.backend.exchange({ control: "phase", id, phase });
-      await refresh();
+      await track(phase);
       await waitFor(() =>
         expect(
           within(briefs()).queryByRole("button", { name: "开始另一项采集" }),
@@ -489,11 +510,14 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
       fireEvent.submit(form);
       expect(context.calls.filter((c) => c.method === "POST")).toHaveLength(1);
     }
-    await context.backend.exchange({ control: "phase", id, phase: "complete" });
-    await refresh();
-    const reopen = await within(briefs()).findByRole("button", {
-      name: "开始另一项采集",
-    });
+    await track("complete");
+    const reopen = await within(briefs()).findByRole(
+      "button",
+      {
+        name: "开始另一项采集",
+      },
+      { timeout: 12000 },
+    );
     fireEvent.click(reopen);
     await waitFor(() =>
       expect(form.querySelector("fieldset")?.disabled).toBe(false),
@@ -526,9 +550,7 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
     fireEvent.click(
       await within(briefs()).findByRole("button", { name: new RegExp(nextId) }),
     );
-    const failedShell = await screen.findByRole("region", {
-      name: "执行详情主体",
-    });
+    const failedShell = await selectedShell(row, nextId);
     expect(failedShell.dataset.executionId).toBe(nextId);
     let expectedPosts = 2;
     if (row.resumePath) {
@@ -566,7 +588,7 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
     ).find((r) => r.dataset.recordId?.endsWith(id))!;
     expect(priorRow).toBeTruthy();
     fireEvent.click(within(priorRow).getByRole("button"));
-    const shell = await screen.findByRole("region", { name: "执行详情主体" });
+    const shell = await selectedShell(row, id);
     expect(shell.dataset.executionId).toBe(id);
     expect(shell.dataset.executionAsset).toBe(keyOf(row.asset));
     const scope = within(shell).getByText("范围").parentElement!.textContent;
@@ -582,9 +604,9 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
     expect(
       within(shell).queryByRole("button", { name: /续跑|恢复采集|恢复名册/ }),
     ).toBeNull();
-    fireEvent.click(
-      within(shell).getByRole("button", { name: "回查当前任务" }),
-    );
+    expect(
+      within(shell).queryByRole("button", { name: /回查当前任务/ }),
+    ).toBeNull();
     const selected = screen
       .getByRole("region", { name: "执行记录" })
       .querySelector('tr[aria-selected="true"]') as HTMLElement;
@@ -599,12 +621,12 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
         }}
       />,
     );
-    const reloaded = await screen.findByRole("region", {
-      name: "执行详情主体",
-    });
+    const reloaded = await selectedShell(row, id);
     expect(reloaded.dataset.executionId).toBe(id);
     expect(reloaded.dataset.executionAsset).toBe(keyOf(row.asset));
-    fireEvent.click(within(reloaded).getByRole("button", { name: "查看结果" }));
+    fireEvent.click(
+      within(reloaded).getByRole("button", { name: "查看资产数据" }),
+    );
     await waitFor(() =>
       expect(new URLSearchParams(location.hash.slice(1)).get("view")).toBe(
         "assets",
@@ -719,7 +741,7 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
       }
       if (lost) {
         const recall = await screen.findByRole("button", {
-          name: /核实原请求|回查同一任务|回查原名册任务/,
+          name: "核实原请求",
         });
         context.release();
         fireEvent.click(recall);
@@ -963,7 +985,7 @@ it("keeps list selection and details on the same asset/ID when an old family rea
   fireEvent.click(
     within(screen.getByRole("region", { name: "执行详情主体" })).getByRole(
       "button",
-      { name: "查看结果" },
+      { name: "查看资产数据" },
     ),
   );
   const context = await screen.findByLabelText("关联执行");

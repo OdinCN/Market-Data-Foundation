@@ -365,7 +365,7 @@ it("keeps an uncertain submission disabled and recalls the same request identity
     ).disabled,
   ).toBe(true);
   allowNamedRead = true;
-  fireEvent.click(screen.getByRole("button", { name: "回查同一任务" }));
+  fireEvent.click(screen.getByRole("button", { name: "核实原请求" }));
   const recovered = (
     base.calls.find((c) => c.method === "POST")!.body as { request_id: string }
   ).request_id;

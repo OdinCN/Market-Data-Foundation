@@ -19,6 +19,7 @@ import {
   CPI,
   GDP,
   MANUAL_OPERATION,
+  HISTORY_OPERATION,
   catalogForOperation,
   keyOf,
   project,
@@ -305,7 +306,7 @@ it("B: trusted offline fixture explicitly accepts a durable Job, selects its exe
     api.requests.find((r) => r.method === "POST")?.body.job_identity,
   );
   expect(screen.getAllByText("待执行").length).toBeGreaterThan(0);
-  fireEvent.click(btn("查看关联资产 →"));
+  fireEvent.click(btn("查看资产数据"));
   await ready();
   expect(screen.getByRole("heading", { name: "美国 CPI" })).toBeTruthy();
   expect(location.hash).toContain(encodeURIComponent(MANUAL_OPERATION));
@@ -1303,14 +1304,14 @@ it.each(["periodic", "executions"])(
       name: tab === "periodic" ? "f2-plan" : "执行详情",
     });
     expect(new URLSearchParams(location.hash.slice(1)).get("asset")).toBe(
-      tab === "periodic" ? target.asset_identity : null,
+      target.asset_identity,
     );
     expect(
       new URLSearchParams(location.hash.slice(1)).get("asset_revision"),
-    ).toBe(tab === "periodic" ? target.asset_revision : null);
+    ).toBe(target.asset_revision);
     if (tab === "executions")
-      expect(new URLSearchParams(location.hash.slice(1)).has("operation")).toBe(
-        false,
+      expect(new URLSearchParams(location.hash.slice(1)).get("operation")).toBe(
+        HISTORY_OPERATION,
       );
     if (tab === "periodic") {
       fireEvent.click(btn("查看执行记录 →"));
@@ -1322,7 +1323,7 @@ it.each(["periodic", "executions"])(
       await screen.findByRole("heading", { name: "执行详情" });
     }
     expect(await screen.findByText("f2-plan")).toBeTruthy();
-    fireEvent.click(btn("查看关联资产 →"));
+    fireEvent.click(btn("查看资产数据"));
     await screen.findByRole("heading", { name: "美国 CPI" });
     expect(new URLSearchParams(location.hash.slice(1)).get("asset")).toBe(
       target.asset_identity,

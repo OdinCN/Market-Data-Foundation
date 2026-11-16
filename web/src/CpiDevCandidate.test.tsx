@@ -79,7 +79,7 @@ async function openCandidate(transport: Transport) {
   return view;
 }
 
-it("lost receipt survives mode changes and reconfirmation without a second POST or GET", async () => {
+it("lost receipt survives mode changes and reconfirmation with only original-ID GETs and no second POST", async () => {
   const host = staleHost();
   await openCandidate(host.transport);
   fireEvent.click(button());
@@ -90,7 +90,11 @@ it("lost receipt survives mode changes and reconfirmation without a second POST 
   fireEvent.click(screen.getByRole("checkbox"));
   fireEvent.click(button());
   expect(host.posts).toHaveLength(1);
-  expect(host.gets).toHaveLength(gets);
+  for (const path of host.gets.slice(gets)) {
+    const read = new URL(path, "http://fixture.invalid");
+    expect(read.pathname).toBe("/api/r5/cpi/jobs");
+    expect(read.searchParams.get("job_identity")).toBe(host.posts[0]);
+  }
   expect(button().disabled).toBe(true);
 });
 
@@ -143,12 +147,16 @@ it.each(["lost", "pending"])(
     fireEvent.click(button());
     expect(button().disabled).toBe(true);
     expect(host.posts).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "查看执行记录 →" }));
+    // No persisted record exists, so use the original-ID read-only recall,
+    // rather than a disabled navigation button inside the locked form.
+    const recall = await screen.findByRole("button", { name: "核实原请求" });
+    const before = host.gets.length;
+    fireEvent.click(recall);
     await waitFor(() =>
       expect(
-        host.gets.some((path) =>
-          path.includes(`job_identity=${host.posts[0]}`),
-        ),
+        host.gets
+          .slice(before)
+          .some((path) => path.includes(`job_identity=${host.posts[0]}`)),
       ).toBe(true),
     );
     expect(host.posts).toHaveLength(1);

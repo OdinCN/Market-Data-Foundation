@@ -24,7 +24,7 @@ export function WorkflowTable({
   columns: string[];
   rows: Row[];
   selected?: string | null;
-  onSelect: (id: string) => void;
+  onSelect?: (id: string) => void;
   children?: ReactNode;
   empty?: string;
   tools?: ReactNode;
@@ -69,7 +69,7 @@ export function WorkflowTable({
       ?.focus({ preventScroll: true });
   }
   function selectRow(id: string) {
-    onSelect(id);
+    onSelect?.(id);
     if (rightDetails) {
       setDetailOpen(true);
       if (narrow)
@@ -143,12 +143,12 @@ export function WorkflowTable({
                   data-execution-id={row.execution?.id}
                   data-execution-asset={row.execution?.asset}
                   className={row.id === selected ? "selected" : ""}
-                  aria-selected={row.id === selected}
-                  onClick={() => selectRow(row.id)}
+                  aria-selected={onSelect ? row.id === selected : undefined}
+                  onClick={onSelect ? () => selectRow(row.id) : undefined}
                 >
                   {row.cells.map((cell, i) => (
                     <td key={i} data-label={columns[i]}>
-                      {i === 0 ? (
+                      {i === 0 && onSelect ? (
                         <button
                           className="row-link"
                           onClick={(e) => {

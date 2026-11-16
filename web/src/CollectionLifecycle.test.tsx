@@ -192,3 +192,46 @@ it("the shared detail resets recovery confirmation on a different identity and o
   );
   expect(screen.queryByRole("button", { name: "按原请求恢复采集" })).toBeNull();
 });
+
+it("an openable brief selects its exact record with no duplicate recall action", () => {
+  const select = vi.fn();
+  render(
+    <ExecutionBriefCard
+      id="original"
+      title="daily"
+      createdAt=""
+      result="running"
+      state="running"
+      current
+      onSelect={select}
+    />,
+  );
+  expect(screen.getAllByRole("button")).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: /original/ }));
+  expect(select).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("button", { name: /回查同一任务/ })).toBeNull();
+});
+it("a completed detail exposes only real destinations, with no self-refresh action", () => {
+  const result = vi.fn(),
+    periodic = vi.fn();
+  render(
+    <ExecutionDetailShell
+      assetKey="a@r1"
+      id="original"
+      asset="a"
+      source="bound"
+      action="update"
+      result="complete"
+      onResult={result}
+      onPeriodic={periodic}
+    />,
+  );
+  expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual([
+    "查看资产数据",
+    "查看周期任务",
+  ]);
+  fireEvent.click(screen.getByRole("button", { name: "查看资产数据" }));
+  fireEvent.click(screen.getByRole("button", { name: "查看周期任务" }));
+  expect(result).toHaveBeenCalledOnce();
+  expect(periodic).toHaveBeenCalledOnce();
+});

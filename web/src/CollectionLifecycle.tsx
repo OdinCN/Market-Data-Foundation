@@ -99,7 +99,6 @@ export type ExecutionDetailProps = ComponentProps<typeof ExecutionFacts> & {
   assetKey: string;
   children?: ReactNode;
   onResult?: () => void;
-  onRefresh?: () => void;
   onPeriodic?: () => void;
   onResume?: () => void;
   resumeLabel?: string;
@@ -110,7 +109,6 @@ export function ExecutionDetailShell({
   assetKey,
   children,
   onResult,
-  onRefresh,
   onPeriodic,
   onResume,
   resumeLabel = "按原请求恢复采集",
@@ -134,8 +132,7 @@ export function ExecutionDetailShell({
         aria-label="执行操作"
         data-execution-id={facts.id}
       >
-        {onResult && <button onClick={onResult}>查看结果</button>}
-        {onRefresh && <button onClick={onRefresh}>回查当前任务</button>}
+        {onResult && <button onClick={onResult}>查看资产数据</button>}
         {onPeriodic && <button onClick={onPeriodic}>查看周期任务</button>}
         {onResume && confirmResume && (
           <label className="cpi-collection-confirm">

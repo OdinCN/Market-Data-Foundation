@@ -255,7 +255,8 @@ it("preserves exact manual target through lost durable receipt, same-ID readback
     fireEvent.change(screen.getByLabelText(name), {
       target: { value: target.body.reference },
     });
-  fireEvent.click(screen.getByRole("button", { name: "核实原请求" }));
+  await screen.findByText("已接收", { exact: true });
+  expect(screen.queryByRole("button", { name: "核实原请求" })).toBeNull();
   await openSubmittedBrief();
   expect(api.posts).toHaveLength(1);
   expect(api.effects).toEqual({ source: 0, raw: 0, jobs: 1 });
@@ -278,7 +279,7 @@ it("preserves exact manual target through lost durable receipt, same-ID readback
     ).toBe("local_read_verified · 无错误分类");
   });
   expect(api.effects).toEqual({ source: 1, raw: 1, jobs: 1 });
-  fireEvent.click(screen.getByRole("button", { name: "查看关联资产 →" }));
+  fireEvent.click(screen.getByRole("button", { name: "查看资产数据" }));
   await screen.findByRole("heading", { name: "美国 CPI" });
   const read = await screen.findByRole("button", { name: "读取本地数据" });
   await waitFor(() => expect((read as HTMLButtonElement).disabled).toBe(false));

@@ -279,7 +279,7 @@ export function FinancialDailyWorkbench({
         </p>
       )}
       {submission.failure && <p role="alert">{submission.failure}</p>}
-      {submission.pending && submission.uncertain && (
+      {submission.pending && !job && submission.uncertain && (
         <div className="actions">
           <button
             disabled={submission.busy}
@@ -304,7 +304,6 @@ export function FinancialDailyWorkbench({
           }
           resume={() => void submission.submit({ resume: job.request_id, job })}
           go={go}
-          refresh={detail.refresh}
           periodic={() =>
             navigate("collection", {
               asset: FINANCIAL.identity,
@@ -471,13 +470,11 @@ function FinancialExecutionDetail({
   busy,
   resume,
   go,
-  refresh,
   periodic,
 }: {
   job: FinancialJob;
   busy: boolean;
   resume: () => void;
-  refresh: () => void;
   periodic: () => void;
   go: (view: "assets" | "collection", tab: string, id?: string | null) => void;
 }) {
@@ -515,7 +512,6 @@ function FinancialExecutionDetail({
         }
         assetKey={`${FINANCIAL.identity}@${FINANCIAL.revision}`}
         onResult={() => go("assets", "local", j.request_id)}
-        onRefresh={refresh}
         onPeriodic={financialJobOrigin(j) === "自动策略" ? periodic : undefined}
         onResume={resumable ? resume : undefined}
         resumeLabel="续跑此作业"
@@ -578,14 +574,6 @@ function FinancialExecutionDetail({
             </p>
           </details>
         )}
-        <div className="actions">
-          <button onClick={() => go("assets", "local", j.request_id)}>
-            查看关联资产 →
-          </button>
-          <button onClick={() => go("collection", "executions", j.request_id)}>
-            返回执行列表
-          </button>
-        </div>
         {j.coverage && (
           <details>
             <summary>各指标覆盖与缺口</summary>

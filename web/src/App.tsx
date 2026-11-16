@@ -341,8 +341,9 @@ export default function App({
       ((macroIdentity === PCE.identity &&
         (!revision || revision === PCE.revision) &&
         (!operation || operation === PCE_OPERATION)) ||
+        // A selected execution's operation scopes its detail, not the global
+        // list's independent PCE protocol discovery.
         (collectionList &&
-          !operation &&
           (collectionFilter === "all" || collectionFilter === keyOf(PCE)))),
     page.view === "collection",
     PCE_PROFILE,

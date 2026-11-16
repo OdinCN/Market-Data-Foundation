@@ -182,8 +182,11 @@ TDX 日线查询沿用金融日频的本地优先语义。`DailyQuery` 只读本
 
 详情共同顺序为标题、编号/资产/来源/范围/状态/时间、操作区、领域扩展。发布材料、名册证据、分片、失败与覆盖保留各自真实口径。恢复只在注册了实际 `resumePath` 且该记录状态支持时显示；完成记录不渲染无意义的灰色续跑。M3/零售仍须确认原范围恢复；金融、TDX 保留各自已有协议与回执检查。来源准入不足会禁用恢复并说明原因。
 
-稳定验收元素：`aside[aria-label="执行简报"]`；当前卡片 `.execution-brief[data-current="true"][data-execution-id]`；公共详情 `section[aria-label="执行详情主体"][data-execution-asset][data-execution-id]`；操作区 `[aria-label="执行操作"][data-execution-id]`；选中列表行 `tr[aria-selected="true"][data-execution-asset][data-execution-id]`（同时保留原 `data-record-id`）。按钮为“开始另一项采集”“回查同一任务”“查看结果”“回查当前任务”，恢复按钮保留领域名称。结果入口保留资产/版本与 `job`，目录显示“关联执行”及“返回此执行记录”；手动切换资产清除旧关联。
+稳定验收元素：`aside[aria-label="执行简报"]`；当前卡片 `.execution-brief[data-current="true"][data-execution-id]`；公共详情 `section[aria-label="执行详情主体"][data-execution-asset][data-execution-id]`；操作区 `[aria-label="执行操作"][data-execution-id]`；选中列表行 `tr[aria-selected="true"][data-execution-asset][data-execution-id]`（同时保留原 `data-record-id`）。按钮为“开始另一项采集”“查看资产数据”及真实周期入口，恢复按钮保留领域名称。已核实简报通过卡片进入原资产/原编号详情，不另设重复回查；仅尚无可查看记录时保留“核实原请求”，只 GET 原号。详情不设自指回查，沿既有可见页轮询自动跟踪在途状态。结果入口保留资产/版本与 `job`，目录显示“关联执行”及“返回此执行记录”；手动切换资产清除旧关联。
 
 `collectionRegistry` 的 `intent=server-offer` 标记兼容入口：CPI/PCE 单次、指定回补、旧计划批次使用服务实际提供的编号/唯一后继资格，不能改成浏览器随意造新 UUID。没有新的服务准入编号时不显示“开始另一项采集”；原编号仍可跟踪、查看或按资格回补。旧计划回补回执指向周期计划/原批次，不冒充新的执行编号。这些为真实协议例外，矩阵必须验证，不能删除登记以绕过。
 
 `CollectionSubmitMatrix.test.tsx` 由产品登记及实际目录/能力自动枚举，要求每条路径完成 accepted/lost/denied/lifecycle 证据；领域协议 fixture 均禁止外网与 PG，走真实 ASGI 路由和隔离 journal。生命周期用例检查未知防重、锁定、新确认新号、实际能力恢复、简报/列表/深链/结果返回身份；跨族用例故意复用请求号并迟返旧详情。新增族使用共同组件、登记真实 `resumePath`/编号能力，新增协议适配器后必须通过整张矩阵。PR 的前端 CI 使用该矩阵驱动 Chromium 实际点击构建产物。每个可采集资产验证正常与丢回执，沿正常路径验证锁定、重开、新编号、列表切换、刷新、查看结果与返回。名册和消费记录还故意共用同一编号，并延迟返回旧请求。写入限定在隔离的实际作业路由和临时日志。DEV 交付时应在最终预览地址复验，并点击真实已有任务比对详情与操作。
+
+
+简报、列表及直接深链必须无需预备点击即可选中同一资产/编号并显示详情；直接链接到后续页的任务应定位到该行。生命周期矩阵和 `check-collection-submit.mjs` 观察自动 GET 后的可见状态，分别验证卡片导航、重开、结果返回与重新加载；不增加操作按钮供测试驱动。全部资产列表按实际服务能力选用 PCE 新协议或已绑定旧协议，能力探测不受所选执行记录的 operation 限缩。不能同时探读未启用旧协议并把其失败聚合为全页陈旧；真正被选用协议的读取失败仍须显示。

@@ -455,7 +455,7 @@ export function CpiExecutionDetail({
       if (receipt.request_id !== e.id) throw Error("receipt_identity_mismatch");
     } catch {
       if (selected.current === owner)
-        setRecoveryNotice("恢复回执尚未核实，请回查原任务；不自动重发。");
+        setRecoveryNotice("恢复回执尚未核实，正在自动跟踪原任务；不自动重发。");
     } finally {
       if (selected.current === owner) {
         resuming.current = false;
@@ -498,14 +498,6 @@ export function CpiExecutionDetail({
         classification={e.classification}
         assetKey={keyOf(profile.asset)}
         onResult={onResult}
-        onRefresh={
-          onRefresh
-            ? () => {
-                setAwaitingRead(false);
-                onRefresh();
-              }
-            : undefined
-        }
         onPeriodic={onPeriodic}
         onResume={
           onResume ?? (supportedRecovery ? () => void recover() : undefined)

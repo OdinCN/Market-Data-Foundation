@@ -432,8 +432,14 @@ export function CollectionWorkbench({
     pceHistoryBinding.current = { transport, generation, verified: false };
   if (pceReadBound) pceHistoryBinding.current.verified = true;
   const pceHistoryBound = pceHistoryBinding.current.verified;
+  const pceStatusFailure =
+    tab === "executions" &&
+    !invalidIdentity &&
+    (filter === "all" || filter === keyOf(PCE) || pceTarget) &&
+    pceAvailability?.failure;
   const readPceRecords =
     pceHistoryBound &&
+    (!pceAvailability || pceAvailability.legacy) &&
     ((tab === "new" && isPce && (!pceAvailability || pceAvailability.legacy)) ||
       (tab === "executions" &&
         !invalidIdentity &&
@@ -537,7 +543,7 @@ export function CollectionWorkbench({
       ],
       plansMatch ? plans.data : null,
     ).filter((e) => sameKey(e.asset, CPI)),
-    ...(pceJobs.data?.jobs ?? []).map(pceExecution),
+    ...(readPceRecords ? (pceJobs.data?.jobs ?? []) : []).map(pceExecution),
   ];
   const cpiRecords = useVisiblePolling(
     (signal) => readCpiExecutions(transport, signal),
@@ -1565,6 +1571,7 @@ export function CollectionWorkbench({
       )}
       {((readRecords && (jobs.failure || plans.failure)) ||
         (readPceRecords && pceJobs.failure) ||
+        pceStatusFailure ||
         cpiRecords.failure ||
         ppiRecords.failure ||
         pceRecords.failure ||
@@ -1592,6 +1599,9 @@ export function CollectionWorkbench({
           {gdpRecords.failure && <p>GDP执行记录读取失败，当前结果尚未核实。</p>}
           {ppiRecords.failure && (
             <p>PPI 执行记录读取失败，当前记录尚未核实。</p>
+          )}
+          {pceStatusFailure && (
+            <p>PCE 服务状态读取失败，当前执行记录尚未核实。</p>
           )}
           {pceRecords.failure && (
             <p>PCE 执行记录读取失败，当前结果尚未核实。</p>
@@ -1921,23 +1931,6 @@ export function CollectionWorkbench({
                 >
                   重置表单
                 </button>
-                {(uncertain || devIntentLocked) && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      navigate(
-                        "collection",
-                        {
-                          tab: "executions",
-                          job: devIntent ?? null,
-                        },
-                        true,
-                      )
-                    }
-                  >
-                    查看执行记录 →
-                  </button>
-                )}
               </div>
             </CollectionFormLock>
           </form>
@@ -1972,15 +1965,16 @@ export function CollectionWorkbench({
                         });
                     }}
                   />
-                  {(uncertain || !legacyReceipt || legacyTracking.stale) && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={recallLegacy}
-                    >
-                      核实原请求
-                    </button>
-                  )}
+                  {!legacyReceipt &&
+                    (uncertain || legacyLocked || legacyTracking.stale) && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={recallLegacy}
+                      >
+                        核实原请求
+                      </button>
+                    )}
                 </>
               )}
             {legacyReceipt && (
@@ -2271,18 +2265,7 @@ export function CollectionWorkbench({
                   ? familyRowId(selectedFamily, jobId)
                   : financialTarget && jobId
                     ? `financial:${jobId}`
-                    : (m3Target ||
-                          joltsTarget ||
-                          claimsTarget ||
-                          gdpTarget ||
-                          consumptionTarget ||
-                          retailTarget ||
-                          employmentTarget ||
-                          isPpi ||
-                          (pceTarget && newPce)) &&
-                        (briefTarget || jobId)
-                      ? `${macroProfile.id}:${briefTarget || jobId}`
-                      : briefTarget
+                    : (cpiExecution?.rowId ?? execution?.id ?? briefTarget)
             }
             selected={
               selectedFamily && jobId
@@ -2499,7 +2482,6 @@ export function CollectionWorkbench({
                       : !!cpiBackfill?.eligible &&
                         execution.id === cpiBackfill.submission?.parent_job_id)
                 }
-                refresh={() => setRefresh((n) => n + 1)}
                 reason={
                   execution.pce
                     ? pceBackfill?.reason
@@ -2548,13 +2530,11 @@ function ExecutionDetail({
   successor,
   eligible,
   reason,
-  refresh,
 }: {
   execution: Execution;
   navigate: Navigate;
   successor?: Execution;
   eligible: boolean;
-  refresh: () => void;
   reason?: string | null;
 }) {
   const fields = {
@@ -2589,7 +2569,6 @@ function ExecutionDetail({
             package: null,
           })
         }
-        onRefresh={refresh}
       >
         <dl>
           <Fact name="Job / Attempt">
@@ -2621,18 +2600,6 @@ function ExecutionDetail({
           <p role="status">{backfillReason(reason)}</p>
         )}
         <div className="actions">
-          <button
-            onClick={() =>
-              navigate("assets", {
-                ...fields,
-                tab: "local",
-                job: e.id,
-                package: null,
-              })
-            }
-          >
-            查看关联资产 →
-          </button>
           {(e.pce?.parent_job_id ?? e.dto?.parent_job_id) && (
             <button
               onClick={() =>

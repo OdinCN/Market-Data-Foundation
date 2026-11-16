@@ -285,7 +285,9 @@ it.each([CPI, PCE])(
 );
 
 it("creation target never filters records; details, independent filters, remount and history keep visible scope", async () => {
-  const h = host();
+  // These are legacy parent/backfill records. Advertise the corresponding
+  // legacy service rather than requiring a modern host to probe the old API.
+  const h = host("ready", "legacy");
   let view = open(h.transport);
   await screen.findByLabelText("采集目标");
   for (const target of [keyOf(CPI), keyOf(PCE), ""]) {

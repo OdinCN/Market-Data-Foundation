@@ -99,9 +99,7 @@ try {
       await page.locator("code").filter({ hasText: posts[0] }).waitFor();
       assert(await button.isDisabled());
       allowRecall = true;
-      await page
-        .getByRole("button", { name: /回查同一任务|回查原名册任务/ })
-        .click();
+      await page.getByRole("button", { name: "核实原请求" }).click();
     }
     const briefs = page.getByRole("complementary", { name: "执行简报" });
     const card = briefs.locator("button[aria-current=true]");

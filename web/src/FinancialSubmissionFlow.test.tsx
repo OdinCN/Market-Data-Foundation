@@ -198,7 +198,17 @@ it.each(["404", "wrong"])(
         onExecution={nav}
       />,
     );
-    await screen.findByRole("button", { name: "核实原请求" });
+    const brief = screen.getByRole("complementary", { name: "执行简报" });
+    await waitFor(() =>
+      expect(
+        (
+          within(brief).getByRole("button", {
+            name: new RegExp(original.request_id),
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+    expect(screen.queryByRole("button", { name: "核实原请求" })).toBeNull();
     expect(screen.queryByRole("button", { name: "开始另一项采集" })).toBeNull();
     expect(postCount(a)).toBe(1);
     a.mode("ok");
@@ -207,8 +217,13 @@ it.each(["404", "wrong"])(
       state: "complete",
       updated_at: "2026-11-05T12:02:00Z",
     });
-    fireEvent.click(screen.getByRole("button", { name: "核实原请求" }));
-    await screen.findByRole("button", { name: "开始另一项采集" });
+    // The visible, already verified record is tracked automatically; an extra
+    // recall button must not be required to obtain the later matching receipt.
+    await screen.findByRole(
+      "button",
+      { name: "开始另一项采集" },
+      { timeout: 12000 },
+    );
     expect(nav).not.toHaveBeenCalled();
     expect(postCount(a)).toBe(1);
     expect(
@@ -234,7 +249,14 @@ it("stale regressing receipts retain the last known state but cannot release the
   a.set({ ...complete, state: "running", updated_at: "2026-11-05T12:00:30Z" });
   await act(async () => vi.advanceTimersByTimeAsync(5100));
   expect(screen.queryByRole("button", { name: "开始另一项采集" })).toBeNull();
-  expect(screen.getByRole("button", { name: "核实原请求" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "核实原请求" })).toBeNull();
+  expect(
+    (
+      screen.getByRole("button", {
+        name: new RegExp(complete.request_id),
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(false);
   expect(JSON.parse(localStorage.getItem(financialIntentKey)!).request_id).toBe(
     complete.request_id,
   );

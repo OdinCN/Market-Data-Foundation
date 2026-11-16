@@ -707,7 +707,6 @@ function CpiTimeSeriesCollectionContent({
                       : undefined
                   }
                   resumeDisabled={busy || !enabled || jobs.stale}
-                  onRefresh={recallIntent}
                   state={job.state}
                   canReopen={!unresolved && !jobs.stale}
                   reopenDisabled={busy || storageFailed}
