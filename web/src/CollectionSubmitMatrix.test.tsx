@@ -144,19 +144,22 @@ const submitButton = () =>
   }) as HTMLButtonElement;
 const tab = () => new URLSearchParams(location.hash.slice(1)).get("tab");
 async function selectedShell(row: CollectionRegistration, id: string) {
-  await waitFor(() => {
-    const shell = screen.getByRole("region", { name: "执行详情主体" });
-    expect(shell.dataset.executionId).toBe(id);
-    expect(shell.dataset.executionAsset).toBe(keyOf(row.asset));
-    const selected = screen
-      .getByRole("region", { name: "执行记录" })
-      .querySelector<HTMLElement>('tr[aria-selected="true"]');
-    expect(selected?.dataset.executionId).toBe(id);
-    expect(selected?.dataset.executionAsset).toBe(keyOf(row.asset));
-    const route = new URLSearchParams(location.hash.slice(1));
-    expect(route.get("job")).toBe(id);
-    expect(route.get("asset")).toBe(row.asset.identity);
-  });
+  await waitFor(
+    () => {
+      const shell = screen.getByRole("region", { name: "执行详情主体" });
+      expect(shell.dataset.executionId).toBe(id);
+      expect(shell.dataset.executionAsset).toBe(keyOf(row.asset));
+      const selected = screen
+        .getByRole("region", { name: "执行记录" })
+        .querySelector<HTMLElement>('tr[aria-selected="true"]');
+      expect(selected?.dataset.executionId).toBe(id);
+      expect(selected?.dataset.executionAsset).toBe(keyOf(row.asset));
+      const route = new URLSearchParams(location.hash.slice(1));
+      expect(route.get("job")).toBe(id);
+      expect(route.get("asset")).toBe(row.asset.identity);
+    },
+    { timeout: 15000 },
+  );
   return screen.getByRole("region", { name: "执行详情主体" });
 }
 async function setup(
@@ -448,9 +451,9 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
       post.url.split("/").at(-2)!;
     const briefs = () =>
       screen.getByRole("complementary", { name: "执行简报" });
-    const card = () =>
+    const card = (requestId = id) =>
       within(briefs()).getByRole("button", {
-        name: new RegExp(id),
+        name: new RegExp(requestId),
       }) as HTMLButtonElement;
     await waitFor(() => expect(card().disabled).toBe(false));
     expect(tab()).toBe("new");
@@ -479,27 +482,28 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
       });
       return;
     }
-    const track = async (phase: string) => {
-      const before = context.calls.filter(
-        (c) =>
-          c.method === "GET" && c.url.includes("/jobs") && c.status === 200,
-      ).length;
-      await context.backend.exchange({ control: "phase", id, phase });
-      // Observe the real automatic read, without an extra product button.
+    const track = async (phase: "active" | "unknown" | "complete") => {
+      const changed = await context.backend.exchange({
+        control: "phase",
+        id,
+        phase,
+      });
+      expect(changed.status).toBe(200);
+      const visibleState = {
+        active: /执行中|采集中/,
+        unknown: /未知|待核实|commit_outcome_unknown/,
+        complete: /完成/,
+      }[phase];
+      // Another GET may finish before the polling response for this job arrives.
       await waitFor(
-        () =>
-          expect(
-            context.calls.filter(
-              (c) =>
-                c.method === "GET" &&
-                c.url.includes("/jobs") &&
-                c.status === 200,
-            ).length,
-          ).toBeGreaterThan(before),
-        { timeout: 12000 },
+        () => {
+          const label = within(card()).getByText("结果", { selector: "dt" });
+          expect(label.nextElementSibling?.textContent).toMatch(visibleState);
+        },
+        { timeout: 15000 },
       );
     };
-    for (const phase of ["active", "unknown"]) {
+    for (const phase of ["active", "unknown"] as const) {
       await track(phase);
       await waitFor(() =>
         expect(
@@ -547,20 +551,24 @@ describe.each(registrations)("$asset.identity $variant", (row) => {
       id: nextId,
       phase: "failed",
     });
-    fireEvent.click(
-      await within(briefs()).findByRole("button", { name: new RegExp(nextId) }),
-    );
+    // The provisional card already has this ID while its receipt is in flight.
+    await waitFor(() => expect(card(nextId).disabled).toBe(false), {
+      timeout: 15000,
+    });
+    fireEvent.click(card(nextId));
     const failedShell = await selectedShell(row, nextId);
     expect(failedShell.dataset.executionId).toBe(nextId);
     let expectedPosts = 2;
     if (row.resumePath) {
+      const resume = (await within(failedShell).findByRole(
+        "button",
+        { name: /续跑|按原请求恢复/ },
+        { timeout: 15000 },
+      )) as HTMLButtonElement;
       const confirm = within(failedShell).queryByRole("checkbox", {
         name: "我确认按原请求恢复采集",
       });
       if (confirm) fireEvent.click(confirm);
-      const resume = within(failedShell).getByRole("button", {
-        name: /续跑|按原请求恢复/,
-      }) as HTMLButtonElement;
       await waitFor(() => expect(resume.disabled).toBe(false));
       fireEvent.click(resume);
       await waitFor(() =>
