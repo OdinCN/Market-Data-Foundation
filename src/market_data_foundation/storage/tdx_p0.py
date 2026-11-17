@@ -309,18 +309,28 @@ class PgStore:
     def universe(
         self, snapshot_id=None, as_of=None, *, day=None, prefer_directory=False
     ):
-        # Only the base roster's default read opts into directory recency.
-        # Daily acquisition, coverage and explicit historical dates retain the
-        # qualified census-day selection below.
-        directory_order = (
+        # Only the base roster opts into dated directory selection. Daily
+        # acquisition and coverage retain the qualified census-day selection.
+        directory_day = (
             "CASE WHEN details->>'directory_refreshed_at' IS NOT NULL THEN "
             "((details->>'directory_refreshed_at')::timestamptz "
             "AT TIME ZONE 'Asia/Shanghai')::date "
             "WHEN details->>'valid_through' IS NULL AND "
             "details->>'roster_kind' IS DISTINCT FROM 'exchange_lifecycle' THEN "
-            "(observed_at AT TIME ZONE 'Asia/Shanghai')::date END DESC NULLS LAST, "
-            if prefer_directory
+            "(observed_at AT TIME ZONE 'Asia/Shanghai')::date END"
+        )
+        directory_order = (
+            directory_day + " DESC NULLS LAST, " if prefer_directory else ""
+        )
+        directory_filter = (
+            f"AND (%s::text IS NOT NULL OR {directory_day} IS NULL "
+            f"OR {directory_day} <= %s::date) "
+            if prefer_directory and day is not None
             else ""
+        )
+        day_value = day.isoformat() if day else None
+        directory_params = (
+            (snapshot_id, day_value) if prefer_directory and day is not None else ()
         )
         with self.connector() as conn, conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -330,7 +340,8 @@ class PgStore:
                     "AND (%s::text IS NOT NULL OR "
                     "(SELECT count(*)=3 AND bool_and(s->>'state'='COMPLETE') "
                     "FROM jsonb_array_elements(details->'markets') s)) "
-                    "ORDER BY "
+                    + directory_filter
+                    + "ORDER BY "
                     + directory_order
                     + "(details->>'valid_through'=%s::text) DESC NULLS LAST, "
                     " (details->>'roster_kind'='exchange_lifecycle') "
@@ -342,8 +353,9 @@ class PgStore:
                     snapshot_id,
                     snapshot_id,
                     snapshot_id,
-                    day.isoformat() if day else None,
-                ),
+                )
+                + directory_params
+                + (day_value,),
             )
             snapshot = cur.fetchone()
             if snapshot is None:

@@ -33,7 +33,7 @@ export function TdxApiDocumentation({
       <h4>GET {prefix}/query</h4>
       <p>
         {roster
-          ? "独立基础名册：只读已发布快照，日线使用同一 snapshot_id。来源目录与交易所生命周期证据分别保留，不能用当前存续名册推造完整历史。"
+          ? "独立基础名册：每次完整自动或手动刷新，按真实逐证券目录记录核验，并保留原始接收时间；名称未变也更新。本次名册在列与交易所生命周期分别保留，不能用当前目录推造完整历史。"
           : "证券历史与单日横截面均本地优先，缺口仅向已绑定 TDX 源临时补查。GET 不入库、不留存原始响应、不创建作业；采集仍从正常入口提交。价基 native_projection，收益口径 NOT_QUALIFIED。"}
       </p>
       <CompactTable
@@ -118,7 +118,7 @@ export function TdxApiDocumentation({
                 [
                   "day",
                   "否 / 截止前可见的最近完整TDX目录观测日；无目录刷新凭据时用交易所证据日期",
-                  "YYYY-MM-DD；上午目录实际发布后即可用当日，不受日线盘后时点限制。日期选定后，默认与显式同日均使用as_of前已发布的交易所成员证据；周末或新目录未发布时不推造观测日",
+                  "YYYY-MM-DD；上午目录实际发布后即可用当日，不受日线盘后时点限制。显式历史日期独立取as_of前可见且不晚于请求日的完整目录，不借用次日核验；交易所成员证据按同日与as_of另行选择。周末或新目录未发布时不推造观测日",
                 ],
                 ["market", "否 / 全部", "整数0深市、1沪市、2北交所"],
                 [
@@ -130,6 +130,11 @@ export function TdxApiDocumentation({
                   "snapshot_id",
                   "否 / 最新完整发布",
                   "精确已发布快照；与as_of合取，截止前不可见不会借用后来版本",
+                ],
+                [
+                  "directory_snapshot_id",
+                  "否 / 可见目录",
+                  "固定逐只核验使用的目录快照；分页同时传返回的snapshot_id、directory_snapshot_id、requested_day和search_as_of",
                 ],
                 [
                   "as_of",
@@ -242,9 +247,24 @@ export function TdxApiDocumentation({
                     "目录凭据的实际发布身份、观测和可用时间；与返回成员证据的snapshot_id分开，交易所导入日不冒充目录观测日",
                   ],
                   [
+                    "rows[].roster_membership_state / directory_membership_state / roster_verified_at / roster_name",
+                    "string / string / ISO time|null / string",
+                    "名册主状态IN_DIRECTORY本次在列、NOT_IN_DIRECTORY本次未列入、DELISTED_OR_TERMINATED已知退市、UNVERIFIED未取得该日逐只核验；目录返回PRESENT/ABSENT单独保留。核验时间来自原目录页received_at或完整市场枚举最后接收时刻，不能取查询时间；roster_name为实际返回名称",
+                  ],
+                  [
+                    "directory_verification / latest_refresh",
+                    "object / object|null",
+                    "已持久化逐只凭据或关联旧作业原页核实的方法与诊断；旧发布缺producer时按精确snapshot_id核实唯一COMPLETE原作业，歧义、缺失或损坏保持UNVERIFIED及原因。最新刷新保留原号、实际状态与完成时间；失败后仍读取已有完整发布，不伪造新的核验时间",
+                  ],
+                  [
+                    "rows[].roster_verification",
+                    "object|null",
+                    "逐只目录凭据，含原号、来源绑定、市场/代码、实际received_at对应的observed_at与原页path/sha256；未列入依据完整市场枚举，不能当成退市原件。无证据或日期不匹配为null",
+                  ],
+                  [
                     "rows[].market / instrument / name / membership_state",
                     "integer / string / string / string",
-                    "三市、六位代码、名称；交易所成员状态ACTIVE/NOT_YET_LISTED/DELISTED_OR_TERMINATED/UNKNOWN来自该证券原始上市/退市证据，退市日为排除边界；目录整批成功或名称差异均不证明单证券在市或在目录出现",
+                    "三市、六位代码、原名称；membership_state仍为交易所生命周期ACTIVE/NOT_YET_LISTED/DELISTED_OR_TERMINATED/UNKNOWN，保留原消费者语义。目录逐只核验不延长交易所原件日期；退市日为排除边界",
                   ],
                   [
                     "observed_at / available_at / sources[] / rows[].evidence",
@@ -418,9 +438,15 @@ export function TdxApiDocumentation({
               "保留分类；不将故障显示为空结果",
             ],
             [
-              "作业PARTIAL / tdx_universe_required、tdx_roster_stale",
-              "无已发布名册 / 证据不足以覆盖结束日期",
-              "从基础名册核对发布和官方证据，再续跑原作业",
+              roster
+                ? "作业PARTIAL / tdx_roster_refresh_incomplete、tdx_directory_*"
+                : "作业PARTIAL / tdx_universe_required、tdx_roster_stale",
+              roster
+                ? "目录来源失败、枚举未完成或原页核验失败"
+                : "无已发布名册 / 证据不足以覆盖结束日期",
+              roster
+                ? "保留已有完整发布和真实失败；核对原号步骤后正常恢复，不把读取或失败时间当作核验时间"
+                : "从基础名册核对发布和官方证据，再续跑原作业",
             ],
             [
               "作业PARTIAL / commit_outcome_unknown、tdx_page_offset_exhausted",

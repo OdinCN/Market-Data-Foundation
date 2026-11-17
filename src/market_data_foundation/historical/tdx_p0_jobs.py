@@ -7,6 +7,7 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -24,6 +25,11 @@ from market_data_foundation.historical.tdx_p0_source import (
 )
 from market_data_foundation.historical.tdx_roster import BINDING as ROSTER_BINDING
 from market_data_foundation.historical.tdx_roster import published, require_usable
+from market_data_foundation.historical.tdx_roster_verification import (
+    REVISION,
+    absence,
+    verify_steps,
+)
 from market_data_foundation.integration.tdx_daily_ingest import native_bar
 from market_data_foundation.storage.tdx_daily_pg import PRIMARY_SOURCE, Batch
 
@@ -230,7 +236,7 @@ class DailyJobs:
             reverse=True,
         )
 
-    def summaries(self, *, read_errors=None):
+    def summaries(self, *, read_errors=None, action=None):
         # Concurrent workbench tabs often request the same legacy journals. Only
         # one reader rebuilds their terminal summaries per atomic header version.
         with self._summary_lock:
@@ -239,6 +245,10 @@ class DailyJobs:
                 if path.stem == "strategy":
                     continue
                 try:
+                    if action is not None:
+                        header = json.loads(path.read_bytes())
+                        if header.get("command", {}).get("action") != action:
+                            continue
                     row = self._summary(path)
                     if read_errors is not None and (
                         row["request_id"] != path.stem
@@ -772,6 +782,16 @@ class DailyJobs:
                 step["classification"] = classify(error)
             self.save(record)
         members = [member for step in record["steps"] for member in step["members"]]
+        complete = all(s["state"] == "COMPLETE" for s in record["steps"]) and set(
+            command["markets"]
+        ) == {0, 1, 2}
+        receipts, scopes = verify_steps(record) if complete else ({}, {})
+        for member in members:
+            proof = receipts.get((member["market"], member["instrument"]))
+            if proof:
+                member["evidence"] = dict(
+                    member["evidence"], directory_verification=proof
+                )
         observed = now()
         snapshot = dict(
             snapshot_id=uuid4().hex,
@@ -799,12 +819,21 @@ class DailyJobs:
         ):
             # A provider directory cannot promote unlisted candidates into the
             # formal exchange census. Retain them as reconciliation evidence.
-            merged = {(m["market"], m["instrument"]): m for m in previous["members"]}
+            merged = {
+                (m["market"], m["instrument"]): deepcopy(m) for m in previous["members"]
+            }
             candidates = [
                 m for m in members if (m["market"], m["instrument"]) not in merged
             ]
             for item in members:
                 known = merged.get((item["market"], item["instrument"]))
+                if known:
+                    known["evidence"] = dict(
+                        known.get("evidence", {}),
+                        directory_verification=item["evidence"][
+                            "directory_verification"
+                        ],
+                    )
                 if known and known["name"] != item["name"]:
                     known["evidence"] = dict(
                         known["evidence"],
@@ -817,6 +846,14 @@ class DailyJobs:
                         for key, value in known["evidence"].items()
                         if key not in {"directory_name", "directory_name_observed_at"}
                     }
+            for key, known in merged.items():
+                if key not in receipts:
+                    known["evidence"] = dict(
+                        known.get("evidence", {}),
+                        directory_verification=absence(
+                            scopes[known["market"]], known["instrument"]
+                        ),
+                    )
             snapshot["members"] = list(merged.values())
             snapshot["details"] = dict(
                 previous["details"],
@@ -824,6 +861,44 @@ class DailyJobs:
                 directory_refreshed_at=observed,
                 directory_only_candidates=candidates,
             )
+        if complete:
+            snapshot["details"]["directory_verification"] = dict(
+                revision=REVISION, markets=list(scopes.values())
+            )
+            known = {(m["market"], m["instrument"]) for m in snapshot["members"]}
+            previous_members = [
+                *(previous or {}).get("members", []),
+                *(previous or {})
+                .get("details", {})
+                .get("directory_only_candidates", []),
+                *(previous or {})
+                .get("details", {})
+                .get("directory_missing_candidates", []),
+            ]
+            snapshot["details"]["directory_missing_candidates"] = list(
+                {
+                    (m["market"], m["instrument"]): dict(
+                        m,
+                        evidence=dict(
+                            m.get("evidence", {}),
+                            directory_verification=absence(
+                                scopes[m["market"]], m["instrument"]
+                            ),
+                        ),
+                    )
+                    for m in previous_members
+                    if (m["market"], m["instrument"]) not in receipts
+                    and (m["market"], m["instrument"]) not in known
+                }.values()
+            )
+            record.pop("directory_failures", None)
+        else:
+            record["classification"] = "tdx_roster_refresh_incomplete"
+            record["directory_failures"] = [
+                dict(market=s["market"], classification=s.get("classification"))
+                for s in record["steps"]
+                if s["state"] != "COMPLETE"
+            ]
         snapshot["details"]["producer"] = dict(
             request_id=record["request_id"],
             origin=record.get("origin"),

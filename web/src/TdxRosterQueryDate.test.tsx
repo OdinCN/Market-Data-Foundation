@@ -94,10 +94,8 @@ it("opens the real catalog query with the published morning date and separates e
   const table = await screen.findByRole("region", { name: "名册结果" });
   expect(within(table).getByText("000002")).toBeTruthy();
   expect(within(table).getByText("万科Ａ")).toBeTruthy();
-  expect(within(table).getByText("该日交易所成员状态")).toBeTruthy();
-  expect(
-    within(table).getByText("交易所当日待核实（证据截至：2026-11-13）"),
-  ).toBeTruthy();
+  expect(within(table).getByText("名册成员状态")).toBeTruthy();
+  expect(within(table).getByText("未取得该日逐只核验")).toBeTruthy();
   expect(within(table).queryByText("交易所确认在市")).toBeNull();
   for (const label of screen.getAllByText("TDX 目录观测日"))
     expect(label.nextElementSibling?.textContent).toBe("2026-11-17");
@@ -130,7 +128,13 @@ it("resolves the automatic historical date at the microsecond cutoff while prese
   });
   fireEvent.click(submit());
   const table = await screen.findByRole("region", { name: "名册结果" });
-  expect(within(table).getByText("交易所确认在市")).toBeTruthy();
+  expect(within(table).getByText("未取得该日逐只核验")).toBeTruthy();
+  fireEvent.click(screen.getByRole("tab", { name: "原始响应" }));
+  expect(
+    JSON.parse(screen.getByLabelText("原始 HTTP 正文").textContent!).rows[0]
+      .membership_state,
+  ).toBe("ACTIVE");
+  fireEvent.click(screen.getByRole("tab", { name: "表格" }));
   const first = new URL(queries(backend)[0].path, "http://fixture");
   expect(first.searchParams.has("day")).toBe(false);
   expect(first.searchParams.get("as_of")).toBe(
@@ -139,9 +143,13 @@ it("resolves the automatic historical date at the microsecond cutoff while prese
   fireEvent.change(dateInput(), { target: { value: "2026-11-17" } });
   fireEvent.click(submit());
   const later = await screen.findByRole("region", { name: "名册结果" });
+  expect(within(later).getByText("未取得该日逐只核验")).toBeTruthy();
+  fireEvent.click(screen.getByRole("tab", { name: "原始响应" }));
   expect(
-    within(later).getByText("交易所当日待核实（证据截至：2026-11-13）"),
-  ).toBeTruthy();
+    JSON.parse(screen.getByLabelText("原始 HTTP 正文").textContent!).rows[0]
+      .membership_state,
+  ).toBe("UNKNOWN");
+  fireEvent.click(screen.getByRole("tab", { name: "表格" }));
   expect(
     new URL(queries(backend)[1].path, "http://fixture").searchParams.get("day"),
   ).toBe("2026-11-17");
@@ -189,7 +197,7 @@ it.each(["prepublish", "legacy"])(
     });
     fireEvent.click(submit());
     const table = await screen.findByRole("region", { name: "名册结果" });
-    expect(within(table).getByText("交易所确认在市")).toBeTruthy();
+    expect(within(table).getByText("未取得该日逐只核验")).toBeTruthy();
     if (scenario === "legacy")
       expect(screen.getAllByText("未记录目录刷新凭据")).toHaveLength(2);
     expect(queries(backend)).toHaveLength(1);
@@ -215,7 +223,7 @@ it.each(["08:00:00", "18:00:00"])(
     });
     fireEvent.click(submit());
     const first = await screen.findByRole("region", { name: "名册结果" });
-    expect(within(first).getByText("交易所确认在市")).toBeTruthy();
+    expect(within(first).getByText("未取得该日逐只核验")).toBeTruthy();
     expect(
       new URL(queries(backend)[0].path, "http://fixture").searchParams.has(
         "day",
@@ -235,6 +243,8 @@ it.each(["08:00:00", "18:00:00"])(
     const implicit = JSON.parse(
       screen.getByLabelText("原始 HTTP 正文").textContent!,
     );
+    expect(implicit.rows[0].membership_state).toBe("ACTIVE");
+    expect(implicit.rows[0].roster_membership_state).toBe("UNVERIFIED");
     expect(implicit.sources[0].url).toBe("https://fixture.invalid/exchange-13");
     // Change away and back through the actual control to make the date explicit.
     fireEvent.change(dateInput(), { target: { value: "2026-11-12" } });

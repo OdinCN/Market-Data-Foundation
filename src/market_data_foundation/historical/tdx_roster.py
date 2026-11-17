@@ -17,6 +17,11 @@ from market_data_foundation.historical.tdx_p0_contract import (
 )
 from market_data_foundation.historical.tdx_p0_contract import SOURCE as DAILY_SOURCE
 from market_data_foundation.historical.tdx_p0_roster import lifecycle
+from market_data_foundation.historical.tdx_roster_verification import (
+    absence,
+    publication_verification,
+    receipt_time,
+)
 
 PREFIX = "/api/r5/tdx/roster"
 DEFINITION = replace(
@@ -158,13 +163,27 @@ def published(
     return snapshot, status
 
 
-def query_publication(store, day=None, *, snapshot_id=None, as_of=None):
+def query_publication(
+    store,
+    day=None,
+    *,
+    snapshot_id=None,
+    as_of=None,
+    directory_snapshot_id=None,
+    with_directory=False,
+):
     """Date from the directory; evidence from the same selection as explicit day."""
     cutoff = as_of or datetime.now(UTC)
     ceiling = cutoff.astimezone(ZoneInfo("Asia/Shanghai")).date()
     directory, directory_status = published(
-        store, ceiling, as_of=cutoff, prefer_directory=True
+        store,
+        day or ceiling,
+        as_of=cutoff,
+        prefer_directory=True,
+        snapshot_id=directory_snapshot_id,
     )
+    if directory_snapshot_id is not None:
+        require(directory is not None, "tdx_roster_directory_snapshot_unavailable")
     query_day = day or date.fromisoformat(directory_status["default_query_day"])
     # The directory may predate a later publication of exchange originals.
     # Both automatic and explicit reads resolve membership at the chosen day
@@ -173,12 +192,15 @@ def query_publication(store, day=None, *, snapshot_id=None, as_of=None):
         store, query_day, snapshot_id=snapshot_id, as_of=cutoff
     )
     status["default_query_day"] = directory_status["default_query_day"]
+    # Lifecycle publication recency is independent from the requested directory
+    # day. A newer merged publication must not displace that day's receipts.
     directory_context = (
-        directory
-        if snapshot
-        and status["directory_observed_day"] is None
-        and directory_status["directory_observed_day"] == query_day.isoformat()
-        else snapshot
+        snapshot
+        if snapshot_id is not None
+        and directory_snapshot_id is None
+        and facts(snapshot, query_day)["directory_observed_day"]
+        == query_day.isoformat()
+        else directory
     )
     directory_facts = facts(directory_context, query_day)
     has_directory = directory_facts["directory_observed_day"] is not None
@@ -198,7 +220,39 @@ def query_publication(store, day=None, *, snapshot_id=None, as_of=None):
         if has_directory
         else None,
     )
-    return snapshot, status
+    return (
+        (snapshot, status, directory_context) if with_directory else (snapshot, status)
+    )
+
+
+def latest_refresh(jobs, cutoff):
+    if jobs is None:
+        return None
+    errors = []
+    for record in jobs.summaries(read_errors=errors, action="universe"):
+        try:
+            if (
+                receipt_time(record["created_at"]) > cutoff
+                or receipt_time(record.get("updated_at") or record["created_at"])
+                > cutoff
+            ):
+                continue
+            return {
+                k: record.get(k)
+                for k in (
+                    "request_id",
+                    "state",
+                    "origin",
+                    "classification",
+                    "created_at",
+                    "finished_at",
+                    "snapshot_id",
+                    "directory_failures",
+                )
+            }
+        except ValueError, TypeError:
+            continue
+    return None
 
 
 def require_usable(snapshot, status):
@@ -244,6 +298,8 @@ def query(
     *,
     as_of=None,
     snapshot_id=None,
+    directory_snapshot_id=None,
+    jobs=None,
     market=None,
     search="",
     use_default_day=False,
@@ -253,17 +309,37 @@ def query(
     require(market is None or market in {0, 1, 2}, "tdx_roster_market")
     require(offset >= 0 and 1 <= limit <= 1000, "tdx_roster_page")
     cutoff = as_of or datetime.now(UTC)
-    snapshot, status = query_publication(
-        store, None if use_default_day else day, snapshot_id=snapshot_id, as_of=cutoff
+    snapshot, status, directory = query_publication(
+        store,
+        None if use_default_day else day,
+        snapshot_id=snapshot_id,
+        as_of=cutoff,
+        directory_snapshot_id=directory_snapshot_id,
+        with_directory=True,
     )
     day = date.fromisoformat(status["requested_day"])
+    verified, scopes, verification = publication_verification(directory, jobs, cutoff)
+    same_day = status["directory_observed_day"] == day.isoformat()
+    verification["applies_to_query_day"] = same_day
+    status["directory_verification"] = verification
+    status["latest_refresh"] = latest_refresh(jobs, cutoff)
     term = search_text(search)
     changes = store.name_changes(day, cutoff, market) if term and snapshot else {}
     observations = (
         store.observed_names(day, cutoff, market) if term and snapshot else {}
     )
     members = []
-    for m in (snapshot or {}).get("members", []):
+    candidates = dict(
+        ((m["market"], m["instrument"]), m) for m in (snapshot or {}).get("members", [])
+    )
+    if same_day and directory and verification["state"] == "VERIFIED":
+        for m in [
+            *directory.get("members", []),
+            *directory.get("details", {}).get("directory_only_candidates", []),
+            *directory.get("details", {}).get("directory_missing_candidates", []),
+        ]:
+            candidates.setdefault((m["market"], m["instrument"]), m)
+    for key, m in candidates.items():
         if market is not None and m["market"] != market:
             continue
         # An exact code opens all retained names for this instrument.
@@ -283,16 +359,41 @@ def query(
             )
             and any(name_term in key for key in name_keys(name))
         ]
+        proof = verified.get(key)
+        if proof is None and m["market"] in scopes:
+            proof = absence(scopes[m["market"]], m["instrument"])
+        directory_state = proof["state"] if same_day and proof else "UNVERIFIED"
+        official_state = lifecycle(m, day)
+        roster_state = (
+            "DELISTED_OR_TERMINATED"
+            if official_state == "DELISTED_OR_TERMINATED"
+            else "IN_DIRECTORY"
+            if directory_state == "PRESENT"
+            else "NOT_IN_DIRECTORY"
+            if directory_state == "ABSENT"
+            else "UNVERIFIED"
+        )
+        roster_name = (
+            proof.get("name", m["name"]) if directory_state == "PRESENT" else m["name"]
+        )
         if (
             term in m["instrument"]
             or any(term in k for k in name_keys(m["name"]))
+            or any(term in k for k in name_keys(roster_name))
             or history
             or prior
         ):
             members.append(
                 dict(
                     m,
-                    membership_state=lifecycle(m, day),
+                    membership_state=official_state,
+                    roster_membership_state=roster_state,
+                    directory_membership_state=directory_state,
+                    roster_verified_at=proof["observed_at"]
+                    if same_day and proof
+                    else None,
+                    roster_verification=proof if same_day else None,
+                    roster_name=roster_name,
                     matched_changes=history,
                     matched_observed_names=sorted(prior),
                 )

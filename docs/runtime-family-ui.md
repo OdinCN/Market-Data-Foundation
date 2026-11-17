@@ -222,3 +222,5 @@ TDX 日线查询沿用金融日频的本地优先语义。`DailyQuery` 只读本
 
 索引的局部读取失败须与健康记录一起回报，不能伪造失败记录的资产、来源、状态或动作。
 `RuntimeFamily.readExecutions` 保持数组协议；部分失败用 `recordsWithReadErrors` 附带批量诊断，公共 `RecordReadErrors` 展示原号与分类，健康记录继续选择/分页，不逐笔探读损坏项。TDX 的两个列表共用 `read_errors`；同一策略 GET 的 `blocked` 由日线和名册的 `TdxStrategyBlock` 展示日期、原号、原因及发现时间，健康/已核实恢复时不显示阻断区。
+
+基础名册主表使用 `roster_membership_state` 与 `roster_verified_at`：在列必须有逐只目录返回凭据，同名也保存本次实际接收时刻；完整市场枚举未包含只表示本次未列入，已知退市事实保留。`membership_state` / `evidence` 仍是交易所生命周期，不能与目录状态混用，其截至日与状态放在可展开资料中。旧发布缺 `producer` 时只按精确 `snapshot_id` 关联唯一完整原作业，再核实完整步骤与原页摘要；歧义、损坏不推断身份，不用当前时间回填。显式历史日期独立选择截至 `as_of` 可见且不晚于请求日的目录，不能用后一天目录抵消已有核验。翻页固定成员与目录两个快照、查询日和截止；旧单快照读者保留同日原发布的目录。隔离回归见 `test_tdx_roster_refresh.py` / `TdxRosterRefresh.test.tsx`；采集生命周期继续通过全登记 `CollectionSubmitMatrix.test.tsx`。

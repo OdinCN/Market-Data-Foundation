@@ -68,6 +68,9 @@ type Result = Status & {
     }[];
     matched_observed_names?: string[];
     membership_state: string;
+    roster_membership_state?: string;
+    roster_verified_at?: string | null;
+    roster_name?: string;
     evidence: Record<string, unknown>;
   }[];
   search_as_of?: string;
@@ -149,6 +152,11 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
       url.searchParams.set("snapshot_id", result.snapshot_id);
       url.searchParams.set("day", result.requested_day ?? day);
     }
+    if (page && result?.directory_snapshot_id)
+      url.searchParams.set(
+        "directory_snapshot_id",
+        result.directory_snapshot_id,
+      );
     if (page && result?.search_as_of)
       url.searchParams.set("as_of", result.search_as_of);
     setRequestedPath(url.pathname + url.search);
@@ -271,7 +279,8 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
                 "代码",
                 "名册名称",
                 "匹配的名称记录",
-                "该日交易所成员状态",
+                "名册成员状态",
+                "核验时间（北京时间）",
                 "上市日期",
                 "退市日期",
               ]}
@@ -281,7 +290,7 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
                 cells: [
                   exchanges[m.market],
                   m.instrument,
-                  m.name,
+                  m.roster_name ?? m.name,
                   [
                     ...(m.matched_changes ?? []).map(
                       (c) =>
@@ -300,21 +309,17 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
                       (n) => "名册曾记录 " + n,
                     ),
                   ].join("；") || "—",
-                  m.membership_state === "UNKNOWN" &&
-                  m.evidence.listing_date &&
-                  m.evidence.valid_through &&
-                  String(m.evidence.valid_through) < result.requested_day
-                    ? "交易所当日待核实（证据截至：" +
-                      String(m.evidence.valid_through) +
-                      "）"
+                  m.membership_state === "DELISTED_OR_TERMINATED"
+                    ? "已退市或终止上市"
                     : ((
                         {
-                          ACTIVE: "交易所确认在市",
-                          NOT_YET_LISTED: "交易所证据：尚未上市",
-                          DELISTED_OR_TERMINATED: "交易所确认已退市或终止上市",
-                          UNKNOWN: "交易所成员身份未核实",
+                          IN_DIRECTORY: "本次名册在列",
+                          NOT_IN_DIRECTORY: "本次名册未列入",
+                          UNVERIFIED: "未取得该日逐只核验",
                         } as Record<string, string>
-                      )[m.membership_state] ?? m.membership_state),
+                      )[m.roster_membership_state ?? "UNVERIFIED"] ??
+                      "未取得该日逐只核验"),
+                  formatBeijingTime(m.roster_verified_at, "未核实"),
                   String(m.evidence.listing_date ?? "未核实"),
                   String(m.evidence.delist_date ?? "未记录"),
                 ],

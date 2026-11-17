@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import FastAPI
@@ -82,6 +83,25 @@ class RosterStore:
     ):
         as_of = as_of or tdx_roster.datetime.now(UTC)
         self.calls.append((snapshot_id, as_of, day, prefer_directory))
+
+        def within_directory_day(s):
+            details = s["details"]
+            observed = details.get("directory_refreshed_at")
+            if (
+                not observed
+                and not details.get("valid_through")
+                and details.get("roster_kind") != "exchange_lifecycle"
+            ):
+                observed = s["observed_at"].isoformat()
+            return (
+                not observed
+                or not day
+                or datetime.fromisoformat(observed)
+                .astimezone(ZoneInfo("Asia/Shanghai"))
+                .date()
+                <= day
+            )
+
         visible = [
             s
             for s in self.snapshots
@@ -90,6 +110,7 @@ class RosterStore:
                 s["snapshot_id"] == snapshot_id
                 if snapshot_id
                 else all(m["state"] == "COMPLETE" for m in s["details"]["markets"])
+                and (not prefer_directory or within_directory_day(s))
             )
         ]
         if not visible:
@@ -351,7 +372,8 @@ def test_pg_roster_preference_is_opt_in_and_preserves_existing_daily_selection()
     assert "observed_at AT TIME ZONE 'Asia/Shanghai'" in order
     assert "available_at <= %s" in roster
     assert "bool_and(s->>'state'='COMPLETE')" in roster
-    assert roster_params == legacy_params
+    assert "<= %s::date" in roster.split("ORDER BY", 1)[0]
+    assert roster_params == (*legacy_params[:-1], None, "2026-11-17", legacy_params[-1])
 
 
 @pytest.mark.parametrize(
