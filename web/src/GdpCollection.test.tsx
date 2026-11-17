@@ -1,4 +1,5 @@
 import { onlineWorkerFixture } from "./workerControlTestFixture";
+import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   act,
@@ -11,6 +12,7 @@ import {
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Transport } from "./api";
+import type { Navigate, Route } from "./workflowRoute";
 import { CpiTimeSeriesCollection } from "./CpiTimeSeriesCollection";
 import { CpiTimeSeries } from "./CpiTimeSeries";
 import { CollectionWorkbench } from "./CollectionWorkbench";
@@ -394,44 +396,88 @@ it("includes GDP in the common execution list and opens its own detail with sche
     origin: "schedule",
     stage: "target",
   };
-  const navigate = vi.fn();
-  render(
-    <CollectionWorkbench
-      assets={[]}
-      asset={undefined}
-      source={undefined}
-      invalidIdentity={false}
-      route={{
-        view: "collection",
-        invalid: false,
-        fields: new URLSearchParams({
-          tab: "executions",
-          execution_asset: keyOf(GDP),
-          asset: GDP.identity,
-          asset_revision: GDP.revision,
-          job: job.job_id,
-        }),
-      }}
-      navigate={navigate}
-      transport={async (path) => {
-        if (String(path).endsWith("/worker"))
-          return new Response(JSON.stringify(onlineWorkerFixture));
-        expect(String(path)).toBe(profile.basePath + "/executions");
-        return response({ executions: [scheduled] });
-      }}
-      generation={0}
-      gdpAvailability={availability}
-    />,
-  );
+  const calls: { path: string; method: string }[] = [];
+  const transport: Transport = async (path, init) => {
+    calls.push({ path: String(path), method: init?.method ?? "GET" });
+    if ((init?.method ?? "GET") !== "GET") throw Error("unexpected GDP write");
+    if (String(path) === profile.basePath + "/executions")
+      return response({ executions: [scheduled] });
+    if (String(path) === profile.basePath + "/strategy")
+      return response(fixture.strategy);
+    throw Error("unexpected GDP read: " + String(path));
+  };
+  function Page() {
+    const [route, setRoute] = useState<Route>({
+      view: "collection",
+      invalid: false,
+      fields: new URLSearchParams({
+        tab: "executions",
+        execution_asset: keyOf(GDP),
+        asset: GDP.identity,
+        asset_revision: GDP.revision,
+      }),
+    });
+    const navigate: Navigate = (view, fields = {}, preserve = false) =>
+      setRoute((old) => {
+        const next = new URLSearchParams(preserve ? old.fields : undefined);
+        for (const [key, value] of Object.entries(fields))
+          value === null ? next.delete(key) : next.set(key, value);
+        return { view, fields: next, invalid: false };
+      });
+    return (
+      <CollectionWorkbench
+        assets={[]}
+        asset={undefined}
+        source={undefined}
+        invalidIdentity={false}
+        route={route}
+        navigate={navigate}
+        transport={transport}
+        generation={0}
+        gdpAvailability={availability}
+      />
+    );
+  }
+  render(<Page />);
   const table = within(
     await screen.findByRole("region", { name: "执行记录" }),
   ).getByRole("table");
-  await screen.findByText("执行详情");
-  expect(table.textContent).toContain("GDP与增长 · 自动阶段 · 当期采集");
-  expect(screen.getByText("关联资产").parentElement!.textContent).toContain(
-    "美国 GDP 与增长",
+  const entry = await within(table).findByText(
+    "GDP与增长 · 自动策略 · 当期采集",
+    { exact: true },
   );
-  expect(screen.getByLabelText("GDP季度回读覆盖")).toBeTruthy();
+  const row = entry.closest("tr")!;
+  expect(row.dataset.executionId).toBe(job.job_id);
+  expect(row.dataset.executionAsset).toBe(keyOf(GDP));
+  expect(screen.queryByRole("region", { name: "执行详情主体" })).toBeNull();
+  fireEvent.click(entry);
+  const detail = await screen.findByRole("region", { name: "执行详情主体" });
+  expect(row.getAttribute("aria-selected")).toBe("true");
+  expect(detail.dataset.executionId).toBe(job.job_id);
+  expect(detail.dataset.executionAsset).toBe(keyOf(GDP));
+  const fact = (name: string) =>
+    within(detail).getByText(name, { selector: "dt" }).nextElementSibling
+      ?.textContent;
+  expect(fact("记录编号")).toBe(job.job_id);
+  expect(fact("关联资产")).toBe("美国 GDP 与增长");
+  expect(fact("触发方式")).toBe("自动策略");
+  expect(fact("采集方式")).toBe("当期采集");
+  expect(fact("范围")).toBe("2026-Q2 至 2026-Q3");
+  expect(fact("执行结果")).toBe("已完成（回读已验证）");
+  const coverage = within(detail).getByRole("region", {
+    name: "GDP季度回读覆盖",
+  });
+  expect(
+    within(coverage).getByText("目标观测").nextElementSibling?.textContent,
+  ).toBe("16");
+  expect(
+    within(coverage).getByText("官方空值").nextElementSibling?.textContent,
+  ).toBe("1");
+  await within(detail).findByRole("button", { name: "查看周期任务" });
+  expect(calls).toEqual([
+    { path: profile.basePath + "/executions", method: "GET" },
+    { path: profile.basePath + "/strategy", method: "GET" },
+  ]);
 });
 
 it("adds GDP beside an existing family in the common strategy table", async () => {
