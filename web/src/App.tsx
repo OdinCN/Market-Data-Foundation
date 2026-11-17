@@ -287,6 +287,11 @@ export default function App({
         ? "periodic_asset"
         : "execution_asset",
     ) ?? "all";
+  // All-assets lists discover protocols once; only the selected asset needs
+  // live permission/status tracking. Refresh still rereads every scoped status.
+  const pollMacro = (profile: typeof CPI_PROFILE) =>
+    page.view === "collection" &&
+    (!collectionList || macroIdentity === profile.asset.identity);
   const cpiAvailability = useCpiAvailability(
     transport,
     generation,
@@ -316,7 +321,7 @@ export default function App({
         (!!operationEntry?.asset &&
           (!identity || identity === operationEntry.asset.identity) &&
           (!revision || revision === operationEntry.asset.revision))),
-    page.view === "collection",
+    pollMacro(CPI_PROFILE),
   );
   const ppiAvailability = useCpiAvailability(
     transport,
@@ -330,7 +335,7 @@ export default function App({
           !operation &&
           collectionList &&
           (collectionFilter === "all" || collectionFilter === keyOf(PPI)))),
-    page.view === "collection",
+    pollMacro(PPI_PROFILE),
     PPI_PROFILE,
   );
   const pceAvailability = useCpiAvailability(
@@ -345,7 +350,7 @@ export default function App({
         // list's independent PCE protocol discovery.
         (collectionList &&
           (collectionFilter === "all" || collectionFilter === keyOf(PCE)))),
-    page.view === "collection",
+    pollMacro(PCE_PROFILE),
     PCE_PROFILE,
   );
   const employmentAvailability = useCpiAvailability(
@@ -359,7 +364,7 @@ export default function App({
         (collectionList &&
           (collectionFilter === "all" ||
             collectionFilter === keyOf(EMPLOYMENT)))),
-    page.view === "collection",
+    pollMacro(EMPLOYMENT_PROFILE),
     EMPLOYMENT_PROFILE,
   );
   const retailAvailability = useCpiAvailability(
@@ -372,7 +377,7 @@ export default function App({
         (!revision || revision === RETAIL.revision)) ||
         (collectionList &&
           (collectionFilter === "all" || collectionFilter === keyOf(RETAIL)))),
-    page.view === "collection",
+    pollMacro(RETAIL_PROFILE),
     RETAIL_PROFILE,
   );
   const consumptionAvailability = useCpiAvailability(
@@ -386,7 +391,7 @@ export default function App({
           !operation &&
           (collectionFilter === "all" ||
             collectionFilter === keyOf(CONSUMPTION)))),
-    page.view === "collection",
+    pollMacro(CONSUMPTION_PROFILE),
     CONSUMPTION_PROFILE,
   );
   const gdpAvailability = useCpiAvailability(
@@ -398,7 +403,7 @@ export default function App({
         (!revision || revision === GDP.revision)) ||
         (collectionList &&
           (collectionFilter === "all" || collectionFilter === keyOf(GDP)))),
-    page.view === "collection",
+    pollMacro(GDP_PROFILE),
     GDP_PROFILE,
   );
   const m3Availability = useCpiAvailability(
@@ -412,7 +417,7 @@ export default function App({
         (collectionList &&
           !operation &&
           (collectionFilter === "all" || collectionFilter === keyOf(M3)))),
-    page.view === "collection",
+    pollMacro(M3_PROFILE),
     M3_PROFILE,
   );
   const joltsAvailability = useCpiAvailability(
@@ -425,7 +430,7 @@ export default function App({
         (!revision || revision === JOLTS.revision)) ||
         (collectionList &&
           (collectionFilter === "all" || collectionFilter === keyOf(JOLTS)))),
-    page.view === "collection",
+    pollMacro(JOLTS_PROFILE),
     JOLTS_PROFILE,
   );
   const claimsAvailability = useCpiAvailability(
@@ -438,7 +443,7 @@ export default function App({
         (!revision || revision === CLAIMS.revision)) ||
         (collectionList &&
           (collectionFilter === "all" || collectionFilter === keyOf(CLAIMS)))),
-    page.view === "collection",
+    pollMacro(CLAIMS_PROFILE),
     CLAIMS_PROFILE,
   );
   const macroAvailability =
@@ -731,6 +736,7 @@ export default function App({
               {dark ? "☀ 亮色" : "☾ 深色"}
             </button>
             {(page.view !== "collection" ||
+              !!family ||
               cpiAvailability.legacy ||
               invalidIdentity ||
               (!cpiAvailability.data && !cpiAvailability.failure) ||
@@ -738,7 +744,10 @@ export default function App({
                 !sameKey(key, CPI))) && (
               <button
                 aria-label="刷新"
-                disabled={page.invalid || busy}
+                disabled={
+                  page.invalid ||
+                  (collectionList ? directory.busy || packages.busy : busy)
+                }
                 onClick={() => setGeneration((g) => g + 1)}
               >
                 ↻ 刷新

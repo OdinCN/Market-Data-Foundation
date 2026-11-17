@@ -149,6 +149,36 @@ def present_tdx_job(job):
     return {**job, "origin": origin, "strategy_slot": slot}
 
 
+def read_tdx_job(jobs, identity, request, *, roster=False):
+    pairs = list(request.query_params.multi_items())
+    query = dict(pairs)
+    view = query.get("view")
+    if view is None:
+        # Historical full readers did not interpret query parameters.
+        job = jobs.read(identity)
+    else:
+        require(len(query) == len(pairs), "tdx_job_query")
+        require(view in {"summary", "steps"}, "tdx_job_query")
+        require(
+            set(query)
+            <= (
+                {"view"} if view == "summary" else {"view", "offset", "limit", "search"}
+            ),
+            "tdx_job_query",
+        )
+        job = jobs.detail_summary(identity)
+    if roster and job["command"]["action"] != "universe":
+        raise TdxError("job_not_found")
+    if view == "steps":
+        offset, limit = int(query.get("offset", "0")), int(query.get("limit", "25"))
+        search = query.get("search", "").strip()
+        require(
+            0 <= offset and 1 <= limit <= 100 and len(search) <= 200, "tdx_job_query"
+        )
+        return jobs.step_page(identity, offset=offset, limit=limit, search=search)
+    return present_tdx_job(job)
+
+
 def tdx_router(runtime=None):
     fail = tdx_failure
     router = APIRouter(prefix=PREFIX, tags=["tdx-stock-daily"])
@@ -320,11 +350,10 @@ def tdx_router(runtime=None):
             return fail(error)
 
     @router.get("/jobs/{identity}")
-    def detail(identity: str):
+    def detail(identity: str, request: Request):
         try:
             ready()
-            job = runtime.jobs.read(identity)
-            return present_tdx_job(job)
+            return read_tdx_job(runtime.jobs, identity, request)
         except Exception as error:
             return fail(error)
 

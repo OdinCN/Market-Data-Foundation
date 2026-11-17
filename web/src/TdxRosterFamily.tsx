@@ -547,6 +547,7 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
     const { jobs } = await call<{ jobs: TdxJob[] }>(transport, "/jobs", signal);
     return jobs.map((j) => ({
       id: j.request_id,
+      facts: j,
       createdAt: j.created_at,
       title: `${title} · ${tdxJobOrigin(j)}`,
       search: `${title} ${j.request_id} ${j.state}`,

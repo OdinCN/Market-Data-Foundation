@@ -79,6 +79,16 @@ export function TdxApiDocumentation({
               : "旧universe作业继续可查；基础名册新入口独立可见",
           ],
           [
+            "GET " + prefix + "/jobs/{request_id}?view=summary",
+            "任务事实与操作资格独立读取，不载入分片",
+            "无view参数继续返回兼容的完整详情；complete_steps未记录时不推算完成数",
+          ],
+          [
+            "GET " + prefix + "/jobs/{request_id}?view=steps",
+            "分片搜索与分页",
+            "offset≥0、limit=1..100（默认25）、search≤200字符；缺失或读取失败不等于空结果",
+          ],
+          [
             "POST " + prefix + "/jobs",
             "202接收回执，不代表执行完成",
             roster

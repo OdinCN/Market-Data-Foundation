@@ -487,6 +487,14 @@ export function CollectionWorkbench({
     (row) => executionSchedule === "all" || row.schedule === executionSchedule,
   );
   const jobId = route.fields.get("job");
+  const selectedKey =
+    asset?.key ??
+    (!invalidIdentity
+      ? {
+          identity: route.fields.get("asset") ?? "",
+          revision: route.fields.get("asset_revision") ?? "",
+        }
+      : undefined);
   const financialExecution =
     financialTarget && jobId
       ? financialRecords.data?.jobs.find((j) => j.request_id === jobId)
@@ -2075,7 +2083,7 @@ export function CollectionWorkbench({
                 <PeriodicNavigation
                   asset={registration.asset}
                   id={id}
-                  job={sameKey(asset?.key, registration.asset) ? jobId : null}
+                  job={sameKey(selectedKey, registration.asset) ? jobId : null}
                   navigate={navigate}
                 />
               )
@@ -2193,7 +2201,7 @@ export function CollectionWorkbench({
                   asset: target.identity,
                   asset_revision: target.revision,
                   operation: null,
-                  job: sameKey(asset?.key, target) ? jobId : null,
+                  job: sameKey(selectedKey, target) ? jobId : null,
                 },
                 true,
               );
@@ -2506,6 +2514,11 @@ export function CollectionWorkbench({
                 <selectedFamily.ExecutionDetail
                   key={`${keyOf(selectedFamily.asset)}:${jobId}`}
                   {...familyProps}
+                  execution={familyRows.find(
+                    (row) =>
+                      sameKey(row.family.asset, selectedFamily.asset) &&
+                      row.id === jobId,
+                  )}
                 />
               ) : financialTarget && jobId ? (
                 <FinancialDailyWorkbench

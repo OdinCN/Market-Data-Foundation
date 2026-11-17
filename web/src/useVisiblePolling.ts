@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 // Read-only requests have their own lifecycle; mutations never receive this signal.
 export function useVisiblePolling<T>(
-  load: (signal: AbortSignal) => Promise<T>,
+  load: (signal: AbortSignal, publish: (data: T) => void) => Promise<T>,
   keys: readonly unknown[],
   enabled = true,
   canRead: () => boolean = () => true,
@@ -73,7 +73,20 @@ export function useVisiblePolling<T>(
       const version = sequence.current;
       setState((s) => ({ ...s, busy: true }));
       try {
-        const data = await loader.current(request.signal);
+        const data = await loader.current(request.signal, (data) => {
+          if (
+            !disposed &&
+            !request.signal.aborted &&
+            version === sequence.current
+          )
+            setState({
+              data,
+              busy: true,
+              failure: null,
+              stale: false,
+              requestKeys: scope,
+            });
+        });
         if (
           !disposed &&
           !request.signal.aborted &&

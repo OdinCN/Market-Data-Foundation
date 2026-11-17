@@ -90,6 +90,8 @@ export function ExecutionNavigation({
     },
     [transport, generation, asset && keyOf(asset), job, strategy?.path, family],
     !!asset && !!job && !!strategy,
+    undefined,
+    false,
   );
   const binding: Binding | null = associatedPlan
     ? { id: associatedPlan, relation: "associated" }

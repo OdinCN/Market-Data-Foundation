@@ -1,5 +1,5 @@
 import type { CollectionContract } from "./collectionRegistry";
-import { useState, type ComponentType, type ReactNode } from "react";
+import { useRef, useState, type ComponentType, type ReactNode } from "react";
 import { Tabs } from "./WorkflowTable";
 import type { Transport } from "./api";
 import type { Navigate, Route } from "./workflowRoute";
@@ -13,6 +13,7 @@ export type FamilyProps = {
   navigate: Navigate;
   generation: number;
   stale?: boolean;
+  execution?: FamilyExecution;
 };
 export type FamilyExecution = {
   id: string;
@@ -24,6 +25,7 @@ export type FamilyExecution = {
   end?: string;
   result: ReactNode;
   schedule?: string;
+  facts?: unknown;
 };
 export type PeriodicEntry = {
   row: Row;
@@ -53,6 +55,76 @@ export type RuntimeFamily = {
 };
 export const familyRowId = (family: RuntimeFamily, id: string) =>
   `${keyOf(family.asset)}:${id}`;
+
+function useFamilyRead<T>(
+  scope: readonly RuntimeFamily[],
+  props: FamilyProps,
+  enabled: boolean,
+  read: (family: RuntimeFamily, signal: AbortSignal) => Promise<T>,
+) {
+  type Entry = { family: RuntimeFamily; data: T };
+  const signature = scope.map((f) => keyOf(f.asset)).join("|");
+  const retained = useRef(new Map<string, Entry>());
+  const owner = useRef({
+    transport: props.transport,
+    generation: props.generation,
+  });
+  if (
+    owner.current.transport !== props.transport ||
+    owner.current.generation !== props.generation
+  ) {
+    retained.current.clear();
+    owner.current = {
+      transport: props.transport,
+      generation: props.generation,
+    };
+  }
+  const resource = useVisiblePolling<{ values: Entry[]; failures: string[] }>(
+    async (signal, publish) => {
+      const values = new Map(
+        [...retained.current].filter(([key]) =>
+          scope.some((f) => keyOf(f.asset) === key),
+        ),
+      );
+      const failures = new Set<string>();
+      const snapshot = () => ({
+        values: [...values.values()],
+        failures: [...failures],
+      });
+      await Promise.all(
+        scope.map(async (family) => {
+          const key = keyOf(family.asset);
+          try {
+            const data = await read(family, signal);
+            if (signal.aborted) return;
+            const entry = { family, data };
+            values.set(key, entry);
+            retained.current.set(key, entry);
+          } catch {
+            if (signal.aborted) return;
+            failures.add(key);
+          }
+          publish(snapshot());
+        }),
+      );
+      return snapshot();
+    },
+    [
+      props.transport,
+      props.generation,
+      props.route.fields.get("tab"),
+      signature,
+    ],
+    enabled && scope.length > 0,
+  );
+  return {
+    ...resource,
+    failure:
+      resource.failure ??
+      (resource.data?.failures.length ? "family_read_failed" : null),
+    stale: resource.stale || !!resource.data?.failures.length,
+  };
+}
 export function useFamilyRecords(
   families: readonly RuntimeFamily[],
   props: FamilyProps,
@@ -74,38 +146,31 @@ export function useFamilyRecords(
   const scope = families.filter(
     (f) => filter === "all" || filter === keyOf(f.asset),
   );
-  const signature = scope.map((f) => keyOf(f.asset)).join("|");
-  const executions = useVisiblePolling(
-    async (signal) =>
-      (
-        await Promise.all(
-          scope.map(async (family) => ({
-            family,
-            records: await family.readExecutions(props.transport, signal),
-          })),
-        )
-      ).flatMap(({ family, records }) =>
-        records.map((record) => ({ family, ...record })),
-      ),
-    [props.transport, props.generation, tab, signature],
-    !invalid && tab === "executions" && scope.length > 0,
+  const readExecutions = useFamilyRead(
+    scope,
+    props,
+    !invalid && tab === "executions",
+    (family, signal) => family.readExecutions(props.transport, signal),
   );
-  const periodic = useVisiblePolling(
-    async (signal) =>
-      Promise.all(
-        scope.map(async (family) => ({
-          family,
-          data: await family.readPeriodic(props.transport, signal),
-        })),
-      ),
-    [props.transport, props.generation, tab, signature],
-    !invalid && tab === "periodic" && scope.length > 0,
+  const executions = {
+    ...readExecutions,
+    data: readExecutions.data
+      ? readExecutions.data.values.flatMap(({ family, data }) =>
+          data.map((record) => ({ family, ...record })),
+        )
+      : null,
+  };
+  const periodic = useFamilyRead(
+    scope,
+    props,
+    !invalid && tab === "periodic",
+    (family, signal) => family.readPeriodic(props.transport, signal),
   );
   return {
     selected,
     executions,
     periodic,
-    periodicEntries: (periodic.data ?? []).map(({ family, data }) =>
+    periodicEntries: (periodic.data?.values ?? []).map(({ family, data }) =>
       family.periodic(
         data,
         { ...props, stale: periodic.stale },

@@ -129,10 +129,12 @@ def roster_router(runtime):
         return present_tdx_job(job)
 
     @router.get("/jobs/{identity}")
-    def detail(identity: str):
+    def detail(identity: str, request: Request):
         try:
             ready()
-            return roster_job(identity)
+            from market_data_foundation.web.tdx_daily_api import read_tdx_job
+
+            return read_tdx_job(runtime.jobs, identity, request, roster=True)
         except Exception as error:
             return fail(error)
 

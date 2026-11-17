@@ -402,6 +402,7 @@ export function TdxExecutionDetail({
   familyAsset = TDX_DAILY,
   apiPrefix = "/api/r5/tdx/daily",
   familyTitle = title,
+  execution,
 }: FamilyProps & {
   familyAsset?: typeof TDX_DAILY;
   apiPrefix?: string;
@@ -434,7 +435,7 @@ export function TdxExecutionDetail({
     async (signal) => {
       const job = await tdxCall<TdxJob>(
         transport,
-        "/jobs/" + encodeURIComponent(id!),
+        "/jobs/" + encodeURIComponent(id!) + "?view=summary",
         signal,
         undefined,
         apiPrefix,
@@ -453,8 +454,18 @@ export function TdxExecutionDetail({
     (signal) =>
       tdxCall<Status>(transport, "/status", signal, undefined, apiPrefix),
     [transport, generation, apiPrefix],
+    !!detail.data &&
+      ["PARTIAL", "FAILED", "INTERRUPTED"].includes(detail.data.state),
   );
-  if (!detail.data)
+  const facts =
+    execution?.id === id ? (execution.facts as TdxJob | undefined) : undefined;
+  const verifiedFacts =
+    facts?.request_id === id &&
+    (facts.command.action === "universe") === apiPrefix.endsWith("/roster")
+      ? facts
+      : null;
+  const job = detail.data ?? verifiedFacts;
+  if (!job)
     return (
       <p role={detail.failure ? "alert" : "status"}>
         {detail.failure
@@ -462,7 +473,6 @@ export function TdxExecutionDetail({
           : "正在读取 TDX 执行详情…"}
       </p>
     );
-  const job = detail.data;
   return (
     <section aria-label="TDX 执行详情">
       <ExecutionDetailShell
@@ -531,13 +541,24 @@ export function TdxExecutionDetail({
         }
         confirmResume
         actionsDisabled={
-          busy || detail.stale || status.data?.collect !== true || status.stale
+          busy ||
+          !detail.data ||
+          detail.stale ||
+          status.data?.collect !== true ||
+          status.stale
         }
       >
         {detail.failure && <p role="alert">执行详情已陈旧，请重读核实。</p>}
+        {!detail.data && !detail.failure && (
+          <p role="status">正在核实当前任务状态…</p>
+        )}
         <dl>
           <Fact name="发布名册">{job.snapshot_id ?? "尚未发布或未记录"}</Fact>
           <Fact name="来源请求">{job.provider_requests}</Fact>
+          <Fact name="分片进度">
+            {job.complete_steps ?? "未记录"} /{" "}
+            {job.step_count ?? job.steps?.length ?? "未记录"}
+          </Fact>
           {job.admission?.mode === "retained_qualified_receipts" && (
             <Fact name="已读取留存响应">{job.retained_responses ?? 0}</Fact>
           )}
@@ -549,6 +570,99 @@ export function TdxExecutionDetail({
         </dl>
         <Technical>{job.request_id}</Technical>
         {notice && <p role="alert">{notice}</p>}
+        {detail.data ? (
+          <TdxStepTable
+            key={`${apiPrefix}:${job.request_id}`}
+            job={job}
+            transport={transport}
+            apiPrefix={apiPrefix}
+            generation={generation}
+          />
+        ) : (
+          <p role="status">正在读取采集分片…任务事实与操作已可查看。</p>
+        )}
+      </ExecutionDetailShell>
+    </section>
+  );
+}
+
+function TdxStepTable({
+  job,
+  transport,
+  apiPrefix,
+  generation,
+}: {
+  job: TdxJob;
+  transport: FamilyProps["transport"];
+  apiPrefix: string;
+  generation: number;
+}) {
+  const [draft, setDraft] = useState("");
+  const [query, setQuery] = useState({ search: "", offset: 0 });
+  const page = useVisiblePolling(
+    async (signal) => {
+      const value = await tdxCall<{
+        request_id: string;
+        steps: NonNullable<TdxJob["steps"]>;
+        total: number;
+        offset: number;
+        next_offset: number | null;
+      }>(
+        transport,
+        `/jobs/${job.request_id}?${new URLSearchParams({ view: "steps", search: query.search, offset: String(query.offset), limit: "25" })}`,
+        signal,
+        undefined,
+        apiPrefix,
+      );
+      if (
+        value.request_id !== job.request_id ||
+        !Array.isArray(value.steps) ||
+        !Number.isInteger(value.total) ||
+        value.total < 0 ||
+        value.offset !== query.offset ||
+        value.steps.length !==
+          Math.min(25, Math.max(0, value.total - query.offset)) ||
+        value.next_offset !==
+          (query.offset + 25 < value.total ? query.offset + 25 : null) ||
+        (!query.search &&
+          job.step_count != null &&
+          value.total !== job.step_count) ||
+        (job.step_count! > 0 &&
+          !query.search &&
+          !value.steps.length &&
+          query.offset < job.step_count!)
+      )
+        throw Error("tdx_steps_unverified");
+      return value;
+    },
+    [
+      transport,
+      generation,
+      apiPrefix,
+      job.request_id,
+      query.offset,
+      query.search,
+    ],
+    job.steps_paging === true,
+    undefined,
+    ["RUNNING", "QUEUED"].includes(job.state) && !query.search,
+  );
+  const steps = job.steps_paging ? page.data?.steps : job.steps;
+  return (
+    <>
+      {job.steps_paging && !page.data && !page.failure && (
+        <p role="status">正在读取采集分片…任务事实与操作已可查看。</p>
+      )}
+      {page.failure && (
+        <p role="alert">采集分片读取失败，不能据此判断作业为空或已完成。</p>
+      )}
+      {query.search && (
+        <p className="muted">搜索结果按本次读取显示，可刷新更新。</p>
+      )}
+      {!job.steps_paging && !steps && (
+        <p role="alert">此历史作业未提供分片，详情尚未核实。</p>
+      )}
+      {steps && (
         <WorkflowTable
           singlePane
           label="采集分片"
@@ -561,7 +675,7 @@ export function TdxExecutionDetail({
             "页数",
             "边界或失败",
           ]}
-          rows={(job.steps ?? []).map((s, i) => ({
+          rows={steps.map((s, i) => ({
             id: String(i),
             search: `${s.instrument} ${s.classification} ${s.state}`,
             cells: [
@@ -574,10 +688,65 @@ export function TdxExecutionDetail({
               s.classification ?? s.boundary ?? "待执行",
             ],
           }))}
-          pageSize={25}
+          pageSize={job.steps_paging ? undefined : 25}
+          searchControl={
+            job.steps_paging ? (
+              <form
+                className="searchbar"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const search = draft.trim();
+                  if (search === query.search && query.offset === 0)
+                    page.refresh();
+                  else setQuery({ search, offset: 0 });
+                }}
+              >
+                <input
+                  aria-label="搜索采集分片"
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  maxLength={200}
+                />
+                <button>搜索分片</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft("");
+                    setQuery({ search: "", offset: 0 });
+                  }}
+                >
+                  清除
+                </button>
+              </form>
+            ) : undefined
+          }
         />
-      </ExecutionDetailShell>
-    </section>
+      )}
+      {job.steps_paging && page.data && (
+        <div className="actions" aria-label="采集分片分页">
+          <button
+            disabled={page.busy || query.offset === 0}
+            onClick={() =>
+              setQuery({ ...query, offset: Math.max(0, query.offset - 25) })
+            }
+          >
+            前一页分片
+          </button>
+          <span>
+            分片 {query.offset + (page.data.total ? 1 : 0)}–
+            {query.offset + page.data.steps.length} / {page.data.total}
+          </span>
+          <button
+            disabled={page.busy || page.data.next_offset === null}
+            onClick={() =>
+              setQuery({ ...query, offset: page.data!.next_offset! })
+            }
+          >
+            后一页分片
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 function TdxStrategySwitch({
@@ -653,6 +822,7 @@ export const TDX_FAMILY: RuntimeFamily = {
       .filter((j) => j.command.action !== "universe")
       .map((j) => ({
         id: j.request_id,
+        facts: j,
         createdAt: j.created_at,
         title: `${title} · ${tdxJobOrigin(j)} · ${actionTitle(j)}`,
         schedule: j.origin === "periodic" ? strategyId : undefined,

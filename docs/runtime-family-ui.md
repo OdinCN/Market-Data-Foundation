@@ -20,6 +20,15 @@ its existing Macro and financial entries, retaining the existing strategy
 switch, desktop detail pane and narrow-screen drawer interaction.
 
 `useFamilyRecords` reads only registrations matching the active global filter.
+Registered reads publish each family's verified rows independently; a slow or
+failed peer must not hide the others. A selected family's optional execution
+facts retain the exact asset revision and request identity while its detail
+read is pending. Errors remain visible and pending facts never authorize writes.
+TDX details use `GET jobs/{id}?view=summary`; shards use `view=steps` with
+explicit search and server pagination. The default GET stays compatible with
+full historical readers. Execution lists discover Macro protocols once per
+scope/refresh; live status polling is limited to the selected asset. Check these
+read paths with `TdxExecutionRead.test.tsx` and `check-tdx-execution-read.mjs`.
 Execution row identities include the asset revision and request identity, so a
 shared request ID across families cannot select another family's detail. The
 route owns the selection; reloading or returning restores the named object.

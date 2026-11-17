@@ -244,6 +244,87 @@ class DailyJobs:
         with self._summary_lock:
             return self._summary(self.path(identity))
 
+    def detail_summary(self, identity):
+        """Read task facts without opening shards or waiting for list rebuilds."""
+        path = self.path(identity)
+        if not path.exists():
+            raise TdxError("job_not_found")
+        record = json.loads(path.read_bytes())
+        refs = record.pop("step_refs", None)
+        steps = record.pop("steps", None)
+        complete = record.pop("completed_step_count", None)
+        if refs is not None:
+            count = len(refs)
+        elif isinstance(steps, list):
+            count = len(steps)
+            complete = sum(s["state"] == "COMPLETE" for s in steps)
+        else:
+            raise TdxError("tdx_job_steps_unavailable")
+        return dict(
+            self._with_recovery_state(identity, record),
+            step_count=count,
+            complete_steps=complete,
+            steps_paging=True,
+        )
+
+    def step_page(self, identity, *, offset=0, limit=25, search=""):
+        path = self.path(identity)
+        if not path.exists():
+            raise TdxError("job_not_found")
+        record = json.loads(path.read_bytes())
+        refs = record.get("step_refs")
+        if refs is None:
+            base = record.get("steps")
+        else:
+            base_path = self.directory / identity / "base.json"
+            base = (
+                json.loads(base_path.read_bytes())
+                if base_path.exists()
+                else [None] * len(refs)
+            )
+        if not isinstance(base, list) or (refs is not None and len(base) != len(refs)):
+            raise TdxError("tdx_job_steps_unavailable")
+
+        def read(index):
+            value = base[index]
+            if refs is not None:
+                key = refs[index]
+                require(
+                    isinstance(key, str) and re.fullmatch(r"[012]-[0-9]{6}", key),
+                    "tdx_job_step_reference_invalid",
+                )
+                shard = self.directory / identity / (key + ".json")
+                if shard.exists():
+                    value = json.loads(shard.read_bytes())
+            if not isinstance(value, dict) or "state" not in value:
+                raise TdxError("tdx_job_steps_unavailable")
+            return value
+
+        indexes = range(len(base))
+        if search:
+            needle = search.casefold()
+
+            def matches(index):
+                value = read(index)
+                return (
+                    needle
+                    in " ".join(
+                        str(value.get(k, ""))
+                        for k in ("instrument", "classification", "state")
+                    ).casefold()
+                )
+
+            indexes = [i for i in indexes if matches(i)]
+        total = len(indexes)
+        return dict(
+            request_id=identity,
+            steps=[read(i) for i in indexes[offset : offset + limit]],
+            total=total,
+            offset=offset,
+            limit=limit,
+            next_offset=offset + limit if offset + limit < total else None,
+        )
+
     def _summary(self, path):
         stat = path.stat()
         version = (stat.st_ino, stat.st_mtime_ns, stat.st_size)

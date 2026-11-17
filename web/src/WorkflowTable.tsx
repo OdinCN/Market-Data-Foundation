@@ -19,6 +19,7 @@ export function WorkflowTable({
   className,
   rightDetails = false,
   singlePane = false,
+  searchControl,
 }: {
   label: string;
   columns: string[];
@@ -33,6 +34,7 @@ export function WorkflowTable({
   className?: string;
   rightDetails?: boolean;
   singlePane?: boolean;
+  searchControl?: ReactNode;
 }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -110,28 +112,30 @@ export function WorkflowTable({
       className={`workbench${singlePane ? " single-pane" : ""}${className ? ` ${className}` : ""}`}
     >
       <section aria-label={label} className="list-pane">
-        <div className="searchbar">
-          <input
-            ref={input}
-            aria-label={`搜索${label}`}
-            placeholder={`搜索${label}`}
-            value={search}
-            onChange={(e) => {
-              if (located.current) located.current.follow = false;
-              setSearch(e.target.value);
-              setPage(0);
-            }}
-          />
-          <button
-            onClick={() => {
-              setSearch("");
-              input.current?.focus();
-            }}
-          >
-            清除
-          </button>
-          {tools}
-        </div>
+        {searchControl ?? (
+          <div className="searchbar">
+            <input
+              ref={input}
+              aria-label={`搜索${label}`}
+              placeholder={`搜索${label}`}
+              value={search}
+              onChange={(e) => {
+                if (located.current) located.current.follow = false;
+                setSearch(e.target.value);
+                setPage(0);
+              }}
+            />
+            <button
+              onClick={() => {
+                setSearch("");
+                input.current?.focus();
+              }}
+            >
+              清除
+            </button>
+            {tools}
+          </div>
+        )}
         <div className="table-wrap">
           <table>
             <thead>

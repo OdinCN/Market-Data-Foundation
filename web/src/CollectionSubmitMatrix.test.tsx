@@ -988,7 +988,7 @@ it("keeps list selection and details on the same asset/ID when an old family rea
         { status: 404 },
       );
     const response = await match[1].transport(input, init);
-    if (delay && url === tdx.path + "/" + identity) {
+    if (delay && url === tdx.path + "/" + identity + "?view=summary") {
       delay = false;
       pending = true;
       await new Promise<void>((resolve) => {
