@@ -153,10 +153,7 @@ def read_tdx_job(jobs, identity, request, *, roster=False):
     pairs = list(request.query_params.multi_items())
     query = dict(pairs)
     view = query.get("view")
-    if view is None:
-        # Historical full readers did not interpret query parameters.
-        job = jobs.read(identity)
-    else:
+    if view is not None:
         require(len(query) == len(pairs), "tdx_job_query")
         require(view in {"summary", "steps"}, "tdx_job_query")
         require(
@@ -166,17 +163,49 @@ def read_tdx_job(jobs, identity, request, *, roster=False):
             ),
             "tdx_job_query",
         )
-        job = jobs.detail_summary(identity)
-    if roster and job["command"]["action"] != "universe":
-        raise TdxError("job_not_found")
+    jobs.path(identity)  # Invalid request IDs remain parameter errors.
+    try:
+        # Historical full readers did not interpret query parameters.
+        job = jobs.read(identity) if view is None else jobs.detail_summary(identity)
+        if roster and job["command"]["action"] != "universe":
+            raise TdxError("job_not_found")
+        presented = present_tdx_job(job)
+    except OSError, ValueError, KeyError, TypeError, AttributeError:
+        raise TdxError("tdx_job_unreadable") from None
     if view == "steps":
         offset, limit = int(query.get("offset", "0")), int(query.get("limit", "25"))
         search = query.get("search", "").strip()
         require(
             0 <= offset and 1 <= limit <= 100 and len(search) <= 200, "tdx_job_query"
         )
-        return jobs.step_page(identity, offset=offset, limit=limit, search=search)
-    return present_tdx_job(job)
+        try:
+            return jobs.step_page(identity, offset=offset, limit=limit, search=search)
+        except OSError, ValueError, KeyError, TypeError, AttributeError:
+            raise TdxError("tdx_job_unreadable") from None
+    return presented
+
+
+def tdx_job_listing(jobs, *, roster=False):
+    errors = []
+    rows = jobs.summaries(read_errors=errors)
+    presented = []
+    for row in rows:
+        try:
+            if not roster or row["command"]["action"] == "universe":
+                presented.append(present_tdx_job(row))
+        except (ValueError, KeyError, TypeError, AttributeError) as error:
+            errors.append(
+                dict(
+                    request_id=row["request_id"],
+                    classification="tdx_job_unreadable",
+                    cause_classification=type(error).__name__,
+                )
+            )
+    return dict(
+        status="PARTIAL" if errors else "OK",
+        jobs=presented,
+        read_errors=errors,
+    )
 
 
 def tdx_router(runtime=None):
@@ -345,7 +374,7 @@ def tdx_router(runtime=None):
     def jobs():
         try:
             ready()
-            return dict(jobs=[present_tdx_job(job) for job in runtime.jobs.summaries()])
+            return tdx_job_listing(runtime.jobs)
         except Exception as error:
             return fail(error)
 

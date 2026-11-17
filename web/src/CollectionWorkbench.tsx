@@ -21,6 +21,7 @@ import { useCollectionSubmit } from "./useCollectionSubmit";
 import { ExecutionBriefCard } from "./DailyFormControls";
 import {
   familyRowId,
+  RecordReadErrors,
   useFamilyRecords,
   type RuntimeFamily,
 } from "./RuntimeFamily";
@@ -791,6 +792,8 @@ export function CollectionWorkbench({
     operation: HISTORY_OPERATION,
   };
   function recordState(kind: "plans" | "jobs") {
+    if (kind === "jobs" && familyRecords.executions.readErrors.length)
+      return "当前范围有不可读记录，请核对原号与分类。";
     const family = families.find(
       (candidate) => keyOf(candidate.asset) === filter,
     );
@@ -1731,6 +1734,9 @@ export function CollectionWorkbench({
             <p>CPI 既有采集记录读取失败，当前结果尚未核实。</p>
           )}
         </div>
+      )}
+      {tab === "executions" && (
+        <RecordReadErrors errors={familyRecords.executions.readErrors} />
       )}
       {tab === "new" && selectedFamily?.collection && collectionRegistered ? (
         <>

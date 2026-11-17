@@ -20,6 +20,13 @@ import {
 import { tdxJobOrigin, rosterJobScope, tdxBriefs } from "./tdxJobPresentation";
 import { useEffect, useRef, useState } from "react";
 import type { FamilyProps, RuntimeFamily } from "./RuntimeFamily";
+import { recordsWithReadErrors, RecordReadErrors } from "./RuntimeFamily";
+import {
+  TdxStrategyBlock,
+  readableTdxJobs,
+  type TdxStrategy as Strategy,
+  type TdxJobList,
+} from "./TdxReadDiagnostics";
 import {
   TDX_DAILY,
   TdxDailyQuery,
@@ -66,12 +73,6 @@ type Status = {
   collect: boolean;
   defaults: { start?: string; end: string };
 };
-type Strategy = {
-  enabled: boolean;
-  worker_online: boolean;
-  heartbeat_at?: string;
-  calendar_state?: string;
-};
 
 export function TdxDailyCollection({
   transport,
@@ -110,7 +111,7 @@ export function TdxDailyCollection({
     [transport, generation],
   );
   const jobs = useVisiblePolling(
-    (signal) => tdxCall<{ jobs: TdxJob[] }>(transport, "/jobs", signal),
+    (signal) => tdxCall<TdxJobList>(transport, "/jobs", signal),
     [transport, generation],
   );
   useEffect(() => {
@@ -158,13 +159,12 @@ export function TdxDailyCollection({
       schedule: null,
     });
   }
-  const currentJobs = useCollectionRecords([
+  const retainedJobs = useCollectionRecords([
     ...(receipt ? [receipt] : []),
     ...(jobs.data?.jobs ?? []),
   ]);
-  const tracked =
-    currentJobs.find((j) => j.request_id === pending.id) ??
-    (receipt?.request_id === pending.id ? receipt : null);
+  const currentJobs = readableTdxJobs(retainedJobs, jobs.data?.read_errors);
+  const tracked = currentJobs.find((j) => j.request_id === pending.id) ?? null;
   useEffect(() => {
     if (!tracked || tracked.command.action === "universe") return;
     const command = tracked.command;
@@ -249,9 +249,12 @@ export function TdxDailyCollection({
             {jobs.failure && (
               <p role="alert">执行简报读取失败，已有记录待核实。</p>
             )}
-            {jobs.data && !currentJobs.length && (
-              <p>暂无采集记录；尚未提交本次采集。</p>
-            )}
+            <RecordReadErrors errors={jobs.data?.read_errors} />
+            {jobs.data &&
+              !currentJobs.length &&
+              !jobs.data.read_errors?.length && (
+                <p>暂无采集记录；尚未提交本次采集。</p>
+              )}
             <ol className="execution-brief-list">
               {visibleJobs.map((j) => (
                 <li key={j.request_id}>
@@ -467,11 +470,14 @@ export function TdxExecutionDetail({
   const job = detail.data ?? verifiedFacts;
   if (!job)
     return (
-      <p role={detail.failure ? "alert" : "status"}>
-        {detail.failure
-          ? "请求的 TDX 执行记录当前不可核实，未改选其他任务。"
-          : "正在读取 TDX 执行详情…"}
-      </p>
+      <div role={detail.failure ? "alert" : "status"}>
+        <p>
+          {detail.failure
+            ? "请求的 TDX 执行记录当前不可核实，未改选其他任务。"
+            : "正在读取 TDX 执行详情…"}
+        </p>
+        {detail.failure && <Technical>{id}</Technical>}
+      </div>
     );
   return (
     <section aria-label="TDX 执行详情">
@@ -554,6 +560,20 @@ export function TdxExecutionDetail({
         )}
         <dl>
           <Fact name="发布名册">{job.snapshot_id ?? "尚未发布或未记录"}</Fact>
+          {job.roster_binding && (
+            <>
+              <Fact
+                name={
+                  job.roster_binding.snapshot_id
+                    ? "晨间名册作业"
+                    : "待核实名册作业"
+                }
+              >
+                {job.roster_binding.request_id}
+              </Fact>
+              <Fact name="名册目标交易日">{job.roster_binding.day}</Fact>
+            </>
+          )}
           <Fact name="来源请求">{job.provider_requests}</Fact>
           <Fact name="分片进度">
             {job.complete_steps ?? "未记录"} /{" "}
@@ -813,24 +833,23 @@ export const TDX_FAMILY: RuntimeFamily = {
   Collection: TdxDailyCollection,
   ExecutionDetail: TdxExecutionDetail,
   async readExecutions(transport, signal) {
-    const { jobs } = await tdxCall<{ jobs: TdxJob[] }>(
-      transport,
-      "/jobs",
-      signal,
+    const data = await tdxCall<TdxJobList>(transport, "/jobs", signal);
+    return recordsWithReadErrors(
+      data.jobs
+        .filter((j) => j.command.action !== "universe")
+        .map((j) => ({
+          id: j.request_id,
+          facts: j,
+          createdAt: j.created_at,
+          title: `${title} · ${tdxJobOrigin(j)} · ${actionTitle(j)}`,
+          schedule: j.origin === "periodic" ? strategyId : undefined,
+          search: `${title} ${j.request_id} ${tdxJobOrigin(j)} ${actionTitle(j)} ${tdxStateLabel[j.state] ?? j.state}`,
+          start: j.command.start ?? "三市名册",
+          end: j.command.end ?? "提交时点",
+          result: `${tdxStateLabel[j.state] ?? j.state} · 完成分片 ${j.complete_steps ?? "未记录"}/${j.step_count ?? "未记录"} · 来源请求 ${j.provider_requests}`,
+        })),
+      data.read_errors,
     );
-    return jobs
-      .filter((j) => j.command.action !== "universe")
-      .map((j) => ({
-        id: j.request_id,
-        facts: j,
-        createdAt: j.created_at,
-        title: `${title} · ${tdxJobOrigin(j)} · ${actionTitle(j)}`,
-        schedule: j.origin === "periodic" ? strategyId : undefined,
-        search: `${title} ${j.request_id} ${tdxJobOrigin(j)} ${actionTitle(j)} ${tdxStateLabel[j.state] ?? j.state}`,
-        start: j.command.start ?? "三市名册",
-        end: j.command.end ?? "提交时点",
-        result: `${tdxStateLabel[j.state] ?? j.state} · 完成分片 ${j.complete_steps ?? "未记录"}/${j.step_count ?? "未记录"} · 来源请求 ${j.provider_requests}`,
-      }));
   },
   async readPeriodic(transport, signal) {
     const [strategy, status] = await Promise.all([
@@ -864,11 +883,12 @@ export const TDX_FAMILY: RuntimeFamily = {
       refresh,
       detail: (
         <section aria-label="TDX 周期任务详情">
+          <TdxStrategyBlock strategy={data.strategy} />
           <p>
             策略{data.strategy.enabled ? "已启用" : "已暂停"}；执行器
             {data.strategy.worker_online ? "在线" : "离线"}。交易日北京时间
             15:35
-            复用早盘名册采集一次日线；当日目录尚未采集时先补目录。采集范围从交易日往前
+            复用本交易日已完成的晨间周期名册采集一次日线；同号续跑固定原名册作业及快照，手动刷新不替换绑定。当日目录尚未采集时先补目录。采集范围从交易日往前
             14 个自然日至当日，
             同批比对历史数据，有变化才写入修订。失败可续跑，已成功的股票直接跳过。
           </p>

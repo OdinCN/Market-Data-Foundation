@@ -14,6 +14,13 @@ import {
 } from "./TdxRosterFacts";
 import { useEffect, useRef, useState } from "react";
 import type { FamilyProps, RuntimeFamily } from "./RuntimeFamily";
+import { recordsWithReadErrors, RecordReadErrors } from "./RuntimeFamily";
+import {
+  TdxStrategyBlock,
+  readableTdxJobs,
+  type TdxStrategy,
+  type TdxJobList,
+} from "./TdxReadDiagnostics";
 import { DateField } from "./DateField";
 import {
   HistoryCutoffFields,
@@ -329,7 +336,7 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
     [transport, generation],
   );
   const jobs = useVisiblePolling(
-    (signal) => call<{ jobs: TdxJob[] }>(transport, "/jobs", signal),
+    (signal) => call<TdxJobList>(transport, "/jobs", signal),
     [transport, generation],
   );
   const open = (id: string) =>
@@ -372,13 +379,12 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
       setBusy(false);
     }
   }
-  const currentJobs = useCollectionRecords([
+  const retainedJobs = useCollectionRecords([
     ...(receipt ? [receipt] : []),
     ...(jobs.data?.jobs ?? []),
   ]);
-  const tracked =
-    currentJobs.find((j) => j.request_id === pending.id) ??
-    (receipt?.request_id === pending.id ? receipt : null);
+  const currentJobs = readableTdxJobs(retainedJobs, jobs.data?.read_errors);
+  const tracked = currentJobs.find((j) => j.request_id === pending.id) ?? null;
   const visibleJobs = collectionRecent(currentJobs, pending.id);
   function newIntent() {
     if (!pending.id || !tracked || !tdxCanReopen(tracked) || busy || jobs.stale)
@@ -429,9 +435,11 @@ function TdxRosterCollection({ transport, navigate, generation }: FamilyProps) {
               <p role="status">正在读取真实名册作业…</p>
             )}
             {jobs.failure && <p role="alert">作业读取失败，记录待核实。</p>}
-            {jobs.data && !jobs.data.jobs.length && !receipt && (
-              <p>暂无名册刷新记录。</p>
-            )}
+            <RecordReadErrors errors={jobs.data?.read_errors} />
+            {jobs.data &&
+              !jobs.data.jobs.length &&
+              !receipt &&
+              !jobs.data.read_errors?.length && <p>暂无名册刷新记录。</p>}
             <ol className="execution-brief-list">
               {visibleJobs.map((j) => (
                 <li key={j.request_id}>
@@ -544,24 +552,23 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
     />
   ),
   async readExecutions(transport, signal) {
-    const { jobs } = await call<{ jobs: TdxJob[] }>(transport, "/jobs", signal);
-    return jobs.map((j) => ({
-      id: j.request_id,
-      facts: j,
-      createdAt: j.created_at,
-      title: `${title} · ${tdxJobOrigin(j)}`,
-      search: `${title} ${j.request_id} ${j.state}`,
-      schedule: j.origin === "periodic" ? "tdx-roster-auto" : undefined,
-      scope: rosterJobScope(j),
-      result: `${tdxStateLabel[j.state] ?? j.state} · 来源请求 ${j.provider_requests}`,
-    }));
+    const data = await call<TdxJobList>(transport, "/jobs", signal);
+    return recordsWithReadErrors(
+      data.jobs.map((j) => ({
+        id: j.request_id,
+        facts: j,
+        createdAt: j.created_at,
+        title: `${title} · ${tdxJobOrigin(j)}`,
+        search: `${title} ${j.request_id} ${j.state}`,
+        schedule: j.origin === "periodic" ? "tdx-roster-auto" : undefined,
+        scope: rosterJobScope(j),
+        result: `${tdxStateLabel[j.state] ?? j.state} · 来源请求 ${j.provider_requests}`,
+      })),
+      data.read_errors,
+    );
   },
   async readPeriodic(transport, signal) {
-    const value = await tdxCall<{
-      enabled: boolean;
-      heartbeat_at?: string;
-      worker_online: boolean;
-    }>(transport, "/strategy", signal);
+    const value = await tdxCall<TdxStrategy>(transport, "/strategy", signal);
     if (
       typeof value.enabled !== "boolean" ||
       typeof value.worker_online !== "boolean"
@@ -570,11 +577,7 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
     return value;
   },
   periodic(value, props, refresh) {
-    const data = value as {
-      enabled: boolean;
-      heartbeat_at?: string;
-      worker_online: boolean;
-    };
+    const data = value as TdxStrategy;
     return {
       title: `${title} · 盘前目录刷新`,
       row: {
@@ -592,6 +595,7 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
       refresh,
       detail: (
         <section aria-label="TDX 名册 周期详情">
+          <TdxStrategyBlock strategy={data} />
           <p>
             09:00 Asia/Shanghai 刷新三市行情目录。15:35
             日线复用当日已完成的目录作业；错过早盘时先补目录。上市、停牌和正式更名以交易所对应日期的证据为准。

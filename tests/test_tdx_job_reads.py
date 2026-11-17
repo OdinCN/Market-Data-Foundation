@@ -9,7 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from market_data_foundation.historical.tdx_p0_jobs import DailyJobs
+from market_data_foundation.historical.tdx_p0_jobs import DailyJobs, strategy_slot_id
 from market_data_foundation.historical.tdx_p0_source import TdxError
 from market_data_foundation.web.tdx_daily_api import (
     DailyRuntime,
@@ -17,6 +17,7 @@ from market_data_foundation.web.tdx_daily_api import (
     tdx_router,
 )
 from market_data_foundation.web.tdx_roster_api import roster_router
+from tests.test_tdx_morning_binding import DAILY, DAY, LATEST, ROSTER, Replay
 from tests.test_tdx_p0 import Store
 
 
@@ -156,3 +157,96 @@ def test_actual_routes_keep_full_read_and_bound_new_read_queries(tmp_path):
         for query in ["", "?view=summary", "?view=steps&limit=25"]:
             assert client.get(path + query).status_code == 403
     assert not list(tmp_path.rglob("*raw*"))
+
+
+@pytest.mark.parametrize(
+    "corruption", [b"{", b"null", b'"not a header"', b"{}", "bad_origin"]
+)
+def test_corrupt_record_is_local_to_lists_and_named_reads_then_clears(
+    tmp_path, corruption
+):
+    replay = Replay(tmp_path)
+    morning = replay.morning()
+    healthy_roster = replay.manual_roster(LATEST)
+    daily_id = str(uuid4())
+    replay.post(DAILY + "/jobs", dict(request_id=daily_id, action="update", end=DAY))
+    daily = replay.runtime.jobs.run(daily_id)
+    assert daily["state"] == "COMPLETE"
+    damaged = replay.runtime.jobs.path(morning["request_id"])
+    original = damaged.read_bytes()
+    invalid_origin = corruption == "bad_origin"
+    if corruption == "bad_origin":
+        header = json.loads(original)
+        header["origin"] = []
+        corruption = json.dumps(header).encode()
+    damaged.write_bytes(corruption)
+    replay.dispatch()
+    before = len(replay.requests)
+    with replay.client() as client:
+        for prefix, ids in [
+            (DAILY, {daily_id, healthy_roster["request_id"]}),
+            (ROSTER, {healthy_roster["request_id"]}),
+        ]:
+            if prefix == DAILY and invalid_origin:
+                ids = ids | {strategy_slot_id(DAY, "update")}
+            response = client.get(prefix + "/jobs")
+            assert response.status_code == 200, response.text
+            data = response.json()
+            assert data["status"] == "PARTIAL"
+            assert {j["request_id"] for j in data["jobs"]} == ids
+            assert len(data["read_errors"]) == 1
+            error = data["read_errors"][0]
+            assert error["request_id"] == morning["request_id"]
+            assert error["classification"] == "tdx_job_unreadable"
+            assert error["cause_classification"]
+            assert set(error) == {
+                "request_id",
+                "classification",
+                "cause_classification",
+            }
+            for query in ("", "?view=summary", "?view=steps"):
+                unreadable = client.get(
+                    prefix + "/jobs/" + morning["request_id"] + query
+                )
+                assert unreadable.status_code == 503
+                assert unreadable.json()["classification"] == (
+                    "tdx_job_steps_unavailable"
+                    if corruption == b"{}" and query
+                    else "tdx_job_unreadable"
+                )
+        for prefix, identity in [
+            (DAILY, daily_id),
+            (ROSTER, healthy_roster["request_id"]),
+        ]:
+            response = client.get(prefix + "/jobs/" + identity + "?view=summary")
+            assert response.status_code == 200
+            assert response.json()["request_id"] == identity
+            assert response.json()["state"] == "COMPLETE"
+        blocked = client.get(DAILY + "/strategy").json()["blocked"]
+        if invalid_origin:
+            assert blocked is None  # Readable but wrong source is a real job failure.
+            failed = replay.detail(strategy_slot_id(DAY, "update"))
+            assert failed["state"] == "PARTIAL"
+            assert failed["classification"] == "tdx_periodic_roster_origin"
+        else:
+            assert blocked["request_id"] == morning["request_id"]
+        assert damaged.read_bytes() == corruption and len(replay.requests) == before
+        damaged.write_bytes(original)
+        replay.dispatch()
+        for prefix in (DAILY, ROSTER):
+            data = client.get(prefix + "/jobs").json()
+            assert data["status"] == "OK" and data["read_errors"] == []
+            assert morning["request_id"] in {j["request_id"] for j in data["jobs"]}
+            response = client.get(
+                prefix + "/jobs/" + morning["request_id"] + "?view=summary"
+            )
+            assert (
+                response.status_code == 200 and response.json()["state"] == "COMPLETE"
+            )
+        assert client.get(DAILY + "/strategy").json()["blocked"] is None
+        if invalid_origin:
+            assert (
+                replay.detail(strategy_slot_id(DAY, "update"))["classification"]
+                == "tdx_periodic_roster_origin"
+            )
+        assert len(replay.requests) == before

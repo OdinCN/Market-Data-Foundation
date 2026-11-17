@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from market_data_foundation.historical.tdx_p0_jobs import DailyJobs
+from market_data_foundation.historical.tdx_p0_strategy import DailyStrategy
 from market_data_foundation.web.packages import create_package_app
 from market_data_foundation.web.tdx_daily_api import (
     DailyRuntime,
@@ -35,6 +36,7 @@ runtime = DailyRuntime(
     TdxOptions(root / "runtime", Path("/unused"), "unused"), Store(), forbidden
 )
 runtime.jobs = DailyJobs(root / "journal", Store(), forbidden)
+runtime.strategy = DailyStrategy(runtime.jobs, directory=root / "strategy")
 app = FastAPI()
 app.include_router(tdx_router(runtime))
 app.include_router(roster_router(runtime))

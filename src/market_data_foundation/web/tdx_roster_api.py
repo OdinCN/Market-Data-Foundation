@@ -51,7 +51,7 @@ def roster_router(runtime):
                 "北交所官方分页与新旧代码映射独立留证；已知退市区间保留，未知历史代码沿革不推造。",
                 "刷新来源目录不会延长交易所证据有效期；缺失、过期和历史未知独立报告，失败不替换完整发布。",
                 "日线复用同一发布snapshot_id；旧daily/universe与action=universe作业继续兼容。",
-                "交易日北京时间09:00刷新行情目录；15:35日线复用当天已完成的目录。",
+                "交易日北京时间09:00刷新行情目录；15:35自动日线绑定本交易日晨间周期名册作业及其实际快照，同号恢复不随手动刷新更换。",
             ],
         )
 
@@ -112,13 +112,9 @@ def roster_router(runtime):
     def jobs():
         try:
             ready()
-            return dict(
-                jobs=[
-                    present_tdx_job(j)
-                    for j in runtime.jobs.summaries()
-                    if j["command"]["action"] == "universe"
-                ]
-            )
+            from market_data_foundation.web.tdx_daily_api import tdx_job_listing
+
+            return tdx_job_listing(runtime.jobs, roster=True)
         except Exception as error:
             return fail(error)
 

@@ -1,6 +1,6 @@
 import type { CollectionContract } from "./collectionRegistry";
 import { useRef, useState, type ComponentType, type ReactNode } from "react";
-import { Tabs } from "./WorkflowTable";
+import { Tabs, Technical } from "./WorkflowTable";
 import type { Transport } from "./api";
 import type { Navigate, Route } from "./workflowRoute";
 import type { Row } from "./WorkflowTable";
@@ -28,6 +28,43 @@ export type FamilyExecution = {
   schedule?: string;
   facts?: unknown;
 };
+export type RecordReadError = {
+  request_id: string;
+  classification: string;
+  cause_classification?: string;
+};
+// Preserve the existing array reader contract, with optional batch diagnostics.
+export type FamilyExecutionRecords = FamilyExecution[] & {
+  readErrors?: RecordReadError[];
+};
+export function recordsWithReadErrors(
+  records: FamilyExecution[],
+  readErrors: RecordReadError[] = [],
+): FamilyExecutionRecords {
+  return Object.assign(records, { readErrors });
+}
+export function RecordReadErrors({
+  errors = [],
+}: {
+  errors?: RecordReadError[];
+}) {
+  if (!errors.length) return null;
+  return (
+    <div role="alert" aria-label="采集记录局部读取失败">
+      <p>
+        部分采集记录不可读；以下原号的资产、来源和状态尚未核实。健康记录可继续查看。
+      </p>
+      <ul>
+        {errors.map((error) => (
+          <li key={`${error.request_id}:${error.classification}`}>
+            <Technical>{error.request_id}</Technical> · {error.classification}
+            {error.cause_classification && ` · ${error.cause_classification}`}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 export type PeriodicEntry = {
   title?: ReactNode;
   row: Row;
@@ -47,7 +84,7 @@ export type RuntimeFamily = {
   readExecutions: (
     transport: Transport,
     signal: AbortSignal,
-  ) => Promise<FamilyExecution[]>;
+  ) => Promise<FamilyExecutionRecords>;
   readPeriodic: (transport: Transport, signal: AbortSignal) => Promise<unknown>;
   periodic: (
     data: unknown,
@@ -151,6 +188,16 @@ export function useFamilyRecords(
   );
   const executions = {
     ...readExecutions,
+    readErrors: [
+      ...new Map(
+        (readExecutions.data?.values ?? []).flatMap(({ data }) =>
+          (data.readErrors ?? []).map(
+            (error) =>
+              [`${error.request_id}:${error.classification}`, error] as const,
+          ),
+        ),
+      ).values(),
+    ],
     data: readExecutions.data
       ? readExecutions.data.values.flatMap(({ family, data }) =>
           data.map((record) => ({ family, ...record })),

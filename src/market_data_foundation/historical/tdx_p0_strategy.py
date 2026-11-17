@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
 from market_data_foundation.historical.tdx_p0_jobs import atomic, now, strategy_slot_id
+from market_data_foundation.historical.tdx_p0_source import TdxError, classify
 
 
 class DailyStrategy:
@@ -15,6 +16,7 @@ class DailyStrategy:
         directory = directory or jobs.directory
         directory.mkdir(parents=True, exist_ok=True)
         self.path = directory / "strategy.json"
+        self.blocked_path = directory / "strategy-blocked.state"
         self.heartbeat = None
         self.stop_event = threading.Event()
         self.thread = None
@@ -34,7 +36,56 @@ class DailyStrategy:
             calendar_state=self.calendar_state,
             overlap_calendar_days=14,
             review_target=None,
+            blocked=self._blocked(),
         )
+
+    def _blocked(self):
+        try:
+            return json.loads(self.blocked_path.read_bytes())
+        except FileNotFoundError:
+            # A successful tick can clear the diagnostic during an HTTP read.
+            return None
+
+    def _slot_summary(self, day, action):
+        identity = strategy_slot_id(day, action)
+        try:
+            record = self.jobs.summary(identity)
+            if record["state"] not in {
+                "QUEUED",
+                "RUNNING",
+                "COMPLETE",
+                "PARTIAL",
+                "INTERRUPTED",
+            }:
+                raise TdxError("tdx_job_state_invalid")
+        except (
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+            AttributeError,
+            TdxError,
+        ) as error:
+            block = dict(
+                day=day,
+                request_id=identity,
+                classification=(
+                    "tdx_periodic_roster_job_unreadable"
+                    if action == "universe"
+                    else "tdx_periodic_daily_job_unreadable"
+                ),
+                cause_classification=classify(error),
+            )
+            previous = self._blocked()
+            if previous is None or block != {
+                k: v for k, v in previous.items() if k != "observed_at"
+            }:
+                atomic(self.blocked_path, dict(block, observed_at=now()))
+            return None
+        previous = self._blocked()
+        if previous and previous["request_id"] == identity:
+            self.blocked_path.unlink()
+        return record
 
     def set(self, enabled):
         atomic(self.path, dict(enabled=enabled, updated_at=now()))
@@ -106,6 +157,7 @@ class DailyStrategy:
                         origin="periodic",
                     )
                     return
+                self._slot_summary(today, "universe")
             if not eligible:
                 return
             latest = max(eligible)
@@ -117,10 +169,14 @@ class DailyStrategy:
             if previous in eligible and previous < latest:
                 day = previous
                 previous_update = strategy_slot_id(previous, "update")
-                if self.jobs.path(previous_update).exists() and self.jobs.summary(
-                    previous_update
-                )["state"] in {"COMPLETE", "PARTIAL", "INTERRUPTED"}:
-                    day = min(d for d in eligible if d > previous)
+                if self.jobs.path(previous_update).exists():
+                    record = self._slot_summary(previous, "update")
+                    if record is None or record["state"] in {
+                        "COMPLETE",
+                        "PARTIAL",
+                        "INTERRUPTED",
+                    }:
+                        day = min(d for d in eligible if d > previous)
             if previous != day:
                 atomic(cursor, dict(day=day))
             for action in ("universe", "update"):
@@ -131,7 +187,11 @@ class DailyStrategy:
                         origin="periodic",
                     )
                     return
-                record = self.jobs.summary(identity)
+                record = self._slot_summary(day, action)
+                if record is None:
+                    if day < latest:
+                        atomic(cursor, dict(day=min(d for d in eligible if d > day)))
+                    return
                 state = record["state"]
                 if (
                     action == "universe"

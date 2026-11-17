@@ -219,3 +219,6 @@ TDX 日线查询沿用金融日频的本地优先语义。`DailyQuery` 只读本
 周期详情使用 `PeriodicDetailShell`，统一顺序为标题、已核实导航、领域正文。注册族可提供 `PeriodicEntry.title`，缺省继承族标题；正文保留真实领域内容，不能在公共导航之前另放资产主标题。历史 CPI 计划保留自己的批次/operation 导航。构建矩阵从登记与实际策略协议取样，在 1440/1180 两种宽度检查标题位于详情内边距起点、导航在标题之后和正文之前。
 
 `collectionReadScope` 是 App、Macro/金融索引和 RuntimeFamily 的资产/版本/筛选判定入口：显式 all 随原号保留；没有筛选的资产或来源深链仅读取那个版本。普通工作台可声明 `CpiAvailability.discover`，用只读执行索引核实协议（含周期页），不以整库 status 为前置条件；独立接入方未声明现代能力时不探读其族。仅明确的 CPI/PCE 现代协议缺失可转原兼容入口，其他族不借用 CPI。200 的索引空态、未装配、真实读取失败分别呈现；聚合失败不否定已成功核实的策略，策略失败也不能冒充聚合在等待。旧夹具须在未实现的族路径返回真实未提供响应，不用 CPI 成功兜底。
+
+索引的局部读取失败须与健康记录一起回报，不能伪造失败记录的资产、来源、状态或动作。
+`RuntimeFamily.readExecutions` 保持数组协议；部分失败用 `recordsWithReadErrors` 附带批量诊断，公共 `RecordReadErrors` 展示原号与分类，健康记录继续选择/分页，不逐笔探读损坏项。TDX 的两个列表共用 `read_errors`；同一策略 GET 的 `blocked` 由日线和名册的 `TdxStrategyBlock` 展示日期、原号、原因及发现时间，健康/已核实恢复时不显示阻断区。

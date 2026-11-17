@@ -176,6 +176,20 @@ HELP = dict(
             "tdx_roster_stale",
             "commit_outcome_unknown",
             "tdx_page_offset_exhausted",
+            "tdx_periodic_roster_job_missing",
+            "tdx_periodic_roster_job_unreadable",
+            "tdx_periodic_roster_origin",
+            "tdx_periodic_roster_scope",
+            "tdx_periodic_roster_incomplete",
+            "tdx_periodic_roster_snapshot_missing",
+            "tdx_periodic_roster_snapshot_changed",
+            "tdx_periodic_roster_binding_invalid",
+            "tdx_bound_roster_missing",
+            "tdx_bound_roster_unreadable",
+            "tdx_bound_roster_snapshot_mismatch",
+            "tdx_bound_roster_producer_mismatch",
+            "tdx_bound_roster_publication_mismatch",
+            "tdx_job_roster_binding_missing",
         ],
     },
     endpoints={
@@ -211,6 +225,12 @@ HELP = dict(
         strategy={"enabled": True},
     ),
     notes=[
+        (
+            "自动日线在受理时绑定目标交易日的晨间周期名册作业和其实际快照；"
+            "jobs 的 roster_binding 给出 request_id/day/snapshot_id/source_binding，"
+            "snapshot_id 为实际使用的发布名册。首次执行及同号恢复不选最新名册；"
+            "绑定证据缺失或不匹配时保留分类并停止，不改采手动快照。旧记录不推造晨间来源。"
+        ),
         (
             "Queries require an independent --allow-tdx-source-query opt-in on "
             "DEV 18766; collection permission and workers are unchanged."

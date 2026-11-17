@@ -2,8 +2,62 @@
 
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
+from shutil import copytree
 from uuid import NAMESPACE_URL, uuid5
+
+
+def prepare_corrupt(root):
+    from tempfile import TemporaryDirectory
+    from uuid import uuid4
+
+    from tests.test_tdx_morning_binding import DAILY, DAY, LATEST, Replay
+
+    root.mkdir(parents=True, exist_ok=False)
+    with TemporaryDirectory() as temporary:
+        replay = Replay(Path(temporary))
+        morning = replay.morning()
+        roster = replay.manual_roster(LATEST)
+        identity = str(uuid4())
+        replay.post(
+            DAILY + "/jobs", dict(request_id=identity, action="update", end=DAY)
+        )
+        assert replay.runtime.jobs.run(identity)["state"] == "COMPLETE"
+        path = replay.runtime.jobs.path(morning["request_id"])
+        (root / "repair-header.bin").write_bytes(path.read_bytes())
+        path.write_bytes(b"{")
+        replay.dispatch()
+        copytree(replay.runtime.jobs.directory, root / "journal")
+        copytree(replay.runtime.strategy.path.parent, root / "strategy")
+        value = dict(
+            daily=identity,
+            roster=roster["request_id"],
+            corrupt=morning["request_id"],
+            day=DAY,
+        )
+        (root / "fixture-only.json").write_text(json.dumps(value))
+
+
+def repair_corrupt(root):
+    from market_data_foundation.historical.tdx_p0_jobs import DailyJobs
+    from market_data_foundation.historical.tdx_p0_strategy import DailyStrategy
+    from tests.test_tdx_morning_binding import Publications
+
+    value = json.loads((root / "fixture-only.json").read_text())
+    (root / "journal" / (value["corrupt"] + ".json")).write_bytes(
+        (root / "repair-header.bin").read_bytes()
+    )
+
+    def forbidden(*_):
+        raise AssertionError("no dispatch while repairing isolated evidence")
+
+    jobs = DailyJobs(root / "journal", Publications(), forbidden)
+    jobs.launch = forbidden
+    strategy = DailyStrategy(jobs, directory=root / "strategy")
+    # Simulated 09:01 recheck, before daily admission; no source or job dispatch.
+    strategy.tick(datetime(2026, 11, 16, 1, 1, tzinfo=UTC))
+    assert strategy.read()["blocked"] is None
 
 
 def prepare(root):
@@ -42,4 +96,7 @@ def prepare(root):
 
 
 if __name__ == "__main__":
-    prepare(Path(sys.argv[1]))
+    operation = sys.argv[2] if len(sys.argv) > 2 else "large"
+    {"large": prepare, "surface": prepare_corrupt, "surface-repair": repair_corrupt}[
+        operation
+    ](Path(sys.argv[1]))

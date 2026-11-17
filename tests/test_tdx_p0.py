@@ -712,8 +712,11 @@ def test_strategy_single_1535_update_with_overlap_and_restart(tmp_path, monkeypa
     def complete(identity):
         record = json.loads(jobs.path(identity).read_bytes())
         record["state"] = "COMPLETE"
-        record["step_refs"] = ["must-not-be-opened"]
-        record["completed_step_count"] = 1
+        count = 3 if record["command"]["action"] == "universe" else 1
+        record["step_refs"] = [f"must-not-be-opened-{i}" for i in range(count)]
+        record["completed_step_count"] = count
+        if record["command"]["action"] == "universe":
+            record["snapshot_id"] = uuid4().hex
         record.pop("steps", None)
         jobs.path(identity).write_text(json.dumps(record))
 

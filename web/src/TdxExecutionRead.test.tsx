@@ -388,3 +388,87 @@ it.each([false, true])(
     expect(screen.queryByRole("alert") !== null).toBe(fail);
   },
 );
+
+it.each([true, false])(
+  "reads the recorded roster identities without inferring historical morning provenance (bound=%s)",
+  async (bound) => {
+    const rosterId = "b38ebc04-8e26-534a-b9ba-282bb0ce4e48";
+    const snapshot = "58710b412e0b4f86be81009e3f36121a";
+    const calls: string[] = [];
+    const record: TdxJob = {
+      ...job(ids[1]),
+      snapshot_id: snapshot,
+      ...(bound
+        ? {
+            roster_binding: {
+              day: "2026-11-16",
+              request_id: rosterId,
+              snapshot_id: snapshot,
+              source_binding: "mdf.binding.tdx-v100.stock.roster",
+            },
+          }
+        : {}),
+    };
+    const transport: Transport = async (input, init) => {
+      expect(init?.method ?? "GET").toBe("GET");
+      calls.push(String(input));
+      return String(input).includes("view=summary")
+        ? Response.json(record)
+        : pending();
+    };
+    render(<TdxExecutionDetail {...props(ids[1])} transport={transport} />);
+    await screen.findByText(snapshot);
+    expect(
+      screen.getByRole("region", { name: "执行详情主体" }).dataset.executionId,
+    ).toBe(ids[1]);
+    if (bound) {
+      expect(
+        screen.getByText("晨间名册作业").closest(".fact")?.textContent,
+      ).toContain(rosterId);
+      expect(
+        screen.getByText("名册目标交易日").closest(".fact")?.textContent,
+      ).toContain("2026-11-16");
+    } else {
+      expect(screen.queryByText("晨间名册作业")).toBeNull();
+      expect(screen.queryByText(rosterId)).toBeNull();
+    }
+    expect(screen.queryByRole("button", { name: /回查/ })).toBeNull();
+    expect(calls.every((path) => path.includes("/jobs/" + ids[1]))).toBe(true);
+  },
+);
+
+it("labels an unresolved morning target as unverified rather than an available roster", async () => {
+  const rosterId = "b38ebc04-8e26-534a-b9ba-282bb0ce4e48";
+  const record: TdxJob = {
+    ...job(ids[1]),
+    state: "PARTIAL",
+    provider_requests: 0,
+    step_count: 0,
+    complete_steps: 0,
+    classification: "tdx_periodic_roster_job_missing",
+    roster_binding: {
+      day: "2026-11-16",
+      request_id: rosterId,
+      snapshot_id: null,
+      source_binding: "mdf.binding.tdx-v100.stock.roster",
+    },
+  };
+  const transport: Transport = async (input, init) => {
+    expect(init?.method ?? "GET").toBe("GET");
+    return String(input).includes("view=summary")
+      ? Response.json(record)
+      : String(input).endsWith("/status")
+        ? Response.json({ enabled: true, collect: false })
+        : pending();
+  };
+  render(<TdxExecutionDetail {...props(ids[1])} transport={transport} />);
+  await screen.findByText(rosterId);
+  expect(
+    screen.getByText("待核实名册作业").closest(".fact")?.textContent,
+  ).toContain(rosterId);
+  expect(screen.queryByText("晨间名册作业")).toBeNull();
+  expect(screen.getByText("发布名册").closest(".fact")?.textContent).toContain(
+    "尚未发布或未记录",
+  );
+  expect(screen.queryByRole("button", { name: /回查/ })).toBeNull();
+});

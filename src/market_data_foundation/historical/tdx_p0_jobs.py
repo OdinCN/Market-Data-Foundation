@@ -22,6 +22,7 @@ from market_data_foundation.historical.tdx_p0_source import (
     encoded,
     verify_wire,
 )
+from market_data_foundation.historical.tdx_roster import BINDING as ROSTER_BINDING
 from market_data_foundation.historical.tdx_roster import published, require_usable
 from market_data_foundation.integration.tdx_daily_ingest import native_bar
 from market_data_foundation.storage.tdx_daily_pg import PRIMARY_SOURCE, Batch
@@ -229,15 +230,42 @@ class DailyJobs:
             reverse=True,
         )
 
-    def summaries(self):
+    def summaries(self, *, read_errors=None):
         # Concurrent workbench tabs often request the same legacy journals. Only
         # one reader rebuilds their terminal summaries per atomic header version.
         with self._summary_lock:
-            rows = [
-                self._summary(path)
-                for path in self.directory.glob("*.json")
-                if path.stem != "strategy"
-            ]
+            rows = []
+            for path in self.directory.glob("*.json"):
+                if path.stem == "strategy":
+                    continue
+                try:
+                    row = self._summary(path)
+                    if read_errors is not None and (
+                        row["request_id"] != path.stem
+                        or row["command"]["action"]
+                        not in {"universe", "init", "update"}
+                        or not isinstance(row["command"]["end"], str)
+                        or not isinstance(row["created_at"], str)
+                    ):
+                        raise TdxError("tdx_job_header_invalid")
+                    rows.append(row)
+                except (
+                    OSError,
+                    ValueError,
+                    KeyError,
+                    TypeError,
+                    AttributeError,
+                    TdxError,
+                ) as error:
+                    if read_errors is None:
+                        raise
+                    read_errors.append(
+                        dict(
+                            request_id=path.stem,
+                            classification="tdx_job_unreadable",
+                            cause_classification=classify(error),
+                        )
+                    )
         return sorted(rows, key=lambda row: row["created_at"], reverse=True)
 
     def summary(self, identity):
@@ -397,10 +425,188 @@ class DailyJobs:
             )
             if admission is not None:
                 record["admission"] = admission
+            if origin == "periodic" and command["action"] == "update":
+                day = command["end"]
+                require(
+                    identity == strategy_slot_id(day, "update"),
+                    "tdx_periodic_daily_slot",
+                )
+                record["roster_binding"] = dict(
+                    day=day,
+                    request_id=strategy_slot_id(day, "universe"),
+                    snapshot_id=None,
+                    source_binding=ROSTER_BINDING.identity,
+                )
+                try:
+                    self._bind_periodic_roster(record)
+                except Exception as error:
+                    record.update(
+                        state="PARTIAL",
+                        classification=classify(error),
+                        finished_at=now(),
+                    )
             self.save(record)
-        if launch:
+        if launch and record["state"] == "QUEUED":
             self.launch(identity)
         return record
+
+    def _bind_periodic_roster(self, record):
+        """Pin only the named slot's output; never discover via latest membership.
+
+        Admission reads a header, not members or shards. An unresolved binding
+        may later resolve only this same roster job; a pinned snapshot is immutable.
+        """
+        binding = record["roster_binding"]
+        day = record["command"]["end"]
+        require(
+            isinstance(binding, dict)
+            and binding.get("day") == day
+            and binding.get("request_id") == strategy_slot_id(day, "universe")
+            and binding.get("source_binding") == ROSTER_BINDING.identity
+            and record.get("origin") == "periodic"
+            and record["request_id"] == strategy_slot_id(day, "update"),
+            "tdx_periodic_roster_binding_invalid",
+        )
+        try:
+            roster = self.detail_summary(binding["request_id"])
+        except TdxError as error:
+            raise TdxError(
+                "tdx_periodic_roster_job_missing"
+                if error.classification == "job_not_found"
+                else "tdx_periodic_roster_job_unreadable"
+            ) from None
+        except OSError, ValueError, KeyError, TypeError, AttributeError:
+            raise TdxError("tdx_periodic_roster_job_unreadable") from None
+        require(
+            roster.get("request_id") == binding["request_id"]
+            and roster.get("origin") == "periodic",
+            "tdx_periodic_roster_origin",
+        )
+        command = roster.get("command", {})
+        require(
+            command.get("action") == "universe"
+            and command.get("end") == day
+            and sorted(command.get("markets", [])) == [0, 1, 2]
+            and command.get("instruments") is None,
+            "tdx_periodic_roster_scope",
+        )
+        require(
+            roster.get("state") == "COMPLETE"
+            and roster.get("step_count") == 3
+            and roster.get("complete_steps") == 3,
+            "tdx_periodic_roster_incomplete",
+        )
+        snapshot = roster.get("snapshot_id")
+        require(
+            isinstance(snapshot, str) and bool(snapshot),
+            "tdx_periodic_roster_snapshot_missing",
+        )
+        require(
+            binding.get("snapshot_id") in (None, snapshot)
+            and record.get("snapshot_id") in (None, snapshot),
+            "tdx_periodic_roster_snapshot_changed",
+        )
+        binding["snapshot_id"] = snapshot
+        record["snapshot_id"] = snapshot
+        return roster
+
+    def _daily_roster(self, record):
+        command = record["command"]
+        binding = record.get("roster_binding")
+        previous = record.get("roster") or {}
+        # Older writers saved the *rejected* manual candidate before checking
+        # usability. It is not a selected scope. All other retained snapshot
+        # identities are facts, including zero-shard and unknown-origin jobs.
+        rejected_manual = (
+            record.get("origin") == "manual"
+            and not record["steps"]
+            and record.get("roster_selected") is not True
+            and (
+                previous.get("state") in {"MISSING", "INCOMPLETE"}
+                or previous.get("state") == "STALE"
+                and not previous.get("same_day_directory")
+            )
+        )
+        pinned = bool(
+            binding is not None
+            or record["steps"]
+            or record.get("origin") == "periodic"
+            or record.get("snapshot_id") is not None
+            and not rejected_manual
+            or record.get("origin") != "manual"
+            and record["request_id"]
+            in {
+                strategy_slot_id(command["end"], "update"),
+                strategy_slot_id(command["end"], "review"),
+            }
+        )
+        roster_job = None
+        if binding is not None:
+            roster_job = self._bind_periodic_roster(record)
+        snapshot_id = record.get("snapshot_id") if pinned else None
+        if pinned:
+            require(bool(snapshot_id), "tdx_job_roster_binding_missing")
+            if record.get("origin") == "manual":
+                # Adopt a retained legacy selection before a failed recheck
+                # can replace its usable facts with today's rejection facts.
+                record["roster_selected"] = True
+        try:
+            universe, status = published(
+                self.store, date.fromisoformat(command["end"]), snapshot_id=snapshot_id
+            )
+        except Exception:
+            if binding is not None:
+                raise TdxError("tdx_bound_roster_unreadable") from None
+            raise
+        if snapshot_id:
+            require(universe is not None, "tdx_bound_roster_missing")
+            require(
+                universe.get("snapshot_id") == snapshot_id,
+                "tdx_bound_roster_snapshot_mismatch",
+            )
+        if binding is not None:
+            producer = universe.get("details", {}).get("producer")
+            if producer is not None:
+                require(
+                    producer
+                    == dict(
+                        request_id=binding["request_id"],
+                        origin="periodic",
+                        day=binding["day"],
+                        source_binding=binding["source_binding"],
+                    ),
+                    "tdx_bound_roster_producer_mismatch",
+                )
+            # Old publications may lack producer. The named job's actual
+            # execution window must still contain its publication clocks;
+            # catch-up uses that real window, never the target day's 09:00.
+            try:
+                clocks = [
+                    value
+                    if isinstance(value, datetime)
+                    else datetime.fromisoformat(value)
+                    for value in (
+                        roster_job.get("started_at"),
+                        universe.get("observed_at"),
+                        universe.get("available_at"),
+                        roster_job.get("finished_at"),
+                    )
+                ]
+                valid_clocks = all(c.utcoffset() is not None for c in clocks) and all(
+                    a <= b for a, b in zip(clocks, clocks[1:])
+                )
+            except ValueError, TypeError:
+                valid_clocks = False
+            require(valid_clocks, "tdx_bound_roster_publication_mismatch")
+        record["roster"] = status
+        if not record["steps"] or binding is not None:
+            # Retain the inspected publication even on rejection for old readers;
+            # only the successful usability check marks an acquired scope.
+            record["snapshot_id"] = (universe or {}).get("snapshot_id")
+            require_usable(universe, status)
+            record["roster_selected"] = True
+        require(universe is not None, "tdx_universe_required")
+        return universe, status
 
     def launch(self, identity):
         threading.Thread(
@@ -460,28 +666,35 @@ class DailyJobs:
                 record["state"] = "RUNNING"
                 record["started_at"] = record.get("started_at") or now()
                 self.save(record)
-                source = self.source_factory(identity)
-                original_request = source.request
-
-                def counted_request(*args, **kwargs):
-                    before = source.requests
-                    try:
-                        return original_request(*args, **kwargs)
-                    finally:
-                        with self.save_lock:
-                            record["provider_requests"] += source.requests - before
-
-                source.request = counted_request
+                source = None
                 try:
+                    roster = None
+                    if record["command"]["action"] != "universe":
+                        roster = self._daily_roster(record)
+                        # Durable even if interrupted before creating the first shard.
+                        self.save(record)
+                    source = self.source_factory(identity)
+                    original_request = source.request
+
+                    def counted_request(*args, **kwargs):
+                        before = source.requests
+                        try:
+                            return original_request(*args, **kwargs)
+                        finally:
+                            with self.save_lock:
+                                record["provider_requests"] += source.requests - before
+
+                    source.request = counted_request
                     if record["command"]["action"] == "universe":
                         self._universe(record, source)
                     else:
-                        self._daily(record, source)
+                        self._daily(record, source, *roster)
                 except Exception as error:
                     record["state"] = "PARTIAL"
                     record["classification"] = classify(error)
                 finally:
-                    source.close()
+                    if source is not None:
+                        source.close()
                     record["finished_at"] = now()
                     self.save(record)
                 return record
@@ -611,6 +824,12 @@ class DailyJobs:
                 directory_refreshed_at=observed,
                 directory_only_candidates=candidates,
             )
+        snapshot["details"]["producer"] = dict(
+            request_id=record["request_id"],
+            origin=record.get("origin"),
+            day=command["end"],
+            source_binding=ROSTER_BINDING.identity,
+        )
         self.store.save_universe(snapshot)
         record["snapshot_id"] = snapshot["snapshot_id"]
         record["state"] = (
@@ -620,18 +839,8 @@ class DailyJobs:
             else "PARTIAL"
         )
 
-    def _daily(self, record, source):
+    def _daily(self, record, source, universe, roster_status):
         command = record["command"]
-        universe, roster_status = published(
-            self.store,
-            date.fromisoformat(command["end"]),
-            snapshot_id=record.get("snapshot_id") if record["steps"] else None,
-        )
-        record["roster"] = roster_status
-        if not record["steps"]:
-            record["snapshot_id"] = (universe or {}).get("snapshot_id")
-            require_usable(universe, roster_status)
-        require(universe is not None, "tdx_universe_required")
         if not record["steps"]:
             candidates = (
                 universe["details"].get("directory_only_candidates", [])

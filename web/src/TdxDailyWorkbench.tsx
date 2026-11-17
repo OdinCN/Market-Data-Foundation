@@ -44,6 +44,12 @@ export type TdxJob = {
   admission?: { mode?: string };
   retained_responses?: number;
   snapshot_id?: string;
+  roster_binding?: {
+    day: string;
+    request_id: string;
+    snapshot_id: string | null;
+    source_binding: string;
+  };
   classification?: string;
   started_at?: string;
   finished_at?: string;
