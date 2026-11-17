@@ -87,6 +87,21 @@ def facts(snapshot, day):
     )
     markets = details.get("markets", [])
     complete = {m.get("market") for m in markets if m.get("state") == "COMPLETE"}
+    # Exchange import time is not a provider directory observation. A merged
+    # publication retains the explicit refresh receipt; a directory-only
+    # publication's observed_at is the actual directory receipt.
+    directory_day = refreshed_day or (
+        observed_day
+        if not through and details.get("roster_kind") != "exchange_lifecycle"
+        else None
+    )
+    default_day = (
+        directory_day
+        if directory_day and directory_day <= day and complete == {0, 1, 2}
+        else min(day, date.fromisoformat(through))
+        if through
+        else day
+    )
     state = (
         "MISSING"
         if snapshot is None
@@ -112,10 +127,8 @@ def facts(snapshot, day):
         available_at=_timestamp((snapshot or {}).get("available_at")),
         requested_day=day.isoformat(),
         valid_through=through,
-        default_query_day=min(day.isoformat(), through) if through else day.isoformat(),
-        directory_observed_day=(refreshed_day or observed_day).isoformat()
-        if (refreshed_day or observed_day)
-        else None,
+        default_query_day=default_day.isoformat(),
+        directory_observed_day=directory_day.isoformat() if directory_day else None,
         same_day_directory=refreshed_day == day,
         markets=markets,
         historical_membership=details.get("historical_membership", "UNKNOWN"),
@@ -124,14 +137,67 @@ def facts(snapshot, day):
     )
 
 
-def published(store, day, *, snapshot_id=None, as_of=None, require_current=False):
+def published(
+    store,
+    day,
+    *,
+    snapshot_id=None,
+    as_of=None,
+    require_current=False,
+    prefer_directory=False,
+):
     options = dict(as_of=as_of, day=day)
+    if prefer_directory:
+        options["prefer_directory"] = True
     if snapshot_id is not None:
         options["snapshot_id"] = snapshot_id
     snapshot = store.universe(**options)
     status = facts(snapshot, day)
     if require_current:
         require_usable(snapshot, status)
+    return snapshot, status
+
+
+def query_publication(store, day=None, *, snapshot_id=None, as_of=None):
+    """Date from the directory; evidence from the same selection as explicit day."""
+    cutoff = as_of or datetime.now(UTC)
+    ceiling = cutoff.astimezone(ZoneInfo("Asia/Shanghai")).date()
+    directory, directory_status = published(
+        store, ceiling, as_of=cutoff, prefer_directory=True
+    )
+    query_day = day or date.fromisoformat(directory_status["default_query_day"])
+    # The directory may predate a later publication of exchange originals.
+    # Both automatic and explicit reads resolve membership at the chosen day
+    # using the same cutoff. An explicit snapshot still pins its original facts.
+    snapshot, status = published(
+        store, query_day, snapshot_id=snapshot_id, as_of=cutoff
+    )
+    status["default_query_day"] = directory_status["default_query_day"]
+    directory_context = (
+        directory
+        if snapshot
+        and status["directory_observed_day"] is None
+        and directory_status["directory_observed_day"] == query_day.isoformat()
+        else snapshot
+    )
+    directory_facts = facts(directory_context, query_day)
+    has_directory = directory_facts["directory_observed_day"] is not None
+    status.update(
+        directory_observed_day=directory_facts["directory_observed_day"],
+        same_day_directory=directory_facts["same_day_directory"],
+        directory_snapshot_id=directory_context["snapshot_id"]
+        if has_directory
+        else None,
+        directory_observed_at=_timestamp(
+            directory_context.get("details", {}).get("directory_refreshed_at")
+            or directory_context.get("observed_at")
+        )
+        if has_directory
+        else None,
+        directory_available_at=_timestamp(directory_context.get("available_at"))
+        if has_directory
+        else None,
+    )
     return snapshot, status
 
 
@@ -174,7 +240,7 @@ def matching_changes(member, changes, term):
 
 def query(
     store,
-    day,
+    day=None,
     *,
     as_of=None,
     snapshot_id=None,
@@ -187,10 +253,10 @@ def query(
     require(market is None or market in {0, 1, 2}, "tdx_roster_market")
     require(offset >= 0 and 1 <= limit <= 1000, "tdx_roster_page")
     cutoff = as_of or datetime.now(UTC)
-    snapshot, status = published(store, day, snapshot_id=snapshot_id, as_of=cutoff)
-    if use_default_day and status["default_query_day"] != day.isoformat():
-        day = date.fromisoformat(status["default_query_day"])
-        snapshot, status = published(store, day, snapshot_id=snapshot_id, as_of=cutoff)
+    snapshot, status = query_publication(
+        store, None if use_default_day else day, snapshot_id=snapshot_id, as_of=cutoff
+    )
+    day = date.fromisoformat(status["requested_day"])
     term = search_text(search)
     changes = store.name_changes(day, cutoff, market) if term and snapshot else {}
     observations = (

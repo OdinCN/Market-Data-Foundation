@@ -38,6 +38,8 @@ const status = {
   snapshot_id: "official-20261112",
   valid_through: "2026-11-12",
   available_at: "2026-11-12T09:00:00Z",
+  default_query_day: "2026-11-12",
+  requested_day: "2026-11-12",
   collect: true,
 };
 function fixture(fail = false) {
@@ -45,7 +47,8 @@ function fixture(fail = false) {
   const transport: Transport = async (path, init) => {
     const url = String(path);
     calls.push({ path: url, method: init?.method ?? "GET" });
-    if (url.endsWith("/status")) return Response.json(status);
+    if (new URL(url, "http://fixture").pathname.endsWith("/status"))
+      return Response.json(status);
     if (url.endsWith("/help"))
       return Response.json({
         notes: ["GetBJDirectory；北交所官方分页、旧代码和历史区间独立留证"],
@@ -94,7 +97,7 @@ it("uses explicit roster query, shared microsecond cutoff, live preview, one ser
   fireEvent.change(screen.getByLabelText("截止时间（北京时间）"), {
     target: { value: "2026-11-13T00:00:00.123456" },
   });
-  const preview = screen.getByLabelText("请求 URL");
+  const preview = await screen.findByLabelText("请求 URL");
   expect(preview.textContent).toContain(
     "as_of=2026-11-13T00%3A00%3A00.123456%2B08%3A00",
   );
@@ -135,6 +138,12 @@ it("uses explicit roster query, shared microsecond cutoff, live preview, one ser
 it("does not present failed expected data as an empty roster", async () => {
   const f = fixture(true);
   render(<TdxRosterQuery {...props} transport={f.transport} />);
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "查询数据" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
   fireEvent.click(screen.getByRole("button", { name: "查询数据" }));
   await screen.findByRole("alert");
   expect(screen.queryByRole("region", { name: "名册结果" })).toBeNull();

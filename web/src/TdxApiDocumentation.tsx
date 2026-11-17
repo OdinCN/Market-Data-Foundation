@@ -43,7 +43,9 @@ export function TdxApiDocumentation({
           [
             "GET " + prefix + "/status",
             "能力与默认范围 / 名册有效性",
-            "零来源请求",
+            roster
+              ? "零来源请求；可传as_of读取该截止时点的默认日期与快照"
+              : "零来源请求",
           ],
           [
             "GET " + prefix + "/query",
@@ -115,8 +117,8 @@ export function TdxApiDocumentation({
             ? [
                 [
                   "day",
-                  "否 / 最近盘后且有交易所名册证据的日期（无交易所日期时用盘后日期）",
-                  "YYYY-MM-DD；判定该日生命周期与证据有效性，不是回造历史存续名册",
+                  "否 / 截止前可见的最近完整TDX目录观测日；无目录刷新凭据时用交易所证据日期",
+                  "YYYY-MM-DD；上午目录实际发布后即可用当日，不受日线盘后时点限制。日期选定后，默认与显式同日均使用as_of前已发布的交易所成员证据；周末或新目录未发布时不推造观测日",
                 ],
                 ["market", "否 / 全部", "整数0深市、1沪市、2北交所"],
                 [
@@ -227,12 +229,22 @@ export function TdxApiDocumentation({
                   [
                     "state / classification / valid_through",
                     "string / string|null / date|null",
-                    "MISSING无快照、STALE证据过期、DATED有据日期、CURRENT_DIRECTORY_ONLY历史范围未知；DATED也不代表完整历史",
+                    "MISSING无快照、STALE交易所证据过期、DATED有据日期、CURRENT_DIRECTORY_ONLY历史范围未知；valid_through仅为交易所上市/退市证据截至日，目录刷新不延长它",
+                  ],
+                  [
+                    "directory_observed_day / default_query_day / requested_day",
+                    "date|null / date / date",
+                    "整批TDX目录实际观测日（无凭据为null）、缺省日期、本次查询日；分页同时传snapshot_id、requested_day和search_as_of以保持同版同日同截止",
+                  ],
+                  [
+                    "directory_snapshot_id / directory_observed_at / directory_available_at",
+                    "string|null / ISO time|null / ISO time|null",
+                    "目录凭据的实际发布身份、观测和可用时间；与返回成员证据的snapshot_id分开，交易所导入日不冒充目录观测日",
                   ],
                   [
                     "rows[].market / instrument / name / membership_state",
                     "integer / string / string / string",
-                    "三市、六位代码、名称；ACTIVE/NOT_YET_LISTED/DELISTED_OR_TERMINATED/UNKNOWN，退市日为排除边界",
+                    "三市、六位代码、名称；交易所成员状态ACTIVE/NOT_YET_LISTED/DELISTED_OR_TERMINATED/UNKNOWN来自该证券原始上市/退市证据，退市日为排除边界；目录整批成功或名称差异均不证明单证券在市或在目录出现",
                   ],
                   [
                     "observed_at / available_at / sources[] / rows[].evidence",

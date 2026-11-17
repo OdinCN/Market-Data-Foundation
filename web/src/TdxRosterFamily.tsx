@@ -34,12 +34,7 @@ import { requestCpiJson, type CpiHttpExchange } from "./cpiTimeSeriesApi";
 import { WorkflowTable } from "./WorkflowTable";
 import { useVisiblePolling } from "./useVisiblePolling";
 import { beijingInputToIso, formatBeijingTime } from "./beijingTime";
-import {
-  tdxCall,
-  tdxLatestClosedDay,
-  tdxStateLabel,
-  type TdxJob,
-} from "./TdxDailyWorkbench";
+import { tdxCall, tdxStateLabel, type TdxJob } from "./TdxDailyWorkbench";
 import { TdxExecutionDetail } from "./TdxDailyFamily";
 import { TdxApiDocumentation } from "./TdxApiDocumentation";
 import { requestId } from "./CpiTimeSeriesCollection";
@@ -60,6 +55,7 @@ const fields = {
 const exchanges = ["深市", "沪市", "北交所"];
 type Status = RosterStatus;
 type Result = Status & {
+  requested_day: string;
   rows: {
     market: number;
     instrument: string;
@@ -100,19 +96,31 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState("");
   const active = useRef<AbortController | null>(null);
+  const cutoffIso = history ? beijingInputToIso(cutoff) : "";
+  const statusPath =
+    "/status" +
+    (history && cutoffIso
+      ? "?" + new URLSearchParams({ as_of: cutoffIso })
+      : "");
   const status = useVisiblePolling(
-    (signal) => call<Status>(transport, "/status", signal),
-    [transport, generation],
+    (signal) => call<Status>(transport, statusPath, signal),
+    [transport, generation, statusPath],
+    !history || Boolean(cutoffIso),
   );
-  const day =
-    selectedDay ?? status.data?.default_query_day ?? tdxLatestClosedDay();
+  const day = selectedDay ?? status.data?.default_query_day ?? "";
   let suffix: string | null = null;
   try {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw Error("date");
-    const q = new URLSearchParams({ day, offset: "0", limit: "100" });
+    // Omitted day and the read-only status use the same server resolution.
+    // Only a user's explicit date replaces that default, including as_of reads.
+    const q = new URLSearchParams({ offset: "0", limit: "100" });
+    if (selectedDay !== null) q.set("day", selectedDay);
     if (market !== "all") q.set("market", market);
     if (search) q.set("search", search);
-    if (history) q.set("as_of", beijingInputToIso(cutoff));
+    if (history) {
+      if (!cutoffIso) throw Error("cutoff");
+      q.set("as_of", cutoffIso);
+    }
     suffix = "/query?" + q;
   } catch {
     /* Invalid drafts have no executable preview. */
@@ -137,8 +145,10 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
     setExchange(null);
     const url = new URL(prefix + suffix, window.location.origin);
     url.searchParams.set("offset", String(offset));
-    if (page && result?.snapshot_id)
+    if (page && result?.snapshot_id) {
       url.searchParams.set("snapshot_id", result.snapshot_id);
+      url.searchParams.set("day", result.requested_day ?? day);
+    }
     if (page && result?.search_as_of)
       url.searchParams.set("as_of", result.search_as_of);
     setRequestedPath(url.pathname + url.search);
@@ -182,7 +192,8 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
         }}
       >
         <p className="small">
-          默认按最近已核实的名册日期查询，可手动选择其他日期。
+          默认采用可见的最近完整 TDX
+          目录观测日；尚未发布新目录时沿用已有日期，无目录刷新凭据时采用交易所证据日期。可手动选择其他日期。
         </p>
         <div className="field-grid">
           <DateField
@@ -206,7 +217,7 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
           <label>
             代码或名称
             <input
-              placeholder="简称、曾用名、全拼或简拼"
+              placeholder="代码、简称、曾用名、全拼或简拼"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -260,7 +271,7 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
                 "代码",
                 "名册名称",
                 "匹配的名称记录",
-                "该日成员状态",
+                "该日交易所成员状态",
                 "上市日期",
                 "退市日期",
               ]}
@@ -292,16 +303,16 @@ export function TdxRosterQuery({ transport, generation }: FamilyProps) {
                   m.membership_state === "UNKNOWN" &&
                   m.evidence.listing_date &&
                   m.evidence.valid_through &&
-                  String(m.evidence.valid_through) < day
-                    ? "当日待核实（最后确认在市：" +
+                  String(m.evidence.valid_through) < result.requested_day
+                    ? "交易所当日待核实（证据截至：" +
                       String(m.evidence.valid_through) +
                       "）"
                     : ((
                         {
-                          ACTIVE: "在市",
-                          NOT_YET_LISTED: "尚未上市",
-                          DELISTED_OR_TERMINATED: "已退市或终止上市",
-                          UNKNOWN: "成员身份证据不足",
+                          ACTIVE: "交易所确认在市",
+                          NOT_YET_LISTED: "交易所证据：尚未上市",
+                          DELISTED_OR_TERMINATED: "交易所确认已退市或终止上市",
+                          UNKNOWN: "交易所成员身份未核实",
                         } as Record<string, string>
                       )[m.membership_state] ?? m.membership_state),
                   String(m.evidence.listing_date ?? "未核实"),

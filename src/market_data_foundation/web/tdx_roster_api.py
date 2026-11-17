@@ -6,7 +6,6 @@ from fastapi import APIRouter, Request
 
 from market_data_foundation.canonical.model import instant, require
 from market_data_foundation.historical import tdx_roster
-from market_data_foundation.historical.tdx_p0_jobs import latest_day
 from market_data_foundation.historical.tdx_p0_source import TdxError
 from market_data_foundation.web.gdp_api import body
 from market_data_foundation.web.tdx_daily_api import (
@@ -47,6 +46,9 @@ def roster_router(runtime):
             notes=[
                 "search支持简称、连续拼音片段和首字母；准确输入六位代码可查看名称记录。matched_changes来自深交所简称变更或通达信沪北股票更名，matched_observed_names为曾观察到的名称。",
                 "GET只读已发布名册，零来源请求；刷新必须显式POST并进入共享执行记录。",
+                "缺省day采用as_of前可见的最近完整TDX目录实际观测日，上午发布后即可查询；无目录刷新凭据时采用已有交易所证据日期，不使用日线盘后日期规则。",
+                "日期选定后，与显式同日查询按同一as_of选择已发布的交易所成员证据；snapshot_id固定实际返回的成员快照，directory_snapshot_id单列目录凭据，交易所原件晚到不改目录观测日。",
+                "directory_observed_day是整批TDX目录的观测日，valid_through是交易所上市/退市证据截至日；membership_state仅由该证券原始生命周期证据判定，完整目录或名称差异不能将UNKNOWN升级为在市或证明单证券在目录出现。",
                 "深沪GetCount/GetCode分页，北交所GetBJDirectory；官方在市/退市原件补生命周期，二者不是可互换来源。",
                 "北交所官方分页与新旧代码映射独立留证；已知退市区间保留，未知历史代码沿革不推造。",
                 "刷新来源目录不会延长交易所证据有效期；缺失、过期和历史未知独立报告，失败不替换完整发布。",
@@ -56,10 +58,15 @@ def roster_router(runtime):
         )
 
     @router.get("/status")
-    def status():
+    def status(request: Request):
         try:
             ready()
-            snapshot, value = tdx_roster.published(runtime.store, latest_day())
+            q = request.query_params
+            cutoff = datetime.fromisoformat(q["as_of"]) if "as_of" in q else None
+            if cutoff is not None:
+                require(len(q.getlist("as_of")) == 1, "tdx_roster_parameters")
+                instant(cutoff)
+            snapshot, value = tdx_roster.query_publication(runtime.store, as_of=cutoff)
             return dict(
                 value,
                 enabled=True,
@@ -96,8 +103,7 @@ def roster_router(runtime):
                 instant(cutoff)
             return tdx_roster.query(
                 runtime.store,
-                date.fromisoformat(q["day"]) if "day" in q else latest_day(cutoff),
-                use_default_day="day" not in q,
+                date.fromisoformat(q["day"]) if "day" in q else None,
                 as_of=cutoff,
                 snapshot_id=q.get("snapshot_id"),
                 market=int(q["market"]) if "market" in q else None,

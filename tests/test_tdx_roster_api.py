@@ -178,9 +178,9 @@ def test_pg_datetime_and_current_directory_do_not_upgrade_stale_exchange_census(
     store = published_store()
     snapshot = store.snapshots[0]
     snapshot["observed_at"] = datetime.fromisoformat(snapshot["observed_at"])
+    # A PostgreSQL timestamp on an exchange import is not a directory receipt.
     assert (
-        tdx_roster.facts(snapshot, date(2026, 11, 12))["directory_observed_day"]
-        == "2026-11-12"
+        tdx_roster.facts(snapshot, date(2026, 11, 12))["directory_observed_day"] is None
     )
     snapshot["details"]["directory_refreshed_at"] = "2026-11-13T08:00:00+00:00"
     _, status = tdx_roster.published(store, date(2026, 11, 13), require_current=True)
@@ -188,6 +188,7 @@ def test_pg_datetime_and_current_directory_do_not_upgrade_stale_exchange_census(
     assert status["state"] == "STALE"
     assert status["classification"] == "tdx_roster_stale"
     assert status["valid_through"] == "2026-11-12"
+    assert status["directory_observed_day"] == "2026-11-13"
 
 
 def test_roster_normalizes_names_and_searches_dated_aliases():

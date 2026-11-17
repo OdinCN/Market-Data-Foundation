@@ -306,7 +306,22 @@ class PgStore:
             ).fetchone()
             return row[0] or [] if row else []
 
-    def universe(self, snapshot_id=None, as_of=None, *, day=None):
+    def universe(
+        self, snapshot_id=None, as_of=None, *, day=None, prefer_directory=False
+    ):
+        # Only the base roster's default read opts into directory recency.
+        # Daily acquisition, coverage and explicit historical dates retain the
+        # qualified census-day selection below.
+        directory_order = (
+            "CASE WHEN details->>'directory_refreshed_at' IS NOT NULL THEN "
+            "((details->>'directory_refreshed_at')::timestamptz "
+            "AT TIME ZONE 'Asia/Shanghai')::date "
+            "WHEN details->>'valid_through' IS NULL AND "
+            "details->>'roster_kind' IS DISTINCT FROM 'exchange_lifecycle' THEN "
+            "(observed_at AT TIME ZONE 'Asia/Shanghai')::date END DESC NULLS LAST, "
+            if prefer_directory
+            else ""
+        )
         with self.connector() as conn, conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 (
@@ -315,7 +330,9 @@ class PgStore:
                     "AND (%s::text IS NOT NULL OR "
                     "(SELECT count(*)=3 AND bool_and(s->>'state'='COMPLETE') "
                     "FROM jsonb_array_elements(details->'markets') s)) "
-                    "ORDER BY (details->>'valid_through'=%s::text) DESC NULLS LAST, "
+                    "ORDER BY "
+                    + directory_order
+                    + "(details->>'valid_through'=%s::text) DESC NULLS LAST, "
                     " (details->>'roster_kind'='exchange_lifecycle') "
                     "DESC NULLS LAST, "
                     "available_at DESC LIMIT 1"
