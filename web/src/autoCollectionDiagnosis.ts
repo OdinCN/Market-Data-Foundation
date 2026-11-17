@@ -17,7 +17,7 @@ export type DiagnosisEntry = {
     | null;
   saving: boolean;
   uncertain: boolean;
-  resource: { stale: boolean };
+  resource: { stale: boolean; busy?: boolean };
   availability?: CpiAvailability;
 };
 export type PlanIssue = {
@@ -187,6 +187,8 @@ export function autoCollectionDiagnosis(
       "等待独立回读；使用页面刷新核实，不自动重复启动。",
       "待核实",
     );
+  if (entry.resource.busy && (!data.control || !data.schedule))
+    return finish("正在读取", "策略已读取，正在核实实际服务与分期计划。");
 
   if (
     data.enabled &&

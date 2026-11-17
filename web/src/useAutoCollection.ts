@@ -3,7 +3,7 @@ import {
   type DiagnosisEntry,
   type PlanSnapshot,
 } from "./autoCollectionDiagnosis";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Transport } from "./api";
 import type { MacroProfile } from "./macroTimeSeriesProfile";
 import {
@@ -69,9 +69,18 @@ export function useAutoCollection(
       mounted.current = false;
     };
   }, []);
-  async function read(signal?: AbortSignal) {
-    const [strategy, control, schedule] = await Promise.all([
-      readCpiStrategy(transport, signal, profile),
+  async function read(
+    signal = new AbortController().signal,
+    publish: (
+      value: CpiStrategy & {
+        control: WorkerObservation | null;
+        schedule: PlanSnapshot | null;
+      },
+    ) => void = () => {},
+  ) {
+    const strategy = await readCpiStrategy(transport, signal, profile, true);
+    publish({ ...strategy, control: null, schedule: null });
+    const [control, schedule] = await Promise.all([
       cpiRequest<WorkerObservation>(
         transport,
         "/worker",
@@ -102,12 +111,70 @@ export function useAutoCollection(
   const resource = useVisiblePolling(
     read,
     [transport, generation, profile.id],
-    !!availability.data && visible,
+    !availability.legacy &&
+      visible &&
+      (!!availability.data || !!availability.discover),
     () => !writing.current,
   );
-  const data = resource.data;
+  const facts = useVisiblePolling(
+    (signal) => readCpiStrategy(transport, signal, profile),
+    [
+      transport,
+      generation,
+      profile.id,
+      // The selected asset's live status and policy receipt requalify these
+      // optional facts; unchanged heads need no second aggregate every tick.
+      JSON.stringify([
+        availability.failure,
+        availability.data?.batch_count,
+        availability.data?.observation_count,
+        availability.data?.revision_count,
+        availability.data?.latest_months,
+        availability.data?.latest_quarters,
+        availability.data?.latest_weeks,
+        resource.data?.last_result,
+      ]),
+    ],
+    !!availability.data && !availability.failure && !!resource.data && visible,
+    undefined,
+    false,
+  );
+  const data = useMemo(
+    () =>
+      resource.data
+        ? {
+            ...resource.data,
+            collection_facts_status:
+              availability.failure ||
+              facts.failure ||
+              facts.data?.collection_facts_classification
+                ? "failed"
+                : facts.data
+                  ? "verified"
+                  : "pending",
+            ...(facts.data
+              ? {
+                  last_successful_collection_at:
+                    facts.data.last_successful_collection_at,
+                  latest_data_period: facts.data.latest_data_period,
+                  latest_data_periods: facts.data.latest_data_periods,
+                  collection_facts_classification:
+                    facts.data.collection_facts_classification,
+                }
+              : {}),
+          }
+        : null,
+    [resource.data, facts.data, facts.failure, availability.failure],
+  );
   async function act(recover = false) {
-    if (!data || writing.current || uncertain || resource.stale) return;
+    if (
+      !data ||
+      writing.current ||
+      uncertain ||
+      resource.stale ||
+      resource.busy
+    )
+      return;
     const enabled = recover || !data.enabled;
     if (
       enabled &&

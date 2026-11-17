@@ -150,6 +150,7 @@ async function checkBriefLayout(page, briefs) {
   return widths;
 }
 async function exercisePolicy(page, row, backend, id) {
+  const layout = [];
   const policy = await expectedPolicy(row, backend.exchange);
   assert.deepEqual(
     row.strategy,
@@ -188,6 +189,48 @@ async function exercisePolicy(page, row, backend, id) {
     );
     assert.equal(currentRoute(page).get("schedule"), policy.id);
     assert.equal(currentRoute(page).get("asset_revision"), row.asset.revision);
+    if (!layout.length) {
+      for (const width of [1440, 1180]) {
+        await page.setViewportSize({ width, height: 980 });
+        const measured = await operations.evaluate((nav) => {
+          const pane = nav.closest(".detail-pane"),
+            shell = nav.closest('[aria-label="周期详情主体"]');
+          const heading = pane.querySelector("h3"),
+            style = getComputedStyle(pane);
+          return {
+            width: innerWidth,
+            docWidth: document.documentElement.scrollWidth,
+            title: heading?.textContent,
+            offset:
+              heading?.getBoundingClientRect().top -
+              pane.getBoundingClientRect().top,
+            expected:
+              parseFloat(style.paddingTop) + parseFloat(style.borderTopWidth),
+            shell: !!shell,
+            first: shell?.firstElementChild === heading,
+            second: shell?.children[1] === nav,
+            after:
+              nav.getBoundingClientRect().top >=
+              heading.getBoundingClientRect().bottom,
+          };
+        });
+        assert(
+          measured.shell && measured.first && measured.second && measured.after,
+          "periodic heading/navigation/domain order: " +
+            JSON.stringify(measured),
+        );
+        assert(
+          Math.abs(measured.offset - measured.expected) <= 1,
+          "periodic title offset: " + JSON.stringify(measured),
+        );
+        assert(
+          measured.docWidth <= width + 1,
+          "periodic overflow: " + JSON.stringify(measured),
+        );
+        layout.push(measured);
+      }
+      await page.setViewportSize({ width: 1440, height: 980 });
+    }
     return operations;
   }
   let operations = await selectedPolicy();
@@ -269,6 +312,7 @@ async function exercisePolicy(page, row, backend, id) {
   await selectedDetail(page, row.asset, id);
   return {
     policy,
+    layout,
     automatic: expected,
     excluded: [id, unknownId],
     unknownOriginSupported: origins.unknown,
@@ -686,6 +730,9 @@ try {
             path: url.pathname + url.search,
             method,
             body: request.postDataJSON() ?? undefined,
+            headers: request.headers()["prefer"]
+              ? { Prefer: request.headers()["prefer"] }
+              : {},
           };
           calls.push(call);
           let out;

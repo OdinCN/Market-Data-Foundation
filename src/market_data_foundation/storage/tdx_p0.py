@@ -117,6 +117,65 @@ def member_scope(has_snapshot=True):
               AND (m.delist_date IS NULL OR b.trading_day < m.delist_date))"""
 
 
+def summary_statement():
+    # Direct member joins keep this scan parallel-safe. Date bounds become
+    # index parameters once per member, instead of JSON/date work per bar.
+    # The sentinels follow bars_daily_current's enforced 1990..2100 domain.
+    member_patterns = " OR ".join(
+        f"(m.market={m} AND m.instrument ~ '^{pattern}$')"
+        for m, pattern in PATTERNS.items()
+    )
+    return f"""WITH current_instruments AS MATERIALIZED (
+ SELECT b.market,b.instrument,count(*) AS rows,min(b.trading_day) AS first,
+        max(b.trading_day) AS last,min(p.available_at) AS first_available_at,
+        max(b.source_observed_at) AS last_received_at
+ FROM mdf_tdx_daily.bars_daily_current b
+ JOIN mdf_tdx_daily.p0_batch_publications p
+   ON (p.source,p.batch_id)=(b.value_source,b.batch_id) AND p.available_at<=%(cutoff)s
+ JOIN mdf_tdx_daily.p0_members m
+   ON m.market=b.market AND m.instrument=b.instrument AND m.snapshot_id=%(snapshot)s
+ WHERE ({member_patterns})
+   AND b.trading_day>=COALESCE((m.evidence->>'listing_date')::date,DATE '1990-01-01')
+   AND b.trading_day<COALESCE((m.evidence->>'delist_date')::date,DATE '2101-01-01')
+ GROUP BY b.market,b.instrument
+), archived AS (
+ SELECT DISTINCT ON (b.trading_day,b.market,b.instrument)
+        b.market,b.instrument,b.trading_day,p.available_at,
+        b.old_source_observed_at AS received_at
+ FROM mdf_tdx_daily.bars_daily_corrections b
+ JOIN mdf_tdx_daily.p0_batch_publications p
+   ON (p.source,p.batch_id)=(b.old_source,b.old_batch_id) AND p.available_at<=%(cutoff)s
+ JOIN mdf_tdx_daily.p0_members m
+   ON m.market=b.market AND m.instrument=b.instrument AND m.snapshot_id=%(snapshot)s
+ WHERE ({member_patterns})
+   AND b.trading_day>=COALESCE((m.evidence->>'listing_date')::date,DATE '1990-01-01')
+   AND b.trading_day<COALESCE((m.evidence->>'delist_date')::date,DATE '2101-01-01')
+   AND NOT EXISTS (SELECT 1 FROM mdf_tdx_daily.p0_batch_publications successor
+       WHERE successor.source=b.source AND successor.batch_id=b.batch_id
+         AND successor.available_at<=%(cutoff)s)
+   AND NOT EXISTS (SELECT 1 FROM mdf_tdx_daily.bars_daily_current c
+       JOIN mdf_tdx_daily.p0_batch_publications cp
+         ON (cp.source,cp.batch_id)=(c.value_source,c.batch_id)
+       WHERE (c.market,c.instrument,c.trading_day)=(b.market,b.instrument,b.trading_day)
+         AND cp.available_at<=%(cutoff)s)
+ ORDER BY b.trading_day,b.market,b.instrument,b.old_value_changed_at DESC
+), contributions AS (
+ SELECT * FROM current_instruments UNION ALL
+ SELECT market,instrument,count(*) AS rows,min(trading_day),max(trading_day),
+        min(available_at),max(received_at) FROM archived GROUP BY market,instrument
+), instruments AS (
+ SELECT market,instrument,sum(rows) AS rows,min(first) AS first,max(last) AS last,
+        min(first_available_at) AS first_available_at,
+        max(last_received_at) AS last_received_at
+ FROM contributions GROUP BY market,instrument
+)
+SELECT market,sum(rows)::bigint AS rows,count(*) AS instruments,min(first) AS first,
+       max(last) AS last,min(first_available_at) AS first_available_at,
+       max(last_received_at) AS last_received_at
+FROM instruments GROUP BY market ORDER BY market
+"""
+
+
 class PgStore:
     def __init__(self, connector=connect):
         self.connector = connector
@@ -427,10 +486,11 @@ class PgStore:
             cur.execute("SET LOCAL statement_timeout = '30s'")
             cur.execute("SET LOCAL jit = off")
             cur.execute(
-                visible_versions(
-                    member_scope(snapshot is not None), materialize_members=True
-                )
-                + """
+                (
+                    summary_statement()
+                    if snapshot is not None
+                    else visible_versions(member_scope(False), materialize_members=True)
+                    + """
                 , instruments AS (
                 SELECT market,instrument,count(*) AS rows,
                        min(trading_day) AS first,max(trading_day) AS last,
@@ -441,7 +501,8 @@ class PgStore:
                        min(first) AS first,max(last) AS last,
                        min(first_available_at) AS first_available_at,
                        max(last_received_at) AS last_received_at
-                FROM instruments GROUP BY market ORDER BY market""",
+                FROM instruments GROUP BY market ORDER BY market"""
+                ),
                 {"cutoff": cutoff, "snapshot": (snapshot or {}).get("snapshot_id")},
             )
             return dict(

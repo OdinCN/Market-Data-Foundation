@@ -352,7 +352,8 @@ tbody tr:hover td {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.detail-pane > p {
+.detail-pane > p,
+.detail-pane > [aria-label="周期详情主体"] > p {
   margin: 8px 0;
 }
 .empty {

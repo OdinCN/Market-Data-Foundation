@@ -79,6 +79,9 @@ export function asgi(
     const req = {
       path: String(input),
       method: init?.method ?? "GET",
+      headers: new Headers(init?.headers).has("Prefer")
+        ? { Prefer: new Headers(init?.headers).get("Prefer") }
+        : {},
       ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
     };
     requests.push(req);

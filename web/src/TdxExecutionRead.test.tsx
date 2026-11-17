@@ -144,6 +144,7 @@ it.each(["all", keyOf(TDX_DAILY)])(
     const before = calls.filter((c) =>
       c.path.includes("/timeseries/status"),
     ).length;
+    expect(before).toBe(0);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30000);
     });

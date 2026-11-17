@@ -1,4 +1,9 @@
-import { ExecutionNavigation, PeriodicNavigation } from "./ExecutionNavigation";
+import {
+  ExecutionNavigation,
+  PeriodicNavigation,
+  PeriodicDetailShell,
+} from "./ExecutionNavigation";
+import { collectionReadScope } from "./collectionReadScope";
 import { executionOrigin } from "./executionOrigin";
 import {
   CollectionBriefs,
@@ -92,7 +97,10 @@ import {
 import { failureName, useResource } from "./workflowHooks";
 import type { Navigate, Route } from "./workflowRoute";
 import { Fact, Tabs, Technical, WorkflowTable } from "./WorkflowTable";
-import { readCpiExecutions, type CpiAvailability } from "./cpiTimeSeriesApi";
+import {
+  readExecutionProtocol,
+  type CpiAvailability,
+} from "./cpiTimeSeriesApi";
 import {
   CpiExecutionDetail,
   CpiStrategyWorkbench,
@@ -244,6 +252,143 @@ export function CollectionWorkbench({
         storage: asset.storage,
       }
     : null;
+  const readScope = collectionReadScope(
+    route,
+    invalidIdentity,
+    asset?.key ?? source?.asset ?? undefined,
+  );
+  const filterField = readScope.field;
+  const filter = readScope.filter;
+  const executionSchedule = route.fields.get("execution_schedule") ?? "all";
+  const canReadMacro = (
+    profile: typeof CPI_PROFILE,
+    availability?: CpiAvailability,
+  ) =>
+    !!availability &&
+    !availability.legacy &&
+    readScope.reads(profile.asset) &&
+    ["periodic", "executions"].includes(tab) &&
+    (!!availability.data || !!availability.discover);
+  const cpiRecords = useVisiblePolling(
+    (signal) =>
+      readExecutionProtocol(
+        transport,
+        signal,
+        CPI_PROFILE,
+        !cpiAvailability?.data,
+      ),
+    [transport, generation, CPI_PROFILE.id],
+    canReadMacro(CPI_PROFILE, cpiAvailability),
+  );
+  const ppiRecords = useVisiblePolling(
+    (signal) =>
+      readExecutionProtocol(
+        transport,
+        signal,
+        PPI_PROFILE,
+        !ppiAvailability?.data,
+      ),
+    [transport, generation, PPI_PROFILE.id],
+    canReadMacro(PPI_PROFILE, ppiAvailability),
+  );
+  const pceRecords = useVisiblePolling(
+    (signal) =>
+      readExecutionProtocol(
+        transport,
+        signal,
+        PCE_PROFILE,
+        !pceAvailability?.data,
+      ),
+    [transport, generation, PCE_PROFILE.id],
+    canReadMacro(PCE_PROFILE, pceAvailability),
+  );
+  const employmentRecords = useVisiblePolling(
+    (signal) =>
+      readExecutionProtocol(
+        transport,
+        signal,
+        EMPLOYMENT_PROFILE,
+        !employmentAvailability?.data,
+      ),
+    [transport, generation, EMPLOYMENT_PROFILE.id],
+    canReadMacro(EMPLOYMENT_PROFILE, employmentAvailability),
+  );
+  const retailRecords = useVisiblePolling(
+    (signal) =>
+      readExecutionProtocol(
+        transport,
+        signal,
+        RETAIL_PROFILE,
+        !retailAvailability?.data,
+      ),
+    [transport, generation, RETAIL_PROFILE.id],
+    canReadMacro(RETAIL_PROFILE, retailAvailability),
+  );
+  const consumptionRecords = useVisiblePolling(
+    (signal) =>
+      readExecutionProtocol(
+        transport,
+        signal,
+        CONSUMPTION_PROFILE,
+        !consumptionAvailability?.data,
+      ),
+    [transport, generation, CONSUMPTION_PROFILE.id],
+    canReadMacro(CONSUMPTION_PROFILE, consumptionAvailability),
+  );
+  const gdpRecords = useVisiblePolling(
+    (signal) =>
+      readExecutionProtocol(
+        transport,
+        signal,
+        GDP_PROFILE,
+        !gdpAvailability?.data,
+      ),
+    [transport, generation, GDP_PROFILE.id],
+    canReadMacro(GDP_PROFILE, gdpAvailability),
+  );
+  const m3Records = useVisiblePolling(
+    (signal) =>
+      readExecutionProtocol(
+        transport,
+        signal,
+        M3_PROFILE,
+        !m3Availability?.data,
+      ),
+    [transport, generation, M3_PROFILE.id],
+    canReadMacro(M3_PROFILE, m3Availability),
+  );
+  const joltsRecords = useVisiblePolling(
+    (signal) =>
+      readExecutionProtocol(
+        transport,
+        signal,
+        JOLTS_PROFILE,
+        !joltsAvailability?.data,
+      ),
+    [transport, generation, JOLTS_PROFILE.id],
+    canReadMacro(JOLTS_PROFILE, joltsAvailability),
+  );
+  const claimsRecords = useVisiblePolling(
+    (signal) =>
+      readExecutionProtocol(
+        transport,
+        signal,
+        CLAIMS_PROFILE,
+        !claimsAvailability?.data,
+      ),
+    [transport, generation, CLAIMS_PROFILE.id],
+    canReadMacro(CLAIMS_PROFILE, claimsAvailability),
+  );
+  const modern = (
+    availability: CpiAvailability | undefined,
+    records: { data: { legacy?: boolean; unavailable?: boolean } | null },
+  ) =>
+    !!availability &&
+    !availability.legacy &&
+    records.data?.legacy !== true &&
+    (!!availability.data ||
+      (records.data !== null && !records.data.unavailable) ||
+      (tab === "new" && !!availability.failure));
   const isPce = !!asset && sameKey(asset.key, PCE) && !invalidIdentity;
   useEffect(() => {
     if (isPce && !rangeEdited.current) {
@@ -301,27 +446,25 @@ export function CollectionWorkbench({
     (sameKey(asset?.key, M3) ||
       (route.fields.get("asset") === M3.identity &&
         route.fields.get("asset_revision") === M3.revision));
-  const newM3 = !!m3Availability?.data && !m3Availability.legacy;
-  const newGdp = !!gdpAvailability?.data && !gdpAvailability.legacy;
+  const newM3 = modern(m3Availability, m3Records);
+  const newGdp = modern(gdpAvailability, gdpRecords);
   const joltsTarget =
     !invalidIdentity &&
     (!route.fields.has("operation") || joltsOperationMatches(source?.dto)) &&
     (sameKey(asset?.key, JOLTS) ||
       (route.fields.get("asset") === JOLTS.identity &&
         route.fields.get("asset_revision") === JOLTS.revision));
-  const newJolts = !!joltsAvailability?.data && !joltsAvailability.legacy;
+  const newJolts = modern(joltsAvailability, joltsRecords);
   const claimsTarget =
     !invalidIdentity &&
     (!route.fields.has("operation") || claimsOperationMatches(source?.dto)) &&
     (sameKey(asset?.key, CLAIMS) ||
       (route.fields.get("asset") === CLAIMS.identity &&
         route.fields.get("asset_revision") === CLAIMS.revision));
-  const newClaims = !!claimsAvailability?.data && !claimsAvailability.legacy;
-  const newConsumption =
-    !!consumptionAvailability?.data && !consumptionAvailability.legacy;
-  const newRetail = !!retailAvailability?.data && !retailAvailability.legacy;
-  const newEmployment =
-    !!employmentAvailability?.data && !employmentAvailability.legacy;
+  const newClaims = modern(claimsAvailability, claimsRecords);
+  const newConsumption = modern(consumptionAvailability, consumptionRecords);
+  const newRetail = modern(retailAvailability, retailRecords);
+  const newEmployment = modern(employmentAvailability, employmentRecords);
   const macroProfile =
     MACRO_PROFILES.find((p) =>
       sameKey(
@@ -351,10 +494,8 @@ export function CollectionWorkbench({
                   : isPpi
                     ? ppiAvailability
                     : cpiAvailability;
-  const newPpi =
-    !!ppiAvailability && !ppiAvailability.legacy && !!ppiAvailability.data;
-  const newPce =
-    !!pceAvailability && !pceAvailability.legacy && !!pceAvailability.data;
+  const newPpi = modern(ppiAvailability, ppiRecords);
+  const newPce = modern(pceAvailability, pceRecords);
   const newMacro = m3Target
     ? !!m3Availability && !m3Availability.legacy
     : joltsTarget
@@ -383,10 +524,7 @@ export function CollectionWorkbench({
     !macroAvailability.legacy &&
     !macroAvailability.data &&
     !macroAvailability.failure;
-  const newCpi =
-    !!cpiAvailability &&
-    !cpiAvailability.legacy &&
-    (!!cpiAvailability.data || !!cpiAvailability.failure);
+  const newCpi = modern(cpiAvailability, cpiRecords);
   const cpiTarget =
     !route.fields.has("operation") &&
     (isCpi ||
@@ -398,22 +536,11 @@ export function CollectionWorkbench({
     !invalidIdentity &&
     sameKey(asset?.key, FINANCIAL) &&
     !route.fields.has("operation");
-  const filterField = tab === "periodic" ? "periodic_asset" : "execution_asset";
-  const filter = route.fields.get(filterField) ?? "all";
-  const executionSchedule = route.fields.get("execution_schedule") ?? "all";
   const readRecords =
-    !joltsTarget &&
-    !claimsTarget &&
-    !gdpTarget &&
-    !isPpi &&
-    (!pceTarget || (tab !== "new" && filter !== keyOf(PCE))) &&
-    (!cpiAvailability || cpiAvailability.legacy) &&
-    (tab === "new"
-      ? isCpi
-      : !invalidIdentity &&
-        (filter === "all" ||
-          filter === keyOf(CPI) ||
-          (isCpi && route.fields.has("job"))));
+    (tab === "new" ? isCpi : readScope.reads(CPI)) &&
+    (!cpiAvailability ||
+      cpiAvailability.legacy ||
+      cpiRecords.data?.legacy === true);
   const pceReadBound =
     validPceBinding(pceCatalog?.binding) ||
     assets.some(
@@ -434,19 +561,14 @@ export function CollectionWorkbench({
   if (pceReadBound) pceHistoryBinding.current.verified = true;
   const pceHistoryBound = pceHistoryBinding.current.verified;
   const pceStatusFailure =
-    tab === "executions" &&
-    !invalidIdentity &&
-    (filter === "all" || filter === keyOf(PCE) || pceTarget) &&
-    pceAvailability?.failure;
+    tab === "executions" && readScope.reads(PCE) && pceAvailability?.failure;
   const readPceRecords =
     pceHistoryBound &&
-    (!pceAvailability || pceAvailability.legacy) &&
-    ((tab === "new" && isPce && (!pceAvailability || pceAvailability.legacy)) ||
-      (tab === "executions" &&
-        !invalidIdentity &&
-        (filter === "all" ||
-          filter === keyOf(PCE) ||
-          (isPce && route.fields.has("job")))));
+    (!pceAvailability ||
+      pceAvailability.legacy ||
+      pceRecords.data?.legacy === true) &&
+    ((tab === "new" && isPce) ||
+      (tab === "executions" && readScope.reads(PCE)));
   const pceJobs = useVisiblePolling<PceJobs>(
     async (signal) => {
       const result = await pceRequest<PceJobs>(transport, "/api/pce/jobs", {
@@ -464,7 +586,7 @@ export function CollectionWorkbench({
   );
   const financialPeriodic = useFinancialPeriodic(
     transport,
-    financialRegistered && tab === "periodic",
+    financialRegistered && tab === "periodic" && readScope.reads(FINANCIAL),
     navigate,
   );
   const financialRecords = useVisiblePolling(
@@ -474,7 +596,7 @@ export function CollectionWorkbench({
     tab === "executions" &&
       financialRegistered &&
       !invalidIdentity &&
-      (filter === "all" || filter === keyOf(FINANCIAL)),
+      readScope.reads(FINANCIAL),
   );
   const familyProps = { transport, route, navigate, generation };
   const familyRecords = useFamilyRecords(
@@ -554,93 +676,6 @@ export function CollectionWorkbench({
     ).filter((e) => sameKey(e.asset, CPI)),
     ...(readPceRecords ? (pceJobs.data?.jobs ?? []) : []).map(pceExecution),
   ];
-  const cpiRecords = useVisiblePolling(
-    (signal) => readCpiExecutions(transport, signal),
-    [transport, generation, CPI_PROFILE.id],
-    newCpi &&
-      tab === "executions" &&
-      !invalidIdentity &&
-      (filter === "all" ||
-        filter === keyOf(CPI) ||
-        (!!route.fields.get("job") &&
-          !isPpi &&
-          !pceTarget &&
-          !gdpTarget &&
-          !joltsTarget &&
-          !claimsTarget)),
-  );
-  const ppiRecords = useVisiblePolling(
-    (signal) => readCpiExecutions(transport, signal, PPI_PROFILE),
-    [transport, generation, PPI_PROFILE.id],
-    newPpi &&
-      tab === "executions" &&
-      !invalidIdentity &&
-      (filter === "all" || filter === keyOf(PPI)),
-  );
-  const pceRecords = useVisiblePolling(
-    (signal) => readCpiExecutions(transport, signal, PCE_PROFILE),
-    [transport, generation, PCE_PROFILE.id],
-    newPce &&
-      tab === "executions" &&
-      !invalidIdentity &&
-      (filter === "all" || filter === keyOf(PCE) || pceTarget),
-  );
-  const employmentRecords = useVisiblePolling(
-    (signal) => readCpiExecutions(transport, signal, EMPLOYMENT_PROFILE),
-    [transport, generation, EMPLOYMENT_PROFILE.id],
-    newEmployment &&
-      tab === "executions" &&
-      !invalidIdentity &&
-      (filter === "all" || filter === keyOf(EMPLOYMENT)),
-  );
-  const retailRecords = useVisiblePolling(
-    (signal) => readCpiExecutions(transport, signal, RETAIL_PROFILE),
-    [transport, generation, RETAIL_PROFILE.id],
-    newRetail &&
-      tab === "executions" &&
-      !invalidIdentity &&
-      (filter === "all" || filter === keyOf(RETAIL)),
-  );
-  const consumptionRecords = useVisiblePolling(
-    (signal) => readCpiExecutions(transport, signal, CONSUMPTION_PROFILE),
-    [transport, generation, CONSUMPTION_PROFILE.id],
-    newConsumption &&
-      tab === "executions" &&
-      !invalidIdentity &&
-      (filter === "all" || filter === keyOf(CONSUMPTION) || consumptionTarget),
-  );
-  const gdpRecords = useVisiblePolling(
-    (signal) => readCpiExecutions(transport, signal, GDP_PROFILE),
-    [transport, generation, GDP_PROFILE.id],
-    newGdp &&
-      tab === "executions" &&
-      !invalidIdentity &&
-      (filter === "all" || filter === keyOf(GDP) || gdpTarget),
-  );
-  const m3Records = useVisiblePolling(
-    (signal) => readCpiExecutions(transport, signal, M3_PROFILE),
-    [transport, generation, M3_PROFILE.id],
-    newM3 &&
-      tab === "executions" &&
-      !invalidIdentity &&
-      (filter === "all" || filter === keyOf(M3) || m3Target),
-  );
-  const joltsRecords = useVisiblePolling(
-    (signal) => readCpiExecutions(transport, signal, JOLTS_PROFILE),
-    [transport, generation, JOLTS_PROFILE.id],
-    newJolts &&
-      tab === "executions" &&
-      !invalidIdentity &&
-      (filter === "all" || filter === keyOf(JOLTS) || joltsTarget),
-  );
-  const claimsRecords = useVisiblePolling(
-    (signal) => readCpiExecutions(transport, signal, CLAIMS_PROFILE),
-    [transport, generation, CLAIMS_PROFILE.id],
-    newClaims &&
-      tab === "executions" &&
-      !invalidIdentity &&
-      (filter === "all" || filter === keyOf(CLAIMS) || claimsTarget),
-  );
   const macroReaders = {
     cpi: cpiRecords,
     ppi: ppiRecords,
@@ -1477,6 +1512,80 @@ export function CollectionWorkbench({
       </select>
     </label>
   );
+  const legacyPlanDetail = (plan: Plans["plans"][number]) => (
+    <>
+      <dl>
+        <Fact name="计划身份">{plan.identity}</Fact>
+        <Fact name="采集目标">{assetTitle(planAsset!)}</Fact>
+        <Fact name="参考期范围">
+          {plan.spec.start} 至 {plan.spec.end}
+        </Fact>
+        <Fact name="完成批次">
+          {plan.completed_batches} / {plan.total_batches}
+        </Fact>
+        <Fact name="下次到期">{formatBeijingTime(plan.next_due)}</Fact>
+      </dl>
+      {jobId &&
+        plan.batches.some((b) =>
+          b.jobs.some((j) => j.job_identity === jobId),
+        ) && (
+          <button
+            onClick={() =>
+              navigate("collection", {
+                ...planFields,
+                tab: "executions",
+                schedule: null,
+                job: jobId,
+              })
+            }
+          >
+            返回此执行记录
+          </button>
+        )}
+      <button
+        onClick={() =>
+          navigate(
+            "collection",
+            {
+              ...planFields,
+              tab: "executions",
+              job: null,
+              execution_schedule: plan!.identity,
+            },
+            true,
+          )
+        }
+      >
+        查看执行记录 →
+      </button>
+      <button onClick={() => navigate("assets", planFields)}>
+        查看关联资产 →
+      </button>
+    </>
+  );
+  const legacyPlanRows = (plans.data?.plans ?? [])
+    .filter(() => plansMatch && readScope.includes(planAsset!))
+    .map((p) => ({
+      id: p.identity,
+      search: `${p.identity} ${assetTitle(planAsset!)}`,
+      cells: [
+        p.spec.name,
+        assetTitle(planAsset!),
+        `既有有界间隔计划 · ${p.spec.timezone}`,
+        stateLabel(p.state),
+      ],
+    }));
+  const legacyPeriodicEntries = legacyPlanRows.map((row) => ({
+    title: plans.data!.plans.find((p) => p.identity === row.id)!.spec.name,
+    row: {
+      ...row,
+      cells: [assetTitle(planAsset!), row.cells[0], row.cells[3]],
+    },
+    detail: legacyPlanDetail(
+      plans.data!.plans.find((p) => p.identity === row.id)!,
+    ),
+    refresh: plans.refresh,
+  }));
   return (
     <>
       <Tabs
@@ -2089,7 +2198,10 @@ export function CollectionWorkbench({
               )
             );
           }}
-          supplements={familyRecords.periodicEntries}
+          supplements={[
+            ...familyRecords.periodicEntries,
+            ...legacyPeriodicEntries,
+          ]}
           supplement={
             financialRegistered &&
             !invalidIdentity &&
@@ -2144,14 +2256,12 @@ export function CollectionWorkbench({
               failure: null,
             }
           }
-          additionalProfile={ppiAvailability ? PPI_PROFILE : undefined}
+          additionalProfile={newPpi ? PPI_PROFILE : undefined}
           additionalAvailability={ppiAvailability}
           additionalVisible={
             !invalidIdentity && (filter === "all" || filter === keyOf(PPI))
           }
-          thirdProfile={
-            pceAvailability && !pceAvailability.legacy ? PCE_PROFILE : undefined
-          }
+          thirdProfile={newPce ? PCE_PROFILE : undefined}
           thirdAvailability={pceAvailability}
           thirdVisible={
             !invalidIdentity && (filter === "all" || filter === keyOf(PCE))
@@ -2183,11 +2293,17 @@ export function CollectionWorkbench({
           }
           selectedId={scheduleId}
           generation={generation}
-          visible={
-            !invalidIdentity && (filter === "all" || filter === keyOf(CPI))
-          }
+          visible={newCpi && readScope.includes(CPI)}
           selected={scheduleId === "cpi-auto"}
           onSelect={(id) => {
+            if (legacyPlanRows.some((row) => row.id === id)) {
+              navigate(
+                "collection",
+                { ...planFields, schedule: id, job: null },
+                true,
+              );
+              return;
+            }
             const candidates = collectionRegistrations(families).filter(
               (r) => r.strategy?.id === id,
             );
@@ -2242,58 +2358,9 @@ export function CollectionWorkbench({
               }))}
           >
             {plan && (
-              <>
-                <h3>{plan.spec.name}</h3>
-                <dl>
-                  <Fact name="计划身份">{plan.identity}</Fact>
-                  <Fact name="采集目标">{assetTitle(planAsset!)}</Fact>
-                  <Fact name="参考期范围">
-                    {plan.spec.start} 至 {plan.spec.end}
-                  </Fact>
-                  <Fact name="完成批次">
-                    {plan.completed_batches} / {plan.total_batches}
-                  </Fact>
-                  <Fact name="下次到期">
-                    {formatBeijingTime(plan.next_due)}
-                  </Fact>
-                </dl>
-                {jobId &&
-                  plan.batches.some((b) =>
-                    b.jobs.some((j) => j.job_identity === jobId),
-                  ) && (
-                    <button
-                      onClick={() =>
-                        navigate("collection", {
-                          ...planFields,
-                          tab: "executions",
-                          schedule: null,
-                          job: jobId,
-                        })
-                      }
-                    >
-                      返回此执行记录
-                    </button>
-                  )}
-                <button
-                  onClick={() =>
-                    navigate(
-                      "collection",
-                      {
-                        ...planFields,
-                        tab: "executions",
-                        job: null,
-                        execution_schedule: plan!.identity,
-                      },
-                      true,
-                    )
-                  }
-                >
-                  查看执行记录 →
-                </button>
-                <button onClick={() => navigate("assets", planFields)}>
-                  查看关联资产 →
-                </button>
-              </>
+              <PeriodicDetailShell title={plan.spec.name}>
+                {legacyPlanDetail(plan)}
+              </PeriodicDetailShell>
             )}
           </WorkflowTable>
         </>

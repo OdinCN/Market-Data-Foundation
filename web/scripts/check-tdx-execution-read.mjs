@@ -228,6 +228,11 @@ try {
         samples[1].id,
       );
       assert.equal(writes.length, 0);
+      assert.equal(
+        reads.filter((p) => p.includes("/timeseries/status")).length,
+        0,
+        "TDX details must not discover Macro protocols through data aggregates",
+      );
       assert(
         reads.some((p) => p.includes("view=steps") && p.includes("offset=25")),
       );

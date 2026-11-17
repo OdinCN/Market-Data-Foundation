@@ -330,7 +330,6 @@ export function useFinancialPeriodic(
   };
   const detail = (
     <>
-      <h3>金融条件日频 策略详情</h3>
       <p>
         {data
           ? `自动采集${data.enabled ? "已开启" : "已暂停"} · ${state}`
@@ -557,6 +556,7 @@ export function useFinancialPeriodic(
     </>
   );
   return {
+    title: "金融条件日频 策略详情",
     row,
     detail,
     refresh: () => {

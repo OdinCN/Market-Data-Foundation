@@ -113,6 +113,12 @@ def timeseries_router(
                     raise WebError("duplicate_parameter")
                 if operation not in {"query", "releases"} and pairs:
                     raise WebError("unsupported_parameters")
+                if operation == "strategy":
+                    from market_data_foundation.web.macro_runtime_facts import (
+                        read_strategy,
+                    )
+
+                    return JSONResponse(read_strategy(host, request))
                 if operation == "jobs":
                     host._read_allowed()
                     result = {"jobs": host.journal.list()}

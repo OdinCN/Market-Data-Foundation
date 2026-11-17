@@ -86,6 +86,24 @@ def test_missing_base_or_shard_is_not_a_verified_empty_result(tmp_path):
         jobs.step_page(identity)
 
 
+def test_absent_base_uses_actual_shards_for_full_read_page_and_search(tmp_path):
+    jobs, identity, steps = journal(tmp_path, 51)
+    folder = jobs.directory / identity
+    (folder / "base.json").unlink()
+    steps[26].update(state="FAILED", classification="retained_failure")
+    for step in steps:
+        (folder / f"0-{step['instrument']}.json").write_text(json.dumps(step))
+    assert jobs.read(identity)["steps"] == steps
+    page = jobs.step_page(identity, offset=25, limit=25)
+    assert page["steps"] == steps[25:50]
+    assert page["total"] == 51 and page["next_offset"] == 50
+    found = jobs.step_page(identity, search="retained_failure")
+    assert found["steps"] == [steps[26]] and found["total"] == 1
+    (folder / "0-000026.json").unlink()
+    with pytest.raises(TdxError, match="tdx_job_steps_unavailable"):
+        jobs.step_page(identity, offset=25, limit=25)
+
+
 def test_legacy_readers_counts_missing_and_interrupted_state_are_preserved(tmp_path):
     jobs, identity, _ = journal(tmp_path, 2)
     header = json.loads(jobs.path(identity).read_text())

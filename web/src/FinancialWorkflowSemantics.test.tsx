@@ -164,10 +164,11 @@ it("sorts unknown creation last without borrowing updated or current timestamps"
   ]);
   expect(financialStateText("some_new_machine_state")).toBe("状态待核实");
 });
-function detail(record: FinancialJob) {
+function detail(record: FinancialJob, authorization?: Promise<void>) {
   const requests: string[] = [];
   const transport: Transport = async (url, i) => {
     requests.push(i?.method ?? "GET");
+    if (String(url).endsWith("/status") && authorization) await authorization;
     return Response.json(
       String(url).endsWith("/status")
         ? { status: "OK", web_capabilities: { query: true, collect: true } }
@@ -235,9 +236,12 @@ it("partial failures identify only failed steps, leaving pending and unpublished
     (screen.getByRole("button", { name: "续跑此作业" }) as HTMLButtonElement)
       .disabled,
   ).toBe(true);
-  fireEvent.click(
-    screen.getByRole("checkbox", { name: "我确认按原请求恢复采集" }),
-  );
+  const confirmation = screen.getByRole("checkbox", {
+    name: "我确认按原请求恢复采集",
+  }) as HTMLInputElement;
+  await waitFor(() => expect(confirmation.disabled).toBe(false));
+  fireEvent.click(confirmation);
+  expect(confirmation.checked).toBe(true);
   await waitFor(() =>
     expect(
       (screen.getByRole("button", { name: "续跑此作业" }) as HTMLButtonElement)
@@ -323,3 +327,33 @@ it.each(["complete", "running", "partial"])(
     expect(screen.getByText("保留的异常分类")).toBeTruthy();
   },
 );
+
+it("a delayed write grant cannot retain a click on the disabled recovery confirmation", async () => {
+  let authorize!: () => void;
+  const permission = new Promise<void>((resolve) => {
+    authorize = resolve;
+  });
+  const calls = detail(
+    job({ state: "partial", steps: [step("failed")] }),
+    permission,
+  );
+  await screen.findByRole("heading", { name: "执行详情" });
+  const checkbox = screen.getByRole("checkbox", {
+    name: "我确认按原请求恢复采集",
+  }) as HTMLInputElement;
+  const resume = screen.getByRole("button", {
+    name: "续跑此作业",
+  }) as HTMLButtonElement;
+  expect(checkbox.disabled).toBe(true);
+  checkbox.click();
+  expect(checkbox.checked).toBe(false);
+  expect(resume.disabled).toBe(true);
+  authorize();
+  await waitFor(() => expect(checkbox.disabled).toBe(false));
+  expect(checkbox.checked).toBe(false);
+  expect(resume.disabled).toBe(true);
+  fireEvent.click(checkbox);
+  expect(checkbox.checked).toBe(true);
+  expect(resume.disabled).toBe(false);
+  expect(calls.every((method) => method === "GET")).toBe(true);
+});

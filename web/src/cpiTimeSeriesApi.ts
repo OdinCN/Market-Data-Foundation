@@ -86,6 +86,8 @@ export type CpiStatus = {
   };
 };
 export type CpiAvailability = {
+  /** The normal workbench may discover the read protocol without PG totals. */
+  discover?: boolean;
   refresh?: () => void;
   data: CpiStatus | null;
   legacy: boolean;
@@ -99,6 +101,16 @@ export class CpiServiceFailure extends Error {
   ) {
     super(classification);
   }
+}
+// The missing modern host is an explicit compatibility signal, not a storage failure.
+function legacyProtocolMissing(error: unknown, profile: MacroProfile) {
+  return (
+    ["cpi", "pce"].includes(profile.id) &&
+    error instanceof CpiServiceFailure &&
+    (error.status === 404 ||
+      (error.status === 503 &&
+        error.classification === `${profile.id}_timeseries_not_enabled`))
+  );
 }
 const classification = (value: unknown) =>
   typeof value === "string" && /^[a-z0-9_]{1,100}$/.test(value)
@@ -257,15 +269,7 @@ export function useCpiAvailability(
       try {
         value = await readCpiStatus(transport, signal, profile);
       } catch (error) {
-        if (
-          (profile.id === "cpi" || profile.id === "pce") &&
-          error instanceof CpiServiceFailure &&
-          (error.status === 404 ||
-            (profile.id === "pce" &&
-              error.status === 503 &&
-              error.classification === "pce_timeseries_not_enabled"))
-        )
-          return "legacy";
+        if (legacyProtocolMissing(error, profile)) return "legacy";
         throw error;
       }
       if (
@@ -733,6 +737,7 @@ export async function readCpiJobs(
 }
 
 export type CpiStrategy = {
+  collection_facts_status?: string;
   last_successful_collection_at?: string | null;
   latest_data_period?: string | null;
   latest_data_periods?: Record<string, string | null>;
@@ -782,12 +787,14 @@ export async function readCpiStrategy(
   transport: Transport,
   signal?: AbortSignal,
   profile: MacroProfile = CPI_PROFILE,
+  policyOnly = false,
 ) {
   const value = await cpiRequest<CpiStrategy>(
     transport,
     "/strategy",
     {
       signal,
+      ...(policyOnly ? { headers: { Prefer: "return=minimal" } } : {}),
     },
     20000,
     profile,
@@ -795,6 +802,35 @@ export async function readCpiStrategy(
   if (!validStrategy(value, profile))
     throw new CpiServiceFailure("cpi_strategy_unknown");
   return value;
+}
+
+export async function readExecutionProtocol(
+  transport: Transport,
+  signal: AbortSignal,
+  profile: MacroProfile,
+  allowLegacy = true,
+) {
+  try {
+    return {
+      ...(await readCpiExecutions(transport, signal, profile)),
+      legacy: false,
+    };
+  } catch (error) {
+    if (allowLegacy && legacyProtocolMissing(error, profile))
+      return { executions: [], legacy: true };
+    if (
+      error instanceof CpiServiceFailure &&
+      allowLegacy &&
+      !["cpi", "pce"].includes(profile.id) &&
+      (error.status === 404 ||
+        (error.status === 503 &&
+          [`${profile.id}_timeseries_not_enabled`, "not_enabled"].includes(
+            error.classification,
+          )))
+    )
+      return { executions: [], legacy: false, unavailable: true };
+    throw error;
+  }
 }
 export async function saveCpiStrategy(
   transport: Transport,

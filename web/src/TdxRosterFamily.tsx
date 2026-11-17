@@ -576,6 +576,7 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
       worker_online: boolean;
     };
     return {
+      title: `${title} · 盘前目录刷新`,
       row: {
         id: "tdx-roster-auto",
         search: `${title} 09:00`,
@@ -591,7 +592,6 @@ export const TDX_ROSTER_FAMILY: RuntimeFamily = {
       refresh,
       detail: (
         <section aria-label="TDX 名册 周期详情">
-          <h3>{title} · 盘前目录刷新</h3>
           <p>
             09:00 Asia/Shanghai 刷新三市行情目录。15:35
             日线复用当日已完成的目录作业；错过早盘时先补目录。上市、停牌和正式更名以交易所对应日期的证据为准。

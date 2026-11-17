@@ -501,16 +501,19 @@ class TimeSeriesHost:
         }
         return result
 
-    def strategy(self):
+    def strategy(self, *, include_facts=True):
         from market_data_foundation.web.macro_runtime_facts import collection_facts
 
         value = self.auto_strategy.get()
         return strategy_projection(
-            {**value, **collection_facts(self)},
+            {**value, **(collection_facts(self) if include_facts else {})},
             self.scheduler.status(),
             self.clock(),
             profile=self.profile,
         )
+
+    def strategy_policy(self):
+        return self.strategy(include_facts=False)
 
     def update_strategy(self, command):
         require_parameters(command, {"enabled", "history_start"})
@@ -780,6 +783,10 @@ def timeseries_router(host, *, profile=CPI_PROFILE):
             raise WebError("duplicate_parameter")
         if operation not in {"query", "releases"} and pairs:
             raise WebError("unsupported_parameters")
+        if operation == "strategy":
+            from market_data_foundation.web.macro_runtime_facts import read_strategy
+
+            return read_strategy(host, request)
         if operation == "jobs":
             return {"jobs": host.journal.list()}
         return (

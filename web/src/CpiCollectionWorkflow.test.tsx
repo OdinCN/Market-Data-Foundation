@@ -1080,6 +1080,7 @@ it.each(["ready", "pending", "failed", "unavailable"])(
     );
     const modern = {
       ...availability,
+      discover: true,
       data: ["pending", "unavailable"].includes(state)
         ? null
         : availability.data,

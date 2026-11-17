@@ -41,6 +41,7 @@ import {
   type PceAssets,
   type PceEvidence,
 } from "./pce";
+import { collectionReadScope } from "./collectionReadScope";
 import { CollectionWorkbench } from "./CollectionWorkbench";
 import { OverviewPage, PlatformPage } from "./WorkflowRuntime";
 import { Technical } from "./WorkflowTable";
@@ -281,168 +282,219 @@ export default function App({
   const collectionList =
     page.view === "collection" &&
     ["periodic", "executions"].includes(page.fields.get("tab") ?? "new");
-  const collectionFilter =
-    page.fields.get(
-      page.fields.get("tab") === "periodic"
-        ? "periodic_asset"
-        : "execution_asset",
-    ) ?? "all";
-  // All-assets lists discover protocols once; only the selected asset needs
-  // live permission/status tracking. Refresh still rereads every scoped status.
+  const collectionScopeRead = collectionReadScope(
+    page,
+    page.invalid,
+    key ?? undefined,
+  );
+  const collectionFilter = collectionScopeRead.filter;
   const pollMacro = (profile: typeof CPI_PROFILE) =>
     page.view === "collection" &&
     (!collectionList || macroIdentity === profile.asset.identity);
+  const readMacroStatus = (profile: typeof CPI_PROFILE, ordinary: boolean) =>
+    collectionList
+      ? !page.invalid &&
+        collectionScopeRead.reads(profile.asset) &&
+        (operation
+          ? ordinary
+          : sameKey(collectionScopeRead.selected, profile.asset) ||
+            collectionFilter === keyOf(profile.asset))
+      : ordinary;
+  const collectionAvailability = (
+    profile: typeof CPI_PROFILE,
+    availability: ReturnType<typeof useCpiAvailability>,
+  ) => ({
+    ...availability,
+    discover:
+      collectionList &&
+      collectionScopeRead.reads(profile.asset) &&
+      (!operation ||
+        (page.fields.has(collectionScopeRead.field) &&
+          collectionFilter === "all")),
+  });
   const cpiAvailability = useCpiAvailability(
     transport,
     generation,
-    !page.invalid &&
-      (!collectionList ||
-        page.fields.get("tab") !== "periodic" ||
-        collectionFilter !== keyOf(RETAIL)) &&
-      (!collectionList || collectionFilter !== keyOf(JOLTS)) &&
-      (macroIdentity !== M3.identity || collectionList) &&
-      (macroIdentity !== JOLTS.identity || collectionList) &&
-      (!collectionList || collectionFilter !== keyOf(CLAIMS)) &&
-      (macroIdentity !== CLAIMS.identity || collectionList) &&
-      (!collectionList || collectionFilter !== keyOf(GDP)) &&
-      (macroIdentity !== GDP.identity || collectionList) &&
-      (macroIdentity !== CONSUMPTION.identity || collectionList) &&
-      (macroIdentity !== RETAIL.identity ||
-        (collectionList && collectionFilter !== keyOf(RETAIL))) &&
-      (macroIdentity !== EMPLOYMENT.identity ||
-        (collectionList && collectionFilter !== keyOf(EMPLOYMENT))) &&
-      (macroIdentity !== PCE.identity ||
-        (collectionList && collectionFilter !== keyOf(PCE))) &&
-      (identity !== PPI.identity ||
-        (collectionList && collectionFilter !== keyOf(PPI))) &&
-      ["assets", "collection"].includes(page.view) &&
-      operationEntry?.asset?.identity !== PPI.identity &&
-      (!operation ||
-        (!!operationEntry?.asset &&
-          (!identity || identity === operationEntry.asset.identity) &&
-          (!revision || revision === operationEntry.asset.revision))),
+    readMacroStatus(
+      CPI_PROFILE,
+      !page.invalid &&
+        (!collectionList ||
+          page.fields.get("tab") !== "periodic" ||
+          collectionFilter !== keyOf(RETAIL)) &&
+        (!collectionList || collectionFilter !== keyOf(JOLTS)) &&
+        (macroIdentity !== M3.identity || collectionList) &&
+        (macroIdentity !== JOLTS.identity || collectionList) &&
+        (!collectionList || collectionFilter !== keyOf(CLAIMS)) &&
+        (macroIdentity !== CLAIMS.identity || collectionList) &&
+        (!collectionList || collectionFilter !== keyOf(GDP)) &&
+        (macroIdentity !== GDP.identity || collectionList) &&
+        (macroIdentity !== CONSUMPTION.identity || collectionList) &&
+        (macroIdentity !== RETAIL.identity ||
+          (collectionList && collectionFilter !== keyOf(RETAIL))) &&
+        (macroIdentity !== EMPLOYMENT.identity ||
+          (collectionList && collectionFilter !== keyOf(EMPLOYMENT))) &&
+        (macroIdentity !== PCE.identity ||
+          (collectionList && collectionFilter !== keyOf(PCE))) &&
+        (identity !== PPI.identity ||
+          (collectionList && collectionFilter !== keyOf(PPI))) &&
+        ["assets", "collection"].includes(page.view) &&
+        operationEntry?.asset?.identity !== PPI.identity &&
+        (!operation ||
+          (!!operationEntry?.asset &&
+            (!identity || identity === operationEntry.asset.identity) &&
+            (!revision || revision === operationEntry.asset.revision))),
+    ),
     pollMacro(CPI_PROFILE),
   );
   const ppiAvailability = useCpiAvailability(
     transport,
     generation,
-    !page.invalid &&
-      ["assets", "collection"].includes(page.view) &&
-      ((identity === PPI.identity &&
-        (!revision || revision === PPI.revision) &&
-        !operation) ||
-        (page.view === "collection" &&
-          !operation &&
-          collectionList &&
-          (collectionFilter === "all" || collectionFilter === keyOf(PPI)))),
+    readMacroStatus(
+      PPI_PROFILE,
+      !page.invalid &&
+        ["assets", "collection"].includes(page.view) &&
+        ((identity === PPI.identity &&
+          (!revision || revision === PPI.revision) &&
+          !operation) ||
+          (page.view === "collection" &&
+            !operation &&
+            collectionList &&
+            (collectionFilter === "all" || collectionFilter === keyOf(PPI)))),
+    ),
     pollMacro(PPI_PROFILE),
     PPI_PROFILE,
   );
   const pceAvailability = useCpiAvailability(
     transport,
     generation,
-    !page.invalid &&
-      ["assets", "collection"].includes(page.view) &&
-      ((macroIdentity === PCE.identity &&
-        (!revision || revision === PCE.revision) &&
-        (!operation || operation === PCE_OPERATION)) ||
-        // A selected execution's operation scopes its detail, not the global
-        // list's independent PCE protocol discovery.
-        (collectionList &&
-          (collectionFilter === "all" || collectionFilter === keyOf(PCE)))),
+    readMacroStatus(
+      PCE_PROFILE,
+      !page.invalid &&
+        ["assets", "collection"].includes(page.view) &&
+        ((macroIdentity === PCE.identity &&
+          (!revision || revision === PCE.revision) &&
+          (!operation || operation === PCE_OPERATION)) ||
+          // A selected execution's operation scopes its detail, not the global
+          // list's independent PCE protocol discovery.
+          (collectionList &&
+            (collectionFilter === "all" || collectionFilter === keyOf(PCE)))),
+    ),
     pollMacro(PCE_PROFILE),
     PCE_PROFILE,
   );
   const employmentAvailability = useCpiAvailability(
     transport,
     generation,
-    !page.invalid &&
-      ["assets", "collection"].includes(page.view) &&
-      (!operation || employmentOperationMatches(operationEntry)) &&
-      ((macroIdentity === EMPLOYMENT.identity &&
-        (!revision || revision === EMPLOYMENT.revision)) ||
-        (collectionList &&
-          (collectionFilter === "all" ||
-            collectionFilter === keyOf(EMPLOYMENT)))),
+    readMacroStatus(
+      EMPLOYMENT_PROFILE,
+      !page.invalid &&
+        ["assets", "collection"].includes(page.view) &&
+        (!operation || employmentOperationMatches(operationEntry)) &&
+        ((macroIdentity === EMPLOYMENT.identity &&
+          (!revision || revision === EMPLOYMENT.revision)) ||
+          (collectionList &&
+            (collectionFilter === "all" ||
+              collectionFilter === keyOf(EMPLOYMENT)))),
+    ),
     pollMacro(EMPLOYMENT_PROFILE),
     EMPLOYMENT_PROFILE,
   );
   const retailAvailability = useCpiAvailability(
     transport,
     generation,
-    !page.invalid &&
-      ["assets", "collection"].includes(page.view) &&
-      (!operation || retailOperationMatches(operationEntry)) &&
-      ((macroIdentity === RETAIL.identity &&
-        (!revision || revision === RETAIL.revision)) ||
-        (collectionList &&
-          (collectionFilter === "all" || collectionFilter === keyOf(RETAIL)))),
+    readMacroStatus(
+      RETAIL_PROFILE,
+      !page.invalid &&
+        ["assets", "collection"].includes(page.view) &&
+        (!operation || retailOperationMatches(operationEntry)) &&
+        ((macroIdentity === RETAIL.identity &&
+          (!revision || revision === RETAIL.revision)) ||
+          (collectionList &&
+            (collectionFilter === "all" ||
+              collectionFilter === keyOf(RETAIL)))),
+    ),
     pollMacro(RETAIL_PROFILE),
     RETAIL_PROFILE,
   );
   const consumptionAvailability = useCpiAvailability(
     transport,
     generation,
-    !page.invalid &&
-      ["assets", "collection"].includes(page.view) &&
-      ((macroIdentity === CONSUMPTION.identity &&
-        (!revision || revision === CONSUMPTION.revision)) ||
-        (collectionList &&
-          !operation &&
-          (collectionFilter === "all" ||
-            collectionFilter === keyOf(CONSUMPTION)))),
+    readMacroStatus(
+      CONSUMPTION_PROFILE,
+      !page.invalid &&
+        ["assets", "collection"].includes(page.view) &&
+        ((macroIdentity === CONSUMPTION.identity &&
+          (!revision || revision === CONSUMPTION.revision)) ||
+          (collectionList &&
+            !operation &&
+            (collectionFilter === "all" ||
+              collectionFilter === keyOf(CONSUMPTION)))),
+    ),
     pollMacro(CONSUMPTION_PROFILE),
     CONSUMPTION_PROFILE,
   );
   const gdpAvailability = useCpiAvailability(
     transport,
     generation,
-    !page.invalid &&
-      ["assets", "collection"].includes(page.view) &&
-      ((macroIdentity === GDP.identity &&
-        (!revision || revision === GDP.revision)) ||
-        (collectionList &&
-          (collectionFilter === "all" || collectionFilter === keyOf(GDP)))),
+    readMacroStatus(
+      GDP_PROFILE,
+      !page.invalid &&
+        ["assets", "collection"].includes(page.view) &&
+        ((macroIdentity === GDP.identity &&
+          (!revision || revision === GDP.revision)) ||
+          (collectionList &&
+            (collectionFilter === "all" || collectionFilter === keyOf(GDP)))),
+    ),
     pollMacro(GDP_PROFILE),
     GDP_PROFILE,
   );
   const m3Availability = useCpiAvailability(
     transport,
     generation,
-    !page.invalid &&
-      ["assets", "collection"].includes(page.view) &&
-      ((macroIdentity === M3.identity &&
-        (!revision || revision === M3.revision) &&
-        !operation) ||
-        (collectionList &&
-          !operation &&
-          (collectionFilter === "all" || collectionFilter === keyOf(M3)))),
+    readMacroStatus(
+      M3_PROFILE,
+      !page.invalid &&
+        ["assets", "collection"].includes(page.view) &&
+        ((macroIdentity === M3.identity &&
+          (!revision || revision === M3.revision) &&
+          !operation) ||
+          (collectionList &&
+            !operation &&
+            (collectionFilter === "all" || collectionFilter === keyOf(M3)))),
+    ),
     pollMacro(M3_PROFILE),
     M3_PROFILE,
   );
   const joltsAvailability = useCpiAvailability(
     transport,
     generation,
-    !page.invalid &&
-      ["assets", "collection"].includes(page.view) &&
-      (!operation || joltsOperationMatches(operationEntry)) &&
-      ((macroIdentity === JOLTS.identity &&
-        (!revision || revision === JOLTS.revision)) ||
-        (collectionList &&
-          (collectionFilter === "all" || collectionFilter === keyOf(JOLTS)))),
+    readMacroStatus(
+      JOLTS_PROFILE,
+      !page.invalid &&
+        ["assets", "collection"].includes(page.view) &&
+        (!operation || joltsOperationMatches(operationEntry)) &&
+        ((macroIdentity === JOLTS.identity &&
+          (!revision || revision === JOLTS.revision)) ||
+          (collectionList &&
+            (collectionFilter === "all" || collectionFilter === keyOf(JOLTS)))),
+    ),
     pollMacro(JOLTS_PROFILE),
     JOLTS_PROFILE,
   );
   const claimsAvailability = useCpiAvailability(
     transport,
     generation,
-    !page.invalid &&
-      ["assets", "collection"].includes(page.view) &&
-      (!operation || claimsOperationMatches(operationEntry)) &&
-      ((macroIdentity === CLAIMS.identity &&
-        (!revision || revision === CLAIMS.revision)) ||
-        (collectionList &&
-          (collectionFilter === "all" || collectionFilter === keyOf(CLAIMS)))),
+    readMacroStatus(
+      CLAIMS_PROFILE,
+      !page.invalid &&
+        ["assets", "collection"].includes(page.view) &&
+        (!operation || claimsOperationMatches(operationEntry)) &&
+        ((macroIdentity === CLAIMS.identity &&
+          (!revision || revision === CLAIMS.revision)) ||
+          (collectionList &&
+            (collectionFilter === "all" ||
+              collectionFilter === keyOf(CLAIMS)))),
+    ),
     pollMacro(CLAIMS_PROFILE),
     CLAIMS_PROFILE,
   );
@@ -980,16 +1032,46 @@ export default function App({
                       navigate={navigate}
                       transport={transport}
                       generation={generation}
-                      cpiAvailability={cpiAvailability}
-                      ppiAvailability={ppiAvailability}
-                      pceAvailability={pceAvailability}
-                      employmentAvailability={employmentAvailability}
-                      retailAvailability={retailAvailability}
-                      consumptionAvailability={consumptionAvailability}
-                      m3Availability={m3Availability}
-                      joltsAvailability={joltsAvailability}
-                      claimsAvailability={claimsAvailability}
-                      gdpAvailability={gdpAvailability}
+                      cpiAvailability={collectionAvailability(
+                        CPI_PROFILE,
+                        cpiAvailability,
+                      )}
+                      ppiAvailability={collectionAvailability(
+                        PPI_PROFILE,
+                        ppiAvailability,
+                      )}
+                      pceAvailability={collectionAvailability(
+                        PCE_PROFILE,
+                        pceAvailability,
+                      )}
+                      employmentAvailability={collectionAvailability(
+                        EMPLOYMENT_PROFILE,
+                        employmentAvailability,
+                      )}
+                      retailAvailability={collectionAvailability(
+                        RETAIL_PROFILE,
+                        retailAvailability,
+                      )}
+                      consumptionAvailability={collectionAvailability(
+                        CONSUMPTION_PROFILE,
+                        consumptionAvailability,
+                      )}
+                      m3Availability={collectionAvailability(
+                        M3_PROFILE,
+                        m3Availability,
+                      )}
+                      joltsAvailability={collectionAvailability(
+                        JOLTS_PROFILE,
+                        joltsAvailability,
+                      )}
+                      claimsAvailability={collectionAvailability(
+                        CLAIMS_PROFILE,
+                        claimsAvailability,
+                      )}
+                      gdpAvailability={collectionAvailability(
+                        GDP_PROFILE,
+                        gdpAvailability,
+                      )}
                     />
                   )}
                   {page.view === "platform" && (

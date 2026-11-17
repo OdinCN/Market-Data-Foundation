@@ -228,6 +228,7 @@ class RetailContinuousHost:
         }
 
     strategy = TimeSeriesHost.strategy
+    strategy_policy = TimeSeriesHost.strategy_policy
 
     def update_strategy(self, command):
         with self.scheduler._locked():

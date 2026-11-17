@@ -6,6 +6,7 @@ import type { Navigate, Route } from "./workflowRoute";
 import type { Row } from "./WorkflowTable";
 import { keyOf, sameKey } from "./workflowModel";
 import { useVisiblePolling } from "./useVisiblePolling";
+import { collectionReadScope } from "./collectionReadScope";
 
 export type FamilyProps = {
   transport: Transport;
@@ -28,6 +29,7 @@ export type FamilyExecution = {
   facts?: unknown;
 };
 export type PeriodicEntry = {
+  title?: ReactNode;
   row: Row;
   detail: ReactNode;
   refresh: () => void;
@@ -131,10 +133,7 @@ export function useFamilyRecords(
   invalid: boolean,
 ) {
   const tab = props.route.fields.get("tab");
-  const filter =
-    props.route.fields.get(
-      tab === "periodic" ? "periodic_asset" : "execution_asset",
-    ) ?? "all";
+  const readScope = collectionReadScope(props.route, invalid);
   const selected = invalid
     ? undefined
     : families.find((f) =>
@@ -143,9 +142,7 @@ export function useFamilyRecords(
           revision: props.route.fields.get("asset_revision") ?? "",
         }),
       );
-  const scope = families.filter(
-    (f) => filter === "all" || filter === keyOf(f.asset),
-  );
+  const scope = families.filter((f) => readScope.reads(f.asset));
   const readExecutions = useFamilyRead(
     scope,
     props,
@@ -170,13 +167,14 @@ export function useFamilyRecords(
     selected,
     executions,
     periodic,
-    periodicEntries: (periodic.data?.values ?? []).map(({ family, data }) =>
-      family.periodic(
+    periodicEntries: (periodic.data?.values ?? []).map(({ family, data }) => ({
+      title: family.title,
+      ...family.periodic(
         data,
         { ...props, stale: periodic.stale },
         periodic.refresh,
       ),
-    ),
+    })),
   };
 }
 

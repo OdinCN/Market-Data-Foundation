@@ -847,6 +847,7 @@ export const TDX_FAMILY: RuntimeFamily = {
   periodic(value, props, refresh) {
     const data = value as { strategy: Strategy; status: Status };
     return {
+      title: `${title} · 盘后自动采集`,
       row: {
         id: strategyId,
         search: `${title} 盘后自动采集`,
@@ -863,7 +864,6 @@ export const TDX_FAMILY: RuntimeFamily = {
       refresh,
       detail: (
         <section aria-label="TDX 周期任务详情">
-          <h3>{title} · 盘后自动采集</h3>
           <p>
             策略{data.strategy.enabled ? "已启用" : "已暂停"}；执行器
             {data.strategy.worker_online ? "在线" : "离线"}。交易日北京时间

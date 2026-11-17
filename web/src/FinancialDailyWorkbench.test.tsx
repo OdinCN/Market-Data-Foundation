@@ -255,12 +255,17 @@ it("does not repeat an uncertain POST and verifies the original identity by GET"
       (screen.getByLabelText("采集开始日期") as HTMLInputElement).value,
     ).toBeTruthy(),
   );
-  fireEvent.click(
-    screen.getByRole("checkbox", { name: "我确认将以上范围采集到开发测试库" }),
-  );
-  fireEvent.click(
-    screen.getByRole("button", { name: "提交 金融条件日频 采集" }),
-  );
+  await act(async () => {});
+  const confirmation = screen.getByRole("checkbox", {
+    name: "我确认将以上范围采集到开发测试库",
+  }) as HTMLInputElement;
+  fireEvent.click(confirmation);
+  expect(confirmation.checked).toBe(true);
+  const submit = screen.getByRole("button", {
+    name: "提交 金融条件日频 采集",
+  }) as HTMLButtonElement;
+  expect(submit.disabled).toBe(false);
+  fireEvent.click(submit);
   await screen.findByRole("button", { name: "核实原请求" });
   expect(
     (

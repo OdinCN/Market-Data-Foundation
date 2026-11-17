@@ -361,6 +361,12 @@ def timeseries_router(host=None, *, authorize=None):
                     raise RetailServiceError("duplicate_parameter")
                 if operation not in {"query", "releases"} and pairs:
                     raise RetailServiceError("unsupported_parameters")
+                if operation == "strategy":
+                    from market_data_foundation.web.macro_runtime_facts import (
+                        read_strategy,
+                    )
+
+                    return JSONResponse(read_strategy(host, request))
                 result = (
                     getattr(host, operation)(dict(pairs))
                     if operation in {"query", "releases"}

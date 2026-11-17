@@ -93,15 +93,19 @@ it.each(rows)(
       await screen.findByRole("button", { name: "查看周期任务" }),
     );
     expect(screen.getByText("手动采集")).toBeTruthy();
-    expect(nav).toHaveBeenCalledExactlyOnceWith("collection", {
-      asset: row.asset.identity,
-      asset_revision: row.asset.revision,
-      operation: null,
-      tab: "periodic",
-      periodic_asset: keyOf(row.asset),
-      schedule: expectedId,
-      job: id,
-    });
+    expect(nav).toHaveBeenCalledExactlyOnceWith(
+      "collection",
+      {
+        asset: row.asset.identity,
+        asset_revision: row.asset.revision,
+        operation: null,
+        tab: "periodic",
+        periodic_asset: keyOf(row.asset),
+        schedule: expectedId,
+        job: id,
+      },
+      true,
+    );
   },
 );
 
@@ -367,6 +371,7 @@ it("a registered Macro preset remains a real destination before its enable inten
   expect(nav).toHaveBeenCalledWith(
     "collection",
     expect.objectContaining({ schedule: "cpi-auto", job: id }),
+    true,
   );
   expect(screen.getByText("手动采集")).toBeTruthy();
 });
@@ -475,6 +480,7 @@ it("a non-TDX registered family verifies its actual periodic row instead of borr
       asset_revision: "v2",
       job: id,
     }),
+    true,
   );
   await expect(
     expectedPolicy({ protocol: "future", path: "/fixture/jobs" }, vi.fn()),
@@ -505,5 +511,6 @@ it("a strategy execution list is exact, while return to a manual record clears t
       execution_schedule: "all",
       job: id,
     }),
+    true,
   );
 });

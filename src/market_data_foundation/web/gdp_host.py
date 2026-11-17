@@ -253,7 +253,7 @@ class GdpTimeSeriesHost:
         with self.service() as service:
             return GdpReleaseRecords(service.store).read(**params)
 
-    def strategy(self):
+    def strategy(self, *, include_facts=True):
         from market_data_foundation.web.macro_runtime_facts import collection_facts
 
         self._read_allowed()
@@ -267,12 +267,15 @@ class GdpTimeSeriesHost:
         ]
         return {
             **value,
-            **collection_facts(self),
+            **(collection_facts(self) if include_facts else {}),
             "calendar_status": snapshot["calendar_status"],
             "calendar": snapshot["calendar"],
             "next_release_at": min(future) if future else None,
             "runtime_state": value["worker"]["state"],
         }
+
+    def strategy_policy(self):
+        return self.strategy(include_facts=False)
 
     def update_strategy(self, command):
         self._read_allowed()

@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from threading import Event
 
+import pytest
+
 from market_data_foundation.storage.tdx_p0 import PgStore
 
 
@@ -67,3 +69,36 @@ def test_parallel_summary_requests_share_one_computation():
         store.release.set()
         assert first.result() == second.result()
     assert store.computations == 1
+
+
+def test_a_failed_head_check_never_reuses_previously_verified_summary():
+    store = Store()
+    store.summary()
+
+    def unavailable(*_):
+        raise TimeoutError("isolated_head_read_failure")
+
+    store.execute = unavailable
+    with pytest.raises(TimeoutError):
+        store.summary()
+    assert store.computations == 1
+
+
+def test_scoped_summary_keeps_publication_revision_and_lifecycle_guards():
+    from market_data_foundation.storage.tdx_p0 import summary_statement
+
+    query = summary_statement()
+    assert query.count("m.snapshot_id=%(snapshot)s") == 2
+    assert query.count("p.available_at<=%(cutoff)s") >= 2
+    assert "successor.available_at<=%(cutoff)s" in query
+    assert "cp.available_at<=%(cutoff)s" in query
+    assert "b.old_value_changed_at DESC" in query
+    assert "DISTINCT ON (b.trading_day,b.market,b.instrument)" in query
+    assert "COUNT(DISTINCT" not in query.upper()
+    for bound in ("listing_date", "delist_date"):
+        assert query.count(f"m.evidence->>'{bound}'") == 2
+    # This is the regression: no materialized member CTE / per-bar OR test.
+    assert "members AS MATERIALIZED" not in query
+    assert "IS NULL OR" not in query
+    domain = __import__("pathlib").Path("db/tdx_daily/001_current.sql").read_text()
+    assert "BETWEEN DATE '1990-01-01' AND DATE '2100-12-31'" in domain

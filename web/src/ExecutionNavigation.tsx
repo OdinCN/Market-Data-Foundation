@@ -66,7 +66,7 @@ export function ExecutionNavigation({
         return true;
       }
       if (registration?.profile) {
-        await readCpiStrategy(transport, signal, registration.profile);
+        await readCpiStrategy(transport, signal, registration.profile, true);
         // The periodic workbench also has a real registered preset row before
         // its enable intent is persisted. It remains a readable asset policy.
         return true;
@@ -108,18 +108,22 @@ export function ExecutionNavigation({
               binding,
               open: binding
                 ? () =>
-                    navigate("collection", {
-                      asset: asset.identity,
-                      asset_revision: asset.revision,
-                      operation:
-                        binding.relation === "associated"
-                          ? HISTORY_OPERATION
-                          : null,
-                      tab: "periodic",
-                      periodic_asset: keyOf(asset),
-                      schedule: binding.id,
-                      job,
-                    })
+                    navigate(
+                      "collection",
+                      {
+                        asset: asset.identity,
+                        asset_revision: asset.revision,
+                        operation:
+                          binding.relation === "associated"
+                            ? HISTORY_OPERATION
+                            : null,
+                        tab: "periodic",
+                        periodic_asset: keyOf(asset),
+                        schedule: binding.id,
+                        job,
+                      },
+                      true,
+                    )
                 : undefined,
             }
           : null
@@ -161,13 +165,17 @@ export function PeriodicNavigation({
       {job && (
         <button
           onClick={() =>
-            navigate("collection", {
-              ...fields,
-              tab: "executions",
-              execution_schedule: "all",
-              schedule: null,
-              job,
-            })
+            navigate(
+              "collection",
+              {
+                ...fields,
+                tab: "executions",
+                execution_schedule: "all",
+                schedule: null,
+                job,
+              },
+              true,
+            )
           }
         >
           返回此执行记录
@@ -200,5 +208,24 @@ export function PeriodicNavigation({
         查看资产数据
       </button>
     </div>
+  );
+}
+
+/** The workbench owns heading/navigation order; families supply domain content. */
+export function PeriodicDetailShell({
+  title,
+  navigation,
+  children,
+}: {
+  title: ReactNode;
+  navigation?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section aria-label="周期详情主体">
+      <h3>{title}</h3>
+      {navigation}
+      {children}
+    </section>
   );
 }

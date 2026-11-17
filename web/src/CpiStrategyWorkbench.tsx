@@ -1,4 +1,5 @@
 import { executionOrigin } from "./executionOrigin";
+import { PeriodicDetailShell } from "./ExecutionNavigation";
 import {
   claimsPlanPeriod,
   claimsActualsVerified,
@@ -682,8 +683,18 @@ function CpiStrategyWorkbenchContent({
 }: {
   navigation?: (id: string) => ReactNode;
   transport: Transport;
-  supplement?: { row: Row; detail: ReactNode; refresh: () => void };
-  supplements?: { row: Row; detail: ReactNode; refresh: () => void }[];
+  supplement?: {
+    title?: ReactNode;
+    row: Row;
+    detail: ReactNode;
+    refresh: () => void;
+  };
+  supplements?: {
+    title?: ReactNode;
+    row: Row;
+    detail: ReactNode;
+    refresh: () => void;
+  }[];
   profile?: MacroProfile;
   availability: CpiAvailability;
   generation?: number;
@@ -964,7 +975,7 @@ function CpiStrategyWorkbenchContent({
       return value;
     },
     [transport, generation, profile.id],
-    !!entry.availability.data && detailVisible,
+    !entry.availability.legacy && detailVisible,
   );
   const weekly = profile.id === "claims";
   const quarterly = profile.id === "gdp";
@@ -1045,6 +1056,7 @@ function CpiStrategyWorkbenchContent({
                         e.saving ||
                         e.uncertain ||
                         e.resource.stale ||
+                        e.resource.busy ||
                         (!e.data.enabled &&
                           (!e.availability.data?.web_capabilities.collect ||
                             (e.profile.id === "gdp" &&
@@ -1063,7 +1075,9 @@ function CpiStrategyWorkbenchContent({
                     !e.uncertain && (
                       <button
                         className="auto-recover"
-                        disabled={e.saving || e.resource.stale}
+                        disabled={
+                          e.saving || e.resource.stale || e.resource.busy
+                        }
                         onClick={(event) => {
                           event.stopPropagation();
                           void e.recover();
@@ -1096,7 +1110,9 @@ function CpiStrategyWorkbenchContent({
                     <br />
                     {formatBeijingTime(
                       e.data?.last_successful_collection_at,
-                      "未记录",
+                      e.data?.collection_facts_status === "verified"
+                        ? "未记录"
+                        : "尚未核实",
                     ).replace(" 北京时间", "")}
                   </span>
                   <span>
@@ -1112,10 +1128,12 @@ function CpiStrategyWorkbenchContent({
         ]}
       >
         {shown && extraSelected && (
-          <>
-            {navigation?.(extraEntry.row.id)}
+          <PeriodicDetailShell
+            title={extraEntry.title ?? "周期任务详情"}
+            navigation={navigation?.(extraEntry.row.id)}
+          >
             {extraEntry.detail}
-          </>
+          </PeriodicDetailShell>
         )}
         {shown &&
           selection &&
@@ -1127,9 +1145,7 @@ function CpiStrategyWorkbenchContent({
           <section aria-label="自动采集问题说明">
             <p role="status">
               {profile.label} 策略
-              {resource.failure || entry.availability.failure
-                ? "读取失败，等待重读。"
-                : "正在读取…"}
+              {resource.failure ? "读取失败，等待重读。" : "正在读取…"}
             </p>
             {entry.diagnosis.issues.map((issue, index) => (
               <article className="auto-issue" key={index}>
@@ -1144,9 +1160,10 @@ function CpiStrategyWorkbenchContent({
           </section>
         )}
         {shown && detailVisible && data && (
-          <>
-            <h3>{profile.label} 策略详情</h3>
-            {navigation?.(`${profile.id}-auto`)}
+          <PeriodicDetailShell
+            title={`${profile.label} 策略详情`}
+            navigation={navigation?.(`${profile.id}-auto`)}
+          >
             <p className="auto-summary">
               自动采集{data.enabled ? "已开启" : "已暂停"} ·{" "}
               {entry.diagnosis.state}
@@ -1195,7 +1212,9 @@ function CpiStrategyWorkbenchContent({
               <Fact name="最近成功采集（北京时间）">
                 {formatBeijingTime(
                   data.last_successful_collection_at,
-                  "未记录",
+                  data.collection_facts_status === "verified"
+                    ? "未记录"
+                    : "尚未核实",
                 )}
               </Fact>
               <Fact name="最新数据期">
@@ -1207,6 +1226,11 @@ function CpiStrategyWorkbenchContent({
                 {formatBeijingTime(data.next_release_at, "未记录")}
               </Fact>
             </dl>
+            {data.collection_facts_status === "failed" && (
+              <p role="alert">
+                本资产数据汇总读取失败，统计尚未核实。策略和执行记录仍可分别查看。
+              </p>
+            )}
             <details className="technical">
               <summary>技术详情与日历状态</summary>
               <dl>
@@ -1360,7 +1384,7 @@ function CpiStrategyWorkbenchContent({
               transport={transport}
               profile={profile}
               generation={generation}
-              visible={detailVisible && !!entry.availability.data}
+              visible={detailVisible && !entry.availability.legacy}
             />
             <details>
               <summary>策略上次执行回执与审计</summary>
@@ -1638,7 +1662,7 @@ function CpiStrategyWorkbenchContent({
                 </p>
               )}
             </div>
-          </>
+          </PeriodicDetailShell>
         )}
       </WorkflowTable>
     </div>

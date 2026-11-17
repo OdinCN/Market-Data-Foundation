@@ -136,6 +136,15 @@ function fixture() {
   };
   const transport: Transport = async (input, init) => {
     const url = new URL(String(input), "http://fixture.invalid");
+    // This fixture implements these concrete protocols only; another registered
+    // family must not inherit a synthetic CPI success from the old catch-all.
+    if (
+      url.pathname.includes("/timeseries/") &&
+      ![CPI_PROFILE, PPI_PROFILE].some((p) =>
+        url.pathname.startsWith(p.basePath + "/"),
+      )
+    )
+      return response({ classification: "not_enabled" }, 404);
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({
       path: url.pathname + url.search,
@@ -523,11 +532,13 @@ function Workbench({
   tab = "new",
   assetKey = PPI,
   job,
+  filter,
 }: {
   transport: Transport;
   tab?: string;
   assetKey?: typeof PPI | null;
   job?: string;
+  filter?: string;
 }) {
   const [route, setRoute] = useState<Route>({
     view: "collection",
@@ -538,6 +549,7 @@ function Workbench({
         ? { asset: assetKey.identity, asset_revision: assetKey.revision }
         : {}),
       ...(job ? { job } : {}),
+      ...(filter ? { execution_asset: filter } : {}),
     }),
   });
   const navigate: Navigate = (view, fields = {}, preserve) =>
@@ -761,7 +773,7 @@ it("disambiguates identical execution IDs from CPI and PPI in the unified list",
     }
     return h.transport(input, init);
   };
-  render(<Workbench transport={transport} tab="executions" />);
+  render(<Workbench transport={transport} tab="executions" filter="all" />);
   await flush();
   const list = within(screen.getByRole("region", { name: "执行记录" }));
   expect(list.getAllByRole("row")).toHaveLength(3);
@@ -1155,7 +1167,7 @@ it.each([CPI_PROFILE, PPI_PROFILE])(
 
 for (const tab of ["periodic", "executions"] as const) {
   it.each([404, 503, "transport"])(
-    `preserves legacy CPI ${tab} evidence when PPI status fails with %s`,
+    `preserves legacy CPI ${tab} evidence when PPI read discovery fails with %s`,
     async (ppiFailure) => {
       for (const state of [
         "rows",
@@ -1170,12 +1182,22 @@ for (const tab of ["periodic", "executions"] as const) {
           const path = new URL(String(input), "http://fixture.invalid")
             .pathname;
           calls.push(path);
-          if (path === `${PPI_PROFILE.basePath}/status`) {
+          if (
+            [
+              `${PPI_PROFILE.basePath}/status`,
+              `${PPI_PROFILE.basePath}/executions`,
+            ].includes(path)
+          ) {
             if (typeof ppiFailure !== "number")
               throw new Error("private-status-detail");
             return response({ classification: "not_available" }, ppiFailure);
           }
-          if (path === `${CPI_PROFILE.basePath}/status`)
+          if (
+            [
+              `${CPI_PROFILE.basePath}/status`,
+              `${CPI_PROFILE.basePath}/executions`,
+            ].includes(path)
+          )
             return response({ classification: "not_found" }, 404);
           if (/\/api\/r5\/cpi\/(jobs|plans)$/.test(path)) {
             if (state === "failure") throw new Error("private-record-detail");
@@ -1241,12 +1263,12 @@ for (const tab of ["periodic", "executions"] as const) {
         expect(calls.some((path) => path === "/api/r5/cpi/plans")).toBe(true);
         expect(calls.some((path) => path === "/api/r5/cpi/jobs")).toBe(true);
         expect(
-          calls.some(
+          calls.filter(
             (path) =>
               path.startsWith(PPI_PROFILE.basePath) &&
               !path.endsWith("/status"),
           ),
-        ).toBe(false);
+        ).toEqual([`${PPI_PROFILE.basePath}/executions`]);
         expect(h.calls.every((call) => call.method === "GET")).toBe(true);
         view.unmount();
       }
@@ -1254,14 +1276,19 @@ for (const tab of ["periodic", "executions"] as const) {
   );
 
   it.each([404, 503, "transport"])(
-    `keeps explicit unavailable PPI ${tab} unqueried without CPI fallback (%s)`,
+    `keeps explicit unavailable PPI ${tab} unconfirmed after discovery without CPI fallback (%s)`,
     async (ppiFailure) => {
       const h = fixture();
       const calls: string[] = [];
       const transport: Transport = async (input, init) => {
         const path = new URL(String(input), "http://fixture.invalid").pathname;
         calls.push(path);
-        if (path === `${PPI_PROFILE.basePath}/status`) {
+        if (
+          [
+            `${PPI_PROFILE.basePath}/status`,
+            `${PPI_PROFILE.basePath}/executions`,
+          ].includes(path)
+        ) {
           if (typeof ppiFailure !== "number")
             throw new Error("private-status-detail");
           return response({ classification: "not_available" }, ppiFailure);
@@ -1280,8 +1307,43 @@ for (const tab of ["periodic", "executions"] as const) {
       );
       expect(
         calls.some((path) => path === `${PPI_PROFILE.basePath}/executions`),
-      ).toBe(false);
+      ).toBe(true);
       expect(h.calls.every((call) => call.method === "GET")).toBe(true);
     },
   );
 }
+
+it.each(["periodic", "executions"])(
+  "uses verified PPI metadata on the normal %s entry when only aggregate status fails",
+  async (tab) => {
+    const h = fixture();
+    const calls: string[] = [];
+    const transport: Transport = async (input, init) => {
+      const path = String(input);
+      calls.push(path);
+      if (path === `${PPI_PROFILE.basePath}/status`)
+        return response({ classification: "aggregate_read_failed" }, 503);
+      return h.transport(input, init);
+    };
+    location.hash = `ui=r5&view=collection&tab=${tab}&asset=${PPI.identity}&asset_revision=${PPI.revision}`;
+    render(<App transport={transport} />);
+    if (tab === "periodic") {
+      fireEvent.click(
+        await screen.findByRole("button", { name: /选择 美国 PPI/ }),
+      );
+      await screen.findByRole("heading", { name: "PPI 策略详情" });
+      expect(
+        screen.getByRole("switch", { checked: false }).hasAttribute("disabled"),
+      ).toBe(true);
+      expect(
+        screen.getByText(
+          "本资产数据汇总读取失败，统计尚未核实。策略和执行记录仍可分别查看。",
+        ),
+      ).toBeTruthy();
+    } else await screen.findByText("当前已查询范围没有执行记录。");
+    expect(calls).toContain(`${PPI_PROFILE.basePath}/status`);
+    expect(calls).toContain(`${PPI_PROFILE.basePath}/executions`);
+    expect(calls.some((path) => /\/cpi\//.test(path))).toBe(false);
+    expect(h.calls.every((c) => c.method === "GET")).toBe(true);
+  },
+);

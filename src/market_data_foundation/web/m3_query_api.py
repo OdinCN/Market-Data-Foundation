@@ -244,6 +244,12 @@ def timeseries_router(host):
                 method = getattr(host, operation, None)
                 if method is None:
                     raise WebError("m3_operation_not_enabled", 503)
+                if operation == "strategy":
+                    from market_data_foundation.web.macro_runtime_facts import (
+                        read_strategy,
+                    )
+
+                    return JSONResponse(read_strategy(host, request))
                 return JSONResponse(method())
             except Exception as error:
                 return failure(error)

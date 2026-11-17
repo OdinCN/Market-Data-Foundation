@@ -398,7 +398,7 @@ with TestClient(
                 req.get("method", "GET"),
                 req["path"],
                 json=req.get("body"),
-                headers={"Origin": CANDIDATE_ORIGIN},
+                headers={"Origin": CANDIDATE_ORIGIN, **req.get("headers", {})},
             )
             out = dict(status=response.status_code, body=response.json())
         print(json.dumps(out), flush=True)
