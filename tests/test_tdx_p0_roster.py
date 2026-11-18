@@ -4,6 +4,7 @@ import json
 from datetime import UTC, date, datetime
 from hashlib import sha256
 from io import BytesIO
+from types import SimpleNamespace
 from xml.sax.saxutils import escape
 from zipfile import ZipFile
 
@@ -13,11 +14,13 @@ from market_data_foundation.canonical.model import ContractError
 from market_data_foundation.historical.tdx_p0_jobs import coverage
 from market_data_foundation.historical.tdx_p0_roster import (
     annual_calendar,
+    bse_listing_notice,
     bse_pages,
     build_roster,
     exchange_suspensions,
     lifecycle,
 )
+from market_data_foundation.historical.tdx_roster import facts
 
 
 def test_exchange_halts_apply_explicit_resumption_and_do_not_extend_past_receipt():
@@ -186,6 +189,130 @@ def test_originals_replay_cdr_retired_and_bj_selected_layer_boundary(tmp_path):
     (tmp_path / "sz_current").write_bytes(b"changed")
     with pytest.raises(ContractError, match="tdx_exchange_digest"):
         build_roster(manifest, provider)
+
+
+def test_bse_listing_evidence_keeps_the_retained_census_date(tmp_path, monkeypatch):
+    sh = dict(
+        result=[
+            dict(
+                A_STOCK_CODE="600001",
+                COMPANY_ABBR="SH",
+                LIST_DATE="19980122",
+                DELIST_DATE="-",
+                STOCK_TYPE="1",
+            )
+        ],
+        pageHelp=dict(total=1),
+    )
+    originals = dict(
+        sz_current=sheet(
+            [["A股代码", "A股简称", "A股上市日期"], ["000001", "SZ", "1991-01-01"]]
+        ),
+        sz_terminated=sheet(
+            [
+                ["证券代码", "证券简称", "上市日期", "终止上市日期"],
+                ["000003", "retired", "1991-01-14", "2002-06-14"],
+            ]
+        ),
+        sh_main=json.dumps(sh).encode(),
+        sh_star=json.dumps(
+            dict(
+                result=[dict(sh["result"][0], A_STOCK_CODE="688001", STOCK_TYPE="8")],
+                pageHelp=dict(total=1),
+            )
+        ).encode(),
+        bj_mapping=b"<table></table>",
+        bj_listed_920309=b"listing fixture",
+    )
+
+    def pdf(_):
+        return SimpleNamespace(
+            pages=[
+                SimpleNamespace(
+                    extract_text=lambda: (
+                        "上市公告书（三）上市地点：北京证券交易所"
+                        "（四）上市时间：2026年11月17日"
+                        "（五）证券简称：菊乐股份（六）证券代码：920309"
+                    )
+                )
+            ]
+        )
+
+    monkeypatch.setattr(
+        "market_data_foundation.historical.tdx_p0_roster.PdfReader", pdf
+    )
+    sources = []
+    for kind, raw in originals.items():
+        path = tmp_path / kind
+        path.write_bytes(raw)
+        sources.append(
+            dict(
+                kind=kind,
+                path=str(path),
+                sha256=sha256(raw).hexdigest(),
+                received_at="2026-11-18T10:00:00+00:00",
+                url="https://www.bse.cn/disclosure/2026/notice.pdf",
+            )
+        )
+    through = date(2026, 11, 18)
+    proof = sources[-1]
+    with pytest.raises(ContractError, match="tdx_bj_listing_notice"):
+        bse_listing_notice(originals["bj_listed_920309"], proof, "920067", through)
+    with pytest.raises(ContractError, match="tdx_bj_listing_not_yet_effective"):
+        bse_listing_notice(
+            originals["bj_listed_920309"], proof, "920309", date(2026, 11, 16)
+        )
+    with pytest.raises(ContractError, match="tdx_bj_listing_source"):
+        bse_listing_notice(
+            originals["bj_listed_920309"],
+            dict(proof, url="https://example.org/notice.pdf"),
+            "920309",
+            through,
+        )
+
+    original_bse = dict(
+        market=2,
+        instrument="920002",
+        name="existing",
+        evidence=dict(listing_date="2020-01-01", valid_through="2026-11-13"),
+    )
+    provider = dict(
+        snapshot_id="fixture",
+        historical_members=[original_bse],
+        members=[
+            original_bse,
+            dict(market=2, instrument="920067", name="unverified", evidence={}),
+            dict(market=2, instrument="920309", name="listed", evidence={}),
+        ],
+        details=dict(
+            markets=[
+                dict(
+                    market=2,
+                    state="COMPLETE",
+                    enumeration="EXCHANGE_CURRENT_AND_TERMINATED",
+                    enumeration_from="2026-11-13",
+                    enumeration_through="2026-11-13",
+                )
+            ]
+        ),
+    )
+    snapshot = build_roster(
+        dict(valid_through=through.isoformat(), sources=sources), provider
+    )
+    members = {r["instrument"]: r for r in snapshot["members"] if r["market"] == 2}
+    assert set(members) == {"920002", "920309"}
+    assert members["920002"] == original_bse
+    assert members["920309"]["name"] == "菊乐股份"
+    assert lifecycle(members["920309"], date(2026, 11, 16)) == "NOT_YET_LISTED"
+    assert lifecycle(members["920309"], date(2026, 11, 17)) == "ACTIVE"
+    bse = snapshot["details"]["markets"][2]
+    assert bse["enumeration"] == "EXCHANGE_KNOWN_MEMBERS_PARTIAL"
+    assert bse["enumeration_through"] == "2026-11-13"
+    assert bse["current_count"] is None
+    assert bse["extra_in_provider"] == ["920067"]
+    status = facts(snapshot, through)
+    assert status["state"] == "STALE"
+    assert status["valid_through"] == "2026-11-13"
 
 
 def test_missing_calendar_holiday_is_rejected_and_weekend_never_makeup_trades():

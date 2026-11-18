@@ -8,6 +8,7 @@ from html import unescape
 from html.parser import HTMLParser
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import urlsplit
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 from zoneinfo import ZoneInfo
@@ -258,6 +259,47 @@ def exchange_suspensions(sources, through):
     return result
 
 
+def bse_listing_notice(raw, proof, code, through):
+    """Accept the dated listing section of a filed listing announcement."""
+    url = urlsplit(proof["url"])
+    require(
+        url.scheme == "https"
+        and (
+            (url.netloc == "www.bse.cn" and url.path.startswith("/disclosure/"))
+            or (
+                url.netloc == "static.cninfo.com.cn"
+                and url.path.startswith("/finalpage/")
+            )
+        ),
+        "tdx_bj_listing_source",
+    )
+    require(
+        datetime.fromisoformat(proof["received_at"])
+        .astimezone(ZoneInfo("Asia/Shanghai"))
+        .date()
+        >= through,
+        "tdx_exchange_census_observation_day",
+    )
+    text = re.sub(
+        r"\s+",
+        "",
+        "".join(page.extract_text() or "" for page in PdfReader(BytesIO(raw)).pages),
+    )
+    match = re.search(
+        r"上市地点[:：]北京证券交易所.{0,16}上市时间[:：]"
+        r"(\d{4})年(\d{1,2})月(\d{1,2})日.{0,16}"
+        r"证券简称[:：]([^（）()]+).{0,14}证券代码[:：](\d{6})(?!\d)",
+        text,
+    )
+    require(
+        "上市公告书" in text and match is not None and match[5] == code,
+        "tdx_bj_listing_notice",
+    )
+    listed = date(*map(int, match.group(1, 2, 3)))
+    require(listed <= through, "tdx_bj_listing_not_yet_effective")
+    return listed.isoformat(), match[4]
+
+
 def build_roster(manifest, provider_snapshot):
     """Manifest binds URLs, receipt clocks and digests of retained originals."""
     through = date.fromisoformat(manifest["valid_through"])
@@ -347,6 +389,22 @@ def build_roster(manifest, provider_snapshot):
         if len(r) == 5 and r[4].isdigit()
     }
     bj_current = bse_pages(sources, through)
+    retained_bse = next(
+        (
+            market
+            for market in provider_snapshot.get("details", {}).get("markets", [])
+            if market["market"] == 2
+            and market.get("enumeration")
+            in {
+                "EXCHANGE_CURRENT_AND_TERMINATED",
+                "EXCHANGE_KNOWN_MEMBERS_PARTIAL",
+            }
+        ),
+        None,
+    )
+    if not provider_snapshot.get("historical_members"):
+        retained_bse = None
+    partial_bse = bj_current is None and retained_bse is not None
     if bj_current is not None:
         for row, proof in bj_current:
             code = row["xxzqdm"]
@@ -360,6 +418,10 @@ def build_roster(manifest, provider_snapshot):
                 old_code=mapping.get(code, (None, None))[1],
                 listing_basis="BSE_LISTING_SELECTED_LAYER_FLOORED_TO_BSE_OPEN",
             )
+    elif partial_bse:
+        for member in provider_snapshot["historical_members"]:
+            if member["market"] == 2:
+                members[2, member["instrument"]] = member
     else:
         for m in provider_snapshot["members"]:
             if m["market"] != 2:
@@ -376,6 +438,34 @@ def build_roster(manifest, provider_snapshot):
                 provider_current=True,
             )
     for kind, (raw, proof) in sources.items():
+        if not kind.startswith("bj_listed_"):
+            continue
+        code = kind.rsplit("_", 1)[1]
+        require(
+            bj_current is not None or partial_bse, "tdx_bj_listing_baseline_required"
+        )
+        require(a_share(2, code), "tdx_bj_listing_code")
+        listed, name = bse_listing_notice(raw, proof, code, through)
+        prior = members.get((2, code))
+        if prior is not None:
+            evidence = prior["evidence"]
+            require(
+                evidence.get("listing_date") in (None, listed)
+                and evidence.get("delist_date") is None,
+                "tdx_bj_listing_conflict",
+            )
+            del members[2, code]
+        add(
+            2,
+            code,
+            name,
+            listed,
+            None,
+            proof,
+            old_code=mapping.get(code, (None, None))[1],
+        )
+
+    for kind, (raw, proof) in sources.items():
         if not kind.startswith("bj_terminated_"):
             continue
         code = kind.rsplit("_", 1)[1]
@@ -388,8 +478,14 @@ def build_roster(manifest, provider_snapshot):
             text,
         )
         require(code in text and match is not None, "tdx_bj_termination_notice")
-        require(code in mapping, "tdx_bj_listing_mapping_required")
-        listed, old = mapping[code]
+        prior = members.get((2, code)) if partial_bse else None
+        require(code in mapping or prior is not None, "tdx_bj_listing_mapping_required")
+        retained = prior["evidence"] if prior is not None else {}
+        listed, old = mapping.get(
+            code, (retained.get("listing_date"), retained.get("old_code"))
+        )
+        if prior is not None:
+            del members[2, code]
         add(
             2,
             code,
@@ -398,7 +494,7 @@ def build_roster(manifest, provider_snapshot):
             date(*map(int, match.groups())).isoformat(),
             proof,
             old_code=old,
-            listing_evidence=mapping_proof,
+            listing_evidence=mapping_proof if code in mapping else retained,
         )
     # A current census must not erase separately evidenced retired securities.
     # Their own lifecycle evidence and validity clocks remain unchanged.
@@ -422,6 +518,32 @@ def build_roster(manifest, provider_snapshot):
             )
         }
         observed = {k for k in provider_keys if k[0] == market}
+        if market == 2 and partial_bse:
+            last_complete = retained_bse["enumeration_through"]
+            require(
+                last_complete is not None
+                and date.fromisoformat(last_complete) <= through,
+                "tdx_bj_partial_baseline_day",
+            )
+            # Compare against known members, including those last confirmed in
+            # the retained census. None of them extend the census by themselves.
+            known = {
+                k
+                for k, m in members.items()
+                if k[0] == market
+                and lifecycle(m, through)
+                not in {"NOT_YET_LISTED", "DELISTED_OR_TERMINATED"}
+            }
+            market_details.append(
+                dict(
+                    retained_bse,
+                    enumeration="EXCHANGE_KNOWN_MEMBERS_PARTIAL",
+                    current_count=None,
+                    missing_in_provider=[k[1] for k in sorted(known - observed)],
+                    extra_in_provider=[k[1] for k in sorted(observed - known)],
+                )
+            )
+            continue
         market_details.append(
             dict(
                 market=market,
@@ -446,9 +568,15 @@ def build_roster(manifest, provider_snapshot):
             raw, proof = sources[kind]
             calendar.extend(annual_calendar(raw, market, 2026, proof))
     suspensions = exchange_suspensions(sources, through)
+    completeness = (
+        {"complete_census_through": retained_bse["enumeration_through"]}
+        if partial_bse
+        else {}
+    )
     return dict(
         members=list(members.values()),
         details=dict(
+            **completeness,
             roster_kind="exchange_lifecycle",
             valid_through=through.isoformat(),
             sources=manifest["sources"],

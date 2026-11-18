@@ -77,7 +77,7 @@ def _timestamp(value):
 
 def facts(snapshot, day):
     details = (snapshot or {}).get("details", {})
-    through = details.get("valid_through")
+    through = details.get("complete_census_through", details.get("valid_through"))
     observed = (snapshot or {}).get("observed_at")
     if isinstance(observed, str):
         observed = datetime.fromisoformat(observed)
