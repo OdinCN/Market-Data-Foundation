@@ -5,7 +5,7 @@ import { useState, type ReactNode } from "react";
 import type { Packages, RuntimeRevision } from "./packageApi";
 import type { Navigate, Route } from "./workflowRoute";
 import { Fact, WorkflowTable } from "./WorkflowTable";
-import { assetTitle, sameKey } from "./workflowModel";
+import { assetTitle, sameKey, keyOf } from "./workflowModel";
 const connected = (value?: RuntimeRevision["plan"]) =>
   value?.allowed === true
     ? "已接入"
@@ -30,6 +30,7 @@ export function RuntimeAssets({
   cpi,
   cpiAction,
   financial,
+  family,
   profile = CPI_PROFILE,
 }: {
   data: Packages | null;
@@ -43,6 +44,7 @@ export function RuntimeAssets({
   cpi?: ReactNode;
   cpiAction?: ReactNode;
   financial?: ReactNode;
+  family?: { title: string; content: ReactNode };
   profile?: MacroProfile;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -167,7 +169,7 @@ export function RuntimeAssets({
           )}
           <WorkflowTable
             className={
-              (cpiSelected || financialSelected) && expanded
+              (cpiSelected || financialSelected || !!family) && expanded
                 ? "cpi-asset-expanded"
                 : undefined
             }
@@ -212,6 +214,7 @@ export function RuntimeAssets({
                   operation: null,
                   version: null,
                   tab: null,
+                  job: null,
                   // Legacy navigation seeds a monthly reference/as_of globally;
                   // selecting the daily asset is an ordinary query, not history.
                   ...(identity === FINANCIAL.identity
@@ -226,7 +229,7 @@ export function RuntimeAssets({
               <>
                 <div className="toolbar cpi-asset-title">
                   <h3>{selected.title}</h3>
-                  {(cpiSelected || financialSelected) && (
+                  {(cpiSelected || financialSelected || !!family) && (
                     <>
                       {cpiAction}
                       <button
@@ -238,6 +241,33 @@ export function RuntimeAssets({
                     </>
                   )}
                 </div>
+                {route.fields.get("job") && revision && (
+                  <p
+                    className="execution-result-context"
+                    aria-label="关联执行"
+                    data-execution-id={route.fields.get("job")}
+                    data-execution-asset={keyOf(revision.definition_ref)}
+                  >
+                    关联执行：{route.fields.get("job")}；当前查询资产：
+                    {selected.title}。
+                    <button
+                      onClick={() =>
+                        navigate("collection", {
+                          asset: revision.definition_ref.identity,
+                          asset_revision: revision.definition_ref.revision,
+                          operation: route.fields.get("operation"),
+                          job: route.fields.get("job"),
+                          tab: "executions",
+                          execution_asset: keyOf(revision.definition_ref),
+                          execution_schedule: "all",
+                        })
+                      }
+                    >
+                      返回此执行记录
+                    </button>
+                  </p>
+                )}
+                {family?.content}
                 {cpiSelected && cpi}
                 {financialSelected && (
                   <>
@@ -249,7 +279,8 @@ export function RuntimeAssets({
                     {financial}
                   </>
                 )}
-                {!cpiSelected &&
+                {!family &&
+                  !cpiSelected &&
                   !financialSelected &&
                   selected.revisions.length > 1 && (
                     <label>
@@ -285,7 +316,7 @@ export function RuntimeAssets({
                       </select>
                     </label>
                   )}
-                {!cpiSelected && !financialSelected && revision && (
+                {!family && !cpiSelected && !financialSelected && revision && (
                   <>
                     <dl>
                       <Fact name="能力状态">
@@ -401,7 +432,8 @@ export function RuntimeAssets({
           {cpi}
         </section>
       )}
-      {!cpiSelected &&
+      {!family &&
+        !cpiSelected &&
         !financialSelected &&
         !revision &&
         (!filter ||

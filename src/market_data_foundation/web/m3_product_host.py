@@ -134,7 +134,7 @@ class M3ProductHost(M3QueryHost):
         with self.service() as service:
             return ReleaseRecords(service.store).read(**params)
 
-    def strategy(self):
+    def strategy(self, *, include_facts=True):
         from market_data_foundation.web.macro_runtime_facts import collection_facts
 
         if not self.allow_read:
@@ -142,11 +142,14 @@ class M3ProductHost(M3QueryHost):
         value = self.auto_strategy.get()
         return {
             **value,
-            **collection_facts(self),
+            **(collection_facts(self) if include_facts else {}),
             "calendar_status": self.scheduler.status()["calendar_status"],
             "next_release_at": self.scheduler.status()["next_due"],
             "execution_state": value["worker"]["state"],
         }
+
+    def strategy_policy(self):
+        return self.strategy(include_facts=False)
 
     def update_strategy(self, command):
         if not self.allow_read:

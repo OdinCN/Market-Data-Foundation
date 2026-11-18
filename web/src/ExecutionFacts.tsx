@@ -7,9 +7,11 @@ export function ExecutionFacts({
   id,
   asset,
   source,
+  trigger = "触发来源待核实",
   action,
   start,
   end,
+  scope,
   createdAt,
   startedAt,
   finishedAt,
@@ -19,9 +21,11 @@ export function ExecutionFacts({
   id: string;
   asset: ReactNode;
   source: ReactNode;
+  trigger?: ReactNode;
   action: ReactNode;
   start?: string | null;
   end?: string | null;
+  scope?: ReactNode;
   createdAt?: string | null;
   startedAt?: string | null;
   finishedAt?: string | null;
@@ -33,9 +37,14 @@ export function ExecutionFacts({
       <Fact name="记录编号">{id}</Fact>
       <Fact name="关联资产">{asset}</Fact>
       <Fact name="来源">{source}</Fact>
+      <Fact name="触发方式">{trigger}</Fact>
       <Fact name="采集方式">{action}</Fact>
       <Fact name="范围">
-        {start ?? "未记录"} 至 {end ?? "未记录"}
+        {scope ?? (
+          <>
+            {start ?? "未记录"} 至 {end ?? "未记录"}
+          </>
+        )}
       </Fact>
       <Fact name="创建时间（北京时间）">
         {formatBeijingTime(createdAt, "未记录")}

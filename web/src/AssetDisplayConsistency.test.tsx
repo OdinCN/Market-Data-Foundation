@@ -103,6 +103,8 @@ it("uses the same seven asset names across collection options, strategy rows, ex
             tab,
             asset: GDP_PROFILE.asset.identity,
             asset_revision: GDP_PROFILE.asset.revision,
+            periodic_asset: "all",
+            execution_asset: "all",
           }),
         }}
         navigate={vi.fn()}
@@ -216,6 +218,56 @@ it("uses the same seven asset names across collection options, strategy rows, ex
       revision: "r1",
     }),
   ).not.toContain("美国");
+});
+
+it("a GDP periodic deep link without an all-assets filter reads only its exact asset version", async () => {
+  const model = project(directory, null, null);
+  const calls: string[] = [];
+  render(
+    <CollectionWorkbench
+      assets={model.assets}
+      asset={model.assets[6]}
+      source={undefined}
+      invalidIdentity={false}
+      route={{
+        view: "collection",
+        invalid: false,
+        fields: new URLSearchParams({
+          tab: "periodic",
+          asset: GDP_PROFILE.asset.identity,
+          asset_revision: GDP_PROFILE.asset.revision,
+        }),
+      }}
+      navigate={vi.fn()}
+      transport={(path, init) => {
+        expect(init?.method ?? "GET").toBe("GET");
+        calls.push(String(path));
+        return transport(path, init);
+      }}
+      generation={0}
+      cpiAvailability={availability}
+      ppiAvailability={availability}
+      pceAvailability={availability}
+      employmentAvailability={availability}
+      retailAvailability={availability}
+      consumptionAvailability={availability}
+      gdpAvailability={availability}
+    />,
+  );
+  await act(async () => {});
+  expect(
+    (screen.getByLabelText("周期资产筛选") as HTMLSelectElement).value,
+  ).toBe(keyOf(GDP_PROFILE.asset));
+  const rows = within(screen.getByRole("region", { name: "周期任务" }))
+    .getAllByRole("row")
+    .slice(1);
+  expect(rows.map((row) => row.querySelector("td")!.textContent)).toEqual([
+    macroAssetLabel(GDP_PROFILE),
+  ]);
+  expect(calls.length).toBeGreaterThan(0);
+  expect(calls.every((path) => path.startsWith(GDP_PROFILE.basePath))).toBe(
+    true,
+  );
 });
 
 it.each([

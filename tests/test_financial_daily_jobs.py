@@ -482,3 +482,44 @@ def test_status_distinguishes_init_update_defaults_and_existing_collection_limit
         .date()
         .isoformat()
     )
+
+
+def test_late_treasury_leg_invalidates_legacy_and_versioned_derived_receipts():
+    leg = dict(
+        series_id="DGS10",
+        start=START,
+        end=END,
+        observed_at="2026-11-13T00:30:00+00:00",
+        result={"batch_id": "late"},
+        state="complete",
+    )
+    derived = dict(
+        source="derived",
+        series_id="T10YIE",
+        start=START,
+        end=END,
+        observed_at="2026-11-12T23:30:00+00:00",
+    )
+    inputs = jobs_module.derived_inputs(
+        derived, [dict(leg, end="1999-01-01"), leg, derived]
+    )
+    assert inputs == [leg]
+    assert jobs_module.outdated_derived(derived, inputs)
+    assert jobs_module.outdated_derived(dict(derived, input_batches=["old"]), inputs)
+    assert not jobs_module.outdated_derived(
+        dict(derived, input_batches=["late"]), inputs
+    )
+
+
+def test_status_exposes_actual_collection_permission(tmp_path):
+    for writable in (False, True):
+        app = FastAPI()
+        app.include_router(financial_router(FinancialOptions(tmp_path, True, writable)))
+        with TestClient(app) as client:
+            response = client.get(PREFIX + "/status")
+            assert response.status_code == 200
+            assert response.json()["web_capabilities"] == dict(
+                query=True,
+                collect=writable,
+                reason=None if writable else "financial_collection_not_enabled",
+            )

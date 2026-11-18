@@ -765,6 +765,9 @@ func run() string {
 	return reason
 }
 func main() {
+	if dailyDispatch() {
+		return
+	}
 	if I4Dispatch() {
 		return
 	}

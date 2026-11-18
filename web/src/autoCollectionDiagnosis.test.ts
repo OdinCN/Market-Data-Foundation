@@ -359,3 +359,33 @@ it.each([
     expect(d.issues[0].reason).toContain("停止");
   },
 );
+
+it("keeps Claims rolling budget and the actual material timeout as distinct current causes", () => {
+  const value = entry([
+    {
+      key: "dol-claims-week-2026-11-12",
+      event_id: "dol-claims-2026-11-12",
+      release_at: "2026-11-12T13:30:00Z",
+      target: {
+        state: "awaiting_provider",
+        classification: "claims_material_unconfirmed",
+        budget_blocked_until: "2026-11-13T13:30:00Z",
+        next_attempt_at: "2026-11-13T13:30:00Z",
+        result: {
+          material: { status: "unavailable", classification: "claims_timeout" },
+          readback: { verified: true, actuals_verified: false },
+        },
+      },
+    },
+  ]);
+  const diagnosis = autoCollectionDiagnosis(
+    value,
+    Date.parse("2026-11-13T00:00:00Z"),
+  );
+  const issue = diagnosis.issues.find(
+    (i) => i.code === "claims_rolling_http_budget",
+  );
+  expect(issue?.reason).toContain("官方报告获取超时");
+  expect(issue?.next).toContain("2026-11-13");
+  expect(issue?.kind).toBe("retry");
+});

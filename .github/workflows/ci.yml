@@ -40,7 +40,7 @@ jobs:
 
   frontend:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -73,7 +73,20 @@ jobs:
         run: npm run contract:check
       - name: Run all frontend tests with offline ASGI fixtures
         working-directory: web
+        env:
+          MDF_SUBMIT_EVIDENCE: ${{ runner.temp }}/collection-matrix.json
         run: npm test
       - name: Build frontend
         working-directory: web
         run: npm run build
+      - name: Install Chromium for the collection workflow
+        working-directory: web
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Exercise the built collection workbench for every registered asset
+        run: node web/scripts/check-collection-submit.mjs "$RUNNER_TEMP/collection-matrix.json" "$RUNNER_TEMP/collection-browser"
+      - name: Prepare offline large execution journals (including absent base)
+        run: uv run --locked python tests/prepare_tdx_job_read_fixture.py "$RUNNER_TEMP/tdx-detail-fixture"
+      - name: Exercise bounded large execution reads in the built workbench
+        env:
+          MDF_DETAIL_DIST: ${{ github.workspace }}/web/dist
+        run: node web/scripts/check-tdx-execution-read.mjs "$RUNNER_TEMP/tdx-detail-fixture" "$RUNNER_TEMP/tdx-detail-browser"

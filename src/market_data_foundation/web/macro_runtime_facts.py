@@ -71,3 +71,11 @@ def collection_facts(host):
     except Exception:
         facts["collection_facts_classification"] = "local_data_status_unavailable"
     return facts
+
+
+def read_strategy(host, request):
+    """A policy link must not wait for unrelated database holdings aggregates."""
+    if request.headers.get("prefer") == "return=minimal":
+        method = getattr(host, "strategy_policy", host.strategy)
+        return {**method(), "collection_facts_status": "not_requested"}
+    return host.strategy()

@@ -79,6 +79,17 @@ def test_complete_verified_entity_no_private_headers_or_automatic_redirect(
     assert wire[1][0].closed and wire[2][0].closed
 
 
+def test_treasury_waits_for_xml_within_the_existing_deadline(inline_worker):
+    wire, _ = inline_worker
+    wire[0].append(dict(blocks=[b"<feed/>"]))
+    url = (
+        "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/"
+        "pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value_month=202611"
+    )
+    assert web.fetch_public(url, "treasury", timeout=30).status == 200
+    assert wire[1][0].calls[0][1]["timeout"] == (5, 30)
+
+
 @pytest.mark.parametrize(
     "url,route",
     [
@@ -274,6 +285,34 @@ def test_dol_real_source_shared_429_exactly_once_and_does_not_retry(
     with pytest.raises(ClaimsError):
         fetch(CURRENT_REPORT_URL)
     assert len(starts) == 1
+
+
+def test_dol_current_exact_query_free_route_retains_entity(inline_worker, tmp_path):
+    from market_data_foundation.historical.claims_calendar import CURRENT_REPORT_URL
+    from market_data_foundation.historical.claims_material import material_fetcher
+
+    wire, starts = inline_worker
+    raw = b"%PDF-1.7 synthetic exact entity\r\n"
+    wire[0].append(dict(blocks=[raw], headers={"Content-Type": "application/pdf"}))
+    fetch = material_fetcher(tmp_path / "raw", tmp_path / "control", live_opt_in=True)
+    assert CURRENT_REPORT_URL == "https://www.dol.gov/ui/data.pdf"
+    result = fetch(CURRENT_REPORT_URL)
+    assert bytes(result) == raw and result.http_attempts == 1
+    assert len(starts) == len(wire[1][0].calls) == 1
+    url, options = wire[1][0].calls[0]
+    assert url == CURRENT_REPORT_URL
+    assert options["timeout"] == (5, 20)
+    assert options["verify"] is True and options["allow_redirects"] is False
+    assert next((tmp_path / "raw").glob("*.bin")).read_bytes() == raw
+
+
+@pytest.mark.parametrize("suffix", ["?arbitrary=1", "?os=v1", "?os=v0&x=1", "/other"])
+def test_dol_current_rejects_arbitrary_route_before_network(monkeypatch, suffix):
+    monkeypatch.setattr(
+        web.subprocess, "Popen", lambda *_a, **_k: pytest.fail("no process/network")
+    )
+    with pytest.raises(web.PublicFetchError, match="url_invalid"):
+        web.fetch_public("https://www.dol.gov/ui/data.pdf" + suffix, "dol")
 
 
 def test_normal_api_transport_admission_protocol_stays_one_unchanged_call():
@@ -521,7 +560,7 @@ def test_adapter_unknown_cleanup_keeps_same_shared_ledger(kind, tmp_path, monkey
         ("m3_calendar", "m3_calendar", 20, "text/html", 2_000_000),
         ("m3_pdf", "m3_pdf", 10, "application/pdf", 2_000_000),
         ("dol_html", "dol", 12, "text/html", 8 * 1024 * 1024),
-        ("dol_pdf", "dol", 12, "application/pdf", 8 * 1024 * 1024),
+        ("dol_pdf", "dol", 150, "application/pdf", 8 * 1024 * 1024),
         ("board", "board", 30, "text/html", 2_000_000),
         ("treasury", "treasury", 30, "application/xml", 2_000_000),
         ("archive", "credit_archive", 30, "text/csv", 2_000_000),
@@ -622,3 +661,128 @@ def test_unknown_download_outcome_does_not_trigger_calendar_fallback(
         bea.fetch_official_calendar() if route == "bea" else bls.fetch_bls_page(ICS)
     assert "request_outcome_unknown" in caught.value.classification
     assert not may_fallback(caught.value)
+
+
+@pytest.mark.parametrize("elapsed", [58.572, 70.653])
+def test_claims_pdf_slow_complete_transfer_preserves_full_entity_and_admission(
+    inline_worker, tmp_path, monkeypatch, elapsed
+):
+    from market_data_foundation.historical.claims_calendar import CURRENT_REPORT_URL
+    from market_data_foundation.historical.claims_material import material_fetcher
+
+    wire, starts = inline_worker
+    raw = b"%PDF-1.7 synthetic full original\r\n" * 1000
+    wire[0].append(dict(blocks=[raw[:9000], raw[9000:]]))
+    clock = [1000.0]
+    original = web.read_entity
+
+    def delayed(response, max_bytes):
+        body = original(response, max_bytes)
+        clock[0] += elapsed
+        return body
+
+    monkeypatch.setattr(web.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(web, "read_entity", delayed)
+    control = tmp_path / "control.json"
+    fetch = material_fetcher(tmp_path / "raw", control, live_opt_in=True)
+    result = fetch(CURRENT_REPORT_URL)
+    assert bytes(result) == raw and result.http_attempts == 1
+    assert len(starts) == len(json.loads(control.read_text())["requests"]) == 1
+    assert json.loads(control.read_text())["in_flight_at"] is None
+    assert wire[1][0].calls[0][1]["timeout"] == (5, 20)
+
+
+@pytest.mark.parametrize(
+    "url,route,accept",
+    [
+        (ICS, "bls_web", "text/calendar"),
+        ("https://oui.doleta.gov/unemploy/archive.asp", "dol", "text/html"),
+        ("https://oui.doleta.gov/unemploy/claims_arch.asp", "dol", "text/html"),
+        ("https://www.dol.gov/ui/data.pdf?os=v0", "dol", "application/pdf"),
+        ("https://www.dol.gov/ui/data.pdf", "dol", "text/html"),
+        (
+            "https://www.census.gov/manufacturing/m3/prel/pdf/s-i-o.pdf",
+            "m3_pdf",
+            "application/pdf",
+        ),
+        ("https://www.bea.gov/news/schedule/full", "bea_calendar", "text/html"),
+    ],
+)
+@pytest.mark.parametrize("timeout", [30.01, 120, 150])
+def test_long_timeout_rejected_for_every_other_registered_document(
+    monkeypatch, url, route, accept, timeout
+):
+    monkeypatch.setattr(
+        web.subprocess, "Popen", lambda *_a, **_k: pytest.fail("no process/network")
+    )
+    with pytest.raises(web.PublicFetchError, match="request_limits_invalid"):
+        web.fetch_public(url, route, accept=accept, timeout=timeout)
+
+
+@pytest.mark.parametrize("timeout", [150.01, float("inf"), float("nan"), True])
+def test_claims_pdf_rejects_unbounded_or_excessive_deadline(monkeypatch, timeout):
+    monkeypatch.setattr(
+        web.subprocess, "Popen", lambda *_a, **_k: pytest.fail("no process/network")
+    )
+    with pytest.raises(web.PublicFetchError, match="request_limits_invalid"):
+        web.fetch_public(
+            "https://www.dol.gov/ui/data.pdf",
+            "dol",
+            accept="application/pdf",
+            timeout=timeout,
+        )
+
+
+@pytest.mark.parametrize(
+    "url,route,accept,timeout",
+    [
+        (ICS, "bls_web", "text/calendar", 30),
+        ("https://www.dol.gov/ui/data.pdf", "dol", "application/pdf", 150),
+    ],
+)
+def test_slow_child_cannot_extend_document_absolute_deadline(
+    monkeypatch, url, route, accept, timeout
+):
+    clock, children = [1000.0], []
+
+    class SlowChild:
+        killed = False
+        returncode = None
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout):
+            if self.killed:
+                self.returncode = -9
+                return self.returncode
+            clock[0] += timeout
+            raise subprocess.TimeoutExpired("synthetic slow document", timeout)
+
+        def kill(self):
+            self.killed = True
+
+    def start(*_a, **_k):
+        child = SlowChild()
+        children.append(child)
+        return child
+
+    monkeypatch.setattr(web.subprocess, "Popen", start)
+    monkeypatch.setattr(web.time, "monotonic", lambda: clock[0])
+    with pytest.raises(web.PublicFetchError, match="timeout"):
+        web.fetch_public(url, route, accept=accept, timeout=timeout)
+    assert clock[0] - 1000 == pytest.approx(timeout)
+    assert len(children) == 1 and children[0].killed
+    assert children[0].poll() == -9
+
+
+def test_claims_pdf_long_transfer_keeps_redirect_rejection(inline_worker):
+    from market_data_foundation.historical.claims_contract import ClaimsError
+    from market_data_foundation.historical.claims_material import public_transport
+
+    wire, starts = inline_worker
+    wire[0].append(dict(status=302, headers={"Location": ICS}))
+    with pytest.raises(ClaimsError, match="claims_dol_redirect_rejected"):
+        public_transport(SimpleNamespace(url="https://www.dol.gov/ui/data.pdf"))
+    assert len(starts) == len(wire[1][0].calls) == 1
+    assert wire[1][0].calls[0][1]["allow_redirects"] is False

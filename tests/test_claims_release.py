@@ -3,12 +3,16 @@
 import copy
 import json
 from contextlib import nullcontext
+from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
+from pypdf import PdfReader, PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from market_data_foundation.historical.claims_contract import SERIES_IDS, ClaimsError
 from market_data_foundation.historical.claims_release import (
+    PARSER,
     ClaimsReleaseRecords,
     merge_evidence,
     parse_release,
@@ -87,6 +91,90 @@ def test_text_adapter_and_unknown_layouts_fail_closed():
     broken[0] = broken[0].replace("from 80 to 90", "from 70 to 90")
     with pytest.raises(ClaimsError, match="narrative_revision_mismatch"):
         parse_release_pages(broken, URL)
+
+
+def _pdf_with_detached_zero(sample):
+    """Synthetic coordinates reproduce a zero emitted before its own row."""
+    writer = PdfWriter()
+    font = writer._add_object(
+        DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/Font"),
+                NameObject("/Subtype"): NameObject("/Type1"),
+                NameObject("/BaseFont"): NameObject("/Courier"),
+                NameObject("/Encoding"): NameObject("/WinAnsiEncoding"),
+            }
+        )
+    )
+    for text in sample:
+        page = writer.add_blank_page(width=1000, height=800)
+        page[NameObject("/Resources")] = DictionaryObject(
+            {NameObject("/Font"): DictionaryObject({NameObject("/F1"): font})}
+        )
+        commands = []
+
+        def emit(line, x, y):
+            escaped = line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+            commands.append(f"BT /F1 10 Tf 1 0 0 1 {x} {y} Tm ({escaped}) Tj ET")
+
+        for i, line in enumerate(text.strip().splitlines()):
+            line = line.strip()
+            y = 750 - i * 14
+            if line.startswith("4-Wk Moving Average (SA) 105 105 0"):
+                zero = line.index(" 0 ") + 1
+                emit("0", 30 + zero * 6, y)
+                emit(line[:zero], 30, y)
+                emit(line[zero + 1 :], 30 + (zero + 1) * 6, y)
+                continue
+            emit(line, 30, y)
+        stream = DecodedStreamObject()
+        stream.set_data("\n".join(commands).encode("ascii"))
+        page[NameObject("/Contents")] = writer._add_object(stream)
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
+def test_pdf_layout_preserves_detached_zero_and_extraction_provenance():
+    sample = pages()
+    sample[0] = (
+        sample[0]
+        .replace(
+            "The previous week's average was revised down by 5 from 105 to 100.",
+            "The previous week's average was revised down by 5 from 110 to 105.",
+        )
+        .replace("average was 105.", "average was 105, unchanged.")
+    )
+    sample[2] = sample[2].replace(
+        "4-Wk Moving Average (SA) 105 100 +5", "4-Wk Moving Average (SA) 105 105 0"
+    )
+    raw = _pdf_with_detached_zero(sample)
+    reader = PdfReader(BytesIO(raw), strict=True)
+    with pytest.raises(ClaimsError, match="table_change_mismatch"):
+        parse_release_pages([p.extract_text() for p in reader.pages], URL)
+    result = parse_release(raw, URL)
+    assert result["parser_revision"] == PARSER == "dol-regular-state-claims-v4"
+    assert result["text_extraction"]["engine"] == "pypdf"
+    assert result["text_extraction"]["mode"] == "layout"
+    assert result["text_extraction"]["version"]
+    average = [c for c in result["claims"] if c["series_id"] == "IC4WSA"]
+    assert [c["value"] for c in average] == ["105", "105", "110"]
+    assert "105 105 0" in average[0]["evidence"]["fragment"]
+
+
+def test_layout_still_rejects_real_change_and_narrative_mismatch():
+    for old, new, reason in (
+        ("100 90 +10", "100 90 +11", "table_change_mismatch"),
+        ("105 100 +5", "105 105 +5", "table_change_mismatch"),
+        (
+            "initial claims was 100",
+            "initial claims was 101",
+            "narrative_actual_mismatch",
+        ),
+    ):
+        sample = [page.replace(old, new) for page in pages()]
+        with pytest.raises(ClaimsError, match=reason):
+            parse_release(_pdf_with_detached_zero(sample), URL)
 
 
 def test_conflicting_actual_evidence_does_not_hide_unknown_prior_or_invent_surprise():

@@ -45,7 +45,11 @@ from market_data_foundation.web.macro_query_contract import (
     release_openapi,
 )
 from market_data_foundation.web.package_catalog import PackageError
-from market_data_foundation.web.pce_dev_host import CANDIDATE_ORIGIN, admitted
+from market_data_foundation.web.pce_dev_host import (
+    CANDIDATE_ORIGIN,
+    admitted,
+    macro_write_origin,
+)
 from market_data_foundation.web.ppi_timeseries import execute_profile
 
 PREFIX = "/api/r5/cpi/timeseries"
@@ -59,16 +63,15 @@ PREFIXES = (
 
 def admitted_job(request, *, prefix=None):
     prefixes = PREFIXES if prefix is None else (prefix,)
+    origin = macro_write_origin(request)
     return (
         request.method == "POST"
         and request.url.path in {value + "/jobs" for value in prefixes}
         and not request.url.query
-        and request.headers.getlist("origin") == [CANDIDATE_ORIGIN]
+        and request.headers.getlist("origin") == [origin]
         and request.headers.getlist("content-type") == ["application/json"]
         and "transfer-encoding" not in request.headers
-        and admitted(
-            Request(dict(request.scope, method="GET")), origin=CANDIDATE_ORIGIN
-        )
+        and admitted(Request(dict(request.scope, method="GET")), origin=origin)
     )
 
 
@@ -498,16 +501,19 @@ class TimeSeriesHost:
         }
         return result
 
-    def strategy(self):
+    def strategy(self, *, include_facts=True):
         from market_data_foundation.web.macro_runtime_facts import collection_facts
 
         value = self.auto_strategy.get()
         return strategy_projection(
-            {**value, **collection_facts(self)},
+            {**value, **(collection_facts(self) if include_facts else {})},
             self.scheduler.status(),
             self.clock(),
             profile=self.profile,
         )
+
+    def strategy_policy(self):
+        return self.strategy(include_facts=False)
 
     def update_strategy(self, command):
         require_parameters(command, {"enabled", "history_start"})
@@ -777,6 +783,10 @@ def timeseries_router(host, *, profile=CPI_PROFILE):
             raise WebError("duplicate_parameter")
         if operation not in {"query", "releases"} and pairs:
             raise WebError("unsupported_parameters")
+        if operation == "strategy":
+            from market_data_foundation.web.macro_runtime_facts import read_strategy
+
+            return read_strategy(host, request)
         if operation == "jobs":
             return {"jobs": host.journal.list()}
         return (

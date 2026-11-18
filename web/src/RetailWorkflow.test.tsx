@@ -525,7 +525,9 @@ it("retains a lost submission across remount and explicitly resumes the same dur
   );
   const resume = await form.findByRole("button", { name: /按原请求恢复采集/ });
   expect((resume as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(form.getByRole("checkbox"));
+  fireEvent.click(
+    form.getByRole("checkbox", { name: "我确认按原请求恢复采集" }),
+  );
   fireEvent.click(resume);
   await flush();
   const posts = h.calls.filter((c) => c.method === "POST");
@@ -625,14 +627,28 @@ it("uses the real shared App retail periodic row with start/pause and truthful d
   expect(h.calls.some((c) => /\/cpi\/timeseries/.test(c.path))).toBe(false);
 });
 
-it.each(["loading", "failed"])(
-  "keeps retail periodic identity when availability is %s",
-  async (state) => {
+it.each(
+  ["loading", "failed"].flatMap((status) =>
+    ["verified", "pending", "failed"].map((policy) => ({ status, policy })),
+  ),
+)(
+  "keeps retail status=$status independent of real policy=$policy",
+  async ({ status, policy }) => {
     const h = fixture();
+    const policyApi = asgi("retail", "collection_submit_fixture.py");
+    const calls: string[] = [];
     const transport: Transport = async (input, init) => {
-      if (String(input) === `${profile.basePath}/status`) {
-        if (state === "loading") return new Promise<Response>(() => {});
-        return response({ classification: "retail_not_bound" }, 503);
+      const path = String(input);
+      calls.push(path);
+      if (path === `${profile.basePath}/status`)
+        return status === "loading"
+          ? new Promise<Response>(() => {})
+          : response({ classification: "retail_not_bound" }, 503);
+      if (path === `${profile.basePath}/strategy`) {
+        if (policy === "pending") return new Promise<Response>(() => {});
+        if (policy === "failed")
+          return response({ classification: "strategy_unavailable" }, 503);
+        return policyApi.transport(input, init);
       }
       return h.transport(input, init);
     };
@@ -647,15 +663,37 @@ it.each(["loading", "failed"])(
         .hasAttribute("disabled"),
     ).toBe(true);
     fireEvent.click(row);
-    expect(
+    if (policy === "verified") {
+      await screen.findByRole("heading", { name: "零售销售 策略详情" });
+      expect(
+        policyApi.requests.some(
+          (c) =>
+            c.path === `${profile.basePath}/strategy` && c.method === "GET",
+        ),
+      ).toBe(true);
+      expect(policyApi.effects.source).toBe(0);
+      if (status === "failed")
+        expect(
+          screen.getByText(
+            "本资产数据汇总读取失败，统计尚未核实。策略和执行记录仍可分别查看。",
+          ),
+        ).toBeTruthy();
+      else expect(screen.getAllByText("尚未核实").length).toBeGreaterThan(0);
+    } else {
       await screen.findByText(
-        state === "loading"
+        policy === "pending"
           ? "零售销售 策略正在读取…"
           : "零售销售 策略读取失败，等待重读。",
-      ),
-    ).toBeTruthy();
+      );
+      expect(
+        screen.queryByRole("heading", { name: "零售销售 策略详情" }),
+      ).toBeNull();
+    }
+    expect(calls).toContain(`${profile.basePath}/executions`);
+    expect(calls).toContain(`${profile.basePath}/strategy`);
+    expect(calls.some((path) => /\/cpi\/timeseries/.test(path))).toBe(false);
     expect(h.calls.every((c) => c.method === "GET")).toBe(true);
-    expect(h.calls.some((c) => /\/cpi\/timeseries/.test(c.path))).toBe(false);
+    expect(policyApi.requests.every((c) => c.method === "GET")).toBe(true);
   },
 );
 

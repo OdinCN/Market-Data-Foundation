@@ -28,6 +28,18 @@ HEADERS = {
     ),
     "Accept-Language": "en-US,en;q=0.9",
 }
+DOL_CLAIMS_PDF_TIMEOUT = 150
+DOL_CLAIMS_PDF_READ_IDLE = 20
+
+
+def _claims_pdf(url, route, accept):
+    return (
+        route == "dol"
+        and url == "https://www.dol.gov/ui/data.pdf"
+        and accept == "application/pdf"
+    )
+
+
 # Exact current document bindings, not an arbitrary URL/command execution port.
 PATHS = {
     "bls_web": (
@@ -123,7 +135,7 @@ def validate(url, route):
             if not (
                 u.hostname == "www.dol.gov"
                 and u.path == "/ui/data.pdf"
-                and query == [("os", "v0")]
+                and query in ([], [("os", "v0")])
                 or u.hostname == "oui.doleta.gov"
                 and u.path.startswith("/unemploy/")
                 and not query
@@ -170,12 +182,18 @@ def _write(path, value):
 
 def _exchange(url, route, directory, max_bytes, timeout, accept):
     validate(url, route)
+    if _claims_pdf(url, route, accept):
+        read_idle = DOL_CLAIMS_PDF_READ_IDLE
+    elif route == "treasury":
+        read_idle = timeout
+    else:
+        read_idle = 5
     with requests.Session() as session:
         session.trust_env = False
         with session.get(
             url,
             headers={**HEADERS, "Accept": accept},
-            timeout=(min(5, timeout), min(5, timeout)),
+            timeout=(min(5, timeout), min(read_idle, timeout)),
             stream=True,
             verify=True,
             allow_redirects=False,
@@ -234,13 +252,15 @@ def fetch_public(
 
     on_headers lets an existing ticket persist status/429 before body reads finish.
     Overall wall bound includes DNS/TLS/headers/body, plus <=1s killed-child cleanup.
+    Only the registered current Claims PDF has the longer document deadline.
     """
     validate(url, route)
+    max_timeout = DOL_CLAIMS_PDF_TIMEOUT if _claims_pdf(url, route, accept) else 30
     if (
         type(max_bytes) is not int
         or not 1 <= max_bytes <= 8 * 1024 * 1024
         or type(timeout) not in {float, int}
-        or not 0 < timeout <= 30
+        or not 0 < timeout <= max_timeout
         or accept
         not in {
             "text/html",

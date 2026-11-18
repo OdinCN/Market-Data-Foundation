@@ -1775,6 +1775,8 @@ export interface components {
       enabled_capability_ids: string[];
       /** Required Sources */
       required_sources: string[];
+      /** Configuration Readonly Capability Ids */
+      configuration_readonly_capability_ids?: string[];
       /** Source Access */
       source_access?: components["schemas"]["SourceAccess"][];
       /** Credential States */

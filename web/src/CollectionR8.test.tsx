@@ -1,3 +1,4 @@
+import { openSubmittedBrief } from "./openSubmittedBrief.testHelper";
 import "./offlineTestSetup";
 import { afterEach, expect, it } from "vitest";
 import {
@@ -128,7 +129,7 @@ it.each([false, true])(
       MANUAL_OPERATION,
     );
     fireEvent.click(button("创建采集任务"));
-    await screen.findByRole("heading", { name: "执行详情" });
+    await openSubmittedBrief();
     const detail = screen.getByRole("complementary", { name: "执行记录详情" });
     expect(within(detail).getByText(`${child} / 尚未执行`)).toBeTruthy();
     expect(
@@ -284,7 +285,9 @@ it.each([CPI, PCE])(
 );
 
 it("creation target never filters records; details, independent filters, remount and history keep visible scope", async () => {
-  const h = host();
+  // These are legacy parent/backfill records. Advertise the corresponding
+  // legacy service rather than requiring a modern host to probe the old API.
+  const h = host("ready", "legacy");
   let view = open(h.transport);
   await screen.findByLabelText("采集目标");
   for (const target of [keyOf(CPI), keyOf(PCE), ""]) {
@@ -372,7 +375,7 @@ it("CPI failed INIT → only successor POST → separate worker → original 06 
   await waitFor(() => expect(button("创建采集任务").disabled).toBe(false));
   fireEvent.doubleClick(button("创建采集任务"));
   fireEvent.click(button("创建采集任务"));
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   const writes = h.cpi.requests.filter((r) => r.method === "POST");
   expect(writes).toHaveLength(1);
   expect(writes[0].path).toBe("/api/r5/cpi/jobs/backfill");
@@ -449,17 +452,30 @@ it.each(["lost", "late"])(
       return response;
     };
     let view = open(transport, {
+      tab: "executions",
       asset: CPI.identity,
       asset_revision: CPI.revision,
       operation: MANUAL_OPERATION,
       job: parent,
-      mode: "backfill",
     });
-    await waitFor(() =>
-      expect(
-        (screen.getByLabelText("开始参考月") as HTMLInputElement).value,
-      ).toBe("2026-09"),
+    // Start from the loaded failed job so its source cannot change underneath confirmation.
+    fireEvent.click(
+      await screen.findByRole("button", { name: "指定范围回补 →" }),
     );
+    await waitFor(() => {
+      const parentField = screen.getByLabelText(
+        "关联失败 / 异常执行",
+      ) as HTMLSelectElement;
+      expect(parentField.value).toBe(parent);
+      for (const label of ["开始参考月", "结束参考月"])
+        expect((screen.getByLabelText(label) as HTMLInputElement).value).toBe(
+          "2026-09",
+        );
+      expect(
+        parentField.closest("form")?.querySelector("p.availability"),
+      ).toBeNull();
+    });
+    await act(async () => {});
     fireEvent.click(screen.getByRole("checkbox"));
     await waitFor(() => expect(button("创建采集任务").disabled).toBe(false));
     fireEvent.click(button("创建采集任务"));

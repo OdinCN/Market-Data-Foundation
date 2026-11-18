@@ -9,7 +9,7 @@ from market_data_foundation.historical.claims_contract import ClaimsError, insta
 
 PRIMARY_URL = "https://oui.doleta.gov/unemploy/archive.asp"
 BACKUP_URL = "https://oui.doleta.gov/unemploy/claims_arch.asp"
-CURRENT_REPORT_URL = "https://www.dol.gov/ui/data.pdf?os=v0"
+CURRENT_REPORT_URL = "https://www.dol.gov/ui/data.pdf"
 NEW_YORK = ZoneInfo("America/New_York")
 RULE = (
     "Publication Schedule: The UI Weekly Claims News Release is published each week "

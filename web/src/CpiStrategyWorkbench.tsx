@@ -1,9 +1,11 @@
+import { executionOrigin } from "./executionOrigin";
+import { PeriodicDetailShell } from "./ExecutionNavigation";
 import {
   claimsPlanPeriod,
   claimsActualsVerified,
   claimsLatestDataText,
 } from "./claimsPeriod";
-import { ExecutionFacts } from "./ExecutionFacts";
+import { ExecutionDetailShell } from "./CollectionLifecycle";
 import { planTargetKey, type PlanIssue } from "./autoCollectionDiagnosis";
 import { ClaimsCollectionDetails } from "./ClaimsCollectionDetails";
 import { CodeBlock } from "./CpiQueryDetails";
@@ -145,6 +147,11 @@ export const cpiActionText = (value: string) =>
     signal: "修订信号核实",
   })[value.startsWith("signal:") ? "signal" : value] ?? "尚未核实";
 type Stage = {
+  waiting_for?: string;
+  effective_next_attempt_at?: string | null;
+  budget_blocked_until?: string | null;
+  attempts?: number;
+  max_attempts?: number;
   state?: string;
   update_start?: string;
   update_end?: string;
@@ -286,7 +293,9 @@ function RecentExecution({
   );
   const execution = latestRealExecution(records.data?.executions ?? []);
   const automatic = latestRealExecution(
-    (records.data?.executions ?? []).filter((e) => e.origin !== "manual"),
+    (records.data?.executions ?? []).filter((e) =>
+      ["automatic", "schedule"].includes(e.origin ?? ""),
+    ),
   );
   const href = execution
     ? `#${new URLSearchParams({
@@ -320,7 +329,7 @@ function RecentExecution({
         <>
           <p>
             本资产最近执行来源：
-            {execution.origin === "manual" ? "手动采集" : "自动策略"}。
+            {executionOrigin(execution.origin)}。
           </p>
           {execution.state === "running" && (
             <p>任务执行中，尚未确认完成；受理回执不代表采集成功。</p>
@@ -331,9 +340,9 @@ function RecentExecution({
           <dl>
             <Fact name="采集方式">
               {cpiActionText(
-                execution.origin === "manual"
-                  ? execution.action
-                  : (execution.stage ?? execution.action),
+                ["automatic", "schedule"].includes(execution.origin ?? "")
+                  ? (execution.stage ?? execution.action)
+                  : execution.action,
               )}
             </Fact>
             <Fact name="范围">
@@ -370,10 +379,95 @@ function RecentExecution({
 export function CpiExecutionDetail({
   execution: e,
   profile = CPI_PROFILE,
+  onResult,
+  onRefresh,
+  onPeriodic,
+  onResume,
+  actionsDisabled,
+  transport,
+  canCollect = false,
 }: {
   execution: CpiExecution;
+  transport?: Transport;
+  canCollect?: boolean;
   profile?: MacroProfile;
+  onResult?: () => void;
+  onRefresh?: () => void;
+  onPeriodic?: () => void;
+  onResume?: () => void;
+  actionsDisabled?: boolean;
 }) {
+  const [recovering, setRecovering] = useState(false);
+  const [awaitingRead, setAwaitingRead] = useState(false);
+  const [recoveryNotice, setRecoveryNotice] = useState("");
+  const resuming = useRef(false);
+  const selectedIdentity = `${keyOf(profile.asset)}:${e.id}`;
+  const selected = useRef(selectedIdentity);
+  selected.current = selectedIdentity;
+  useEffect(() => {
+    selected.current = selectedIdentity;
+    resuming.current = false;
+    setRecovering(false);
+    setAwaitingRead(false);
+    setRecoveryNotice("");
+    return () => {
+      selected.current = "";
+    };
+  }, [selectedIdentity]);
+
+  useEffect(() => {
+    setAwaitingRead(false);
+  }, [e.state, e.started_at, e.finished_at]);
+  const supportedRecovery =
+    !!profile.resumePath &&
+    e.origin === "manual" &&
+    ["failed", "unknown", ...(profile.id === "m3" ? ["waiting"] : [])].includes(
+      e.state,
+    );
+  async function recover() {
+    if (
+      !transport ||
+      !canCollect ||
+      resuming.current ||
+      awaitingRead ||
+      actionsDisabled ||
+      !supportedRecovery
+    )
+      return;
+    const owner = selectedIdentity;
+    resuming.current = true;
+    setRecovering(true);
+    setAwaitingRead(true);
+    setRecoveryNotice("");
+    try {
+      const receipt = await cpiRequest<{ request_id: string }>(
+        transport,
+        "/jobs/resume",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            request_id: e.id,
+            action: e.action,
+            start: e.start,
+            end: e.end,
+          }),
+        },
+        20000,
+        profile,
+      );
+      if (receipt.request_id !== e.id) throw Error("receipt_identity_mismatch");
+    } catch {
+      if (selected.current === owner)
+        setRecoveryNotice("恢复回执尚未核实，正在自动跟踪原任务；不自动重发。");
+    } finally {
+      if (selected.current === owner) {
+        resuming.current = false;
+        setRecovering(false);
+        onRefresh?.();
+      }
+    }
+  }
   const result =
     e.result?.result && typeof e.result.result === "object"
       ? (e.result.result as Record<string, unknown>)
@@ -383,111 +477,13 @@ export function CpiExecutionDetail({
     | undefined;
   return (
     <>
-      <h3>执行详情</h3>
-      {profile.id === "m3" &&
-        result?.reports &&
-        typeof result.reports === "object" && (
-          <section aria-label="分报告采集结果">
-            <h4>两阶段采集结果</h4>
-            {Object.entries(
-              result.reports as Record<
-                string,
-                {
-                  coverage?: { available: number; expected: number };
-                  remaining_requests?: number;
-                  source_failure?: unknown;
-                  storage_failure?: unknown;
-                }
-              >,
-            ).map(([d, r]) => (
-              <p key={d}>
-                {d === "m3" ? "制造业完整报告" : "耐用品先行报告（Advance）"}：
-                {r.coverage
-                  ? `${r.coverage.available} / ${r.coverage.expected} 有值`
-                  : "执行中"}
-                ，待请求 {r.remaining_requests ?? "未记录"}；
-                {r.storage_failure
-                  ? "存储结果未知"
-                  : r.source_failure
-                    ? "来源请求失败/等待"
-                    : "已返回结果"}
-              </p>
-            ))}
-          </section>
-        )}
-
-      {profile.id === "m3" && result && (
-        <dl>
-          <Fact name="已确认来源分片">
-            {String(result.completed_requests ?? "未记录")}
-          </Fact>
-          <Fact name="待请求分片">
-            {String(result.remaining_requests ?? "未记录")}
-          </Fact>
-          {!!result.source_failure &&
-            typeof result.source_failure === "object" &&
-            !!(result.source_failure as Record<string, unknown>).retry_at && (
-              <Fact name="来源准入重试时间（北京时间）">
-                {formatBeijingTime(
-                  String(
-                    (result.source_failure as Record<string, unknown>).retry_at,
-                  ),
-                )}
-              </Fact>
-            )}
-          <Fact name="已确认请求点数">
-            {String(result.requested_points ?? "未记录")}
-          </Fact>
-          {Array.isArray(result.pending) && (
-            <Fact name="尚未确认请求的指标月">
-              {String(result.pending.length)}
-            </Fact>
-          )}
-          {!!result.source_failure && (
-            <Fact name="来源状态">
-              {typeof result.source_failure === "object"
-                ? String(
-                    (result.source_failure as Record<string, unknown>)
-                      .classification ?? "来源请求失败",
-                  )
-                : "来源请求失败"}
-            </Fact>
-          )}
-        </dl>
-      )}
-      {material && (
-        <section aria-label="发布材料执行结果">
-          <h4>发布材料</h4>
-          <p>
-            {material.state === "retained"
-              ? "材料已留存；支持范围见事件详情"
-              : "材料尚未完整确认；连续数值结果另列"}
-          </p>
-          {releaseReasonTexts(material.reasons).map((reason) => (
-            <p key={reason}>{reason}</p>
-          ))}
-          {releaseEvidenceLinks(material).map(
-            ({ eventId, evidenceId, report }) => (
-              <p key={`${eventId}:${evidenceId ?? "event"}`}>
-                <a href={releaseLink(profile, eventId, evidenceId)}>
-                  {profile.id === "m3" && report === "advm3"
-                    ? "打开耐用品先行报告事件"
-                    : profile.id === "m3" && report === "m3"
-                      ? "打开制造业完整报告事件"
-                      : "打开发布事件"}
-                  {evidenceId ? "与证据" : ""}
-                </a>
-              </p>
-            ),
-          )}
-        </section>
-      )}
-      <ExecutionFacts
+      <ExecutionDetailShell
         id={e.id}
         asset={macroAssetLabel(profile)}
-        source={e.origin !== "manual" ? "自动策略" : "手动采集"}
+        source={profile.provider}
+        trigger={executionOrigin(e.origin)}
         action={cpiActionText(
-          e.origin !== "manual"
+          ["automatic", "schedule"].includes(e.origin ?? "")
             ? e.action === "withdraw"
               ? "withdraw"
               : (e.stage ?? e.action)
@@ -500,25 +496,138 @@ export function CpiExecutionDetail({
         finishedAt={e.finished_at}
         result={cpiExecutionStateText(e.state, e.result, profile, e)}
         classification={e.classification}
-      />
-      {profile.id === "m3" && (
-        <p className="small">
-          以下新增和请求数仅属于本次执行；恢复时已确认的分片不会重复请求，范围覆盖包括之前确认的分片。
-        </p>
-      )}
-      <ResultFacts result={e.result} profile={profile} />
-      {profile.id === "claims" ? (
-        <ClaimsCollectionDetails result={e.result} />
-      ) : profile.id === "gdp" ? (
-        <GdpCollectionDetails result={e.result} />
-      ) : (
-        <MacroSourceCoverage
-          key={e.id}
-          result={e.result}
-          start={e.start}
-          end={e.end}
-        />
-      )}
+        assetKey={keyOf(profile.asset)}
+        onResult={onResult}
+        onPeriodic={onPeriodic}
+        onResume={
+          onResume ?? (supportedRecovery ? () => void recover() : undefined)
+        }
+        confirmResume
+        actionsDisabled={
+          actionsDisabled || recovering || awaitingRead || !canCollect
+        }
+      >
+        {profile.id === "m3" &&
+          !!result?.reports &&
+          typeof result.reports === "object" && (
+            <section aria-label="分报告采集结果">
+              <h4>两阶段采集结果</h4>
+              {Object.entries(
+                result.reports as Record<
+                  string,
+                  {
+                    coverage?: { available: number; expected: number };
+                    remaining_requests?: number;
+                    source_failure?: unknown;
+                    storage_failure?: unknown;
+                  }
+                >,
+              ).map(([d, r]) => (
+                <p key={d}>
+                  {d === "m3" ? "制造业完整报告" : "耐用品先行报告（Advance）"}
+                  ：
+                  {r.coverage
+                    ? `${r.coverage.available} / ${r.coverage.expected} 有值`
+                    : "执行中"}
+                  ，待请求 {r.remaining_requests ?? "未记录"}；
+                  {r.storage_failure
+                    ? "存储结果未知"
+                    : r.source_failure
+                      ? "来源请求失败/等待"
+                      : "已返回结果"}
+                </p>
+              ))}
+            </section>
+          )}
+
+        {profile.id === "m3" && result && (
+          <dl>
+            <Fact name="已确认来源分片">
+              {String(result.completed_requests ?? "未记录")}
+            </Fact>
+            <Fact name="待请求分片">
+              {String(result.remaining_requests ?? "未记录")}
+            </Fact>
+            {!!result.source_failure &&
+              typeof result.source_failure === "object" &&
+              !!(result.source_failure as Record<string, unknown>).retry_at && (
+                <Fact name="来源准入重试时间（北京时间）">
+                  {formatBeijingTime(
+                    String(
+                      (result.source_failure as Record<string, unknown>)
+                        .retry_at,
+                    ),
+                  )}
+                </Fact>
+              )}
+            <Fact name="已确认请求点数">
+              {String(result.requested_points ?? "未记录")}
+            </Fact>
+            {Array.isArray(result.pending) && (
+              <Fact name="尚未确认请求的指标月">
+                {String(result.pending.length)}
+              </Fact>
+            )}
+            {!!result.source_failure && (
+              <Fact name="来源状态">
+                {typeof result.source_failure === "object"
+                  ? String(
+                      (result.source_failure as Record<string, unknown>)
+                        .classification ?? "来源请求失败",
+                    )
+                  : "来源请求失败"}
+              </Fact>
+            )}
+          </dl>
+        )}
+        {material && (
+          <section aria-label="发布材料执行结果">
+            <h4>发布材料</h4>
+            <p>
+              {material.state === "retained"
+                ? "材料已留存；支持范围见事件详情"
+                : "材料尚未完整确认；连续数值结果另列"}
+            </p>
+            {releaseReasonTexts(material.reasons).map((reason) => (
+              <p key={reason}>{reason}</p>
+            ))}
+            {releaseEvidenceLinks(material).map(
+              ({ eventId, evidenceId, report }) => (
+                <p key={`${eventId}:${evidenceId ?? "event"}`}>
+                  <a href={releaseLink(profile, eventId, evidenceId)}>
+                    {profile.id === "m3" && report === "advm3"
+                      ? "打开耐用品先行报告事件"
+                      : profile.id === "m3" && report === "m3"
+                        ? "打开制造业完整报告事件"
+                        : "打开发布事件"}
+                    {evidenceId ? "与证据" : ""}
+                  </a>
+                </p>
+              ),
+            )}
+          </section>
+        )}
+
+        {profile.id === "m3" && (
+          <p className="small">
+            以下新增和请求数仅属于本次执行；恢复时已确认的分片不会重复请求，范围覆盖包括之前确认的分片。
+          </p>
+        )}
+        <ResultFacts result={e.result} profile={profile} />
+        {profile.id === "claims" ? (
+          <ClaimsCollectionDetails result={e.result} />
+        ) : profile.id === "gdp" ? (
+          <GdpCollectionDetails result={e.result} />
+        ) : (
+          <MacroSourceCoverage
+            key={e.id}
+            result={e.result}
+            start={e.start}
+            end={e.end}
+          />
+        )}
+        {recoveryNotice && <p role="alert">{recoveryNotice}</p>}
+      </ExecutionDetailShell>
     </>
   );
 }
@@ -533,6 +642,7 @@ export function CpiStrategyWorkbench(
   );
 }
 function CpiStrategyWorkbenchContent({
+  navigation,
   transport,
   profile: primaryProfile = CPI_PROFILE,
   availability: primaryAvailability,
@@ -567,11 +677,24 @@ function CpiStrategyWorkbenchContent({
   seventhVisible = true,
   selectedId,
   supplement,
+  supplements = [],
   selected: selectedProp,
   onSelect,
 }: {
+  navigation?: (id: string) => ReactNode;
   transport: Transport;
-  supplement?: { row: Row; detail: ReactNode; refresh: () => void };
+  supplement?: {
+    title?: ReactNode;
+    row: Row;
+    detail: ReactNode;
+    refresh: () => void;
+  };
+  supplements?: {
+    title?: ReactNode;
+    row: Row;
+    detail: ReactNode;
+    refresh: () => void;
+  }[];
   profile?: MacroProfile;
   availability: CpiAvailability;
   generation?: number;
@@ -815,8 +938,13 @@ function CpiStrategyWorkbenchContent({
   const entry =
     entries.find((e) => `${e.profile.id}-auto` === selection) ?? entries[0];
   const { profile, data, resource, uncertain } = entry;
-  const extraSelected = !!supplement && selection === supplement.row.id;
-  const detailVisible = entry.visible && !extraSelected;
+  const extraEntries = [...(supplement ? [supplement] : []), ...supplements];
+  const extraEntry = extraEntries.find((entry) => selection === entry.row.id);
+  const extraSelected = !!extraEntry;
+  const detailVisible =
+    entry.visible &&
+    !extraSelected &&
+    (!selection || selection === `${entry.profile.id}-auto`);
   const calendar = useVisiblePolling(
     async (signal) => {
       const value = await cpiRequest<Schedule>(
@@ -847,7 +975,7 @@ function CpiStrategyWorkbenchContent({
       return value;
     },
     [transport, generation, profile.id],
-    !!entry.availability.data && detailVisible,
+    !entry.availability.legacy && detailVisible,
   );
   const weekly = profile.id === "claims";
   const quarterly = profile.id === "gdp";
@@ -889,7 +1017,7 @@ function CpiStrategyWorkbenchContent({
             onClick={() => {
               entries.forEach((e) => e.resource.refresh());
               calendar.refresh();
-              supplement?.refresh();
+              extraEntries.forEach((entry) => entry.refresh());
             }}
           >
             刷新页面
@@ -928,6 +1056,7 @@ function CpiStrategyWorkbenchContent({
                         e.saving ||
                         e.uncertain ||
                         e.resource.stale ||
+                        e.resource.busy ||
                         (!e.data.enabled &&
                           (!e.availability.data?.web_capabilities.collect ||
                             (e.profile.id === "gdp" &&
@@ -946,7 +1075,9 @@ function CpiStrategyWorkbenchContent({
                     !e.uncertain && (
                       <button
                         className="auto-recover"
-                        disabled={e.saving || e.resource.stale}
+                        disabled={
+                          e.saving || e.resource.stale || e.resource.busy
+                        }
                         onClick={(event) => {
                           event.stopPropagation();
                           void e.recover();
@@ -979,7 +1110,9 @@ function CpiStrategyWorkbenchContent({
                     <br />
                     {formatBeijingTime(
                       e.data?.last_successful_collection_at,
-                      "未记录",
+                      e.data?.collection_facts_status === "verified"
+                        ? "未记录"
+                        : "尚未核实",
                     ).replace(" 北京时间", "")}
                   </span>
                   <span>
@@ -991,17 +1124,28 @@ function CpiStrategyWorkbenchContent({
                 </span>,
               ],
             })),
-          ...(supplement ? [supplement.row] : []),
+          ...extraEntries.map((entry) => entry.row),
         ]}
       >
-        {shown && extraSelected && supplement?.detail}
+        {shown && extraSelected && (
+          <PeriodicDetailShell
+            title={extraEntry.title ?? "周期任务详情"}
+            navigation={navigation?.(extraEntry.row.id)}
+          >
+            {extraEntry.detail}
+          </PeriodicDetailShell>
+        )}
+        {shown &&
+          selection &&
+          !extraSelected &&
+          selection !== `${entry.profile.id}-auto` && (
+            <p role="status">请求的周期任务当前不可核实，未改选其他策略。</p>
+          )}
         {shown && detailVisible && !data && (
           <section aria-label="自动采集问题说明">
             <p role="status">
               {profile.label} 策略
-              {resource.failure || entry.availability.failure
-                ? "读取失败，等待重读。"
-                : "正在读取…"}
+              {resource.failure ? "读取失败，等待重读。" : "正在读取…"}
             </p>
             {entry.diagnosis.issues.map((issue, index) => (
               <article className="auto-issue" key={index}>
@@ -1016,8 +1160,10 @@ function CpiStrategyWorkbenchContent({
           </section>
         )}
         {shown && detailVisible && data && (
-          <>
-            <h3>{profile.label} 策略详情</h3>
+          <PeriodicDetailShell
+            title={`${profile.label} 策略详情`}
+            navigation={navigation?.(`${profile.id}-auto`)}
+          >
             <p className="auto-summary">
               自动采集{data.enabled ? "已开启" : "已暂停"} ·{" "}
               {entry.diagnosis.state}
@@ -1066,7 +1212,9 @@ function CpiStrategyWorkbenchContent({
               <Fact name="最近成功采集（北京时间）">
                 {formatBeijingTime(
                   data.last_successful_collection_at,
-                  "未记录",
+                  data.collection_facts_status === "verified"
+                    ? "未记录"
+                    : "尚未核实",
                 )}
               </Fact>
               <Fact name="最新数据期">
@@ -1078,6 +1226,11 @@ function CpiStrategyWorkbenchContent({
                 {formatBeijingTime(data.next_release_at, "未记录")}
               </Fact>
             </dl>
+            {data.collection_facts_status === "failed" && (
+              <p role="alert">
+                本资产数据汇总读取失败，统计尚未核实。策略和执行记录仍可分别查看。
+              </p>
+            )}
             <details className="technical">
               <summary>技术详情与日历状态</summary>
               <dl>
@@ -1231,7 +1384,7 @@ function CpiStrategyWorkbenchContent({
               transport={transport}
               profile={profile}
               generation={generation}
-              visible={detailVisible && !!entry.availability.data}
+              visible={detailVisible && !entry.availability.legacy}
             />
             <details>
               <summary>策略上次执行回执与审计</summary>
@@ -1362,6 +1515,20 @@ function CpiStrategyWorkbenchContent({
                         </span>
                       </div>
                       <div className="month-stage-detail">
+                        {weekly && target.target?.budget_blocked_until && (
+                          <p>
+                            滚动 HTTP 预算等待至{" "}
+                            {calendarTime(target.target.budget_blocked_until)}
+                            ；不是 worker 离线，也不代表来源已公布。
+                          </p>
+                        )}
+                        {weekly && target.target?.attempts != null && (
+                          <p>
+                            当期尝试：{target.target.attempts}/
+                            {target.target.max_attempts ?? 8}
+                            ；原数值回读与发布原件核实分开保留。
+                          </p>
+                        )}
                         <p>
                           最近尝试：
                           <time>
@@ -1414,24 +1581,27 @@ function CpiStrategyWorkbenchContent({
                         <div className="month-stage-state">
                           <strong>历史核实</strong>
                           <span>
-                            {target.history?.state === "blocked" &&
-                            [
-                              "pending",
-                              "running",
-                              "awaiting_provider",
-                              "unknown",
-                              "failed",
-                            ].includes(target.target?.state ?? "")
-                              ? "等待当期采集"
-                              : cpiExecutionStateText(
-                                  target.history?.state,
-                                  target.history,
-                                  profile,
-                                  {
-                                    start: target.history?.update_start,
-                                    end: target.history?.update_end,
-                                  },
-                                )}
+                            {target.history?.waiting_for ===
+                            "target_verification"
+                              ? "等待当期发布参考周核实后再开始"
+                              : target.history?.state === "blocked" &&
+                                  [
+                                    "pending",
+                                    "running",
+                                    "awaiting_provider",
+                                    "unknown",
+                                    "failed",
+                                  ].includes(target.target?.state ?? "")
+                                ? "等待当期采集"
+                                : cpiExecutionStateText(
+                                    target.history?.state,
+                                    target.history,
+                                    profile,
+                                    {
+                                      start: target.history?.update_start,
+                                      end: target.history?.update_end,
+                                    },
+                                  )}
                           </span>
                         </div>
                         <div className="month-stage-detail">
@@ -1444,7 +1614,13 @@ function CpiStrategyWorkbenchContent({
                           <p>
                             下次核实：
                             <time>
-                              {calendarTime(target.history?.next_attempt_at)}
+                              {target.history?.waiting_for ===
+                              "target_verification"
+                                ? "当期核实后安排；原候选时刻不代表已获执行准入"
+                                : calendarTime(
+                                    target.history?.effective_next_attempt_at ??
+                                      target.history?.next_attempt_at,
+                                  )}
                             </time>
                           </p>
                           <ResultFacts
@@ -1486,7 +1662,7 @@ function CpiStrategyWorkbenchContent({
                 </p>
               )}
             </div>
-          </>
+          </PeriodicDetailShell>
         )}
       </WorkflowTable>
     </div>

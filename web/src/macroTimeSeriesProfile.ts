@@ -29,6 +29,7 @@ export type MacroProfile = Readonly<{
   provider: "BLS" | "BEA" | "Census" | "FRED";
   asset: Key;
   basePath: string;
+  resumePath?: string;
   series: readonly (readonly [string, string, string, string])[];
   historyNotice?: string;
   defaultQuerySeries?: readonly string[];
@@ -185,6 +186,7 @@ export const RETAIL_PROFILE: MacroProfile = Object.freeze({
   provider: "Census",
   asset: RETAIL,
   basePath: "/api/r5/retail/timeseries",
+  resumePath: "/api/r5/retail/timeseries/jobs/resume",
   series: [
     ["headline", "总体 · 季调", "headline", "sa"],
     ["control", "控制组（MDF推导）· 季调", "core", "sa"],
@@ -332,6 +334,7 @@ export const M3_PROFILE: MacroProfile = Object.freeze({
   provider: "Census",
   asset: M3,
   basePath: "/api/r5/m3/timeseries",
+  resumePath: "/api/r5/m3/timeseries/jobs/resume",
   series: [
     ["durable_goods_new_orders", "耐用品新订单 · 季调", "durable", "sa"],
     [
@@ -350,3 +353,17 @@ export const M3_PROFILE: MacroProfile = Object.freeze({
   historyNotice:
     "月频季调，百万当期美元，非年化；新订单是扣除取消订单的净额。耐用品先行报告（Advance）与制造业完整报告独立留存并排比较。当前旧月快照及首次捕获不代表官方首发；尚未绑定事件 actual。",
 });
+
+// Product collection registration; query/strategy adapters keep their own gates.
+export const MACRO_PROFILES: readonly MacroProfile[] = [
+  CPI_PROFILE,
+  PPI_PROFILE,
+  PCE_PROFILE,
+  EMPLOYMENT_PROFILE,
+  RETAIL_PROFILE,
+  CONSUMPTION_PROFILE,
+  GDP_PROFILE,
+  CLAIMS_PROFILE,
+  JOLTS_PROFILE,
+  M3_PROFILE,
+];

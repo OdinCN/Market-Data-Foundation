@@ -105,6 +105,12 @@ describe("Beijing wall clocks", () => {
       "0099-01-01T00:00:00+08:00",
     );
   });
+  it("preserves fractional Beijing wall clocks for historical cutoffs", () => {
+    expect(beijingInputToIso("2024-01-01T00:00:00.123456")).toBe(
+      "2024-01-01T00:00:00.123456+08:00",
+    );
+    expect(beijingInputToIso("2024-01-01T00:00:00.")).toBe("");
+  });
   it.each([
     "2023-02-29T00:00:00",
     "1900-02-29T00:00:00",
@@ -117,7 +123,6 @@ describe("Beijing wall clocks", () => {
     "2024-01-01T00:00:60",
     "2024-1-01T00:00:00",
     "2024-01-01T0:00:00",
-    "2024-01-01T00:00:00.1",
     "2024-01-01T00:00:00Z",
     "2024-01-01T00:00:00+08:00",
     "0000-01-01T00:00:00",

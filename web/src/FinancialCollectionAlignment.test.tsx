@@ -29,6 +29,7 @@ const status: FinancialStatus = {
   collection_limits: { latest_end: "2026-11-06", max_calendar_days: 10980 },
   series: [],
   cutoff_semantics: "MDF cutoff",
+  web_capabilities: { query: true, collect: true },
 };
 const job = (changes: Partial<FinancialJob> = {}): FinancialJob => ({
   request_id: id,
@@ -288,24 +289,67 @@ it("unreadable or unwritable outbox blocks the mutation", async () => {
   expect(f.calls.every((c) => c.method === "GET")).toBe(true);
 });
 it("manual briefs are whole-card actions, never replaced by the newer automatic job", async () => {
-  const manual = job(),
+  const manual = job({ origin: "manual" }),
     auto = job({
       request_id: "00000000-0000-4000-8000-000000000005",
       origin: "periodic",
+      created_at: "2026-11-05T13:00:00Z",
     });
   const f = fixture();
-  f.transport = async () =>
-    Response.json({ status: "OK", jobs: [auto, manual] });
+  f.transport = async (u, init) => {
+    f.calls.push({ url: String(u), method: init?.method ?? "GET", body: null });
+    return Response.json({ status: "OK", jobs: [auto, manual] });
+  };
   const { nav } = mount(f);
   const aside = await screen.findByRole("complementary", { name: "执行简报" });
   const card = await within(aside).findByRole("button", {
     name: /金融日频 · 手动采集/,
   });
   expect(card.classList.contains("execution-brief-card")).toBe(true);
-  expect(within(aside).queryByRole("button", { name: /自动策略/ })).toBeNull();
+  expect(within(card).getByText(manual.request_id)).toBeTruthy();
+  const autoCard = within(aside).getByRole("button", { name: /自动策略/ });
+  expect(autoCard).not.toBe(card);
+  expect(within(autoCard).getByText(auto.request_id)).toBeTruthy();
+  expect(within(aside).getAllByRole("button")).toHaveLength(2);
   fireEvent.click(card);
-  expect(nav).toHaveBeenCalledWith(id);
+  fireEvent.click(autoCard);
+  fireEvent.click(card);
+  expect(nav.mock.calls).toEqual([
+    [manual.request_id],
+    [auto.request_id],
+    [manual.request_id],
+  ]);
+  expect(f.calls.every((c) => c.method === "GET")).toBe(true);
 });
+it.each([undefined, null, "unrecognized-origin"])(
+  "an unverified brief origin (%s) is never presented as manual or automatic and still opens its original ID",
+  async (origin) => {
+    const f = fixture();
+    f.transport = async (u, init) => {
+      f.calls.push({
+        url: String(u),
+        method: init?.method ?? "GET",
+        body: null,
+      });
+      return Response.json({ status: "OK", jobs: [job({ origin })] });
+    };
+    const { nav } = mount(f);
+    const aside = screen.getByRole("complementary", { name: "执行简报" });
+    const title = await within(aside).findByText(
+      "金融日频 · 触发来源待核实 · 更新指定范围",
+      { exact: true },
+    );
+    const card = title.closest("button")!;
+    expect(card.classList.contains("execution-brief-card")).toBe(true);
+    expect(within(card).getByText(id)).toBeTruthy();
+    expect(
+      within(aside).queryByRole("button", { name: /手动采集|自动策略/ }),
+    ).toBeNull();
+    fireEvent.click(card);
+    expect(nav.mock.calls).toEqual([[id]]);
+    expect(f.calls.every((c) => c.method === "GET")).toBe(true);
+  },
+);
 it("execution statistics use persisted version counts, never valid rows or completed-step counts; coverage is read-only", async () => {
   const record = job({
     steps: [
@@ -414,3 +458,29 @@ it("late job A read cannot replace job B after selecting another execution", asy
   await waitFor(() => expect(screen.queryByText(id)).toBeNull());
   expect(screen.getByText(other)).toBeTruthy();
 });
+
+it.each([undefined, false])(
+  "does not infer financial write permission from read status (%s)",
+  async (collect) => {
+    const f = fixture();
+    render(
+      <FinancialCollection
+        transport={f.transport}
+        generation={0}
+        status={{
+          ...status,
+          web_capabilities:
+            collect === undefined ? undefined : { query: true, collect },
+        }}
+        onExecution={vi.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(value("采集开始日期")).toBe(status.update_defaults!.start),
+    );
+    confirm();
+    expect((submit() as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(submit().closest("form")!);
+    expect(f.calls.filter((c) => c.method === "POST")).toHaveLength(0);
+  },
+);

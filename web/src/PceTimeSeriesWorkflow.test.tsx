@@ -130,6 +130,15 @@ function fixture() {
   };
   const transport: Transport = async (input, init) => {
     const url = new URL(String(input), "http://synthetic.invalid");
+    // This fixture implements these concrete protocols only; another registered
+    // family must not inherit a synthetic CPI success from the old catch-all.
+    if (
+      url.pathname.includes("/timeseries/") &&
+      ![CPI_PROFILE, PPI_PROFILE, PCE_PROFILE].some((p) =>
+        url.pathname.startsWith(p.basePath + "/"),
+      )
+    )
+      return response({ classification: "not_enabled" }, 404);
     const method = init?.method ?? "GET";
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     calls.push({ path: url.pathname + url.search, method, body });

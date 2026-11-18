@@ -24,6 +24,7 @@ const old = "00000000-0000-4000-8000-000000000001",
 const job = (changes: Partial<FinancialJob> = {}): FinancialJob => ({
   request_id: old,
   state: "complete",
+  origin: "manual",
   created_at: "2026-11-05T09:00:00Z",
   provider_requests: 0,
   command: { action: "update", start: "2026-11-01", end: "2026-11-05" },
@@ -163,11 +164,16 @@ it("sorts unknown creation last without borrowing updated or current timestamps"
   ]);
   expect(financialStateText("some_new_machine_state")).toBe("状态待核实");
 });
-function detail(record: FinancialJob) {
+function detail(record: FinancialJob, authorization?: Promise<void>) {
   const requests: string[] = [];
-  const transport: Transport = async (_u, i) => {
+  const transport: Transport = async (url, i) => {
     requests.push(i?.method ?? "GET");
-    return Response.json({ status: "OK", job: record });
+    if (String(url).endsWith("/status") && authorization) await authorization;
+    return Response.json(
+      String(url).endsWith("/status")
+        ? { status: "OK", web_capabilities: { query: true, collect: true } }
+        : { status: "OK", job: record },
+    );
   };
   render(
     <FinancialDailyWorkbench
@@ -229,7 +235,19 @@ it("partial failures identify only failed steps, leaving pending and unpublished
   expect(
     (screen.getByRole("button", { name: "续跑此作业" }) as HTMLButtonElement)
       .disabled,
-  ).toBe(false);
+  ).toBe(true);
+  const confirmation = screen.getByRole("checkbox", {
+    name: "我确认按原请求恢复采集",
+  }) as HTMLInputElement;
+  await waitFor(() => expect(confirmation.disabled).toBe(false));
+  fireEvent.click(confirmation);
+  expect(confirmation.checked).toBe(true);
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "续跑此作业" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
 });
 it("complete legacy record retains unknown start instead of manufacturing it", async () => {
   detail(
@@ -245,7 +263,7 @@ it("complete legacy record retains unknown start instead of manufacturing it", a
   );
 });
 
-it("new-collection briefs keep manual triggers; automatic jobs remain in execution records", async () => {
+it("new-collection briefs retain actual manual and automatic records with their real triggers", async () => {
   const records = [job({ origin: "periodic", request_id: recent }), job()];
   const calls: string[] = [];
   const transport: Transport = async (u, i) => {
@@ -277,7 +295,7 @@ it("new-collection briefs keep manual triggers; automatic jobs remain in executi
   );
   const briefs = await screen.findByRole("complementary", { name: "执行简报" });
   await within(briefs).findByText(/金融日频 · 手动采集 · 更新指定范围/);
-  expect(within(briefs).queryByRole("button", { name: /自动策略/ })).toBeNull();
+  expect(within(briefs).getByRole("button", { name: /自动策略/ })).toBeTruthy();
   expect(
     within(briefs).getByText(/金融日频 · 手动采集 · 更新指定范围/),
   ).toBeTruthy();
@@ -309,3 +327,33 @@ it.each(["complete", "running", "partial"])(
     expect(screen.getByText("保留的异常分类")).toBeTruthy();
   },
 );
+
+it("a delayed write grant cannot retain a click on the disabled recovery confirmation", async () => {
+  let authorize!: () => void;
+  const permission = new Promise<void>((resolve) => {
+    authorize = resolve;
+  });
+  const calls = detail(
+    job({ state: "partial", steps: [step("failed")] }),
+    permission,
+  );
+  await screen.findByRole("heading", { name: "执行详情" });
+  const checkbox = screen.getByRole("checkbox", {
+    name: "我确认按原请求恢复采集",
+  }) as HTMLInputElement;
+  const resume = screen.getByRole("button", {
+    name: "续跑此作业",
+  }) as HTMLButtonElement;
+  expect(checkbox.disabled).toBe(true);
+  checkbox.click();
+  expect(checkbox.checked).toBe(false);
+  expect(resume.disabled).toBe(true);
+  authorize();
+  await waitFor(() => expect(checkbox.disabled).toBe(false));
+  expect(checkbox.checked).toBe(false);
+  expect(resume.disabled).toBe(true);
+  fireEvent.click(checkbox);
+  expect(checkbox.checked).toBe(true);
+  expect(resume.disabled).toBe(false);
+  expect(calls.every((method) => method === "GET")).toBe(true);
+});

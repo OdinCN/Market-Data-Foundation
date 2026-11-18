@@ -1,3 +1,4 @@
+import { openSubmittedBrief } from "./openSubmittedBrief.testHelper";
 import "./offlineTestSetup";
 import { afterEach, expect, it, vi } from "vitest";
 import {
@@ -222,7 +223,7 @@ it("preserves the bounded list query and budget failure without a selected job",
   ).toBeNull();
 });
 
-it("preserves exact manual target through lost durable receipt, explicit resubmission, separate offline worker and local read", async () => {
+it("preserves exact manual target through lost durable receipt, same-ID readback, separate offline worker and local read", async () => {
   const api = bridge();
   const target = await api.exchange({ path: "/api/r5/cpi/jobs" });
   const operation =
@@ -242,7 +243,7 @@ it("preserves exact manual target through lost durable receipt, explicit resubmi
   fireEvent.click(screen.getByRole("checkbox"));
   api.loseNext();
   fireEvent.click(screen.getByRole("button", { name: "创建采集任务" }));
-  await screen.findByText(/提交回执未核实/);
+  await screen.findByText("已接收", { exact: true });
   expect(api.effects).toEqual({ source: 0, raw: 0, jobs: 1 });
   expect(api.posts).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", { name: "创建采集任务" }));
@@ -254,10 +255,10 @@ it("preserves exact manual target through lost durable receipt, explicit resubmi
     fireEvent.change(screen.getByLabelText(name), {
       target: { value: target.body.reference },
     });
-  fireEvent.click(screen.getByRole("checkbox"));
-  fireEvent.click(screen.getByRole("button", { name: "创建采集任务" }));
-  await screen.findByRole("heading", { name: "执行详情" });
-  expect(api.posts[1]).toEqual(api.posts[0]);
+  await screen.findByText("已接收", { exact: true });
+  expect(screen.queryByRole("button", { name: "核实原请求" })).toBeNull();
+  await openSubmittedBrief();
+  expect(api.posts).toHaveLength(1);
   expect(api.effects).toEqual({ source: 0, raw: 0, jobs: 1 });
   const identity = (api.posts[0] as { job_identity: string }).job_identity;
   await act(async () => {
@@ -278,7 +279,7 @@ it("preserves exact manual target through lost durable receipt, explicit resubmi
     ).toBe("local_read_verified · 无错误分类");
   });
   expect(api.effects).toEqual({ source: 1, raw: 1, jobs: 1 });
-  fireEvent.click(screen.getByRole("button", { name: "查看关联资产 →" }));
+  fireEvent.click(screen.getByRole("button", { name: "查看资产数据" }));
   await screen.findByRole("heading", { name: "美国 CPI" });
   const read = await screen.findByRole("button", { name: "读取本地数据" });
   await waitFor(() => expect((read as HTMLButtonElement).disabled).toBe(false));

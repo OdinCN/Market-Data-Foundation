@@ -257,6 +257,30 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
         targets = [
             dict(t, reference_weeks=self.reference_weeks(t)) for t in state["targets"]
         ]
+        for target in targets:
+            target["history"] = dict(target["history"])
+            history = target["history"]
+            if (
+                history["state"] in {"pending", "awaiting_provider"}
+                and target["target"]["state"] != "complete"
+            ):
+                history.update(
+                    waiting_for="target_verification", effective_next_attempt_at=None
+                )
+            for name in ("target", "history"):
+                target[name] = dict(
+                    target[name], max_attempts=POLICY["stage_max_attempts"]
+                )
+                material = (target[name].get("result") or {}).get("material") or {}
+                target[name]["source_failure_classification"] = material.get(
+                    "classification"
+                )
+                if "effective_next_attempt_at" not in target[name]:
+                    target[name]["effective_next_attempt_at"] = (
+                        target[name].get("next_attempt_at")
+                        if target[name]["state"] in {"pending", "awaiting_provider"}
+                        else None
+                    )
         return dict(
             state,
             targets=targets,
@@ -616,7 +640,7 @@ class ClaimsReleaseScheduler(PceReleaseScheduler):
                 or (
                     "claims_current_actuals_missing"
                     if result.get("material", {}).get("actual_weeks")
-                    else "claims_material_unconfirmed"
+                    else material_code or "claims_material_unconfirmed"
                 ),
                 next_attempt_at=max(
                     delay, _instant(retry) if retry else delay

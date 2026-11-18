@@ -8,6 +8,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Transport } from "./api";
+import { FINANCIAL } from "./FinancialDailyWorkbench";
 import { useFinancialPeriodic } from "./FinancialPeriodic";
 afterEach(cleanup);
 const base = {
@@ -306,3 +307,110 @@ it("execution loading, failed read and an observed empty result remain distinct"
   await screen.findByText("执行记录读取失败，最近执行待核实。");
   expect(screen.queryByText("尚无真实执行记录。")).toBeNull();
 });
+
+it.each(["complete", "failed"])(
+  "uses latest group %s for current state and retains older exhausted failure",
+  async (latestState) => {
+    const old = {
+      group: "treasury",
+      slot: "2026-11-11T23:30:00Z",
+      state: "failed",
+      request_id: "old-treasury",
+      attempts: 3,
+      classification: "financial_periodic_partial_failure",
+      retry_at: "2026-11-12T00:05:00Z",
+      failures: [
+        {
+          series_id: "DGS10",
+          state: "failed",
+          classification: "financial_timeout",
+        },
+      ],
+    };
+    const current = {
+      ...old,
+      request_id: "current-treasury",
+      slot: "2026-11-12T23:30:00Z",
+      state: latestState,
+    };
+    const data = {
+      ...base,
+      enabled: true,
+      control: { ...base.control, online: true },
+      tasks: [old, current],
+    };
+    const transport: Transport = async (url) =>
+      Response.json(
+        String(url).endsWith("/jobs")
+          ? { jobs: [] }
+          : String(url).endsWith("/summary")
+            ? { series: [] }
+            : data,
+      );
+    render(<Page transport={transport} />);
+    await screen.findByText(
+      `运行情况：${latestState === "complete" ? "等待下次检查" : "需处理"}`,
+    );
+    expect(screen.getAllByText("old-treasury")).toHaveLength(1);
+    expect(screen.getAllByText(/旧维护时点；不将旧 retry_at/)).toHaveLength(1);
+    expect(
+      screen.getAllByText(/financial_timeout|请求超时/).length,
+    ).toBeGreaterThan(0);
+  },
+);
+
+it.each(["manual", null])(
+  "latest financial summary uses the actual newest %s record, not an older automatic result",
+  async (origin) => {
+    const nav = vi.fn();
+    const make = (
+      request_id: string,
+      created_at: string,
+      value: string | null,
+    ) => ({
+      request_id,
+      origin: value,
+      state: "complete",
+      created_at,
+      started_at: created_at,
+      finished_at: created_at,
+      command: { action: "update", start: "2026-11-01", end: "2026-11-02" },
+      steps: [],
+      provider_requests: 0,
+    });
+    const transport: Transport = async (url) =>
+      Response.json(
+        String(url).endsWith("/jobs")
+          ? {
+              status: "OK",
+              jobs: [
+                make("old-automatic", "2026-11-15T01:00:00Z", "periodic"),
+                make("newest-record", "2026-11-16T01:00:00Z", origin),
+              ],
+            }
+          : String(url).endsWith("/summary")
+            ? { status: "OK", series: [] }
+            : base,
+      );
+    function Test() {
+      return useFinancialPeriodic(transport, true, nav).detail;
+    }
+    render(<Test />);
+    await screen.findByText("newest-record");
+    expect(
+      screen.getByText(
+        new RegExp(
+          `本资产最近执行来源：${origin === "manual" ? "手动采集" : "触发来源待核实"}`,
+        ),
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "打开对应执行详情" }));
+    expect(nav).toHaveBeenCalledWith(
+      "collection",
+      expect.objectContaining({
+        asset: FINANCIAL.identity,
+        job: "newest-record",
+      }),
+    );
+  },
+);

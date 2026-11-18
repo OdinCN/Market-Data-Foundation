@@ -69,7 +69,9 @@ const reasons: Record<string, string> = {
   worker_unit_not_registered: "固定日频服务尚未装配，请联系本 DEV 的维护人员。",
   dev_window_expired: "DEV 授权窗口已到期，不能继续启动。",
   financial_periodic_partial_failure:
-    "本组部分来源未完成；已确认段复用，按来源冷却自动续跑。",
+    "本组部分来源未完成；已确认段保留，是否继续自动尝试取决于本维护时点的剩余预算。",
+  financial_timeout:
+    "该来源请求超时；保留实际尝试与失败时间，按本时点剩余预算决定后续处理。",
   financial_bound_credential_missing:
     "现有 FRED 凭据绑定缺失，请在接入管理核实该绑定后重试。",
   financial_worker_awaiting_heartbeat:
@@ -121,9 +123,7 @@ export function useFinancialPeriodic(
       { id: b.request_id, createdAt: b.created_at },
     ),
   );
-  const recentJob =
-    orderedJobs.find((j) => j.origin === "periodic") ??
-    orderedJobs.find((j) => j.origin == null || j.origin === "manual");
+  const recentJob = orderedJobs[0];
   const openJob = (id: string) =>
     navigate("collection", {
       tab: "executions",
@@ -227,8 +227,16 @@ export function useFinancialPeriodic(
       busy.current = false;
     }
   }
-  const failures = data?.tasks.filter((t) => t.state === "failed") ?? [];
-  const current = data?.tasks.find((t) => t.state === "running");
+  const latestGroups = new Map<string, Task>();
+  for (const task of [...(data?.tasks ?? [])].sort((a, b) =>
+    b.slot.localeCompare(a.slot),
+  )) {
+    if (!latestGroups.has(task.group)) latestGroups.set(task.group, task);
+  }
+  const failures = [...latestGroups.values()].filter(
+    (t) => t.state === "failed",
+  );
+  const current = [...latestGroups.values()].find((t) => t.state === "running");
   const state = !data
     ? "待核实"
     : saving
@@ -322,7 +330,6 @@ export function useFinancialPeriodic(
   };
   const detail = (
     <>
-      <h3>金融条件日频 策略详情</h3>
       <p>
         {data
           ? `自动采集${data.enabled ? "已开启" : "已暂停"} · ${state}`
@@ -343,16 +350,6 @@ export function useFinancialPeriodic(
         <Fact name="最新数据期">{latestText}</Fact>
         <Fact name="下次维护检查（北京时间）">{nextText}</Fact>
       </dl>
-      <button
-        onClick={() =>
-          navigate("assets", {
-            asset: FINANCIAL.identity,
-            asset_revision: "r1",
-          })
-        }
-      >
-        查询各指标本地覆盖 →
-      </button>
       <details>
         <summary>各指标最新本地数据期</summary>
         {!summary.data && <p role="status">{latestText}</p>}
@@ -386,7 +383,8 @@ export function useFinancialPeriodic(
           <>
             <p>
               本资产最近执行来源：{financialJobOrigin(recentJob)}。
-              {recentJob.origin !== "periodic" &&
+              {recentJob.origin === "manual" &&
+                !orderedJobs.some((j) => j.origin === "periodic") &&
                 "自动策略尚无真实执行记录；以下为手动采集结果。"}
             </p>
             <dl>
@@ -496,6 +494,11 @@ export function useFinancialPeriodic(
                 <Fact name="累计调度尝试">
                   {t.attempts}/{data.max_attempts}
                 </Fact>
+                {latestGroups.get(t.group)?.request_id !== t.request_id && (
+                  <Fact name="记录范围">
+                    历史维护时点；该组当前状态见最新时点，原失败及时间保留。
+                  </Fact>
+                )}
               </dl>
               {t.state === "failed" && (
                 <p role="alert">{reason(t.classification)}</p>
@@ -507,9 +510,11 @@ export function useFinancialPeriodic(
               ))}
               {t.state === "failed" && (
                 <p>
-                  {t.attempts < data.max_attempts
-                    ? `下次自动续跑：${formatBeijingTime(t.retry_at)}`
-                    : "本次时点自动重试已达上限；进入原作业核对原因后恢复。后续时点仍按计划检查近14日，旧失败事实保留。"}
+                  {latestGroups.get(t.group)?.request_id !== t.request_id
+                    ? "旧维护时点；不将旧 retry_at 当作当前自动重试承诺。原作业仍可核对。"
+                    : t.attempts < data.max_attempts
+                      ? `下次自动续跑：${formatBeijingTime(t.retry_at)}`
+                      : "本次时点自动重试已达上限；进入原作业核对原因后恢复。后续时点仍按计划检查近14日，旧失败事实保留。"}
                 </p>
               )}
               <div className="actions">
@@ -551,6 +556,7 @@ export function useFinancialPeriodic(
     </>
   );
   return {
+    title: "金融条件日频 策略详情",
     row,
     detail,
     refresh: () => {

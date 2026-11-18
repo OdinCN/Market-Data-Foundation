@@ -42,6 +42,29 @@ const confirm = () =>
 const input = () => screen.getByLabelText("日期字段") as HTMLInputElement;
 
 describe("precision and original statistical dates", () => {
+  it("preserves microseconds in the clock controls and across calendar selection, including the last second of a day", () => {
+    render(
+      <Controlled
+        type="datetime-local"
+        step="any"
+        value="2026-11-11T23:59:59.123456"
+      />,
+    );
+    openCalendar();
+    fireEvent.change(screen.getByLabelText("秒"), {
+      target: { value: "1.123456" },
+    });
+    confirm();
+    expect(input().value).toBe("2026-11-11T23:59:01.123456");
+    openCalendar();
+    fireEvent.change(screen.getByLabelText("秒"), {
+      target: { value: "59.999999" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "2026-11-12" }));
+    confirm();
+    expect(input().value).toBe("2026-11-12T23:59:59.999999");
+  });
+
   it("offers exactly twelve months with year navigation and an explicit commit", () => {
     const changed = vi.fn();
     render(<Controlled type="month" value="2024-02" onChange={changed} />);

@@ -352,7 +352,8 @@ tbody tr:hover td {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.detail-pane > p {
+.detail-pane > p,
+.detail-pane > [aria-label="周期详情主体"] > p {
   margin: 8px 0;
 }
 .empty {
@@ -1430,6 +1431,20 @@ footer {
   max-width: 100%;
   overflow-x: auto;
 }
+.cpi-timeseries .query-result-rows.table-wrap,
+.cpi-timeseries .query-result-rows .table-wrap {
+  max-height: 60vh;
+  overflow: auto;
+}
+.cpi-timeseries .query-result-rows table {
+  width: max-content;
+  min-width: 100%;
+}
+.cpi-timeseries .query-result-rows td {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
 .cpi-api-help td {
   min-width: 140px;
 }
@@ -2015,8 +2030,38 @@ button.strategy-switch::before {
   display: none;
 }
 
+.tdx-daily-workbench .workbench {
+  grid-template-columns: minmax(0, 1fr);
+}
+.tdx-daily-workbench .workbench > .detail-pane {
+  display: none;
+}
+
 /* The active manual request remains prominent while the form tracks it. */
 .execution-brief-card[aria-current="true"] {
   border-color: var(--accent);
   background: var(--selected);
+}
+
+.workbench.single-pane {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.collection-fields {
+  display: grid;
+  gap: 14px;
+  justify-items: stretch;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.execution-brief > .execution-brief-card {
+  width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.collection-fields > button {
+  justify-self: start;
 }

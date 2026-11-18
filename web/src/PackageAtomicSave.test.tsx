@@ -742,11 +742,16 @@ it("each adjacent entry shares one atomic save, with cancellation and all pendin
 });
 
 it.each([
-  ["tdx", "daily_raw", "TDX"],
-  ["kd", "current_rank", "KD"],
+  [
+    "tdx",
+    "daily_raw",
+    "TDX",
+    "连接由 MDF 宿主管理，本页无需填写 API Key。实际请求结果可在采集任务的执行记录中查看。",
+  ],
+  ["kd", "current_rank", "KD", "当前环境未装配此来源的配置验证。"],
 ])(
-  "%s shows unassembled verification instead of an unsupported POST action",
-  async (packageId, capabilityId, source) => {
+  "%s identifies its connection and offers no unsupported verification",
+  async (packageId, capabilityId, source, connectionText) => {
     const h = host();
     await putPackage(h.transport, packageId, {
       expected_revision: null,
@@ -761,7 +766,7 @@ it.each([
     fireEvent.click(await screen.findByRole("button", { name: "管理此包" }));
     await screen.findByRole("tab", { name: "来源配置" });
     tab("来源配置");
-    expect(screen.getByText("当前环境未装配此来源的配置验证。")).toBeTruthy();
+    expect(screen.getByText(connectionText)).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: `验证已保存的 ${source} 配置` }),
     ).toBeNull();

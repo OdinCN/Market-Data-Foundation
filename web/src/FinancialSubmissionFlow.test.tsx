@@ -23,6 +23,7 @@ const status: FinancialStatus = {
   update_defaults: { start: "2026-10-23", end: "2026-11-05" },
   series: [],
   cutoff_semantics: "MDF held",
+  web_capabilities: { query: true, collect: true },
 };
 const id = "00000000-0000-4000-8000-000000000099";
 const make = (
@@ -65,6 +66,8 @@ function api(initial = "running") {
       if (mode === "timeout") throw new TypeError("controlled_timeout");
       return Response.json({ status: "OK", job: record });
     }
+    if (url.endsWith("/status"))
+      return Response.json({ status: "OK", ...status });
     if (url.endsWith("/jobs"))
       return Response.json({ status: "OK", jobs: record ? [record] : [] });
     if (mode === "404" || mode === "timeout" || !record)
@@ -197,7 +200,17 @@ it.each(["404", "wrong"])(
         onExecution={nav}
       />,
     );
-    await screen.findByRole("button", { name: "核实原请求" });
+    const brief = screen.getByRole("complementary", { name: "执行简报" });
+    await waitFor(() =>
+      expect(
+        (
+          within(brief).getByRole("button", {
+            name: new RegExp(original.request_id),
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+    expect(screen.queryByRole("button", { name: "核实原请求" })).toBeNull();
     expect(screen.queryByRole("button", { name: "开始另一项采集" })).toBeNull();
     expect(postCount(a)).toBe(1);
     a.mode("ok");
@@ -206,8 +219,13 @@ it.each(["404", "wrong"])(
       state: "complete",
       updated_at: "2026-11-05T12:02:00Z",
     });
-    fireEvent.click(screen.getByRole("button", { name: "核实原请求" }));
-    await screen.findByRole("button", { name: "开始另一项采集" });
+    // The visible, already verified record is tracked automatically; an extra
+    // recall button must not be required to obtain the later matching receipt.
+    await screen.findByRole(
+      "button",
+      { name: "开始另一项采集" },
+      { timeout: 12000 },
+    );
     expect(nav).not.toHaveBeenCalled();
     expect(postCount(a)).toBe(1);
     expect(
@@ -233,7 +251,14 @@ it("stale regressing receipts retain the last known state but cannot release the
   a.set({ ...complete, state: "running", updated_at: "2026-11-05T12:00:30Z" });
   await act(async () => vi.advanceTimersByTimeAsync(5100));
   expect(screen.queryByRole("button", { name: "开始另一项采集" })).toBeNull();
-  expect(screen.getByRole("button", { name: "核实原请求" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "核实原请求" })).toBeNull();
+  expect(
+    (
+      screen.getByRole("button", {
+        name: new RegExp(complete.request_id),
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(false);
   expect(JSON.parse(localStorage.getItem(financialIntentKey)!).request_id).toBe(
     complete.request_id,
   );
@@ -275,7 +300,15 @@ it("resume keeps the original execution route and posts only its original reques
       generation={0}
     />,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "续跑此作业" }));
+  const resume = await screen.findByRole("button", { name: "续跑此作业" });
+  expect((resume as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "我确认按原请求恢复采集" }),
+  );
+  await waitFor(() =>
+    expect((resume as HTMLButtonElement).disabled).toBe(false),
+  );
+  fireEvent.click(resume);
   await waitFor(() => expect(postCount(a)).toBe(1));
   await screen.findByText("采集中");
   expect(nav).not.toHaveBeenCalled();

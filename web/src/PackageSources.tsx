@@ -529,6 +529,12 @@ function PackageEditor({
     >
       <section aria-label="接入包配置">
         <p className="muted">选择需要启用的能力，来源配置会随选择更新。</p>
+        {!!snapshot.configuration_readonly_capability_ids?.length && (
+          <p className="package-save-note">
+            本页管理 injoyai/tdx 的基础名册与原生日线。旧版 tdx-python 能力由
+            18761 管理。
+          </p>
+        )}
         {snapshot.write_eligible !== true && (
           <p role="status" className="package-save-note">
             {reason}
@@ -554,6 +560,9 @@ function PackageEditor({
                 <input
                   type="checkbox"
                   checked={enabled.includes(c.capability_id)}
+                  disabled={snapshot.configuration_readonly_capability_ids?.includes(
+                    c.capability_id,
+                  )}
                   onChange={(e) => {
                     setNotice("");
                     const next = e.target.checked
@@ -575,6 +584,10 @@ function PackageEditor({
                   }}
                 />
                 {c.title}
+                {snapshot.configuration_readonly_capability_ids?.includes(
+                  c.capability_id,
+                ) &&
+                  `（旧版 tdx-python · ${enabled.includes(c.capability_id) ? "已启用" : "未启用"} · 只读）`}
               </label>
             ))}
           </fieldset>
@@ -648,6 +661,20 @@ function PackageEditor({
                 </details>
               ))}
             </section>
+            {required.includes("TDX") &&
+              snapshot.source_access?.some(
+                (s) =>
+                  s.source_id === "TDX" &&
+                  s.credential_requirement === "host_managed",
+              ) && (
+                <section aria-label="TDX 行情连接">
+                  <h3>TDX 行情连接</h3>
+                  <p>
+                    连接由 MDF 宿主管理，本页无需填写 API
+                    Key。实际请求结果可在采集任务的执行记录中查看。
+                  </p>
+                </section>
+              )}
             <section aria-label="凭据配置">
               <h3>需要凭据的来源</h3>
               <p>
@@ -868,7 +895,10 @@ function credentialRequired(snapshot: Package | null, source: string) {
   const requirement = snapshot?.source_access?.find(
     (item) => item.source_id === source,
   )?.credential_requirement;
-  return requirement === "api_key" || requirement === "host_managed";
+  return (
+    requirement === "api_key" ||
+    (requirement === "host_managed" && source !== "TDX")
+  );
 }
 
 function credentialDescription(snapshot: Package, source: string) {
@@ -880,12 +910,20 @@ function credentialDescription(snapshot: Package, source: string) {
     return "当前公开取数通路，无需配置凭据。";
   if (access?.credential_requirement === "api_key")
     return `当前接入通路使用 API Key；在下方共用 ${source} 凭据卡片配置。`;
+  if (access?.credential_requirement === "host_managed" && source === "TDX")
+    return "TDX 行情连接由宿主管理。";
   if (access?.credential_requirement === "host_managed")
     return "当前通路使用宿主配置，配置状态见下方共用凭据卡片。";
   return "当前通路的凭据需求尚未核实，不提供凭据操作。";
 }
 
 function sourcePurpose(cap: Package["capabilities"][number], source: string) {
+  if (cap.capability_id === "daily_raw")
+    return "旧版 tdx-python 有限样本，按元、股、元归一化；股数由手数换算。";
+  if (cap.capability_id === "daily_native")
+    return "沪深北 A 股日线。价格和成交额保留千分之一元的整数，成交量保留手，价基为 native_projection。";
+  if (cap.capability_id === "stock_roster")
+    return "用于沪深北证券名册与生命周期核定；不采集日线数值。";
   if (cap.capability_id !== "financial_daily")
     return `用于${cap.title}的数值采集。`;
   const purposes: Record<string, string> = {
@@ -903,6 +941,8 @@ function sourcePurpose(cap: Package["capabilities"][number], source: string) {
 }
 
 const saveFailureReasons: Record<string, string> = {
+  legacy_capability_managed_by_reference_host:
+    "旧原始日线由基准入口管理；请重读并保留其当前选择，再保存基础名册或原生日线。",
   too_many_credential_changes:
     "凭据操作数量超出限制，本次未保存；仅对需要凭据的来源提交配置。请重读后重试。",
   invalid_source_changes:

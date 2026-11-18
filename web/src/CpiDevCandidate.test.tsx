@@ -1,3 +1,4 @@
+import { openSubmittedBrief } from "./openSubmittedBrief.testHelper";
 import "./offlineTestSetup";
 import { afterEach, expect, it, vi } from "vitest";
 import {
@@ -78,7 +79,7 @@ async function openCandidate(transport: Transport) {
   return view;
 }
 
-it("lost receipt survives mode changes and reconfirmation without a second POST or GET", async () => {
+it("lost receipt survives mode changes and reconfirmation with only original-ID GETs and no second POST", async () => {
   const host = staleHost();
   await openCandidate(host.transport);
   fireEvent.click(button());
@@ -89,7 +90,11 @@ it("lost receipt survives mode changes and reconfirmation without a second POST 
   fireEvent.click(screen.getByRole("checkbox"));
   fireEvent.click(button());
   expect(host.posts).toHaveLength(1);
-  expect(host.gets).toHaveLength(gets);
+  for (const path of host.gets.slice(gets)) {
+    const read = new URL(path, "http://fixture.invalid");
+    expect(read.pathname).toBe("/api/r5/cpi/jobs");
+    expect(read.searchParams.get("job_identity")).toBe(host.posts[0]);
+  }
   expect(button().disabled).toBe(true);
 });
 
@@ -142,12 +147,16 @@ it.each(["lost", "pending"])(
     fireEvent.click(button());
     expect(button().disabled).toBe(true);
     expect(host.posts).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "回查同一任务 →" }));
+    // No persisted record exists, so use the original-ID read-only recall,
+    // rather than a disabled navigation button inside the locked form.
+    const recall = await screen.findByRole("button", { name: "核实原请求" });
+    const before = host.gets.length;
+    fireEvent.click(recall);
     await waitFor(() =>
       expect(
-        host.gets.some((path) =>
-          path.includes(`job_identity=${host.posts[0]}`),
-        ),
+        host.gets
+          .slice(before)
+          .some((path) => path.includes(`job_identity=${host.posts[0]}`)),
       ).toBe(true),
     );
     expect(host.posts).toHaveLength(1);
@@ -224,7 +233,7 @@ it("enables only the exact DEV candidate with confirmation, then reads the new v
   fireEvent.click(screen.getByRole("checkbox"));
   expect(button().disabled).toBe(false);
   fireEvent.click(button());
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   const posts = api.requests.filter((r) => r.method === "POST");
   expect(posts).toHaveLength(1);
   expect(posts[0].body).toMatchObject({
@@ -275,7 +284,7 @@ it("lost receipt blocks retry and reopening observes the durable registration", 
   fireEvent.click(screen.getByRole("checkbox"));
   api.loseNext();
   fireEvent.click(button());
-  await screen.findByText(/提交回执未核实/);
+  await screen.findByText("已接收", { exact: true });
   expect(button().disabled).toBe(true);
   view.unmount();
   render(<App transport={api.transport} initialQuery={query} />);

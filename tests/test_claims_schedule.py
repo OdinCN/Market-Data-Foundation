@@ -545,3 +545,29 @@ def test_material_write_unknown_is_not_automatically_replayed(tmp_path):
     clock[0] += timedelta(hours=1)
     assert scheduler.due_check()["action"] == "not_due"
     assert len(calls) == 1
+
+
+def test_status_separates_history_dependency_budget_and_real_material_timeout(tmp_path):
+    scheduler, clock, calls, result = setup(tmp_path)
+    scheduler.due_check()
+    clock[0] = datetime(2026, 11, 5, 13, 30, tzinfo=UTC)
+    result[0]["result"]["material"] = dict(
+        status="unavailable", classification="claims_timeout"
+    )
+    scheduler.due_check()
+    state = scheduler._read()
+    target = state["targets"][0]
+    target["target"]["budget_blocked_until"] = "2026-11-06T13:30:00+00:00"
+    target["target"]["next_attempt_at"] = "2026-11-06T13:30:00+00:00"
+    scheduler._save(state)
+    before = scheduler.state_path.read_bytes()
+    view = scheduler.status()["targets"][0]
+    assert view["target"]["classification"] == "claims_timeout"
+    assert view["target"]["budget_blocked_until"] == "2026-11-06T13:30:00+00:00"
+    assert view["target"]["effective_next_attempt_at"] == "2026-11-06T13:30:00+00:00"
+    assert view["history"]["state"] == "pending"
+    assert view["history"]["waiting_for"] == "target_verification"
+    assert view["history"]["effective_next_attempt_at"] is None
+    assert view["history"]["next_attempt_at"] == "2026-11-05T13:30:00+00:00"
+    assert scheduler.state_path.read_bytes() == before
+    assert len(calls) == 1

@@ -845,3 +845,17 @@ def test_r2_constructed_batch_cannot_supply_its_own_rank():
         with pytest.raises(ContractError, match="batch_required"):
             pg.OfflineCurrent().apply(candidate)
         assert conn.calls == []
+
+
+def test_native_bar_historical_shanghai_summer_time():
+    native = dict(Open=1, High=2, Low=1, Close=1, Volume=1, Amount=1)
+    for offset in ("+09:00", "+08:00"):
+        row = {**native, "Time": "1991-07-01T15:00:00" + offset}
+        assert ingest.native_bar(0, "000001", row).trading_day == date(1991, 7, 1)
+    for clock in (
+        "1992-07-01T15:00:00+09:00",
+        "1991-07-01T15:00:00",
+        "1991-07-01T14:00:00+09:00",
+    ):
+        with pytest.raises(ContractError, match="sdk_date_projection_invalid"):
+            ingest.native_bar(0, "000001", {**native, "Time": clock})

@@ -422,12 +422,18 @@ def _driver_file_identity(fd):
 
 @contextmanager
 def verified_driver(path: Path, release: str):
+    require(release in DRIVER_BINARY_SHA256, "driver_sdk_release_invalid")
+    with verified_artifact(path, DRIVER_BINARY_SHA256[release]) as executable:
+        yield executable
+
+
+@contextmanager
+def verified_artifact(path: Path, expected_digest: str):
     """Linux only: hash and execute the same sealed snapshot; never probe a child.
 
     Sidecars confer no authority. No path-based execution or unsealed fallback is
     permitted, even if the source is replaced or written after this check.
     """
-    require(release in DRIVER_BINARY_SHA256, "driver_sdk_release_invalid")
     try:
         with ExitStack() as stack:
             source = stack.enter_context(_open_driver(path))
@@ -455,7 +461,7 @@ def verified_driver(path: Path, release: str):
             while chunk := stream.read(1024 * 1024):
                 digest.update(chunk)
             require(
-                digest.hexdigest() == DRIVER_BINARY_SHA256[release],
+                digest.hexdigest() == expected_digest,
                 "driver_binary_release_mismatch",
             )
             require(_driver_file_identity(source) == identity, "driver_path_changed")

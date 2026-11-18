@@ -74,16 +74,18 @@ def _clock():
 
 def admitted_package_save(request):
     """A separate config-only trust check; never expands legacy job writes."""
+    from market_data_foundation.web.pce_dev_host import macro_write_origin
+
+    origin = macro_write_origin(request)
     return (
         request.method == "PUT"
         and request.url.path
         in {"/api/r5/packages/macro", "/api/r5/packages/tdx", "/api/r5/packages/kd"}
         and not request.url.query
-        and request.headers.getlist("origin") == [CANDIDATE_ORIGIN]
+        and request.headers.getlist("origin") == [origin]
         and request.headers.getlist("content-type") == ["application/json"]
-        and admitted(
-            Request(dict(request.scope, method="GET")), origin=CANDIDATE_ORIGIN
-        )
+        and "transfer-encoding" not in request.headers
+        and admitted(Request(dict(request.scope, method="GET")), origin=origin)
     )
 
 
@@ -227,6 +229,8 @@ class ReadonlyRuntime:
         return states
 
     def authorize_package(self, request, package_id):
+        from market_data_foundation.web.pce_dev_host import macro_write_origin
+
         allowed = (
             request.method in {"GET", "HEAD"}
             and admitted(request, origin=CANDIDATE_ORIGIN)
@@ -234,11 +238,17 @@ class ReadonlyRuntime:
             self.settings.package_config_save
             and (admitted_package_save(request) or admitted_package_verify(request))
         )
+        write_host = request.headers.getlist("host") == [
+            macro_write_origin(request).removeprefix("http://")
+        ]
+        write_eligible = allowed and self.settings.package_config_save and write_host
         return PackageAccess(
             metadata_view_permission="allowed" if allowed else "denied",
-            write_eligible=allowed and self.settings.package_config_save,
+            write_eligible=write_eligible,
             write_reasons=[
                 "dev_package_config_only"
+                if write_eligible
+                else "package_admin_origin_not_enabled"
                 if self.settings.package_config_save
                 else "readonly_host"
             ],

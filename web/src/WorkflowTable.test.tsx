@@ -106,6 +106,60 @@ it("preserves search and pagination when selecting an ordinary row", () => {
   ).toBe("record-2");
 });
 
+it("keeps an explicitly located execution visible as other families arrive, until the user browses", () => {
+  const props = {
+    label: "全资产执行",
+    columns: ["任务"],
+    pageSize: 20,
+    locateId: "record-24",
+    selected: "record-24",
+    onSelect: vi.fn(),
+  };
+  const view = render(<WorkflowTable {...props} rows={rows} />);
+  expect(screen.getByText("第 2 页")).toBeTruthy();
+  const inserted = Array.from({ length: 22 }, (_, n) => ({
+    id: `other-family-${n}`,
+    search: `other-family-${n}`,
+    cells: [`其他族 ${n}`],
+  }));
+  const reordered = [...inserted, ...rows];
+  view.rerender(<WorkflowTable {...props} rows={reordered} />);
+  expect(screen.getByText("第 3 页")).toBeTruthy();
+  expect(
+    screen
+      .getByRole("button", { name: "选择 record-24" })
+      .closest("tr")
+      ?.getAttribute("aria-selected"),
+  ).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "前一页记录" }));
+  view.rerender(<WorkflowTable {...props} rows={[...reordered]} />);
+  expect(screen.getByText("第 2 页")).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("搜索全资产执行"), {
+    target: { value: "other-family-1" },
+  });
+  view.rerender(<WorkflowTable {...props} rows={rows.concat(inserted)} />);
+  expect(
+    (screen.getByLabelText("搜索全资产执行") as HTMLInputElement).value,
+  ).toBe("other-family-1");
+  view.rerender(
+    <WorkflowTable
+      {...props}
+      locateId="record-0"
+      selected="record-0"
+      rows={reordered}
+    />,
+  );
+  expect(
+    (screen.getByLabelText("搜索全资产执行") as HTMLInputElement).value,
+  ).toBe("");
+  expect(
+    screen
+      .getByRole("button", { name: "选择 record-0" })
+      .closest("tr")
+      ?.getAttribute("aria-selected"),
+  ).toBe("true");
+});
+
 it("opens and closes right-side details only after user selection without scrolling", () => {
   vi.stubGlobal("matchMedia", () => ({
     matches: true,

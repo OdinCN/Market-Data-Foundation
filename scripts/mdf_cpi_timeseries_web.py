@@ -70,6 +70,25 @@ class TimeSeriesHandler(CandidateHandler):
             timer.cancel()
 
     def request_admitted(self, request):
+        from market_data_foundation.historical.tdx_p0_contract import (
+            ORIGIN as TDX_ORIGIN,
+        )
+        from market_data_foundation.web.pce_dev_host import admitted, macro_write_origin
+        from market_data_foundation.web.tdx_daily_api import admitted_tdx_write
+
+        # The socket gate sees the same server-owned policy as the ASGI routes.
+        # Retain the actual Host, Origin, peer and request framing unchanged.
+        app = getattr(getattr(self, "server", None), "app", None)
+        if app is not None:
+            request = Request(dict(request.scope, app=app))
+        if self.origin in {TDX_ORIGIN, "http://192.168.10.20:18767"}:
+            if admitted_tdx_write(request, origin=self.origin) or (
+                request.method in {"GET", "HEAD"}
+                and admitted(request, origin=self.origin)
+            ):
+                return True
+            if self.origin != TDX_ORIGIN or macro_write_origin(request) != TDX_ORIGIN:
+                return False
         if request.method == "POST":
             from market_data_foundation.web.worker_control import admitted_worker
 
@@ -129,6 +148,27 @@ class TimeSeriesHandler(CandidateHandler):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--opt-in-timeseries-web", action="store_true", required=True)
+    parser.add_argument("--tdx-state-directory", type=Path)
+    parser.add_argument("--tdx-driver", type=Path)
+    parser.add_argument("--tdx-endpoint")
+    parser.add_argument("--allow-tdx-collect", action="store_true")
+    parser.add_argument(
+        "--allow-tdx-source-query",
+        action="store_true",
+        help=(
+            "Opt in to ephemeral reads from the bound TDX source on DEV 18766; "
+            "never ingest"
+        ),
+    )
+    parser.add_argument(
+        "--allow-unified-dev-macro-operations",
+        action="store_true",
+        help="Opt in to existing capability-gated Macro operations on TDX DEV 18766",
+    )
+    parser.add_argument(
+        "--tdx-dev-port", type=int, choices=(18766, 18767), default=18766
+    )
+    parser.add_argument("--tdx-workers", type=int, choices=range(1, 9), default=4)
     parser.add_argument("--worker-window-state", type=Path)
     parser.add_argument("--config-directory", type=Path, required=True)
     parser.add_argument("--package-store-directory", type=Path, required=True)
@@ -220,6 +260,10 @@ def main():
     parser.add_argument("--financial-state-directory", type=Path)
     parser.add_argument("--allow-financial-strategy", action="store_true")
     args = parser.parse_args()
+    if args.allow_unified_dev_macro_operations and (
+        args.tdx_state_directory is None or args.tdx_dev_port != 18766
+    ):
+        raise ValueError("unified_dev_macro_operations_require_18766")
     if args.enable_claims_timeseries and (
         args.claims_schedule_path is None or args.claims_job_directory is None
     ):
@@ -295,8 +339,38 @@ def main():
         )
     from market_data_foundation.web.worker_control import DevWorkerControl
 
+    require(
+        not args.allow_tdx_source_query
+        or args.tdx_state_directory is not None
+        and args.tdx_dev_port == 18766,
+        "tdx_source_query_dev_opt_in",
+    )
+    tdx_runtime = None
+    if args.tdx_state_directory:
+        from market_data_foundation.web.tdx_daily_api import DailyRuntime, TdxOptions
+
+        require(
+            args.tdx_driver is not None and args.tdx_endpoint is not None,
+            "tdx_binding_required",
+        )
+        tdx_runtime = DailyRuntime(
+            TdxOptions(
+                args.tdx_state_directory,
+                args.tdx_driver,
+                args.tdx_endpoint,
+                args.allow_tdx_collect,
+                origin=f"http://192.168.10.20:{args.tdx_dev_port}",
+                workers=args.tdx_workers,
+                allow_source_query=args.allow_tdx_source_query,
+            )
+        )
     app = create_timeseries_preview(
         settings,
+        tdx_runtime=tdx_runtime,
+        allow_unified_dev_macro_operations=args.allow_unified_dev_macro_operations,
+        dev_origin=tdx_runtime.options.origin
+        if tdx_runtime
+        else "http://192.168.10.20:18761",
         worker_control=DevWorkerControl(args.worker_window_state)
         if args.worker_window_state
         else None,
@@ -378,7 +452,19 @@ def main():
     )
     # Jobs own independent services and a nonblocking execution lock. Readers
     # can inspect the durable running record while one POST waits on a provider.
-    with ThreadingHTTPServer(CANDIDATE_LISTENER, TimeSeriesHandler) as server:
+    listener = CANDIDATE_LISTENER
+    handler = TimeSeriesHandler
+    if tdx_runtime:
+
+        class TdxHandler(TimeSeriesHandler):
+            body_limit = 160000
+            origin = tdx_runtime.options.origin
+            listener = ("192.168.10.20", args.tdx_dev_port)
+
+        listener, handler = TdxHandler.listener, TdxHandler
+        if args.allow_tdx_collect:
+            tdx_runtime.strategy.start()
+    with ThreadingHTTPServer(listener, handler) as server:
         server.app = app
         server.serve_forever()
 

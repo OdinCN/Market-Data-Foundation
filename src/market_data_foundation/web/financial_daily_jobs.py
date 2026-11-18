@@ -124,6 +124,28 @@ def plan(command, selected=SERIES_IDS):
     ]
 
 
+def derived_inputs(step, steps):
+    return [
+        leg
+        for leg in steps
+        if leg["series_id"] in {"DGS10", "DFII10"}
+        and leg["start"] <= step["end"]
+        and leg["end"] >= step["start"]
+    ]
+
+
+def outdated_derived(step, inputs):
+    if "input_batches" in step:
+        return step["input_batches"] != [
+            leg.get("result", {}).get("batch_id") for leg in inputs
+        ]
+    observed = step.get("observed_at") or step.get("retained", {}).get("observed_at")
+    return bool(observed) and any(
+        leg.get("observed_at") and stamp(leg["observed_at"]) > stamp(observed)
+        for leg in inputs
+    )
+
+
 def retain(store, batch):
     store.raw_store.put_verified(batch.raw)
     store.raw_store.put_verified(batch.metadata_raw)
@@ -327,7 +349,14 @@ class FinancialJobs:
                     or previous.get("schedule_slot") != schedule_slot
                 ):
                     raise WebError("financial_request_id_conflict", 409)
-                if not resume or previous["state"] == "complete":
+                if not resume or (
+                    previous["state"] == "complete"
+                    and not any(
+                        outdated_derived(s, derived_inputs(s, previous["steps"]))
+                        for s in previous["steps"]
+                        if s["source"] == "derived"
+                    )
+                ):
                     return previous
                 record = dict(
                     previous,
@@ -364,6 +393,22 @@ class FinancialJobs:
                 service.source.max_requests = 160 if origin == "manual" else 20
                 archive = fred = None
                 for step in record["steps"]:
+                    if step["source"] == "derived":
+                        inputs = derived_inputs(step, record["steps"])
+                        if any(leg["state"] != "complete" for leg in inputs):
+                            step.update(
+                                state="pending",
+                                classification="financial_derived_inputs_unavailable",
+                            )
+                            step.pop("retained", None)
+                            continue
+                        if outdated_derived(step, inputs):
+                            step["state"] = "pending"
+                            step.pop("retained", None)
+                        if step["state"] != "complete":
+                            step["input_batches"] = [
+                                leg.get("result", {}).get("batch_id") for leg in inputs
+                            ]
                     if step["state"] == "complete":
                         continue
                     if step.get("retry_at") and stamp(step["retry_at"]) > stamp(now()):

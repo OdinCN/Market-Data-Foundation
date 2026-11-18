@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-export type Row = { id: string; cells: ReactNode[]; search: string };
+export type Row = {
+  id: string;
+  cells: ReactNode[];
+  search: string;
+  execution?: { id: string; asset: string };
+};
 export function WorkflowTable({
   label,
   columns,
@@ -13,12 +18,14 @@ export function WorkflowTable({
   locateId,
   className,
   rightDetails = false,
+  singlePane = false,
+  searchControl,
 }: {
   label: string;
   columns: string[];
   rows: Row[];
   selected?: string | null;
-  onSelect: (id: string) => void;
+  onSelect?: (id: string) => void;
   children?: ReactNode;
   empty?: string;
   tools?: ReactNode;
@@ -26,11 +33,13 @@ export function WorkflowTable({
   locateId?: string | null;
   className?: string;
   rightDetails?: boolean;
+  singlePane?: boolean;
+  searchControl?: ReactNode;
 }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const input = useRef<HTMLInputElement>(null);
-  const located = useRef<string | null>(null);
+  const located = useRef<{ id: string; follow: boolean } | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const detail = useRef<HTMLElement>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -62,7 +71,10 @@ export function WorkflowTable({
       ?.focus({ preventScroll: true });
   }
   function selectRow(id: string) {
-    onSelect(id);
+    // Row selection keeps the user's search/page, but follows this identity if
+    // an unfiltered list is subsequently reordered by another family's read.
+    located.current = { id, follow: !search.trim() };
+    onSelect?.(id);
     if (rightDetails) {
       setDetailOpen(true);
       if (narrow)
@@ -76,11 +88,13 @@ export function WorkflowTable({
       located.current = null;
       return;
     }
-    if (located.current === locateId) return;
-    setSearch("");
+    if (located.current?.id !== locateId) {
+      located.current = { id: locateId, follow: true };
+      setSearch("");
+    }
+    if (!located.current.follow) return;
     const index = rows.findIndex((row) => row.id === locateId);
-    setPage(pageSize && index >= 0 ? Math.floor(index / pageSize) : 0);
-    if (index >= 0) located.current = locateId;
+    if (index >= 0) setPage(pageSize ? Math.floor(index / pageSize) : 0);
   }, [locateId, rows, pageSize]);
   const visible = rows.filter((r) =>
     r.search.toLowerCase().includes(search.trim().toLowerCase()),
@@ -93,29 +107,35 @@ export function WorkflowTable({
     ? visible.slice(currentPage * pageSize, (currentPage + 1) * pageSize)
     : visible;
   return (
-    <div ref={root} className={`workbench${className ? ` ${className}` : ""}`}>
+    <div
+      ref={root}
+      className={`workbench${singlePane ? " single-pane" : ""}${className ? ` ${className}` : ""}`}
+    >
       <section aria-label={label} className="list-pane">
-        <div className="searchbar">
-          <input
-            ref={input}
-            aria-label={`搜索${label}`}
-            placeholder={`搜索${label}`}
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(0);
-            }}
-          />
-          <button
-            onClick={() => {
-              setSearch("");
-              input.current?.focus();
-            }}
-          >
-            清除
-          </button>
-          {tools}
-        </div>
+        {searchControl ?? (
+          <div className="searchbar">
+            <input
+              ref={input}
+              aria-label={`搜索${label}`}
+              placeholder={`搜索${label}`}
+              value={search}
+              onChange={(e) => {
+                if (located.current) located.current.follow = false;
+                setSearch(e.target.value);
+                setPage(0);
+              }}
+            />
+            <button
+              onClick={() => {
+                setSearch("");
+                input.current?.focus();
+              }}
+            >
+              清除
+            </button>
+            {tools}
+          </div>
+        )}
         <div className="table-wrap">
           <table>
             <thead>
@@ -129,13 +149,16 @@ export function WorkflowTable({
               {shown.map((row) => (
                 <tr
                   key={row.id}
+                  data-record-id={row.id}
+                  data-execution-id={row.execution?.id}
+                  data-execution-asset={row.execution?.asset}
                   className={row.id === selected ? "selected" : ""}
-                  aria-selected={row.id === selected}
-                  onClick={() => selectRow(row.id)}
+                  aria-selected={onSelect ? row.id === selected : undefined}
+                  onClick={onSelect ? () => selectRow(row.id) : undefined}
                 >
                   {row.cells.map((cell, i) => (
                     <td key={i} data-label={columns[i]}>
-                      {i === 0 ? (
+                      {i === 0 && onSelect ? (
                         <button
                           className="row-link"
                           onClick={(e) => {
@@ -165,14 +188,20 @@ export function WorkflowTable({
           <div className="actions">
             <button
               disabled={currentPage === 0}
-              onClick={() => setPage(currentPage - 1)}
+              onClick={() => {
+                if (located.current) located.current.follow = false;
+                setPage(currentPage - 1);
+              }}
             >
               前一页记录
             </button>
             <span>第 {currentPage + 1} 页</span>
             <button
               disabled={currentPage >= lastPage}
-              onClick={() => setPage(currentPage + 1)}
+              onClick={() => {
+                if (located.current) located.current.follow = false;
+                setPage(currentPage + 1);
+              }}
             >
               后一页记录
             </button>
@@ -186,54 +215,56 @@ export function WorkflowTable({
           onClick={closeDetails}
         />
       )}
-      <aside
-        ref={detail}
-        tabIndex={rightDetails ? -1 : undefined}
-        className={`detail-pane${rightDetails && detailOpen ? " right-details-open" : ""}`}
-        role={rightDetails && narrow && detailOpen ? "dialog" : undefined}
-        aria-modal={rightDetails && narrow && detailOpen ? true : undefined}
-        onKeyDown={(event) => {
-          if (!rightDetails || !narrow || !detailOpen) return;
-          if (event.key === "Escape") {
-            event.stopPropagation();
-            closeDetails();
-          }
-          if (event.key === "Tab") {
-            const buttons = [
-              ...(detail.current?.querySelectorAll<HTMLElement>(
-                'button:not(:disabled),a[href],input:not(:disabled),[tabindex="0"]',
-              ) ?? []),
-            ].filter((el) => el.getClientRects().length);
-            const first = buttons[0],
-              last = buttons.at(-1);
-            if (
-              event.shiftKey &&
-              (document.activeElement === first ||
-                document.activeElement === detail.current)
-            ) {
-              event.preventDefault();
-              last?.focus();
-            } else if (!event.shiftKey && document.activeElement === last) {
-              event.preventDefault();
-              first?.focus();
+      {!singlePane && (
+        <aside
+          ref={detail}
+          tabIndex={rightDetails ? -1 : undefined}
+          className={`detail-pane${rightDetails && detailOpen ? " right-details-open" : ""}`}
+          role={rightDetails && narrow && detailOpen ? "dialog" : undefined}
+          aria-modal={rightDetails && narrow && detailOpen ? true : undefined}
+          onKeyDown={(event) => {
+            if (!rightDetails || !narrow || !detailOpen) return;
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              closeDetails();
             }
-          }
-        }}
-        aria-label={`${label}详情`}
-      >
-        {rightDetails && (
-          <button className="detail-close" onClick={closeDetails}>
-            关闭详情
-          </button>
-        )}
-        {children ?? (
-          <div className="empty detail-empty">
-            <span aria-hidden="true">▦</span>
-            <h3>选择一项查看详情</h3>
-            <p>详细信息与关联操作将在此显示。</p>
-          </div>
-        )}
-      </aside>
+            if (event.key === "Tab") {
+              const buttons = [
+                ...(detail.current?.querySelectorAll<HTMLElement>(
+                  'button:not(:disabled),a[href],input:not(:disabled),[tabindex="0"]',
+                ) ?? []),
+              ].filter((el) => el.getClientRects().length);
+              const first = buttons[0],
+                last = buttons.at(-1);
+              if (
+                event.shiftKey &&
+                (document.activeElement === first ||
+                  document.activeElement === detail.current)
+              ) {
+                event.preventDefault();
+                last?.focus();
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first?.focus();
+              }
+            }
+          }}
+          aria-label={`${label}详情`}
+        >
+          {rightDetails && (
+            <button className="detail-close" onClick={closeDetails}>
+              关闭详情
+            </button>
+          )}
+          {children ?? (
+            <div className="empty detail-empty">
+              <span aria-hidden="true">▦</span>
+              <h3>选择一项查看详情</h3>
+              <p>详细信息与关联操作将在此显示。</p>
+            </div>
+          )}
+        </aside>
+      )}
     </div>
   );
 }

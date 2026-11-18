@@ -1,5 +1,5 @@
 CREATE TEMP TABLE tdx_daily_stage (
-    market smallint NOT NULL CHECK (market IN (0, 1)),
+    market smallint NOT NULL CHECK (market IN (0, 1, 2)),
     instrument text NOT NULL CHECK (instrument ~ '^[0-9]{6}$'),
     period text NOT NULL CHECK (period = '1d'),
     trading_day date NOT NULL CHECK (trading_day BETWEEN DATE '1990-01-01' AND DATE '2100-12-31'),

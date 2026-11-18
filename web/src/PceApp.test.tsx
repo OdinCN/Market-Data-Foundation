@@ -1,3 +1,4 @@
+import { openSubmittedBrief } from "./openSubmittedBrief.testHelper";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   act,
@@ -82,7 +83,8 @@ function host(lost = false) {
       return Response.json(jobs[0]);
     }
     if (path === "/api/pce/catalog") return Response.json(catalog);
-    if (path === "/api/pce/jobs") return Response.json({ jobs });
+    if (path === "/api/pce/jobs")
+      return Response.json({ jobs: lost ? [] : jobs });
     if (path === "/api/pce/assets")
       return Response.json({
         binding,
@@ -245,7 +247,7 @@ it("developer contract navigation preserves PCE binding and the only create butt
     expect((btn("创建采集任务") as HTMLButtonElement).disabled).toBe(false),
   );
   fireEvent.click(btn("创建采集任务"));
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   expect(
     screen.getByRole("tab", { name: "执行记录" }).getAttribute("aria-selected"),
   ).toBe("true");
@@ -298,7 +300,7 @@ it("late pre-submit GET cannot unlock accepted intent, including reopening", asy
   const view = await open(transport);
   confirm();
   fireEvent.click(btn("创建采集任务"));
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   hold = true;
   fireEvent(document, new Event("visibilitychange"));
   fireEvent.click(screen.getByRole("tab", { name: "新建采集" }));
@@ -320,7 +322,7 @@ it("restores a durable job without session storage and links only its new worker
   const view = await open(h.transport);
   confirm();
   fireEvent.click(btn("创建采集任务"));
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   h.finish();
   view.unmount();
   sessionStorage.clear();
@@ -392,7 +394,7 @@ it("keeps CPI and PCE records partitioned, with both providers in unfiltered exe
   await open(h.transport);
   confirm();
   fireEvent.click(btn("创建采集任务"));
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   await act(async () => {
     location.hash = "ui=r5&view=collection&tab=executions";
     window.dispatchEvent(new Event("hashchange"));
@@ -508,7 +510,7 @@ it("uses real PCE API shapes for native submit → independent worker → new in
     expect((btn("创建采集任务") as HTMLButtonElement).disabled).toBe(false),
   );
   fireEvent.click(btn("创建采集任务"));
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   expect(h.effects).toEqual({ source: 0, raw: 0, jobs: 1 });
   const result = await h.exchange({ control: "run" });
   expect(result.body.state).toBe("succeeded");
@@ -587,6 +589,26 @@ it("retains the previous standalone UI UNKNOWN marker without exposing its workf
   expect((btn("创建采集任务") as HTMLButtonElement).disabled).toBe(true);
   expect(screen.queryByRole("button", { name: "确认登记 PG Job" })).toBeNull();
   expect(posts(h)).toHaveLength(0);
+  const briefs = within(
+    screen.getByRole("complementary", { name: "执行简报" }),
+  );
+  expect(briefs.getByText(catalog.submission.job_identity)).toBeTruthy();
+  expect(
+    (
+      briefs.getByRole("button", {
+        name: new RegExp(catalog.submission.job_identity),
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  const before = h.requests.length;
+  fireEvent.click(briefs.getByRole("button", { name: "核实原请求" }));
+  await screen.findByText(/原请求尚未核实/);
+  expect(
+    h.requests
+      .slice(before)
+      .some((r) => r.method === "GET" && r.path === "/api/pce/jobs"),
+  ).toBe(true);
+  expect(posts(h)).toHaveLength(0);
 });
 
 const originalPce = "pce-init-698446184a6df3c77bfb182b4411fa73b001143c";
@@ -595,17 +617,17 @@ it("failed native execution → exact backfill POST → independent successor wo
   await open(h.transport, { tab: "executions", job: originalPce });
   await screen.findByRole("heading", { name: "执行详情" });
   fireEvent.click(btn("指定范围回补 →"));
-  await screen.findByLabelText("关联失败 / 异常执行");
-  expect(
-    (screen.getByLabelText("关联失败 / 异常执行") as HTMLSelectElement).value,
-  ).toBe(originalPce);
+  const parent = (await screen.findByLabelText(
+    "关联失败 / 异常执行",
+  )) as HTMLSelectElement;
+  await waitFor(() => expect(parent.value).toBe(originalPce));
   expect((btn("创建采集任务") as HTMLButtonElement).disabled).toBe(true);
   confirm();
   await waitFor(() =>
     expect((btn("创建采集任务") as HTMLButtonElement).disabled).toBe(false),
   );
   fireEvent.click(btn("创建采集任务"));
-  await screen.findByRole("heading", { name: "执行详情" });
+  await openSubmittedBrief();
   const writes = h.requests.filter((r) => r.method === "POST");
   expect(writes).toHaveLength(1);
   expect(writes[0].path).toBe("/api/pce/jobs/backfill");

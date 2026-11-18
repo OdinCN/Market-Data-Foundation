@@ -1,7 +1,7 @@
 -- Candidate only: never applied by the offline CLI. All writers must use the lock.
 CREATE SCHEMA mdf_tdx_daily;
 CREATE TABLE mdf_tdx_daily.bars_daily_current (
-    market smallint NOT NULL CHECK (market IN (0, 1)),
+    market smallint NOT NULL CHECK (market IN (0, 1, 2)),
     instrument text NOT NULL CHECK (instrument ~ '^[0-9]{6}$'),
     period text NOT NULL CHECK (period = '1d'),
     trading_day date NOT NULL CHECK (trading_day BETWEEN DATE '1990-01-01' AND DATE '2100-12-31'),
@@ -22,7 +22,7 @@ CREATE TABLE mdf_tdx_daily.bars_daily_current (
 );
 CREATE TABLE mdf_tdx_daily.source_refresh_batches (
     source text NOT NULL, batch_id text NOT NULL,
-    market smallint NOT NULL CHECK (market IN (0, 1)),
+    market smallint NOT NULL CHECK (market IN (0, 1, 2)),
     instrument text NOT NULL CHECK (instrument ~ '^[0-9]{6}$'),
     period text NOT NULL CHECK (period = '1d'),
     basis text NOT NULL CHECK (basis = 'native_projection'),

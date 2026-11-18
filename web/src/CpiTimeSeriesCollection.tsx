@@ -1,3 +1,12 @@
+import {
+  useCollectionRecords,
+  collectionRecent,
+  CollectionBriefs,
+  CollectionFormLock,
+  collectionCanReopen,
+} from "./CollectionLifecycle";
+import { ExecutionBriefCard } from "./DailyFormControls";
+import { useCollectionSubmit } from "./useCollectionSubmit";
 import { claimsExecutionPeriod } from "./claimsPeriod";
 import {
   dayRangeValid,
@@ -121,6 +130,7 @@ function CpiTimeSeriesCollectionContent({
   generation?: number;
   onExecution?: (id: string) => void;
 }) {
+  const submission = useCollectionSubmit();
   const weekly = profile.id === "claims";
   const PeriodField = weekly
     ? WeekField
@@ -201,12 +211,16 @@ function CpiTimeSeriesCollectionContent({
     [transport, generation, profile.id],
     !!availability.data && tab === "new",
   );
+  const currentJobs = useCollectionRecords([
+    ...(receipt ? [receipt] : []),
+    ...(jobs.data?.jobs ?? []),
+  ]);
   const matched = intent
-    ? (jobs.data?.jobs.find((job) => sameIntent(job, intent)) ??
+    ? (currentJobs.find((job) => sameIntent(job, intent)) ??
       (receipt && sameIntent(receipt, intent) ? receipt : null))
     : null;
   const unresolved =
-    !!intent && (!matched || ["running", "unknown"].includes(matched.state));
+    !!intent && (!matched || !collectionCanReopen(matched.state) || jobs.stale);
   const enabled =
     availability.data?.web_capabilities.collect === true &&
     !availability.failure;
@@ -259,6 +273,61 @@ function CpiTimeSeriesCollectionContent({
     setEnd((saved ?? defaultRange).end);
     setAction(next);
   }
+  async function readIntent(intent: CpiJobIntent) {
+    const result = await readCpiJobs(transport, undefined, profile);
+    const job = result.jobs.find((value) => sameIntent(value, intent));
+    if (!job) throw Error("receipt_unknown");
+    return job;
+  }
+  function recallIntent() {
+    if (!intent || busy) return;
+    void submission
+      .recall(
+        intent.request_id,
+        () => readIntent(intent),
+        (value) => validJob(value, profile) && sameIntent(value, intent),
+      )
+      .then((job) => {
+        setReceipt(job);
+        setConfirmed(false);
+        jobs.refresh();
+        setNotice("已回读原请求，未重复提交。");
+      })
+      .catch(() => setNotice("原请求回执仍待核实，保留编号，不重复提交。"));
+  }
+  function refusal(error: unknown, intent: CpiJobIntent | null) {
+    // The host refuses the execution lock before saving this request's journal.
+    const jobsBusy =
+      error instanceof CpiServiceFailure &&
+      error.status === 409 &&
+      error.classification === `${profile.id}_jobs_busy`;
+    const initializationRefused =
+      intent?.action === "initialize" &&
+      error instanceof CpiServiceFailure &&
+      ((error.status === 409 &&
+        error.classification === "initialization_anchor_unavailable") ||
+        (error.status === 400 &&
+          error.classification === "initialization_preset_range_required"));
+    const refused =
+      jobsBusy ||
+      ((quarterly || weekly) &&
+        error instanceof CpiServiceFailure &&
+        [400, 403, 422].includes(error.status ?? 0)) ||
+      initializationRefused ||
+      (error instanceof CpiServiceFailure &&
+        [400, 403, 422].includes(error.status ?? 0) &&
+        [
+          "collection_not_enabled",
+          `${profile.id}_package_credential_binding_unavailable`,
+          `${profile.id}_capability_disabled`,
+          "bls_credential_missing",
+          "bls_credential_unknown",
+          "operator_not_authorized",
+          "local_read_not_authorized",
+          "collection_range_exceeds_host_limit",
+        ].includes(error.classification));
+    return { jobsBusy, initializationRefused, refused };
+  }
   async function submit() {
     if (
       writing.current ||
@@ -301,56 +370,39 @@ function CpiTimeSeriesCollectionContent({
     }
     try {
       if (!reserved) return;
-      const job = await cpiRequest<CpiJob>(
-        transport,
-        "/jobs",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(reserved),
-        },
-        20000,
-        profile,
+      const intent = reserved;
+      const job = await submission.submit(
+        intent.request_id,
+        () =>
+          cpiRequest<CpiJob>(
+            transport,
+            "/jobs",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(intent),
+            },
+            20000,
+            profile,
+          ),
+        () => readIntent(intent),
+        (value) => validJob(value, profile) && sameIntent(value, intent),
+        (error) => refusal(error, intent).refused,
       );
       if (!validJob(job, profile) || !sameIntent(job, reserved))
         throw new Error("receipt_unknown");
       if (mounted.current) {
         setReceipt(job);
+        setConfirmed(false);
         jobs.refresh();
         setNotice("已收到任务状态，正在自动跟踪同一请求。");
       }
     } catch (error) {
       if (mounted.current) {
-        // The host refuses the execution lock before saving this request's journal.
-        const jobsBusy =
-          error instanceof CpiServiceFailure &&
-          error.status === 409 &&
-          error.classification === `${profile.id}_jobs_busy`;
-        const initializationRefused =
-          reserved?.action === "initialize" &&
-          error instanceof CpiServiceFailure &&
-          ((error.status === 409 &&
-            error.classification === "initialization_anchor_unavailable") ||
-            (error.status === 400 &&
-              error.classification === "initialization_preset_range_required"));
-        const refused =
-          jobsBusy ||
-          ((quarterly || weekly) &&
-            error instanceof CpiServiceFailure &&
-            [400, 403, 422].includes(error.status ?? 0)) ||
-          initializationRefused ||
-          (error instanceof CpiServiceFailure &&
-            [400, 403, 422].includes(error.status ?? 0) &&
-            [
-              "collection_not_enabled",
-              `${profile.id}_package_credential_binding_unavailable`,
-              `${profile.id}_capability_disabled`,
-              "bls_credential_missing",
-              "bls_credential_unknown",
-              "operator_not_authorized",
-              "local_read_not_authorized",
-              "collection_range_exceeds_host_limit",
-            ].includes(error.classification));
+        const { jobsBusy, initializationRefused, refused } = refusal(
+          error,
+          reserved,
+        );
         if (refused && reserved) {
           try {
             const stored = storedIntent(intentKey, quarterly, weekly);
@@ -389,30 +441,16 @@ function CpiTimeSeriesCollectionContent({
         throw new Error("intent_changed");
       localStorage.removeItem(intentKey);
       setIntent(null);
-      setReceipt(null);
+      submission.reset();
       setNotice("");
       setConfirmed(false);
     } catch {
       setStorageFailed(true);
     }
   }
-  const briefJobs = [
-    ...(jobs.data?.jobs ?? []),
-    ...(receipt &&
-    !jobs.data?.jobs.some((job) => job.request_id === receipt.request_id)
-      ? [receipt]
-      : []),
-  ].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  const briefJobs = collectionRecent(currentJobs, intent?.request_id);
   async function resumeJob(job: CpiJob) {
-    if (
-      writing.current ||
-      !enabled ||
-      !confirmed ||
-      start !== job.start ||
-      end !== job.end ||
-      (action === "update") !== (job.action === "update")
-    )
-      return;
+    if (writing.current || !enabled || !profile.resumePath) return;
     writing.current = true;
     setBusy(true);
     try {
@@ -514,230 +552,184 @@ function CpiTimeSeriesCollectionContent({
               if (e.currentTarget.checkValidity()) void submit();
             }}
           >
-            <label>
-              采集方式
-              <select
-                value={action}
-                onChange={(e) =>
-                  changeAction(e.target.value as "initialize" | "update")
+            <CollectionFormLock locked={busy || !!intent}>
+              <label>
+                采集方式
+                <select
+                  value={action}
+                  onChange={(e) =>
+                    changeAction(e.target.value as "initialize" | "update")
+                  }
+                >
+                  <option value="update">更新指定范围</option>
+                  <option value="initialize">初始化采集</option>
+                </select>
+              </label>
+              <div className="field-grid">
+                <PeriodField
+                  key={`${action}-start`}
+                  label={`采集开始${periodLabel}`}
+                  value={start}
+                  onChange={(value) => {
+                    edited.current[action] = true;
+                    setStart(value);
+                  }}
+                />
+                <PeriodField
+                  key={`${action}-end`}
+                  label={`采集结束${periodLabel}`}
+                  value={end}
+                  onChange={(value) => {
+                    edited.current[action] = true;
+                    setEnd(value);
+                  }}
+                />
+              </div>
+              {initializing && (
+                <p>
+                  初始化服务预置范围：
+                  {(preset &&
+                    ("years" in preset
+                      ? preset.years
+                      : "quarters" in preset
+                        ? preset.quarters
+                        : preset.months)) ||
+                    "待核实"}
+                  {weekly
+                    ? "日历年（来源含28天缓冲）"
+                    : quarterly
+                      ? "个季度"
+                      : "个月"}
+                  ，可自行修改
+                </p>
+              )}
+              {initializing && preset?.available && (
+                <>
+                  <p>
+                    服务预置{periodLabel}：{preset.start} 至 {preset.end}
+                  </p>
+                  <p className="small">
+                    范围依据：
+                    {weekly
+                      ? "20日历年，按后端自然日预置；来源额外读取28天计算缓冲"
+                      : quarterly
+                        ? "上一完整 UTC 季度；不代表已发布或来源已就绪"
+                        : initializationAnchorText(preset.anchor_basis)}
+                    。实际覆盖以采集回读为准。
+                  </p>
+                </>
+              )}
+              {initializing && !preset?.available && (
+                <p role="status">
+                  服务暂无默认范围（尚未确认可用锚点 ），请自行填写合法
+                  {periodLabel}范围。
+                </p>
+              )}
+              {start && end && !validRange && (
+                <p role="alert">
+                  起止{periodLabel}
+                  {quarterly
+                    ? "无效、尚未完整结束或超过服务允许的采集范围。"
+                    : weekly
+                      ? "无效、不含周六或超过服务允许的100年范围。"
+                      : "无效或超过服务允许的采集范围。"}
+                </p>
+              )}
+              <label className="cpi-collection-confirm">
+                <input
+                  type="checkbox"
+                  checked={confirmed}
+                  onChange={(e) => setConfirmed(e.target.checked)}
+                />
+                <span>我确认将以上范围采集到开发测试库</span>
+              </label>
+              <button
+                className="primary"
+                disabled={
+                  !enabled ||
+                  !confirmed ||
+                  !!intent ||
+                  storageFailed ||
+                  busy ||
+                  !validRange
                 }
               >
-                <option value="update">更新指定范围</option>
-                <option value="initialize">初始化采集</option>
-              </select>
-            </label>
-            <div className="field-grid">
-              <PeriodField
-                key={`${action}-start`}
-                label={`采集开始${periodLabel}`}
-                value={start}
-                onChange={(value) => {
-                  edited.current[action] = true;
-                  setStart(value);
-                }}
-              />
-              <PeriodField
-                key={`${action}-end`}
-                label={`采集结束${periodLabel}`}
-                value={end}
-                onChange={(value) => {
-                  edited.current[action] = true;
-                  setEnd(value);
-                }}
-              />
-            </div>
-            {initializing && (
-              <p>
-                初始化服务预置范围：
-                {(preset &&
-                  ("years" in preset
-                    ? preset.years
-                    : "quarters" in preset
-                      ? preset.quarters
-                      : preset.months)) ||
-                  "待核实"}
-                {weekly
-                  ? "日历年（来源含28天缓冲）"
-                  : quarterly
-                    ? "个季度"
-                    : "个月"}
-                ，可自行修改
-              </p>
-            )}
-            {initializing && preset?.available && (
-              <>
-                <p>
-                  服务预置{periodLabel}：{preset.start} 至 {preset.end}
-                </p>
-                <p className="small">
-                  范围依据：
-                  {weekly
-                    ? "20日历年，按后端自然日预置；来源额外读取28天计算缓冲"
-                    : quarterly
-                      ? "上一完整 UTC 季度；不代表已发布或来源已就绪"
-                      : initializationAnchorText(preset.anchor_basis)}
-                  。实际覆盖以采集回读为准。
-                </p>
-              </>
-            )}
-            {initializing && !preset?.available && (
-              <p role="status">
-                服务暂无默认范围（尚未确认可用锚点 ），请自行填写合法
-                {periodLabel}范围。
-              </p>
-            )}
-            {start && end && !validRange && (
-              <p role="alert">
-                起止{periodLabel}
-                {quarterly
-                  ? "无效、尚未完整结束或超过服务允许的采集范围。"
-                  : weekly
-                    ? "无效、不含周六或超过服务允许的100年范围。"
-                    : "无效或超过服务允许的采集范围。"}
-              </p>
-            )}
-            <label className="cpi-collection-confirm">
-              <input
-                type="checkbox"
-                checked={confirmed}
-                onChange={(e) => setConfirmed(e.target.checked)}
-              />
-              <span>我确认将以上范围采集到开发测试库</span>
-            </label>
-            <button
-              className="primary"
-              disabled={
-                !enabled ||
-                !confirmed ||
-                !!intent ||
-                storageFailed ||
-                busy ||
-                !validRange
-              }
-            >
-              {busy ? "正在提交…" : `提交 ${profile.label} 采集`}
-            </button>
+                {busy ? "正在提交…" : `提交 ${profile.label} 采集`}
+              </button>
+            </CollectionFormLock>
           </form>
           {storageFailed && (
             <p role="alert">本机请求记录无法核实，已阻止提交。</p>
           )}
         </div>
-        <aside className="detail-pane execution-briefs" aria-label="执行简报">
-          <h3>执行简报</h3>
+        <CollectionBriefs>
           {notice && <p role="status">{notice}</p>}
-          <p className="small">时间基准：北京时间（UTC+08:00）</p>
+          {intent && !matched && !busy && (
+            <button onClick={recallIntent}>核实原请求</button>
+          )}
           <ol className="execution-brief-list">
             {intent && !briefJobs.some((job) => sameIntent(job, intent)) && (
               <li>
-                <div className="execution-brief-card" role="status">
-                  <strong>
-                    {macroAssetLabel(profile)} · {cpiActionText(intent.action)}
-                  </strong>
-                  <dl>
-                    <div>
-                      <dt>请求编号</dt>
-                      <dd className="request-id">{intent.request_id}</dd>
-                    </div>
-                    <div>
-                      <dt>创建时间</dt>
-                      <dd>未核实（本机保留意图）</dd>
-                    </div>
-                    <div>
-                      <dt>采集范围</dt>
-                      <dd>
-                        {intent.start} 至 {intent.end}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>结果</dt>
-                      <dd>
-                        {busy
-                          ? "正在提交，尚未确认任务创建。"
-                          : "结果未知，保留请求并自动跟踪，请勿重复提交；尚未确认任务创建。"}
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
+                <ExecutionBriefCard
+                  id={intent.request_id}
+                  title={`${macroAssetLabel(profile)} · ${cpiActionText(intent.action)}`}
+                  createdAt=""
+                  start={intent.start}
+                  end={intent.end}
+                  current
+                  disabled
+                  result={
+                    busy
+                      ? "正在提交，尚未确认任务创建。"
+                      : "结果未知，保留请求并自动跟踪，请勿重复提交；尚未确认任务创建。"
+                  }
+                  onSelect={() => {}}
+                />
               </li>
             )}
             {briefJobs.map((job) => (
               <li key={job.request_id}>
-                <button
-                  type="button"
-                  className="execution-brief-card"
-                  onClick={() => onExecution?.(job.job_id)}
-                >
-                  <strong>
-                    {macroAssetLabel(profile)} · {cpiActionText(job.action)}
-                  </strong>
-                  <dl>
-                    <div>
-                      <dt>请求编号</dt>
-                      <dd className="request-id">{job.request_id}</dd>
-                    </div>
-                    <div>
-                      <dt>创建时间</dt>
-                      <dd>
-                        <time>
-                          {formatBeijingTime(job.created_at).replace(
-                            " 北京时间",
-                            "",
-                          )}
-                        </time>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>采集范围</dt>
-                      <dd>
-                        {job.start} 至 {job.end}
-                      </dd>
-                    </div>
-                    {weekly && (
-                      <div>
-                        <dt>发布与参考周</dt>
-                        <dd>{claimsExecutionPeriod(job.result)}</dd>
-                      </div>
-                    )}
-                    <div>
-                      <dt>结果</dt>
-                      <dd>
-                        {cpiExecutionStateText(
-                          job.state,
-                          job.result,
-                          profile,
-                          job,
-                        )}
-                        {job.classification ? ` · ${job.classification}` : ""}
-                      </dd>
-                    </div>
-                  </dl>
-                </button>
-                {(profile.id === "retail" || profile.id === "m3") &&
-                  (["failed", "unknown"].includes(job.state) ||
-                    (profile.id === "m3" && job.state === "waiting")) && (
-                    <button
-                      disabled={busy || !enabled || !confirmed}
-                      onClick={() => void resumeJob(job)}
-                    >
-                      按原请求恢复采集（{job.start} 至 {job.end}）
-                    </button>
-                  )}
+                <ExecutionBriefCard
+                  id={job.request_id}
+                  title={`${macroAssetLabel(profile)} · ${cpiActionText(job.action)}`}
+                  current={!!intent && sameIntent(job, intent)}
+                  createdAt={job.created_at}
+                  start={job.start}
+                  end={job.end}
+                  onResume={
+                    profile.resumePath &&
+                    [
+                      "failed",
+                      "unknown",
+                      ...(profile.id === "m3" ? ["waiting"] : []),
+                    ].includes(job.state)
+                      ? () => void resumeJob(job)
+                      : undefined
+                  }
+                  resumeDisabled={busy || !enabled || jobs.stale}
+                  state={job.state}
+                  canReopen={!unresolved && !jobs.stale}
+                  reopenDisabled={busy || storageFailed}
+                  onReopen={newIntent}
+                  result={
+                    <>
+                      {cpiExecutionStateText(
+                        job.state,
+                        job.result,
+                        profile,
+                        job,
+                      )}
+                      {job.classification ? ` · ${job.classification}` : ""}
+                      {weekly && <> · {claimsExecutionPeriod(job.result)}</>}
+                    </>
+                  }
+                  onSelect={() => onExecution?.(job.job_id)}
+                />
                 {["unknown", "outcome_unknown"].includes(job.state) && (
                   <p role="status">
                     结果未知，保留请求并自动跟踪，请勿重复提交。
                   </p>
                 )}
-                {intent &&
-                  sameIntent(job, intent) &&
-                  !unresolved &&
-                  matched && (
-                    <button
-                      disabled={busy || storageFailed}
-                      onClick={newIntent}
-                    >
-                      开始另一项采集
-                    </button>
-                  )}
               </li>
             ))}
           </ol>
@@ -753,7 +745,7 @@ function CpiTimeSeriesCollectionContent({
           {jobs.failure && (
             <p role="alert">任务状态已陈旧，保留上次结果并自动重读。</p>
           )}
-        </aside>
+        </CollectionBriefs>
       </div>
     </section>
   );
