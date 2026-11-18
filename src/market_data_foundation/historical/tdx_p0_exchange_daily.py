@@ -21,6 +21,7 @@ from market_data_foundation.historical.tdx_p0_roster import (
 SZ = "https://www.szse.cn/api/report/ShowReport"
 SH = "https://query.sse.com.cn"
 BJ = "https://www.bse.cn"
+BSE_CENSUS_URL = BJ + "/nqxxController/nqxxCnzq.do"
 MARKETS = {0: "sz", 1: "sh", 2: "bj"}
 SOURCE_ERRORS = (
     ValueError,
@@ -50,9 +51,26 @@ class ExchangeOriginals:
         sleep(1.5)
         referer = REFERERS[httpx.URL(url).host]
         options = {"params" if method == "GET" else "data": parameters}
-        with self.client.stream(
+        request = self.client.build_request(
             method, url, headers={"Referer": referer}, **options
-        ) as response:
+        )
+        response = self.client.send(request, stream=True, follow_redirects=False)
+        redirected = False
+        try:
+            # The public BSE endpoint can issue a session cookie on a 307 to
+            # its own URL. Follow that standard redirect once, preserving POST.
+            retry = response.next_request
+            if (
+                str(request.url) == BSE_CENSUS_URL
+                and request.method == "POST"
+                and response.status_code == 307
+                and retry is not None
+                and retry.url == request.url
+                and retry.method == request.method
+            ):
+                response.close()
+                response = self.client.send(retry, stream=True, follow_redirects=False)
+                redirected = True
             response.raise_for_status()
             pieces = []
             size = 0
@@ -60,6 +78,8 @@ class ExchangeOriginals:
                 size += len(chunk)
                 require(size <= 8_000_000, "tdx_exchange_response_size")
                 pieces.append(chunk)
+        finally:
+            response.close()
         raw = b"".join(pieces)
         path = self.directory / kind
         path.write_bytes(raw)
@@ -68,6 +88,7 @@ class ExchangeOriginals:
             url=str(response.request.url),
             parameters=parameters,
             method=method,
+            **({"redirect_status": 307} if redirected else {}),
             path=str(path),
             sha256=sha256(raw).hexdigest(),
             received_at=datetime.now(UTC).isoformat(),
@@ -106,7 +127,6 @@ def collect_census(get, market, day):
             for board, stock_type in (("main", "1"), ("star", "8"))
         ]
 
-    url = BJ + "/nqxxController/nqxxCnzq.do"
     parameters = {
         "typejb": "T",
         "zqdm": "",
@@ -121,7 +141,7 @@ def collect_census(get, market, day):
             break
         proof = get(
             f"bj_current_page_{page}",
-            url,
+            BSE_CENSUS_URL,
             dict(parameters, page=str(page)),
             method="POST",
         )
