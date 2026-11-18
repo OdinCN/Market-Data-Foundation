@@ -125,6 +125,12 @@ def annual_calendar(raw, market, year, proof):
     return result
 
 
+def bse_page(raw):
+    match = re.fullmatch(rb"\s*null\((.*)\)\s*;?\s*", raw, re.S)
+    require(match is not None, "tdx_bj_jsonp")
+    return json.loads(match[1])[0]
+
+
 def bse_pages(sources, through):
     """Require the whole official census, including consistent dated pagination."""
     pages = {}
@@ -133,9 +139,7 @@ def bse_pages(sources, through):
     for kind, (raw, proof) in sources.items():
         if not kind.startswith("bj_current_page_"):
             continue
-        match = re.fullmatch(rb"\s*null\((.*)\)\s*;?\s*", raw, re.S)
-        require(match is not None, "tdx_bj_jsonp")
-        data = json.loads(match[1])[0]
+        data = bse_page(raw)
         number = int(data["number"])
         require(kind == f"bj_current_page_{number}", "tdx_bj_page_identity")
         require(number not in pages, "tdx_bj_duplicate_page")
@@ -216,23 +220,54 @@ def exchange_suspensions(sources, through):
                     else through,
                     proof,
                 )
+    sz_groups = {}
     for kind, (raw, proof) in sources.items():
-        if not re.fullmatch(r"sz_suspension_[0-9]{6}", kind):
+        match = re.fullmatch(r"sz_suspension_([0-9]{6})(?:_page_([0-9]+))?", kind)
+        if not match:
             continue
+        code, number = match[1], int(match[2] or 1)
         data = json.loads(raw)[0]
-        code = kind.rsplit("_", 1)[1]
-        require(
-            len(data["data"]) == int(data["metadata"]["recordcount"]),
-            "tdx_suspension_page_missing",
-        )
         parameters = proof["parameters"]
         require(
             parameters["CATALOGID"] == "1798"
             and parameters["txtDmorjc"] == code
-            and date.fromisoformat(parameters["txtZzrq"]) == through,
+            and date.fromisoformat(parameters["txtZzrq"]) == through
+            and int(parameters.get("PAGENO", 1)) == number,
             "tdx_suspension_query_scope",
         )
-        rows = data["data"]
+        pages = sz_groups.setdefault(code, {})
+        require(number not in pages, "tdx_suspension_page_duplicate")
+        pages[number] = data, proof
+
+    for code, pages in sz_groups.items():
+        first, proof = pages[1]
+        meta = first["metadata"]
+        count = int(meta["recordcount"])
+        page_count = max(1, int(meta.get("pagecount", 1)))
+        require(
+            set(pages) == set(range(1, page_count + 1)), "tdx_suspension_page_missing"
+        )
+        rows = []
+        for number, (data, page_proof) in sorted(pages.items()):
+            meta = data["metadata"]
+            require(
+                int(meta.get("pageno", 1)) == number
+                and int(meta["recordcount"]) == count
+                and max(1, int(meta.get("pagecount", 1))) == page_count
+                and page_proof["parameters"]["txtKsrq"]
+                == proof["parameters"]["txtKsrq"],
+                "tdx_suspension_page_inconsistent",
+            )
+            rows.extend(data["data"])
+        require(len(rows) == count, "tdx_suspension_page_missing")
+        if page_count > 1:
+            proofs = [item[1] for _, item in sorted(pages.items())]
+            proof = dict(
+                proof,
+                source_pages=proofs,
+                received_at=max(p["received_at"] for p in proofs),
+            )
+        parameters = proof["parameters"]
         require(all(r["zqdm"] == code for r in rows), "tdx_suspension_code")
         resumptions = [
             date.fromisoformat(r["fpkssj"][:10])
@@ -251,8 +286,11 @@ def exchange_suspensions(sources, through):
                 start >= date.fromisoformat(parameters["txtKsrq"]),
                 "tdx_suspension_query_scope",
             )
+            resume_dates = resumptions
+            if row["fpkssj"]:
+                resume_dates = [*resumptions, date.fromisoformat(row["fpkssj"][:10])]
             end = min(
-                (r - timedelta(days=1) for r in resumptions if r >= start),
+                (r - timedelta(days=1) for r in resume_dates if r >= start),
                 default=through,
             )
             add(0, code, start, end, proof)
@@ -303,6 +341,7 @@ def bse_listing_notice(raw, proof, code, through):
 def build_roster(manifest, provider_snapshot):
     """Manifest binds URLs, receipt clocks and digests of retained originals."""
     through = date.fromisoformat(manifest["valid_through"])
+    skipped_markets = set(manifest.get("skipped_census_markets", []))
     sources = {}
     for item in manifest["sources"]:
         raw = Path(item["path"]).read_bytes()
@@ -315,6 +354,7 @@ def build_roster(manifest, provider_snapshot):
                 >= through,
                 "tdx_exchange_census_observation_day",
             )
+        require(item["kind"] not in sources, "tdx_exchange_duplicate_source")
         sources[item["kind"]] = (raw, item)
     members = {}
 
@@ -340,6 +380,8 @@ def build_roster(manifest, provider_snapshot):
         )
 
     for kind in ("sz_current", "sz_terminated"):
+        if 0 in skipped_markets:
+            break
         raw, proof = sources[kind]
         rows = xlsx_rows(raw)
         require(bool(rows), "tdx_exchange_census_empty")
@@ -357,6 +399,8 @@ def build_roster(manifest, provider_snapshot):
                 proof,
             )
     for kind in ("sh_main", "sh_star"):
+        if 1 in skipped_markets:
+            break
         raw, proof = sources[kind]
         data = json.loads(raw)
         rows = data["result"]
@@ -375,9 +419,11 @@ def build_roster(manifest, provider_snapshot):
                 None if row["DELIST_DATE"] == "-" else row["DELIST_DATE"],
                 proof,
             )
-    raw, mapping_proof = sources["bj_mapping"]
     parser = MappingTable()
-    parser.feed(raw.decode())
+    mapping_proof = {}
+    if 2 not in skipped_markets:
+        raw, mapping_proof = sources["bj_mapping"]
+        parser.feed(raw.decode())
     mapping = {
         r[4]: (
             max(
@@ -388,7 +434,7 @@ def build_roster(manifest, provider_snapshot):
         for r in parser.rows
         if len(r) == 5 and r[4].isdigit()
     }
-    bj_current = bse_pages(sources, through)
+    bj_current = None if 2 in skipped_markets else bse_pages(sources, through)
     retained_bse = next(
         (
             market
@@ -405,7 +451,9 @@ def build_roster(manifest, provider_snapshot):
     if not provider_snapshot.get("historical_members"):
         retained_bse = None
     partial_bse = bj_current is None and retained_bse is not None
-    if bj_current is not None:
+    if 2 in skipped_markets:
+        pass
+    elif bj_current is not None:
         for row, proof in bj_current:
             code = row["xxzqdm"]
             add(
@@ -501,7 +549,9 @@ def build_roster(manifest, provider_snapshot):
     for member in provider_snapshot.get("historical_members", []):
         key = member["market"], member["instrument"]
         delisted = member.get("evidence", {}).get("delist_date")
-        if key not in members and delisted and date.fromisoformat(delisted) <= through:
+        if key[0] in skipped_markets or (
+            key not in members and delisted and date.fromisoformat(delisted) <= through
+        ):
             members[key] = member
     market_details = []
     provider_keys = {
@@ -518,6 +568,21 @@ def build_roster(manifest, provider_snapshot):
             )
         }
         observed = {k for k in provider_keys if k[0] == market}
+        if market in skipped_markets:
+            market_details.append(
+                dict(
+                    market=market,
+                    state="COMPLETE",
+                    current_count=None,
+                    enumeration="EXCHANGE_KNOWN_MEMBERS_PARTIAL",
+                    historical_enumeration="KNOWN_INTERVALS_ONLY_CODE_LINEAGE_UNVERIFIED",
+                    enumeration_from=None,
+                    enumeration_through=None,
+                    missing_in_provider=[],
+                    extra_in_provider=[],
+                )
+            )
+            continue
         if market == 2 and partial_bse:
             last_complete = retained_bse["enumeration_through"]
             require(
@@ -563,10 +628,10 @@ def build_roster(manifest, provider_snapshot):
         )
     calendar = []
     for market, exchange in enumerate(("sz", "sh", "bj")):
-        kind = f"{exchange}_calendar_2026"
+        kind = f"{exchange}_calendar_{through.year}"
         if kind in sources:
             raw, proof = sources[kind]
-            calendar.extend(annual_calendar(raw, market, 2026, proof))
+            calendar.extend(annual_calendar(raw, market, through.year, proof))
     suspensions = exchange_suspensions(sources, through)
     completeness = (
         {"complete_census_through": retained_bse["enumeration_through"]}
@@ -583,6 +648,11 @@ def build_roster(manifest, provider_snapshot):
             markets=market_details,
             historical_membership="EXCHANGE_KNOWN_INTERVALS_CODE_LINEAGE_UNVERIFIED",
             code_reuse="UNKNOWN",
+            **(
+                {"exchange_refresh": manifest["exchange_refresh"]}
+                if "exchange_refresh" in manifest
+                else {}
+            ),
             calendar=calendar,
             suspensions=suspensions,
             suspension_status="EXCHANGE_DATED_EVENTS_PARTIAL"

@@ -1201,6 +1201,9 @@ def coverage(store, day, *, as_of=None, job=None):
             lifecycle_unknown=0,
         )
         details = (snapshot or {}).get("details", {})
+        refresh = details.get("exchange_refresh", {})
+        refreshed_day = refresh.get("day") == day.isoformat()
+        pending = refreshed_day and market in refresh.get("pending_markets", [])
         calendar = next(
             (
                 c
@@ -1256,6 +1259,8 @@ def coverage(store, day, *, as_of=None, job=None):
                         recover_end=day,
                     )
                 )
+        if refreshed_day and counts["zero_volume_bars"]:
+            pending = True
         result.append(
             dict(
                 market=market,
@@ -1268,9 +1273,10 @@ def coverage(store, day, *, as_of=None, job=None):
                     0
                     if calendar and not calendar["is_open"]
                     else counts["active_count"] - counts["confirmed_suspended"]
-                    if calendar and not counts["lifecycle_unknown"]
+                    if calendar and not pending and not counts["lifecycle_unknown"]
                     else None
                 ),
+                **({"exchange_evidence_pending": True} if pending else {}),
                 calendar_state="OPEN"
                 if calendar and calendar["is_open"]
                 else "CLOSED"
@@ -1279,6 +1285,7 @@ def coverage(store, day, *, as_of=None, job=None):
                 complete=bool(
                     roster_known
                     and enumeration_known
+                    and not pending
                     and calendar
                     and not counts["unknown"]
                     and not counts["failed"]

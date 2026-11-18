@@ -439,3 +439,116 @@ def test_coverage_can_prove_complete_and_respects_evidence_time_and_job_scope():
     snapshot["details"]["calendar"].pop()
     mixed = coverage(Store(), day, as_of=cutoff)
     assert mixed["applicable"] and [m["market"] for m in mixed["missing"]] == [2]
+
+
+def test_shenzhen_suspension_requires_all_pages_and_resolves_dated_resumption():
+    def page(number, row, received_at):
+        return (
+            json.dumps(
+                [
+                    dict(
+                        metadata=dict(recordcount=2, pagecount=2, pageno=number),
+                        data=[row],
+                    )
+                ]
+            ).encode(),
+            dict(
+                received_at=received_at,
+                parameters=dict(
+                    CATALOGID="1798",
+                    PAGENO=str(number),
+                    txtDmorjc="002623",
+                    txtKsrq="2026-09-01",
+                    txtZzrq="2026-11-12",
+                ),
+            ),
+        )
+
+    date_checked = date(2026, 11, 12)
+    sources = {
+        "sz_suspension_002623": page(
+            1,
+            dict(
+                zqdm="002623",
+                tpkssj="2026-11-03 开市",
+                fpkssj="",
+                tpsj="停牌",
+            ),
+            "2026-11-12T08:00:00+00:00",
+        ),
+    }
+    with pytest.raises(ContractError, match="tdx_suspension_page_missing"):
+        exchange_suspensions(sources, date_checked)
+    sources["sz_suspension_002623_page_2"] = page(
+        2,
+        dict(
+            zqdm="002623",
+            tpkssj="",
+            fpkssj="2026-11-10 开市",
+            tpsj="取消停牌",
+        ),
+        "2026-11-12T08:00:03+00:00",
+    )
+    (result,) = exchange_suspensions(sources, date_checked)
+    assert result["end"] == "2026-11-09"
+    assert result["available_at"] == "2026-11-12T08:00:03+00:00"
+    assert len(result["evidence"]["source_pages"]) == 2
+
+
+def test_coverage_does_not_count_pending_market_even_with_all_positive_bars():
+    day = date(2026, 11, 18)
+    at = datetime(2026, 11, 18, 11, tzinfo=UTC)
+    members = [
+        dict(
+            market=0,
+            instrument="000001",
+            evidence=dict(
+                listing_date="1991-01-01",
+                valid_through=day.isoformat(),
+            ),
+        ),
+        dict(
+            market=1,
+            instrument="600001",
+            evidence=dict(
+                listing_date="1991-01-01",
+                valid_through=day.isoformat(),
+            ),
+        ),
+    ]
+    snapshot = dict(
+        snapshot_id="exchange-fixture",
+        members=members,
+        details=dict(
+            exchange_refresh=dict(day=day.isoformat(), pending_markets=[1]),
+            markets=[
+                dict(
+                    market=m,
+                    state="COMPLETE",
+                    enumeration_from=day.isoformat(),
+                    enumeration_through=day.isoformat(),
+                )
+                for m in (0, 1)
+            ],
+            calendar=[
+                dict(
+                    market=m,
+                    day=day.isoformat(),
+                    is_open=True,
+                    available_at=at.isoformat(),
+                )
+                for m in (0, 1)
+            ],
+        ),
+    )
+    store = SimpleNamespace(
+        universe=lambda **_: snapshot,
+        query=lambda **_: dict(as_of=at, rows=[dict(m, volume=1) for m in members]),
+    )
+    result = coverage(store, day, as_of=at)
+    assert result["markets"][0]["expected_trading_count"] == 1
+    assert result["markets"][0]["complete"] is True
+    assert result["markets"][1]["valid_bars"] == 1
+    assert result["markets"][1]["expected_trading_count"] is None
+    assert result["markets"][1]["exchange_evidence_pending"] is True
+    assert result["markets"][1]["complete"] is False
