@@ -4,11 +4,18 @@ import threading
 import tomllib
 from datetime import UTC, date, datetime
 
+from psycopg.errors import UndefinedTable
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from market_data_foundation.canonical.model import require
 from market_data_foundation.historical.tdx_p0_roster import PATTERNS
+from market_data_foundation.historical.tdx_trading_calendar import (
+    CALENDAR_AUTHORITIES,
+    calendar_with_supplements,
+    unanimous_legacy_days,
+    year_sessions,
+)
 from market_data_foundation.storage.market_dataset_postgres import (
     connect_dev,
     preflight,
@@ -53,6 +60,10 @@ def migrate(conn, *, dev_opt_in=False):
             "SELECT to_regclass('mdf_tdx_daily.roster_name_changes')"
         ).fetchone()[0]:
             conn.execute((SQL_DIR / "009_name_changes.sql").read_text())
+        if not conn.execute(
+            "SELECT to_regclass('mdf_tdx_daily.p0_trading_calendar')"
+        ).fetchone()[0]:
+            conn.execute((SQL_DIR / "010_trading_calendar.sql").read_text())
 
 
 def visible_versions(scope, *, materialize_members=False):
@@ -291,20 +302,180 @@ class PgStore:
                 names.setdefault((exchange, instrument), []).append((name, observed))
             return names
 
-    def strategy_calendar(self, *, as_of):
-        # The scheduler needs dated calendar evidence, never the thousands of
-        # membership rows or execution shards needed by an actual collection.
+    def save_trading_calendar(self, year, holidays, evidence):
+        """Publish an annual base and retain discovered exchange amendments."""
+        if holidays is not None:
+            holidays = sorted(holidays)
+            require(
+                evidence["source"] in CALENDAR_AUTHORITIES
+                and evidence.get("schedulable", True) is True
+                and date(year, 1, 1) in holidays
+                and all(
+                    day.year == year or (day.year == year - 1 and day.month == 12)
+                    for day in holidays
+                ),
+                "tdx_calendar_publication_ineligible",
+            )
+        incoming = evidence.get("supplements", ())
+        with self.connector() as conn, conn.transaction():
+            conn.execute("SELECT pg_advisory_xact_lock(721603,%s)", (year,))
+            previous = conn.execute(
+                "SELECT holidays,available_at,evidence "
+                "FROM mdf_tdx_daily.p0_trading_calendar "
+                "WHERE year=%s ORDER BY available_at DESC LIMIT 1",
+                (year,),
+            ).fetchone()
+            old_evidence = previous[2] if previous else {}
+            old_source = old_evidence.get("source")
+            # Keep legacy third-party publications for audit and let an official
+            # base supersede them.
+            old_rank = CALENDAR_AUTHORITIES.get(
+                old_source, 1 if old_source == "timor_holiday_api" else 4
+            )
+            if holidays is None and old_source not in CALENDAR_AUTHORITIES:
+                return None, False
+            if previous and (
+                holidays is None or old_rank > CALENDAR_AUTHORITIES[evidence["source"]]
+            ):
+                if not incoming or old_source not in CALENDAR_AUTHORITIES:
+                    return previous[1], False
+                evidence = old_evidence
+                base = old_evidence.get("annual_holidays")
+                holidays = (
+                    [date.fromisoformat(day) for day in base] if base else previous[0]
+                )
+            supplements = {n["url"]: n for n in old_evidence.get("supplements", ())}
+            supplements.update((n["url"], n) for n in incoming)
+            if supplements:
+                annual = [day.isoformat() for day in holidays]
+                effective, applied, affected = calendar_with_supplements(
+                    year,
+                    set(holidays),
+                    evidence.get("holiday_windows", {}),
+                    list(supplements.values()),
+                )
+                holidays = sorted(effective)
+                evidence = dict(
+                    evidence,
+                    annual_holidays=annual,
+                    supplements=[supplements[url] for url in sorted(supplements)],
+                    applied_supplements=applied,
+                    supplement_days={
+                        day.isoformat(): day.weekday() < 5 and day not in effective
+                        for day in sorted(affected)
+                    },
+                )
+            if previous and (
+                previous[0] == holidays
+                and old_source == evidence["source"]
+                and old_evidence.get("applied_supplements")
+                == evidence.get("applied_supplements")
+                and old_evidence.get("supplement_days")
+                == evidence.get("supplement_days")
+                and {
+                    (n["url"], n["published_on"]): n["windows"]
+                    for n in old_evidence.get("supplements", ())
+                }
+                == {
+                    (n["url"], n["published_on"]): n["windows"]
+                    for n in evidence.get("supplements", ())
+                }
+            ):
+                return previous[1], False
+            row = conn.execute(
+                "INSERT INTO mdf_tdx_daily.p0_trading_calendar "
+                "(year,holidays,evidence) "
+                "VALUES (%s,%s,%s) RETURNING available_at",
+                (year, holidays, Jsonb(evidence)),
+            ).fetchone()
+            return row[0], True
+
+    def trading_calendar_publication(self, year, *, as_of):
+        with self.connector() as conn:
+            row = conn.execute(
+                "SELECT holidays,available_at,evidence "
+                "FROM mdf_tdx_daily.p0_trading_calendar "
+                "WHERE year=%s AND available_at <= %s "
+                "ORDER BY available_at DESC LIMIT 1",
+                (year, as_of),
+            ).fetchone()
+        if row:
+            return dict(
+                year=year, holidays=row[0], available_at=row[1], evidence=row[2]
+            )
+        return None
+
+    def trading_calendar(self, *, as_of, start, end):
+        # Prefer independent publications, with the original snapshot evidence
+        # for years that have not been published through the new path yet.
+        try:
+            with self.connector() as conn:
+                rows = conn.execute(
+                    "SELECT DISTINCT ON (year) year,holidays,evidence "
+                    "FROM mdf_tdx_daily.p0_trading_calendar WHERE "
+                    "year BETWEEN %s AND %s AND available_at <= %s "
+                    "AND (evidence->>'source') IS DISTINCT FROM 'timor_holiday_api' "
+                    "ORDER BY year,available_at DESC",
+                    (start.year, end.year + 1, as_of),
+                ).fetchall()
+        except UndefinedTable:
+            rows = []
+        days = {
+            day: is_open
+            for year, holidays, _ in rows
+            if year <= end.year
+            for day, is_open in year_sessions(year, set(holidays)).items()
+            if start <= day <= end
+        }
+        exchange_authority = CALENDAR_AUTHORITIES["sse_annual_notice"]
+        confirmed_years = {
+            year
+            for year, _, evidence in rows
+            if CALENDAR_AUTHORITIES.get(evidence.get("source"), 4) >= exchange_authority
+        }
+        if any(year not in confirmed_years for year in range(start.year, end.year + 1)):
+            days.update(
+                (day, opened)
+                for day, opened in self._legacy_trading_calendar(
+                    as_of, start, end
+                ).items()
+                if day.year not in confirmed_years
+            )
+        for _, _, evidence in rows:
+            for value, opened in evidence.get("supplement_days", {}).items():
+                day = date.fromisoformat(value)
+                if start <= day <= end:
+                    days[day] = opened
+        # An explicit New Year's closure can start in the preceding December.
+        # Authority retention is scoped to the annual publication above; keep
+        # this cross-year correction of the previous year's weekday projection.
+        days.update(
+            (day, False)
+            for year, holidays, _ in rows
+            for day in holidays
+            if day.year < year and start <= day <= end
+        )
+        return days
+
+    def _legacy_trading_calendar(self, as_of, start, end):
         with self.connector() as conn:
             row = conn.execute(
                 "SELECT details->'calendar' FROM mdf_tdx_daily.p0_universes "
                 "WHERE available_at <= %s AND "
+                "jsonb_array_length(details->'calendar') > 0 AND "
                 "(SELECT count(*)=3 AND bool_and(s->>'state'='COMPLETE') "
                 "FROM jsonb_array_elements(details->'markets') s) "
                 "ORDER BY (details->>'roster_kind'='exchange_lifecycle') "
                 "DESC NULLS LAST, available_at DESC LIMIT 1",
                 (as_of,),
             ).fetchone()
-            return row[0] or [] if row else []
+        return {
+            day: opened
+            for day, opened in unanimous_legacy_days(
+                row[0] if row else [], as_of=as_of
+            ).items()
+            if start <= day <= end
+        }
 
     def universe(
         self, snapshot_id=None, as_of=None, *, day=None, prefer_directory=False
@@ -478,6 +649,24 @@ class PgStore:
                 {"day": day, "cutoff": as_of, "snapshot": None},
             )
             return set(rows.fetchall())
+
+    def market_trade_counts(self, *, as_of, start, end):
+        """Aggregate published positive-volume cash-equity bars across markets."""
+        scope = "trading_day BETWEEN %(start)s AND %(end)s AND " + member_scope(False)
+        with self.connector() as conn, conn.transaction():
+            conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            rows = conn.execute(
+                visible_versions(scope)
+                + " SELECT trading_day,market,count(*) FROM versions WHERE volume > 0"
+                " GROUP BY trading_day,market ORDER BY trading_day,market",
+                {"start": start, "end": end, "cutoff": as_of, "snapshot": None},
+            ).fetchall()
+        counts = {}
+        for day, market, instruments in rows:
+            counts.setdefault(day, {})[{0: "sz", 1: "sh", 2: "bj"}[market]] = (
+                instruments
+            )
+        return counts
 
     def has_data(self, as_of=None):
         cutoff = as_of or datetime.now(UTC)

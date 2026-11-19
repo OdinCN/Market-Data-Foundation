@@ -22,6 +22,7 @@ from market_data_foundation.historical.tdx_p0_exchange_import import (
     publish_roster,
 )
 from market_data_foundation.historical.tdx_p0_jobs import atomic, strategy_slot_id
+from market_data_foundation.historical.tdx_trading_calendar import scheduled_days
 from market_data_foundation.storage.tdx_p0 import PgStore
 
 USER_AGENT = (
@@ -51,14 +52,10 @@ def refresh(args, store, at):
     day = local.date()
     day_text = day.isoformat()
     status = {"day": day_text, "checked_at": at.isoformat()}
-    calendars = {
-        row["market"]: row["is_open"]
-        for row in store.strategy_calendar(as_of=at)
-        if row["day"] == day_text and datetime.fromisoformat(row["available_at"]) <= at
-    }
-    if set(calendars) != {0, 1, 2}:
+    opened = scheduled_days(store, as_of=at, start=day, end=day).get(day)
+    if opened is None:
         return dict(status, state="CALENDAR_PENDING")
-    if not all(calendars.values()) or local.time() < time(16, 5):
+    if not opened or local.time() < time(16, 5):
         return dict(status, state="OUTSIDE_TRADING_DAY_WINDOW")
     existing = store.universe(as_of=at, day=day)
     details = (existing or {}).get("details", {})

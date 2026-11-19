@@ -1,0 +1,9 @@
+[Unit]
+Description=Check MDF DEV A-share trading calendar notices
+
+[Timer]
+OnCalendar=*-*-* 08:00:00 Asia/Shanghai
+Persistent=true
+
+[Install]
+WantedBy=timers.target

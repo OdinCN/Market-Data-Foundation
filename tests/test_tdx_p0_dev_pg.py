@@ -249,3 +249,77 @@ def test_dev_b1_bj_cold_asof_corrections_confirmations_and_late_block():
     finally:
         with connect() as conn:
             conn.execute("DROP SCHEMA " + schema + " CASCADE")
+
+
+def test_dev_unified_calendar_preserves_previous_year_and_as_of():
+    if os.environ.get("MDF_TDX_P0_DEV_PG") != "1":
+        pytest.skip("explicit private DEV opt-in required")
+    schema = "mdf_tdx_p0_test_" + uuid4().hex[:12]
+    with connect() as conn, conn.transaction():
+        for name in ("001_current.sql", "006_p0.sql", "010_trading_calendar.sql"):
+            conn.execute((SQL_DIR / name).read_text().replace("mdf_tdx_daily", schema))
+    try:
+        store = PgStore(lambda: Connection(connect(), schema))
+        source = {"source": "sse_annual_notice"}
+        start, end = date(2026, 12, 31), date(2027, 1, 4)
+        before = datetime.now(UTC)
+        first, changed = store.save_trading_calendar(2026, {date(2026, 1, 1)}, source)
+        assert changed
+        candidate = dict(source="state_council_holiday_notice", schedulable=True)
+        second, changed = store.save_trading_calendar(
+            2027, {date(2027, 1, 1)}, candidate
+        )
+        assert (
+            store.trading_calendar_publication(2027, as_of=second)["evidence"]
+            == candidate
+        )
+        assert changed
+        assert store.save_trading_calendar(2027, {date(2027, 1, 1)}, candidate) == (
+            second,
+            False,
+        )
+        assert store.trading_calendar(as_of=before, start=start, end=end) == {}
+        assert store.trading_calendar(as_of=first, start=start, end=end) == {
+            start: True
+        }
+        assert store.trading_calendar(as_of=second, start=start, end=end) == {
+            start: True,
+            date(2027, 1, 1): False,
+            date(2027, 1, 2): False,
+            date(2027, 1, 3): False,
+            end: True,
+        }
+        third, changed = store.save_trading_calendar(
+            2027, {start, date(2027, 1, 1), end}, source
+        )
+        assert changed
+        assert store.trading_calendar(as_of=third, start=end, end=end) == {end: False}
+        assert store.trading_calendar(as_of=second, start=end, end=end) == {end: True}
+        assert store.trading_calendar(as_of=third, start=start, end=start) == {
+            start: False
+        }
+        assert store.trading_calendar(as_of=second, start=start, end=start) == {
+            start: True
+        }
+        may = date(2027, 5, 4)
+        amendment = dict(
+            supplements=[
+                dict(
+                    url="https://www.sse.com.cn/disclosure/announcement/general/c/c_20270419_1234.shtml",
+                    published_on="2027-04-21",
+                    windows=[
+                        dict(names=["劳动节"], start="2027-05-03", end="2027-05-05")
+                    ],
+                )
+            ]
+        )
+        fourth, changed = store.save_trading_calendar(2027, None, amendment)
+        assert changed
+        assert store.trading_calendar(as_of=third, start=may, end=may) == {may: True}
+        assert store.trading_calendar(as_of=fourth, start=may, end=may) == {may: False}
+        assert store.save_trading_calendar(
+            2027, {start, date(2027, 1, 1), end}, source
+        ) == (fourth, False)
+    finally:
+        with connect() as conn:
+            conn.execute("DROP SCHEMA " + schema + " CASCADE")

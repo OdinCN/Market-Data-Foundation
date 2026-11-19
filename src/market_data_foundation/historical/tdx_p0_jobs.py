@@ -1161,6 +1161,11 @@ def coverage(store, day, *, as_of=None, job=None):
     data = store.query(start=day, end=day, as_of=cutoff, limit=10000)
     rows = {(r["market"], r["instrument"]): r for r in data["rows"]}
     cutoff = data["as_of"]
+    unified_open = (
+        store.trading_calendar(as_of=cutoff, start=day, end=day).get(day)
+        if hasattr(store, "trading_calendar")
+        else None
+    )
     failures = {
         (s["market"], s.get("instrument")): s
         for s in (job or {}).get("steps", [])
@@ -1214,6 +1219,8 @@ def coverage(store, day, *, as_of=None, job=None):
             ),
             None,
         )
+        if unified_open is not None:
+            calendar = {"is_open": unified_open}
         for member in members:
             key = (market, member["instrument"])
             state = lifecycle(member, day)
