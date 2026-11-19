@@ -468,6 +468,17 @@ class PgStore:
             .get("historical_membership", "UNKNOWN_CURRENT_ROSTER_SURVIVOR_BIAS"),
         )
 
+    def positive_daily_keys(self, day, *, as_of):
+        """Read published positive bars without the still-unverified census filter."""
+        with self.connector() as conn, conn.transaction():
+            conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            rows = conn.execute(
+                visible_versions("trading_day=%(day)s")
+                + " SELECT market,instrument FROM versions WHERE volume > 0",
+                {"day": day, "cutoff": as_of, "snapshot": None},
+            )
+            return set(rows.fetchall())
+
     def has_data(self, as_of=None):
         cutoff = as_of or datetime.now(UTC)
         require(cutoff.utcoffset() is not None, "tdx_query_cutoff")
