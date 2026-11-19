@@ -53,8 +53,11 @@ def notice_holidays(raw, year, *, exchange):
     )
     closure = "休市" if exchange else "放假"
     closed = set()
+    holiday = "(?:" + "|".join(HOLIDAYS) + ")"
+    separator = "[、，,和及]"
     for name in HOLIDAYS:
-        matches = re.findall(rf"{name}[：:]{dates}{closure}", text)
+        heading = rf"(?:{holiday}{separator})*{name}(?:{separator}{holiday})*"
+        matches = re.findall(rf"{heading}[：:]{dates}{closure}", text)
         # Pages may render a title/navigation more than once, but every holiday
         # must have one unambiguous date range.
         require(len(set(matches)) == 1, "tdx_calendar_holiday_missing_or_ambiguous")

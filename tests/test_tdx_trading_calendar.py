@@ -211,3 +211,15 @@ def test_exchange_new_year_holiday_can_start_in_previous_december():
     holidays = notice_holidays(raw, YEAR, exchange=True)
     assert date(YEAR - 1, 12, 31) in holidays
     assert date(YEAR, 1, 3) in holidays
+
+
+def test_two_holidays_can_share_one_official_clause():
+    raw = (
+        notice(exchange=True)
+        .replace("中秋节：9月15日（周三）休市。".encode(), b"")
+        .replace("国庆节：".encode(), "国庆节、中秋节：".encode())
+    )
+    holidays = notice_holidays(raw, YEAR, exchange=True)
+    assert date(YEAR, 10, 1) in holidays
+    assert date(YEAR, 10, 7) in holidays
+    assert date(YEAR, 9, 15) not in holidays
