@@ -12,4 +12,4 @@ StateDirectory=mdf-tdx-trading-calendar
 StateDirectoryMode=0700
 UMask=0077
 NoNewPrivileges=true
-ExecStart=/usr/local/bin/uv run --project ${MDF_TDX_CALENDAR_PROJECT} --locked python ${MDF_TDX_CALENDAR_PROJECT}/scripts/mdf_tdx_trading_calendar.py --dev-opt-in --publish --artifact-dir %S/mdf-tdx-trading-calendar --government-url=${MDF_TDX_CALENDAR_GOVERNMENT_URL}
+ExecStart=/usr/local/bin/uv run --project ${MDF_TDX_CALENDAR_PROJECT} --locked python ${MDF_TDX_CALENDAR_PROJECT}/scripts/mdf_tdx_trading_calendar.py --dev-opt-in --publish --scheduled --artifact-dir %S/mdf-tdx-trading-calendar --government-url=${MDF_TDX_CALENDAR_GOVERNMENT_URL}

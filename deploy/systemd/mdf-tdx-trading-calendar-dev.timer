@@ -1,10 +1,8 @@
 [Unit]
-Description=Prepare and publish the MDF DEV A-share annual trading calendar
+Description=Check MDF DEV A-share trading calendar notices
 
 [Timer]
-OnCalendar=*-11,12-01,10,20,30 20:00:00 Asia/Shanghai
-OnCalendar=*-12-31 20:00:00 Asia/Shanghai
-OnCalendar=*-01-01..07 08:00:00 Asia/Shanghai
+OnCalendar=*-*-* 08:00:00 Asia/Shanghai
 Persistent=true
 
 [Install]

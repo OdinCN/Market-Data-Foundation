@@ -9,14 +9,11 @@ import httpx
 import pytest
 
 from market_data_foundation.historical.tdx_p0_strategy import DailyStrategy
-from market_data_foundation.historical.tdx_trading_calendar import (
-    TIMOR_URL,
-)
 from market_data_foundation.storage.tdx_p0 import PgStore
 from scripts import mdf_tdx_trading_calendar as command
 from scripts.mdf_tdx_exchange_daily import refresh
 from scripts.mdf_tdx_trading_calendar import prepare_calendar, publish_calendar
-from tests.test_tdx_trading_calendar import GOV_URL, YEAR, notice, timor
+from tests.test_tdx_trading_calendar import GOV_URL, SUPPLEMENT_URL, YEAR, notice
 
 
 class CalendarSQL:
@@ -55,7 +52,11 @@ class CalendarSQL:
             assert "ORDER BY year,available_at DESC" in sql
             start, end, cutoff = params
             visible = {
-                r[0]: r for r in self.rows if start <= r[0] <= end and r[2] <= cutoff
+                r[0]: r
+                for r in self.rows
+                if start <= r[0] <= end
+                and r[2] <= cutoff
+                and r[3].get("source") != "timor_holiday_api"
             }
             self.result = [(year, row[1], row[3]) for year, row in visible.items()]
         else:
@@ -81,31 +82,25 @@ class CalendarStore(PgStore):
         return None
 
 
-def candidate(tmp_path, *, government=True):
+def candidate(tmp_path):
     def get(url):
-        if url == GOV_URL and government:
+        if url == GOV_URL:
             return notice(exchange=False)
-        if url == TIMOR_URL.format(year=YEAR):
-            return timor()
         raise httpx.ConnectError("must not be included in observations")
 
     return prepare_calendar(YEAR, get=get, artifact=tmp_path, government_url=GOV_URL)
 
 
-@pytest.mark.parametrize("government", [True, False])
 def test_complete_candidates_publish_and_drive_all_three_scheduled_consumers(
     tmp_path,
-    government,
 ):
     store = CalendarStore()
-    holidays, result = candidate(tmp_path, government=government)
+    holidays, result = candidate(tmp_path)
     saved = publish_calendar(store, holidays, result)
     assert saved["state"] == "PUBLISHED"
     assert saved["publication"]["schedulable"]
     assert not saved["publication"]["exchange_confirmed"]
-    assert saved["publication"]["source"] == (
-        "state_council_holiday_notice" if government else "timor_holiday_api"
-    )
+    assert saved["publication"]["source"] == "state_council_holiday_notice"
 
     class Jobs:
         directory = tmp_path
@@ -153,7 +148,7 @@ def test_source_upgrade_is_visible_as_of_and_idempotent_without_downgrade(
     correction,
 ):
     store = CalendarStore()
-    holidays, result = candidate(tmp_path, government=False)
+    holidays, result = candidate(tmp_path)
     first = publish_calendar(store, holidays, result)
     same = publish_calendar(store, holidays, result)
     assert same["state"] == "ALREADY_PUBLISHED"
@@ -162,12 +157,9 @@ def test_source_upgrade_is_visible_as_of_and_idempotent_without_downgrade(
 
     government = dict(source="state_council_holiday_notice", schedulable=True)
     second_at, changed = store.save_trading_calendar(YEAR, holidays, government)
-    assert changed and second_at > first_at
+    assert not changed and second_at == first_at
     assert store.save_trading_calendar(
         YEAR, holidays, dict(government, received_at="new-clock", path="new-artifact")
-    ) == (second_at, False)
-    assert store.save_trading_calendar(
-        YEAR, holidays | {date(YEAR, 1, 4)}, dict(source="timor_holiday_api")
     ) == (second_at, False)
     market_days = holidays | ({date(YEAR, 1, 4)} if correction else set())
     exchange = dict(source="sse_annual_notice")  # historical rows have no flags
@@ -177,13 +169,11 @@ def test_source_upgrade_is_visible_as_of_and_idempotent_without_downgrade(
         confirmed_at,
         False,
     )
-    for source in (government, dict(source="timor_holiday_api")):
-        # Even different dates cannot overwrite the market confirmation.
-        assert store.save_trading_calendar(YEAR, holidays, source) == (
-            confirmed_at,
-            False,
-        )
-    assert len(store.sql.rows) == 3
+    assert store.save_trading_calendar(YEAR, holidays, government) == (
+        confirmed_at,
+        False,
+    )
+    assert len(store.sql.rows) == 2
     day = date(YEAR, 1, 4)
     assert store.trading_calendar(as_of=second_at, start=day, end=day) == {day: True}
     assert store.trading_calendar(as_of=confirmed_at, start=day, end=day) == {
@@ -215,7 +205,7 @@ def test_all_sources_fail_without_mutation_or_turning_unknown_days_open(tmp_path
     )
     assert holidays is None
     assert result["state"] == "UNAVAILABLE" and not result["schedulable"]
-    assert len(result["attempts"]) == 3
+    assert len(result["attempts"]) == 2
     assert all(r["classification"] == "ConnectError" for r in result["attempts"])
     assert publish_calendar(store, holidays, result) == result
     assert store.sql.rows == before
@@ -328,3 +318,61 @@ def test_provisional_year_cannot_replace_a_day_in_legacy_exchange_evidence(monke
         2026, dates, dict(source="sse_annual_notice")
     )
     assert store.trading_calendar(as_of=confirmed, start=day, end=day) == {day: True}
+
+
+def test_historical_third_party_publication_is_replaced_by_official(tmp_path):
+    store = CalendarStore()
+    day = date(YEAR, 1, 4)
+    cutoff = datetime(2026, 11, 20, tzinfo=UTC)
+    store.sql.rows.append(
+        (YEAR, [date(YEAR, 1, 1)], cutoff, dict(source="timor_holiday_api"))
+    )
+    assert store.trading_calendar(as_of=cutoff, start=day, end=day) == {}
+    holidays, result = candidate(tmp_path)
+    saved = publish_calendar(store, holidays, result)
+    assert saved["state"] == "PUBLISHED"
+    at = datetime.fromisoformat(saved["available_at"])
+    assert store.trading_calendar(as_of=at, start=day, end=day) == {day: True}
+
+
+def test_exchange_amendment_survives_outages_and_lower_authority(tmp_path):
+    store = CalendarStore()
+    base, result = candidate(tmp_path)
+    evidence = dict(result["evidence"], source="sse_annual_notice")
+    first, _ = store.save_trading_calendar(YEAR, base, evidence)
+    changed_day = date(YEAR, 5, 6)
+    correction = dict(
+        year=YEAR,
+        state="UNAVAILABLE",
+        schedulable=False,
+        exchange_confirmed=False,
+        evidence=dict(
+            supplements=[
+                dict(
+                    url=SUPPLEMENT_URL,
+                    published_on="2027-04-19",
+                    windows=[
+                        dict(names=["劳动节"], start="2027-05-01", end="2027-05-06")
+                    ],
+                )
+            ]
+        ),
+    )
+    saved = publish_calendar(store, None, correction)
+    assert saved["state"] == "PUBLISHED"
+    assert saved["exchange_confirmed"]
+    assert changed_day.isoformat() in saved["holidays"]
+    second = datetime.fromisoformat(saved["available_at"])
+    assert second > first
+    assert store.trading_calendar(as_of=first, start=changed_day, end=changed_day) == {
+        changed_day: True
+    }
+    assert store.trading_calendar(as_of=second, start=changed_day, end=changed_day) == {
+        changed_day: False
+    }
+    assert store.save_trading_calendar(YEAR, base, evidence) == (second, False)
+    assert publish_calendar(store, base, result)["state"] == "RETAINED_HIGHER_AUTHORITY"
+    assert store.save_trading_calendar(YEAR, None, correction["evidence"]) == (
+        second,
+        False,
+    )

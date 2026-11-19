@@ -12,6 +12,7 @@ from market_data_foundation.canonical.model import require
 from market_data_foundation.historical.tdx_p0_roster import PATTERNS
 from market_data_foundation.historical.tdx_trading_calendar import (
     CALENDAR_AUTHORITIES,
+    calendar_with_supplements,
     unanimous_legacy_days,
     year_sessions,
 )
@@ -302,23 +303,20 @@ class PgStore:
             return names
 
     def save_trading_calendar(self, year, holidays, evidence):
-        """Publish complete candidates, retaining higher authority and source upgrades.
-
-        Old exchange rows need no new flags: their existing source remains the
-        authority. Unknown legacy sources are protected rather than downgraded.
-        Receipt paths, retrieval clocks and HTML changes alone are not revisions.
-        """
-        holidays = sorted(holidays)
-        require(
-            evidence["source"] in CALENDAR_AUTHORITIES
-            and evidence.get("schedulable", True) is True
-            and date(year, 1, 1) in holidays
-            and all(
-                day.year == year or (day.year == year - 1 and day.month == 12)
-                for day in holidays
-            ),
-            "tdx_calendar_publication_ineligible",
-        )
+        """Publish an annual base and retain discovered exchange amendments."""
+        if holidays is not None:
+            holidays = sorted(holidays)
+            require(
+                evidence["source"] in CALENDAR_AUTHORITIES
+                and evidence.get("schedulable", True) is True
+                and date(year, 1, 1) in holidays
+                and all(
+                    day.year == year or (day.year == year - 1 and day.month == 12)
+                    for day in holidays
+                ),
+                "tdx_calendar_publication_ineligible",
+            )
+        incoming = evidence.get("supplements", ())
         with self.connector() as conn, conn.transaction():
             conn.execute("SELECT pg_advisory_xact_lock(721603,%s)", (year,))
             previous = conn.execute(
@@ -327,12 +325,63 @@ class PgStore:
                 "WHERE year=%s ORDER BY available_at DESC LIMIT 1",
                 (year,),
             ).fetchone()
-            if previous:
-                old_source = previous[2].get("source")
-                if CALENDAR_AUTHORITIES.get(old_source, 4) > CALENDAR_AUTHORITIES[
-                    evidence["source"]
-                ] or (previous[0] == holidays and old_source == evidence["source"]):
+            old_evidence = previous[2] if previous else {}
+            old_source = old_evidence.get("source")
+            # Keep legacy third-party publications for audit and let an official
+            # base supersede them.
+            old_rank = CALENDAR_AUTHORITIES.get(
+                old_source, 1 if old_source == "timor_holiday_api" else 4
+            )
+            if holidays is None and old_source not in CALENDAR_AUTHORITIES:
+                return None, False
+            if previous and (
+                holidays is None or old_rank > CALENDAR_AUTHORITIES[evidence["source"]]
+            ):
+                if not incoming or old_source not in CALENDAR_AUTHORITIES:
                     return previous[1], False
+                evidence = old_evidence
+                base = old_evidence.get("annual_holidays")
+                holidays = (
+                    [date.fromisoformat(day) for day in base] if base else previous[0]
+                )
+            supplements = {n["url"]: n for n in old_evidence.get("supplements", ())}
+            supplements.update((n["url"], n) for n in incoming)
+            if supplements:
+                annual = [day.isoformat() for day in holidays]
+                effective, applied, affected = calendar_with_supplements(
+                    year,
+                    set(holidays),
+                    evidence.get("holiday_windows", {}),
+                    list(supplements.values()),
+                )
+                holidays = sorted(effective)
+                evidence = dict(
+                    evidence,
+                    annual_holidays=annual,
+                    supplements=[supplements[url] for url in sorted(supplements)],
+                    applied_supplements=applied,
+                    supplement_days={
+                        day.isoformat(): day.weekday() < 5 and day not in effective
+                        for day in sorted(affected)
+                    },
+                )
+            if previous and (
+                previous[0] == holidays
+                and old_source == evidence["source"]
+                and old_evidence.get("applied_supplements")
+                == evidence.get("applied_supplements")
+                and old_evidence.get("supplement_days")
+                == evidence.get("supplement_days")
+                and {
+                    (n["url"], n["published_on"]): n["windows"]
+                    for n in old_evidence.get("supplements", ())
+                }
+                == {
+                    (n["url"], n["published_on"]): n["windows"]
+                    for n in evidence.get("supplements", ())
+                }
+            ):
+                return previous[1], False
             row = conn.execute(
                 "INSERT INTO mdf_tdx_daily.p0_trading_calendar "
                 "(year,holidays,evidence) "
@@ -365,6 +414,7 @@ class PgStore:
                     "SELECT DISTINCT ON (year) year,holidays,evidence "
                     "FROM mdf_tdx_daily.p0_trading_calendar WHERE "
                     "year BETWEEN %s AND %s AND available_at <= %s "
+                    "AND (evidence->>'source') IS DISTINCT FROM 'timor_holiday_api' "
                     "ORDER BY year,available_at DESC",
                     (start.year, end.year + 1, as_of),
                 ).fetchall()
@@ -391,6 +441,11 @@ class PgStore:
                 ).items()
                 if day.year not in confirmed_years
             )
+        for _, _, evidence in rows:
+            for value, opened in evidence.get("supplement_days", {}).items():
+                day = date.fromisoformat(value)
+                if start <= day <= end:
+                    days[day] = opened
         # An explicit New Year's closure can start in the preceding December.
         # Authority retention is scoped to the annual publication above; keep
         # this cross-year correction of the previous year's weekday projection.
@@ -594,6 +649,24 @@ class PgStore:
                 {"day": day, "cutoff": as_of, "snapshot": None},
             )
             return set(rows.fetchall())
+
+    def market_trade_counts(self, *, as_of, start, end):
+        """Aggregate published positive-volume cash-equity bars across markets."""
+        scope = "trading_day BETWEEN %(start)s AND %(end)s AND " + member_scope(False)
+        with self.connector() as conn, conn.transaction():
+            conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            rows = conn.execute(
+                visible_versions(scope)
+                + " SELECT trading_day,market,count(*) FROM versions WHERE volume > 0"
+                " GROUP BY trading_day,market ORDER BY trading_day,market",
+                {"start": start, "end": end, "cutoff": as_of, "snapshot": None},
+            ).fetchall()
+        counts = {}
+        for day, market, instruments in rows:
+            counts.setdefault(day, {})[{0: "sz", 1: "sh", 2: "bj"}[market]] = (
+                instruments
+            )
+        return counts
 
     def has_data(self, as_of=None):
         cutoff = as_of or datetime.now(UTC)

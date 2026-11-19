@@ -12,17 +12,20 @@ from market_data_foundation.historical.tdx_trading_calendar import (
     EXCHANGE_INDEX,
     EXCHANGE_TITLE,
     GOVERNMENT_TITLE,
-    HOLIDAYS,
-    TIMOR_URL,
     exchange_notice_url,
+    exchange_supplement,
     government_notice_url,
     government_search_url,
     notice_holidays,
-    timor_holidays,
     year_sessions,
 )
 from scripts.mdf_tdx_exchange_daily import refresh
-from scripts.mdf_tdx_trading_calendar import prepare_calendar, scheduled_year
+from scripts.mdf_tdx_trading_calendar import (
+    prepare_calendar,
+    scheduled_year,
+    scheduled_years,
+    verify_history,
+)
 
 SSE_URL = "https://www.sse.com.cn/disclosure/announcement/general/c/annual.shtml"
 GOV_URL = "https://www.gov.cn/zhengce/content/annual.htm"
@@ -49,21 +52,6 @@ def notice(*, exchange):
 def index():
     title = EXCHANGE_TITLE.format(year=YEAR)
     return f'<a href="{SSE_URL}"><strong>{title}</strong></a>'.encode()
-
-
-def timor():
-    days = {
-        "01-01": "元旦",
-        "02-05": "春节",
-        "04-05": "清明节",
-        "05-05": "劳动节",
-        "06-09": "端午节",
-        "09-15": "中秋节",
-        "10-01": "国庆节",
-    }
-    rows = {k: dict(date=f"{YEAR}-{k}", name=v, holiday=True) for k, v in days.items()}
-    rows["02-14"] = dict(date=f"{YEAR}-02-14", name="春节调休", holiday=False)
-    return json.dumps(dict(code=0, holiday=rows)).encode()
 
 
 def test_annual_holidays_support_single_dates_and_weekend_workdays():
@@ -101,14 +89,9 @@ def test_annual_input_rejects_partial_notice_and_unsafe_link():
             [GOV_URL, EXCHANGE_INDEX],
         ),
         (
-            {EXCHANGE_INDEX, GOV_URL},
-            "timor_holiday_api",
-            [GOV_URL, TIMOR_URL.format(year=YEAR), EXCHANGE_INDEX],
-        ),
-        (
-            {GOV_URL, TIMOR_URL.format(year=YEAR)},
+            {GOV_URL},
             "sse_annual_notice",
-            [GOV_URL, TIMOR_URL.format(year=YEAR), EXCHANGE_INDEX, SSE_URL],
+            [GOV_URL, EXCHANGE_INDEX, SSE_URL],
         ),
     ],
 )
@@ -119,7 +102,6 @@ def test_source_fallback_is_explicit_and_candidates_are_not_confirmed(
         EXCHANGE_INDEX: index(),
         SSE_URL: notice(exchange=True),
         GOV_URL: notice(exchange=False),
-        TIMOR_URL.format(year=YEAR): timor(),
     }
     calls = []
 
@@ -146,7 +128,6 @@ def test_source_fallback_is_explicit_and_candidates_are_not_confirmed(
         == {
             "sse_annual_notice": SSE_URL,
             "state_council_holiday_notice": GOV_URL,
-            "timor_holiday_api": TIMOR_URL.format(year=YEAR),
         }[expected]
     )
     if expected == "sse_annual_notice" and GOV_URL not in missing:
@@ -305,114 +286,104 @@ def test_exchange_disagreement_retains_both_originals_and_market_correction(tmp_
     assert (tmp_path / "sse-notice.html").read_bytes() == responses[SSE_URL]
 
 
-def historical_timor(year):
-    # Compact semantic fixtures for the retained originals, without copying raw
-    # provider responses into Git. 2025's Mid-Autumn day is inside National Day.
-    spans = {
-        2013: [
-            ("01-01", "01-03", "元旦"),
-            ("02-09", "02-15", "春节"),
-            ("04-04", "04-06", "清明节"),
-            ("04-29", "05-01", "劳动节"),
-            ("06-10", "06-12", "端午节"),
-            ("09-19", "09-21", "中秋节"),
-            ("10-01", "10-07", "国庆节"),
-        ],
-        2025: [
-            ("01-01", "01-01", "元旦"),
-            ("01-28", "02-04", "春节"),
-            ("04-04", "04-06", "清明节"),
-            ("05-01", "05-05", "劳动节"),
-            ("05-31", "06-02", "端午节"),
-            ("10-01", "10-08", "国庆节"),
-            ("10-06", "10-06", "中秋节"),
-        ],
-        2027: [
-            ("01-01", "01-03", "元旦"),
-            ("02-05", "02-13", "春节"),
-            ("04-03", "04-05", "清明节"),
-            ("05-01", "05-05", "劳动节"),
-            ("06-09", "06-09", "端午节"),
-            ("09-15", "09-15", "中秋节"),
-            ("10-01", "10-07", "国庆节"),
-        ],
-    }[year]
-    rows = {}
-    spring_names = (
-        "除夕",
-        "初一",
-        "初二",
-        "初三",
-        "初四",
-        "初五",
-        "初六",
-        "初七",
-        "初八",
-    )
-    for start, end, name in spans:
-        start, end = (date.fromisoformat(f"{year}-{d}") for d in (start, end))
-        for offset in range((end - start).days + 1):
-            day = start + timedelta(days=offset)
-            rows[day.strftime("%m-%d")] = dict(
-                date=day.isoformat(),
-                holiday=True,
-                name=spring_names[offset] if name == "春节" else name,
-            )
-    return dict(code=0, holiday=rows)
-
-
-@pytest.mark.parametrize("year", [2013, 2025, 2027])
-def test_timor_historical_shapes_remain_complete_without_spring_festival_label(year):
-    payload = historical_timor(year)
-    holidays = timor_holidays(json.dumps(payload).encode(), year)
-    assert len(holidays) == {2013: 29, 2025: 28, 2027: 29}[year]
-    if year == 2025:
-        assert date(year, 10, 6) in holidays and date(year, 6, 2) in holidays
-    # A make-up-work label must never satisfy the missing holiday category.
-    rows = {k: r for k, r in payload["holiday"].items() if r["name"] != "中秋节"}
-    rows["09-22"] = dict(date=f"{year}-09-22", name="中秋节后补班", holiday=False)
-    with pytest.raises(ContractError, match="timor_incomplete"):
-        timor_holidays(json.dumps(dict(code=0, holiday=rows)).encode(), year)
-
-
-def test_timor_new_year_uses_row_year_and_validates_month_day_key():
-    payload = historical_timor(2027)
-    payload["holiday"]["12-31"] = dict(date="2026-12-31", name="元旦", holiday=True)
-    assert date(2026, 12, 31) in timor_holidays(json.dumps(payload).encode(), 2027)
-    payload["holiday"]["12-31"]["date"] = "2025-12-31"
-    with pytest.raises(ContractError, match="timor_row"):
-        timor_holidays(json.dumps(payload).encode(), 2027)
-
-
-def test_government_lookup_without_results_uses_timor(tmp_path):
+def test_government_lookup_without_results_cannot_synthesize_calendar(tmp_path):
     calls = []
 
     def get(url):
         calls.append(url)
-        if url == TIMOR_URL.format(year=YEAR):
-            return timor()
         if url == government_search_url(YEAR):
-            return b'{"code":1001,"searchVO":null}'
-        return b""
+            return json.dumps(dict(code=200, searchVO=dict(listVO=[]))).encode()
+        return b"<html></html>"
 
     holidays, result = prepare_calendar(YEAR, get=get, artifact=tmp_path)
-    assert holidays and result["schedulable"]
-    assert calls == [
-        government_search_url(YEAR),
-        TIMOR_URL.format(year=YEAR),
-        EXCHANGE_INDEX,
-    ]
-    assert result["attempts"][0] == dict(
-        source="state_council_holiday_notice",
-        classification="tdx_calendar_government_notice_unavailable",
-    )
+    assert holidays is None
+    assert calls == [government_search_url(YEAR), EXCHANGE_INDEX]
+    assert result["state"] == "UNAVAILABLE"
+    assert not result["schedulable"]
 
 
-@pytest.mark.parametrize("missing", HOLIDAYS)
-def test_timor_still_rejects_every_missing_holiday_category(missing):
-    payload = json.loads(timor())
-    payload["holiday"] = {
-        k: row for k, row in payload["holiday"].items() if missing not in row["name"]
+SUPPLEMENT_URL = (
+    "https://www.sse.com.cn/disclosure/announcement/general/c/c_20270419_1234.shtml"
+)
+
+
+def correction(text, title=f"关于调整{YEAR}年劳动节休市安排的公告"):
+    return (
+        f"<title>{title} | 上海证券交易所</title>"
+        f"<i>时间：&nbsp;2027-04-21</i><p>{text}</p>"
+    ).encode()
+
+
+def test_market_supplement_overrides_provisional_window(tmp_path):
+    title = f"关于调整{YEAR}年劳动节休市安排的公告"
+    data = {
+        GOV_URL: notice(exchange=False),
+        EXCHANGE_INDEX: f'<a href="{SUPPLEMENT_URL}">{title}</a>'.encode(),
+        SUPPLEMENT_URL: correction("5月3日至5日休市，5月6日起照常开市。", title),
     }
-    with pytest.raises(ContractError, match="timor_incomplete"):
-        timor_holidays(json.dumps(payload).encode(), YEAR)
+    # Prior closure begins on a Friday so the shorter window reopens a weekday.
+    data[GOV_URL] = data[GOV_URL].replace(
+        "5月1日至5月5日".encode(), "4月30日至5月5日".encode()
+    )
+    holidays, result = prepare_calendar(
+        YEAR,
+        get=data.__getitem__,
+        artifact=tmp_path,
+        government_url=GOV_URL,
+    )
+    assert date(YEAR, 4, 30) not in holidays
+    assert date(YEAR, 5, 3) in holidays
+    assert not result["exchange_confirmed"]
+    assert result["evidence"]["applied_supplements"] == [SUPPLEMENT_URL]
+
+
+def test_official_extension_and_unrelated_market_scope():
+    extension = correction(
+        "一、延长2027年春节休市至2月14日（星期日），2月15日（星期一）正常开市。",
+        "关于调整2027年春节休市相关安排的公告",
+    )
+    proof = exchange_supplement(extension, YEAR, SUPPLEMENT_URL)
+    assert proof["published_on"] == "2027-04-21"
+    assert proof["windows"] == [dict(names=["春节"], start=None, end="2027-02-14")]
+    unrelated = correction(
+        "5月3日至5日休市，5月6日起照常开市。", "关于2027年沪股通休市安排的公告"
+    )
+    with pytest.raises(ContractError, match="supplement_identity"):
+        exchange_supplement(unrelated, YEAR, SUPPLEMENT_URL)
+
+
+def test_scheduled_refresh_always_scans_current_year():
+    assert scheduled_years(datetime(2026, 11, 19, 17, tzinfo=UTC)) == [2026, 2027]
+    assert scheduled_years(datetime(2026, 12, 31, 16, tzinfo=UTC)) == [2027]
+    assert scheduled_years(datetime(2027, 7, 4, tzinfo=UTC)) == [2027]
+
+
+def test_historical_reconciliation_uses_market_trade_evidence():
+    start = date(2026, 11, 16)
+    open_day, closed_day, unknown_day, missing_day = (
+        start + timedelta(days=i) for i in range(4)
+    )
+    as_of = datetime(2026, 11, 20, tzinfo=UTC)
+
+    class Store:
+        def trading_calendar(self, **params):
+            assert params == dict(start=start, end=missing_day, as_of=as_of)
+            return {open_day: True, closed_day: False, missing_day: True}
+
+        def market_trade_counts(self, **params):
+            assert params == dict(start=start, end=missing_day, as_of=as_of)
+            return {
+                open_day: {"sh": 1200, "sz": 1500, "bj": 100},
+                closed_day: {"sz": 1500},
+                unknown_day: {"sh": 1200},
+            }
+
+    receipt = verify_history(Store(), start=start, end=missing_day, as_of=as_of)
+    assert [row["status"] for row in receipt["days"]] == [
+        "CONFIRMED_OPEN",
+        "PLANNED_CLOSED_WITH_TRADES",
+        "OBSERVED_OPEN_NO_PLAN",
+        "UNVERIFIED",
+    ]
+    assert receipt["days"][0]["markets_with_positive_volume"]["bj"] == 100
+    assert receipt["days"][-1]["markets_with_positive_volume"] == {}
