@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from market_data_foundation.historical.tdx_p0_jobs import atomic, now, strategy_slot_id
 from market_data_foundation.historical.tdx_p0_source import TdxError, classify
+from market_data_foundation.historical.tdx_trading_calendar import scheduled_days
 
 
 class DailyStrategy:
@@ -115,33 +116,21 @@ class DailyStrategy:
         local = at.astimezone(ZoneInfo("Asia/Shanghai"))
         if not self.read()["enabled"]:
             return
-        store = self.jobs.store
-        if hasattr(store, "strategy_calendar"):
-            calendar = store.strategy_calendar(as_of=at)
-        else:
-            calendar = (
-                (store.universe(as_of=at) or {}).get("details", {}).get("calendar", [])
-            )
-        days = {}
-        for c in calendar:
-            if datetime.fromisoformat(c["available_at"]) <= at:
-                days.setdefault(c["day"], {})[c["market"]] = c["is_open"]
-        calendars = days.get(local.date().isoformat(), {})
+        days = scheduled_days(
+            self.jobs.store,
+            as_of=at,
+            start=date(local.year - 1, 1, 1),
+            end=local.date(),
+        )
+        opened = days.get(local.date())
         self.calendar_state = (
-            "UNKNOWN"
-            if set(calendars) != {0, 1, 2}
-            else "OPEN"
-            if all(calendars.values())
-            else "CLOSED"
+            "UNKNOWN" if opened is None else "OPEN" if opened else "CLOSED"
         )
         # A delayed start can catch up a confirmed trading day.
         eligible = [
-            day
-            for day, markets in days.items()
-            if set(markets) == {0, 1, 2}
-            and all(markets.values())
-            and datetime.combine(date.fromisoformat(day), time(15, 35), local.tzinfo)
-            <= local
+            day.isoformat()
+            for day, is_open in days.items()
+            if is_open and datetime.combine(day, time(15, 35), local.tzinfo) <= local
         ]
         with self.path.with_suffix(".lock").open("a") as stream:
             try:

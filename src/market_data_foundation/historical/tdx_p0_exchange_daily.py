@@ -245,9 +245,8 @@ def validate_suspensions(census, sources, *, market, day, candidates, positive):
 def collect_manifest(day, reference, provider, positive, get):
     """An incomplete market retains its old census or its qualified new members."""
     day_text = day.isoformat()
-    seed_kinds = {"bj_mapping", *(f"{m}_calendar_{day.year}" for m in MARKETS.values())}
-    seed = [s for s in reference["sources"] if s["kind"] in seed_kinds]
-    require({s["kind"] for s in seed} == seed_kinds, "tdx_exchange_reference_missing")
+    seed = [entry for entry in reference["sources"] if entry["kind"] == "bj_mapping"]
+    require(len(seed) == 1, "tdx_exchange_reference_missing")
     base = {"valid_through": day_text}
     sources = list(seed)
     skipped = []

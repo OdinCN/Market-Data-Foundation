@@ -4,11 +4,16 @@ import threading
 import tomllib
 from datetime import UTC, date, datetime
 
+from psycopg.errors import UndefinedTable
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from market_data_foundation.canonical.model import require
 from market_data_foundation.historical.tdx_p0_roster import PATTERNS
+from market_data_foundation.historical.tdx_trading_calendar import (
+    unanimous_legacy_days,
+    year_sessions,
+)
 from market_data_foundation.storage.market_dataset_postgres import (
     connect_dev,
     preflight,
@@ -53,6 +58,10 @@ def migrate(conn, *, dev_opt_in=False):
             "SELECT to_regclass('mdf_tdx_daily.roster_name_changes')"
         ).fetchone()[0]:
             conn.execute((SQL_DIR / "009_name_changes.sql").read_text())
+        if not conn.execute(
+            "SELECT to_regclass('mdf_tdx_daily.p0_trading_calendar')"
+        ).fetchone()[0]:
+            conn.execute((SQL_DIR / "010_trading_calendar.sql").read_text())
 
 
 def visible_versions(scope, *, materialize_members=False):
@@ -291,20 +300,75 @@ class PgStore:
                 names.setdefault((exchange, instrument), []).append((name, observed))
             return names
 
-    def strategy_calendar(self, *, as_of):
-        # The scheduler needs dated calendar evidence, never the thousands of
-        # membership rows or execution shards needed by an actual collection.
+    def save_trading_calendar(self, year, holidays, evidence):
+        """Publish the official year if the schedule has changed."""
+        holidays = sorted(holidays)
+        require(
+            evidence["source"] == "sse_annual_notice"
+            and date(year, 1, 1) in holidays
+            and all(day.year == year for day in holidays),
+            "tdx_calendar_publication_unconfirmed",
+        )
+        with self.connector() as conn, conn.transaction():
+            conn.execute("SELECT pg_advisory_xact_lock(721603,%s)", (year,))
+            previous = conn.execute(
+                "SELECT holidays,available_at FROM mdf_tdx_daily.p0_trading_calendar "
+                "WHERE year=%s ORDER BY available_at DESC LIMIT 1",
+                (year,),
+            ).fetchone()
+            if previous and previous[0] == holidays:
+                return previous[1], False
+            row = conn.execute(
+                "INSERT INTO mdf_tdx_daily.p0_trading_calendar "
+                "(year,holidays,evidence) "
+                "VALUES (%s,%s,%s) RETURNING available_at",
+                (year, holidays, Jsonb(evidence)),
+            ).fetchone()
+            return row[0], True
+
+    def trading_calendar(self, *, as_of, start, end):
+        # Prefer independent publications, with the original snapshot evidence
+        # for years that have not been published through the new path yet.
+        try:
+            with self.connector() as conn:
+                rows = conn.execute(
+                    "SELECT DISTINCT ON (year) year,holidays "
+                    "FROM mdf_tdx_daily.p0_trading_calendar WHERE "
+                    "year BETWEEN %s AND %s AND available_at <= %s "
+                    "ORDER BY year,available_at DESC",
+                    (start.year, end.year, as_of),
+                ).fetchall()
+        except UndefinedTable:
+            rows = []
+        days = {
+            day: is_open
+            for year, holidays in rows
+            for day, is_open in year_sessions(year, set(holidays)).items()
+            if start <= day <= end
+        }
+        if len(days) != (end - start).days + 1:
+            days = self._legacy_trading_calendar(as_of, start, end) | days
+        return days
+
+    def _legacy_trading_calendar(self, as_of, start, end):
         with self.connector() as conn:
             row = conn.execute(
                 "SELECT details->'calendar' FROM mdf_tdx_daily.p0_universes "
                 "WHERE available_at <= %s AND "
+                "jsonb_array_length(details->'calendar') > 0 AND "
                 "(SELECT count(*)=3 AND bool_and(s->>'state'='COMPLETE') "
                 "FROM jsonb_array_elements(details->'markets') s) "
                 "ORDER BY (details->>'roster_kind'='exchange_lifecycle') "
                 "DESC NULLS LAST, available_at DESC LIMIT 1",
                 (as_of,),
             ).fetchone()
-            return row[0] or [] if row else []
+        return {
+            day: opened
+            for day, opened in unanimous_legacy_days(
+                row[0] if row else [], as_of=as_of
+            ).items()
+            if start <= day <= end
+        }
 
     def universe(
         self, snapshot_id=None, as_of=None, *, day=None, prefer_directory=False

@@ -134,7 +134,7 @@ POST `/jobs` 的 JSON 为 `request_id` UUID、`action`（`universe/init/update`�
 沿用既有 Macro 配置与参数。TDX 仅接受 DEV 18766 或隔离 18767，默认每作业四个采集
 worker，上限八个；同时运行多作业会叠加预算，应结合来源、PG 和磁盘实测配置。
 POST `/strategy` 的 `{"enabled":true}` 开启驻留执行；启停配置按 DEV 端口隔离。
-三市交易日历确认开市后，北京时间 09:00 刷新行情目录，15:35 复用当天完成的目录，启动一轮全市场日线采集。错过早盘时补目录。当天目录已部分失败或中断时，盘后在原作业上自动续跑一次，仅补未完成市场；仍不完整则留给显式续跑。
+A 股统一交易日历确认开市后，北京时间 09:00 刷新行情目录，15:35 复用当天完成的目录，启动一轮全市场日线采集。错过早盘时补目录。当天目录已部分失败或中断时，盘后在原作业上自动续跑一次，仅补未完成市场；仍不完整则留给显式续跑。
 目标日 D 的采集范围为 [D−14 个自然日, D]，含两端。当日及历史新增行写入，未变跳过，
 窗口内发现的变化按本次发布时间生效。失败时续跑原作业，跳过已成功的股票。
 错过窗口或重启后，无游标时从最近有日历证据的交易日开始，已有游标则按开市日接续；
@@ -142,6 +142,34 @@ POST `/strategy` 的 `{"enabled":true}` 开启驻留执行；启停配置按 DEV
 调度仅读取日历投影和作业摘要，不在每个 tick 读取完整成员或执行分片。
 失败槽保留原作业等待显式恢复。`worker_online/heartbeat_at/calendar_state` 区分配置和实际执行。
 升级宿主前须核对现有槽和运行作业，避免旧宿主继续派发；宿主服务委派不由网页伪造成功。
+
+### A 股统一交易日历
+
+早盘基础名册、盘后日线和交易所证据刷新从同一份本地日历判断当天开休市。
+已确认年份按可用时点独立保存在 PostgreSQL。相同日历重复发布为无变化，
+不同年度可同时读取。已有名册快照中的三所日历为过渡期回读来源。
+盘后交易所证据刷新仍按市场核验证券，只需要参考清单中的北交所代码映射。
+
+年度维护命令从上交所年度休市公告目录查找目标年的完整公告，按周一至周五
+扣除休市日展开。调休补班的周末仍休市。若交易所原件暂不可用，可指定
+中国政府网的年度放假通知，其次才读取 timor.tech。相应回执标注来源和
+待交易所确认状态，只有交易所可核验原件能发布给调度器。
+
+在 MDF-DEV 项目目录执行。省略 `--year` 时，按北京时间在 12 月准备下一年，
+其他月份准备当年，重启跨过元旦时仍能补当年。加 `--publish` 才应用 DEV
+迁移并发布已确认日历。原文和回执保存在指定的私有目录。
+
+`deploy/systemd/mdf-tdx-trading-calendar-dev.{service,timer}` 是 DEV 部署单元。
+通过 `/etc/mdf/tdx-trading-calendar.env` 指定已部署工作树
+`MDF_TDX_CALENDAR_PROJECT`，可选指定当年官方通知
+`MDF_TDX_CALENDAR_GOVERNMENT_URL`。timer 在 12 月尝试提前发布，
+在次年 1 月前七天补查，并持久化错过的触发。重复发布相同安排为无变化。
+
+```sh
+uv run --locked python scripts/mdf_tdx_trading_calendar.py \
+  --dev-opt-in --year 2027 --artifact-dir artifacts/tdx-trading-calendar \
+  --government-url https://www.gov.cn/zhengce/content/202611/content_7085101.htm
+```
 
 已保留同源日线收包可以用 `scripts/mdf_tdx_daily_receive.py --dev-opt-in` 显式入库。
 清单绑定收包与 qualification observation 的 SHA256、端点、SDK 和请求身份；仍走

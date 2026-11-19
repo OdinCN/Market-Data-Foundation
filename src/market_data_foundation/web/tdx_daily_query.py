@@ -199,6 +199,15 @@ class DailyQuery:
         for c in (snapshot or {}).get("details", {}).get("calendar", []):
             if instant(c["available_at"]) <= cutoff:
                 calendar[(c["market"], date.fromisoformat(c["day"]))] = c["is_open"]
+        unified_calendar = (
+            self.store.trading_calendar(as_of=cutoff, start=start, end=end)
+            if hasattr(self.store, "trading_calendar")
+            else {}
+        )
+
+        def calendar_open(market, day):
+            return unified_calendar.get(day, calendar.get((market, day)))
+
         today = at.astimezone(ZONE).date()
         phase = session(at)
         reported_phase = (
@@ -206,8 +215,8 @@ class DailyQuery:
         )
         scope_markets = (market,) if market is not None else (0, 1, 2)
         if start == end and all(
-            calendar.get((m, start)) is False
-            or calendar.get((m, start)) is None
+            calendar_open(m, start) is False
+            or calendar_open(m, start) is None
             and start.weekday() >= 5
             for m in scope_markets
         ):
@@ -231,7 +240,7 @@ class DailyQuery:
                 delisted and day >= date.fromisoformat(delisted)
             ):
                 return "outside_listing_interval"
-            opened = calendar.get((m, day))
+            opened = calendar_open(m, day)
             if opened is False or opened is None and day.weekday() >= 5:
                 return (
                     "market_closed"

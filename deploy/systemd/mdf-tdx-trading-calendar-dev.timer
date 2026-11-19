@@ -1,0 +1,10 @@
+[Unit]
+Description=Prepare and publish the MDF DEV A-share annual trading calendar
+
+[Timer]
+OnCalendar=*-12-01,10,20,30,31 20:00:00 Asia/Shanghai
+OnCalendar=*-01-01..07 08:00:00 Asia/Shanghai
+Persistent=true
+
+[Install]
+WantedBy=timers.target
