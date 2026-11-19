@@ -12,6 +12,7 @@ from market_data_foundation.canonical.model import require
 EXCHANGE_INDEX = "https://www.sse.com.cn/disclosure/dealinstruc/closed/list/"
 GOVERNMENT_TITLE = "国务院办公厅关于{year}年部分节假日安排的通知"
 EXCHANGE_TITLE = "关于上海证券交易所{year}年部分节假日休市安排的通知"
+EXCHANGE_FULL_YEAR_TITLE = "关于上海证券交易所{year}年全年休市安排的通知"
 TIMOR_URL = "https://timor.tech/api/holiday/year/{year}"
 HOLIDAYS = ("元旦", "春节", "清明节", "劳动节", "端午节", "中秋节", "国庆节")
 
@@ -31,13 +32,25 @@ def _text(raw):
     return re.sub(r"\s+", "", unescape(re.sub(r"<[^>]+>", "", raw.decode("utf-8-sig"))))
 
 
+def _exchange_titles(year):
+    return {
+        title.format(year=year) for title in (EXCHANGE_TITLE, EXCHANGE_FULL_YEAR_TITLE)
+    }
+
+
 def notice_holidays(raw, year, *, exchange):
     """Parse the named holiday clauses, excluding weekend make-up work."""
     text = _text(raw)
-    title = EXCHANGE_TITLE if exchange else GOVERNMENT_TITLE
-    require(title.format(year=year) in text, "tdx_calendar_notice_title")
+    titles = (
+        _exchange_titles(year) if exchange else {GOVERNMENT_TITLE.format(year=year)}
+    )
+    require(any(title in text for title in titles), "tdx_calendar_notice_title")
     day_expr = r"(\d{1,2})日(?:[（(][^）)]{1,32}[）)])?"
-    dates = rf"(\d{{1,2}})月{day_expr}(?:[至到](?:(\d{{1,2}})月)?{day_expr})?"
+    year_expr = r"(?:(\d{4})年)?"
+    dates = (
+        rf"{year_expr}(\d{{1,2}})月{day_expr}"
+        rf"(?:[至到]{year_expr}(?:(\d{{1,2}})月)?{day_expr})?"
+    )
     closure = "休市" if exchange else "放假"
     closed = set()
     for name in HOLIDAYS:
@@ -45,7 +58,7 @@ def notice_holidays(raw, year, *, exchange):
         # Pages may render a title/navigation more than once, but every holiday
         # must have one unambiguous date range.
         require(len(set(matches)) == 1, "tdx_calendar_holiday_missing_or_ambiguous")
-        sm, sd, em, ed = matches[0]
+        sy, sm, sd, ey, em, ed = matches[0]
         start_month, end_month = int(sm), int(em or sm)
         # A New Year's notice can include the previous December.
         start_year = year - (name == "元旦" and start_month == 12)
@@ -53,7 +66,10 @@ def notice_holidays(raw, year, *, exchange):
         start = date(start_year, start_month, int(sd))
         end = date(end_year, end_month, int(ed or sd))
         require(
-            0 <= (end - start).days < 20 and end.year == year,
+            end.year == year
+            and (not sy or int(sy) == start_year)
+            and (not ey or int(ey) == end_year)
+            and 0 <= (end - start).days < 20,
             "tdx_calendar_holiday_range",
         )
         closed.update(start + timedelta(days=i) for i in range((end - start).days + 1))
@@ -62,9 +78,9 @@ def notice_holidays(raw, year, *, exchange):
 
 
 class _NoticeLinks(HTMLParser):
-    def __init__(self, title):
+    def __init__(self, titles):
         super().__init__()
-        self.title = title
+        self.titles = titles
         self.urls = set()
         self.href = None
         self.label = []
@@ -81,7 +97,7 @@ class _NoticeLinks(HTMLParser):
     def handle_endtag(self, tag):
         if tag != "a" or not self.href:
             return
-        if re.sub(r"\s+", "", "".join(self.label)) == self.title:
+        if re.sub(r"\s+", "", "".join(self.label)) in self.titles:
             url = urljoin(EXCHANGE_INDEX, self.href)
             parsed = urlsplit(url)
             if (
@@ -96,7 +112,7 @@ class _NoticeLinks(HTMLParser):
 
 
 def exchange_notice_url(raw, year):
-    links = _NoticeLinks(EXCHANGE_TITLE.format(year=year))
+    links = _NoticeLinks(_exchange_titles(year))
     links.feed(raw.decode("utf-8-sig"))
     require(len(links.urls) == 1, "tdx_calendar_exchange_notice_unavailable")
     return next(iter(links.urls))

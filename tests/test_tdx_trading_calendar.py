@@ -8,6 +8,7 @@ from market_data_foundation.canonical.model import ContractError
 from market_data_foundation.historical.tdx_p0_jobs import strategy_slot_id
 from market_data_foundation.historical.tdx_p0_strategy import DailyStrategy
 from market_data_foundation.historical.tdx_trading_calendar import (
+    EXCHANGE_FULL_YEAR_TITLE,
     EXCHANGE_INDEX,
     EXCHANGE_TITLE,
     GOVERNMENT_TITLE,
@@ -196,9 +197,16 @@ def test_delayed_yearly_timer_uses_shanghai_rollover():
 
 
 def test_exchange_new_year_holiday_can_start_in_previous_december():
-    raw = notice(exchange=True).replace(
-        "1月1日（周五）至3日（周日）".encode(),
-        "12月31日（周四）至1月3日（周日）".encode(),
+    raw = (
+        notice(exchange=True)
+        .replace(
+            "1月1日（周五）至3日（周日）".encode(),
+            "2026年12月31日（周四）至2027年1月3日（周日）".encode(),
+        )
+        .replace(
+            EXCHANGE_TITLE.format(year=YEAR).encode(),
+            EXCHANGE_FULL_YEAR_TITLE.format(year=YEAR).encode(),
+        )
     )
     holidays = notice_holidays(raw, YEAR, exchange=True)
     assert date(YEAR - 1, 12, 31) in holidays
