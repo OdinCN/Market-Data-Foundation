@@ -56,11 +56,7 @@ def notice_holidays(raw, year, *, exchange):
             0 <= (end - start).days < 20 and end.year == year,
             "tdx_calendar_holiday_range",
         )
-        closed.update(
-            day
-            for offset in range((end - start).days + 1)
-            if (day := start + timedelta(days=offset)).year == year
-        )
+        closed.update(start + timedelta(days=i) for i in range((end - start).days + 1))
     require(date(year, 1, 1) in closed, "tdx_calendar_new_year_missing")
     return closed
 

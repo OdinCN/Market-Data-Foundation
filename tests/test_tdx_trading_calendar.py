@@ -193,3 +193,13 @@ def test_both_scheduled_consumers_read_one_calendar_across_years(tmp_path):
 def test_delayed_yearly_timer_uses_shanghai_rollover():
     assert scheduled_year(datetime(2026, 11, 30, 16, tzinfo=UTC)) == 2027
     assert scheduled_year(datetime(2026, 12, 31, 16, tzinfo=UTC)) == 2027
+
+
+def test_exchange_new_year_holiday_can_start_in_previous_december():
+    raw = notice(exchange=True).replace(
+        "1月1日（周五）至3日（周日）".encode(),
+        "12月31日（周四）至1月3日（周日）".encode(),
+    )
+    holidays = notice_holidays(raw, YEAR, exchange=True)
+    assert date(YEAR - 1, 12, 31) in holidays
+    assert date(YEAR, 1, 3) in holidays

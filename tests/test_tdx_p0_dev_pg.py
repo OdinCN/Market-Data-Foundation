@@ -283,11 +283,17 @@ def test_dev_unified_calendar_preserves_previous_year_and_as_of():
             end: True,
         }
         third, changed = store.save_trading_calendar(
-            2027, {date(2027, 1, 1), end}, source
+            2027, {start, date(2027, 1, 1), end}, source
         )
         assert changed
         assert store.trading_calendar(as_of=third, start=end, end=end) == {end: False}
         assert store.trading_calendar(as_of=second, start=end, end=end) == {end: True}
+        assert store.trading_calendar(as_of=third, start=start, end=start) == {
+            start: False
+        }
+        assert store.trading_calendar(as_of=second, start=start, end=start) == {
+            start: True
+        }
     finally:
         with connect() as conn:
             conn.execute("DROP SCHEMA " + schema + " CASCADE")

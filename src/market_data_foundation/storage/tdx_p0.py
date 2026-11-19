@@ -306,7 +306,10 @@ class PgStore:
         require(
             evidence["source"] == "sse_annual_notice"
             and date(year, 1, 1) in holidays
-            and all(day.year == year for day in holidays),
+            and all(
+                day.year == year or (day.year == year - 1 and day.month == 12)
+                for day in holidays
+            ),
             "tdx_calendar_publication_unconfirmed",
         )
         with self.connector() as conn, conn.transaction():
@@ -336,18 +339,26 @@ class PgStore:
                     "FROM mdf_tdx_daily.p0_trading_calendar WHERE "
                     "year BETWEEN %s AND %s AND available_at <= %s "
                     "ORDER BY year,available_at DESC",
-                    (start.year, end.year, as_of),
+                    (start.year, end.year + 1, as_of),
                 ).fetchall()
         except UndefinedTable:
             rows = []
         days = {
             day: is_open
             for year, holidays in rows
+            if year <= end.year
             for day, is_open in year_sessions(year, set(holidays)).items()
             if start <= day <= end
         }
         if len(days) != (end - start).days + 1:
             days = self._legacy_trading_calendar(as_of, start, end) | days
+        # An official New Year's closure can start in the preceding December.
+        days.update(
+            (day, False)
+            for year, holidays in rows
+            for day in holidays
+            if day.year < year and start <= day <= end
+        )
         return days
 
     def _legacy_trading_calendar(self, as_of, start, end):
