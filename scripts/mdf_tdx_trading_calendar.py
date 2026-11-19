@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from tempfile import mkdtemp
-from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -17,6 +16,9 @@ from market_data_foundation.historical.tdx_trading_calendar import (
     EXCHANGE_INDEX,
     TIMOR_URL,
     exchange_notice_url,
+    government_notice_url,
+    government_search_url,
+    government_url_valid,
     notice_holidays,
     timor_holidays,
     year_sessions,
@@ -57,39 +59,105 @@ def prepare_calendar(year, *, get, artifact, government_url=None):
         return notice_holidays(raw, year, exchange=True), dict(evidence, index=index)
 
     def government():
-        raw, evidence = original(government_url, "government-notice.html")
-        return notice_holidays(raw, year, exchange=False), evidence
+        url = government_url
+        discovery = {}
+        if not url:
+            raw, index = original(government_search_url(year), "government-index.json")
+            url = government_notice_url(raw, year)
+            discovery["index"] = index
+        require(government_url_valid(url), "tdx_calendar_government_notice_url")
+        raw, evidence = original(url, "government-notice.html")
+        return notice_holidays(raw, year, exchange=False), dict(evidence, **discovery)
 
     def timor():
         raw, evidence = original(TIMOR_URL.format(year=year), "timor.json")
         return timor_holidays(raw, year), evidence
 
-    sources = [("sse_annual_notice", exchange)]
-    if government_url:
-        sources.append(("state_council_holiday_notice", government))
-    sources.append(("timor_holiday_api", timor))
-    for source, acquire in sources:
+    def attempt(source, acquire):
         try:
-            holidays, proof = acquire()
+            return acquire()
         except SOURCE_ERRORS as error:
             attempts.append(dict(source=source, classification=_failure(error)))
-            continue
-        status = "CONFIRMED" if source == "sse_annual_notice" else "AWAITING_EXCHANGE"
-        return holidays, dict(
+            return None
+
+    source = "state_council_holiday_notice"
+    candidate = attempt(source, government)
+    if candidate is None:
+        source = "timor_holiday_api"
+        candidate = attempt(source, timor)
+    # The market notice is an independent check, even when a candidate is ready.
+    market = attempt("sse_annual_notice", exchange)
+    if market is None and candidate is None:
+        return None, dict(
             year=year,
-            state=status,
-            source=source,
-            evidence=proof,
+            state="UNAVAILABLE",
+            schedulable=False,
+            exchange_confirmed=False,
             attempts=attempts,
-            trading_days=sum(year_sessions(year, holidays).values()),
-            holidays=[day.isoformat() for day in sorted(holidays)],
         )
-    return None, dict(year=year, state="UNAVAILABLE", attempts=attempts)
+    if market is not None:
+        holidays, proof = market
+        proof = dict(proof)
+        if candidate is not None:
+            candidate_days, candidate_proof = candidate
+            proof["candidate"] = dict(source=source, **candidate_proof)
+            proof["reconciliation"] = dict(
+                matches=candidate_days == holidays,
+                exchange_only=[
+                    d.isoformat() for d in sorted(holidays - candidate_days)
+                ],
+                candidate_only=[
+                    d.isoformat() for d in sorted(candidate_days - holidays)
+                ],
+            )
+        source = "sse_annual_notice"
+    else:
+        holidays, proof = candidate
+    return holidays, dict(
+        year=year,
+        state="CONFIRMED" if market is not None else "AWAITING_EXCHANGE",
+        schedulable=True,
+        exchange_confirmed=market is not None,
+        source=source,
+        evidence=proof,
+        attempts=attempts,
+        trading_days=sum(year_sessions(year, holidays).values()),
+        holidays=[day.isoformat() for day in sorted(holidays)],
+    )
+
+
+def publish_calendar(store, holidays, result):
+    """Publish eligible candidates; report the effective version after retention."""
+    if holidays is None:
+        return result
+    evidence = dict(
+        source=result["source"],
+        schedulable=result["schedulable"],
+        exchange_confirmed=result["exchange_confirmed"],
+        **result["evidence"],
+    )
+    available_at, changed = store.save_trading_calendar(
+        result["year"], holidays, evidence
+    )
+    publication = store.trading_calendar_publication(result["year"], as_of=available_at)
+    retained = publication["evidence"]["source"] != result["source"]
+    return dict(
+        result,
+        state="PUBLISHED"
+        if changed
+        else ("RETAINED_HIGHER_AUTHORITY" if retained else "ALREADY_PUBLISHED"),
+        available_at=available_at.isoformat(),
+        publication=dict(
+            source=publication["evidence"]["source"],
+            schedulable=True,
+            exchange_confirmed=publication["evidence"]["source"] == "sse_annual_notice",
+        ),
+    )
 
 
 def scheduled_year(at):
     local = at.astimezone(SHANGHAI)
-    return local.year + (local.month == 12)
+    return local.year + (local.month in (11, 12))
 
 
 def main():
@@ -97,7 +165,7 @@ def main():
     parser.add_argument(
         "--year",
         type=int,
-        help="Defaults to next Shanghai year in December, otherwise current year.",
+        help="Defaults to next Shanghai year in November/December, else current year.",
     )
     parser.add_argument("--government-url", help="Optional official gov.cn notice.")
     parser.add_argument("--artifact-dir", required=True, type=Path)
@@ -108,13 +176,8 @@ def main():
     year = args.year if args.year is not None else scheduled_year(datetime.now(UTC))
     require(1990 <= year <= 2100, "tdx_calendar_year")
     if args.government_url:
-        government = urlsplit(args.government_url)
         require(
-            government.scheme == "https"
-            and government.netloc == "www.gov.cn"
-            and government.path.startswith("/zhengce/")
-            and not government.query
-            and not government.fragment,
+            government_url_valid(args.government_url),
             "tdx_calendar_government_notice_url",
         )
     args.artifact_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -127,18 +190,15 @@ def main():
             return response.content
 
         holidays, result = prepare_calendar(
-            year, get=get, artifact=artifact, government_url=args.government_url
+            year,
+            get=get,
+            artifact=artifact,
+            government_url=args.government_url,
         )
-    if args.publish and result["state"] == "CONFIRMED":
+    if args.publish and result["schedulable"]:
         with connect() as conn:
             migrate(conn, dev_opt_in=True)
-        available_at, changed = PgStore().save_trading_calendar(
-            year, holidays, dict(source=result["source"], **result["evidence"])
-        )
-        result.update(
-            state="PUBLISHED" if changed else "ALREADY_PUBLISHED",
-            available_at=available_at.isoformat(),
-        )
+        result = publish_calendar(PgStore(), holidays, result)
     atomic(artifact / "receipt.json", result)
     print(json.dumps(result, ensure_ascii=False))
     if result["state"] == "UNAVAILABLE":

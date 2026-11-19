@@ -265,9 +265,16 @@ def test_dev_unified_calendar_preserves_previous_year_and_as_of():
         before = datetime.now(UTC)
         first, changed = store.save_trading_calendar(2026, {date(2026, 1, 1)}, source)
         assert changed
-        second, changed = store.save_trading_calendar(2027, {date(2027, 1, 1)}, source)
+        candidate = dict(source="state_council_holiday_notice", schedulable=True)
+        second, changed = store.save_trading_calendar(
+            2027, {date(2027, 1, 1)}, candidate
+        )
+        assert (
+            store.trading_calendar_publication(2027, as_of=second)["evidence"]
+            == candidate
+        )
         assert changed
-        assert store.save_trading_calendar(2027, {date(2027, 1, 1)}, source) == (
+        assert store.save_trading_calendar(2027, {date(2027, 1, 1)}, candidate) == (
             second,
             False,
         )

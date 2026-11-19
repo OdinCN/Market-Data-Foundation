@@ -11,6 +11,7 @@ from psycopg.types.json import Jsonb
 from market_data_foundation.canonical.model import require
 from market_data_foundation.historical.tdx_p0_roster import PATTERNS
 from market_data_foundation.historical.tdx_trading_calendar import (
+    CALENDAR_AUTHORITIES,
     unanimous_legacy_days,
     year_sessions,
 )
@@ -301,26 +302,37 @@ class PgStore:
             return names
 
     def save_trading_calendar(self, year, holidays, evidence):
-        """Publish the official year if the schedule has changed."""
+        """Publish complete candidates, retaining higher authority and source upgrades.
+
+        Old exchange rows need no new flags: their existing source remains the
+        authority. Unknown legacy sources are protected rather than downgraded.
+        Receipt paths, retrieval clocks and HTML changes alone are not revisions.
+        """
         holidays = sorted(holidays)
         require(
-            evidence["source"] == "sse_annual_notice"
+            evidence["source"] in CALENDAR_AUTHORITIES
+            and evidence.get("schedulable", True) is True
             and date(year, 1, 1) in holidays
             and all(
                 day.year == year or (day.year == year - 1 and day.month == 12)
                 for day in holidays
             ),
-            "tdx_calendar_publication_unconfirmed",
+            "tdx_calendar_publication_ineligible",
         )
         with self.connector() as conn, conn.transaction():
             conn.execute("SELECT pg_advisory_xact_lock(721603,%s)", (year,))
             previous = conn.execute(
-                "SELECT holidays,available_at FROM mdf_tdx_daily.p0_trading_calendar "
+                "SELECT holidays,available_at,evidence "
+                "FROM mdf_tdx_daily.p0_trading_calendar "
                 "WHERE year=%s ORDER BY available_at DESC LIMIT 1",
                 (year,),
             ).fetchone()
-            if previous and previous[0] == holidays:
-                return previous[1], False
+            if previous:
+                old_source = previous[2].get("source")
+                if CALENDAR_AUTHORITIES.get(old_source, 4) > CALENDAR_AUTHORITIES[
+                    evidence["source"]
+                ] or (previous[0] == holidays and old_source == evidence["source"]):
+                    return previous[1], False
             row = conn.execute(
                 "INSERT INTO mdf_tdx_daily.p0_trading_calendar "
                 "(year,holidays,evidence) "
@@ -329,13 +341,28 @@ class PgStore:
             ).fetchone()
             return row[0], True
 
+    def trading_calendar_publication(self, year, *, as_of):
+        with self.connector() as conn:
+            row = conn.execute(
+                "SELECT holidays,available_at,evidence "
+                "FROM mdf_tdx_daily.p0_trading_calendar "
+                "WHERE year=%s AND available_at <= %s "
+                "ORDER BY available_at DESC LIMIT 1",
+                (year, as_of),
+            ).fetchone()
+        if row:
+            return dict(
+                year=year, holidays=row[0], available_at=row[1], evidence=row[2]
+            )
+        return None
+
     def trading_calendar(self, *, as_of, start, end):
         # Prefer independent publications, with the original snapshot evidence
         # for years that have not been published through the new path yet.
         try:
             with self.connector() as conn:
                 rows = conn.execute(
-                    "SELECT DISTINCT ON (year) year,holidays "
+                    "SELECT DISTINCT ON (year) year,holidays,evidence "
                     "FROM mdf_tdx_daily.p0_trading_calendar WHERE "
                     "year BETWEEN %s AND %s AND available_at <= %s "
                     "ORDER BY year,available_at DESC",
@@ -345,17 +372,31 @@ class PgStore:
             rows = []
         days = {
             day: is_open
-            for year, holidays in rows
+            for year, holidays, _ in rows
             if year <= end.year
             for day, is_open in year_sessions(year, set(holidays)).items()
             if start <= day <= end
         }
-        if len(days) != (end - start).days + 1:
-            days = self._legacy_trading_calendar(as_of, start, end) | days
-        # An official New Year's closure can start in the preceding December.
+        exchange_authority = CALENDAR_AUTHORITIES["sse_annual_notice"]
+        confirmed_years = {
+            year
+            for year, _, evidence in rows
+            if CALENDAR_AUTHORITIES.get(evidence.get("source"), 4) >= exchange_authority
+        }
+        if any(year not in confirmed_years for year in range(start.year, end.year + 1)):
+            days.update(
+                (day, opened)
+                for day, opened in self._legacy_trading_calendar(
+                    as_of, start, end
+                ).items()
+                if day.year not in confirmed_years
+            )
+        # An explicit New Year's closure can start in the preceding December.
+        # Authority retention is scoped to the annual publication above; keep
+        # this cross-year correction of the previous year's weekday projection.
         days.update(
             (day, False)
-            for year, holidays in rows
+            for year, holidays, _ in rows
             for day in holidays
             if day.year < year and start <= day <= end
         )

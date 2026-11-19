@@ -5,16 +5,33 @@ import re
 from datetime import date, datetime, timedelta
 from html import unescape
 from html.parser import HTMLParser
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urlencode, urljoin, urlsplit
 
 from market_data_foundation.canonical.model import require
 
 EXCHANGE_INDEX = "https://www.sse.com.cn/disclosure/dealinstruc/closed/list/"
+GOVERNMENT_SEARCH = "https://sousuo.www.gov.cn/search-gov/data"
 GOVERNMENT_TITLE = "国务院办公厅关于{year}年部分节假日安排的通知"
 EXCHANGE_TITLE = "关于上海证券交易所{year}年部分节假日休市安排的通知"
 EXCHANGE_FULL_YEAR_TITLE = "关于上海证券交易所{year}年全年休市安排的通知"
-TIMOR_URL = "https://timor.tech/api/holiday/year/{year}"
+TIMOR_URL = "https://timor.tech/api/holiday/year/{year}/"
 HOLIDAYS = ("元旦", "春节", "清明节", "劳动节", "端午节", "中秋节", "国庆节")
+CALENDAR_AUTHORITIES = {
+    "timor_holiday_api": 1,
+    "state_council_holiday_notice": 2,
+    "sse_annual_notice": 3,
+}
+
+
+def government_url_valid(url):
+    parsed = urlsplit(url)
+    return (
+        parsed.scheme == "https"
+        and parsed.netloc == "www.gov.cn"
+        and parsed.path.startswith("/zhengce/")
+        and not parsed.query
+        and not parsed.fragment
+    )
 
 
 def year_days(year):
@@ -121,6 +138,41 @@ def exchange_notice_url(raw, year):
     return next(iter(links.urls))
 
 
+def government_search_url(year):
+    query = urlencode(
+        {
+            "t": "zhengcelibrary_gw",
+            "q": f"{year}年部分节假日安排",
+            "searchfield": "title",
+            "p": 1,
+            "n": 5,
+        }
+    )
+    return f"{GOVERNMENT_SEARCH}?{query}"
+
+
+def government_notice_url(raw, year):
+    """Select the original notice from China's official policy-library results."""
+    result = json.loads(raw)
+    code = "tdx_calendar_government_notice_unavailable"
+    require(isinstance(result, dict) and result.get("code") == 200, code)
+    search = result.get("searchVO")
+    require(isinstance(search, dict) and isinstance(search.get("listVO"), list), code)
+    title = GOVERNMENT_TITLE.format(year=year)
+    urls = {
+        row["url"]
+        for row in search["listVO"]
+        if isinstance(row, dict)
+        and row.get("puborg") == "国务院办公厅"
+        and isinstance(row.get("title"), str)
+        and _text(row["title"].encode()) == title
+        and isinstance(row.get("url"), str)
+        and government_url_valid(row["url"])
+    }
+    require(len(urls) == 1, code)
+    return next(iter(urls))
+
+
 def timor_holidays(raw, year):
     """Validate the fallback projection. It is never exchange confirmation."""
     result = json.loads(raw)
@@ -138,15 +190,28 @@ def timor_holidays(raw, year):
         require(isinstance(row, dict), "tdx_calendar_timor_row")
         day = date.fromisoformat(row.get("date") or "")
         require(
-            day.year == year
-            and day.isoformat() == f"{year}-{key}"
+            (day.year == year or (day.year == year - 1 and day.month == 12))
+            and day.strftime("%m-%d") == key
             and type(row.get("holiday")) is bool
-            and isinstance(row.get("name"), str),
+            and isinstance(row.get("name"), str)
+            and (day.year == year or "元旦" in row["name"]),
             "tdx_calendar_timor_row",
         )
         if row["holiday"]:
             closed.add(day)
             names.update(name for name in HOLIDAYS if name in row["name"])
+            if row["name"] in {
+                "除夕",
+                "初一",
+                "初二",
+                "初三",
+                "初四",
+                "初五",
+                "初六",
+                "初七",
+                "初八",
+            }:
+                names.add("春节")
     require(
         names == set(HOLIDAYS) and date(year, 1, 1) in closed,
         "tdx_calendar_timor_incomplete",
